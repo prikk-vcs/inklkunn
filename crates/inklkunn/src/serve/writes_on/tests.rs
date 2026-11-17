@@ -469,6 +469,8 @@ struct Form {
     action: String,
     fields: Vec<Field>,
     buttons: Vec<(String, String)>,
+    /// The radio buttons and boxes it has, as (name, value): a browser sends one only when it is checked.
+    choices: Vec<(String, String)>,
 }
 
 fn attr(tag: &str, name: &str) -> Option<String> {
@@ -485,6 +487,23 @@ impl Form {
             .find(|f| f.name == name)
             .unwrap_or_else(|| panic!("the form {} has no field {name}", self.action));
         field.value = value.to_owned();
+        self
+    }
+
+    /// Check the radio button or box `name` has with this `value` (and, for a radio button, none of its others).
+    fn check(&mut self, name: &str, value: &str) -> &mut Self {
+        assert!(
+            self.choices.iter().any(|c| c.0 == name && c.1 == value),
+            "the form {} has no choice {name}={value}: {:?}",
+            self.action,
+            self.choices
+        );
+        self.fields.retain(|f| f.name != name);
+        self.fields.push(Field {
+            name: name.to_owned(),
+            value: value.to_owned(),
+            textarea: false,
+        });
         self
     }
 
@@ -544,6 +563,7 @@ fn forms_of(html: &str) -> Vec<Form> {
             action: attr(head, "action").unwrap_or_default(),
             fields: Vec::new(),
             buttons: Vec::new(),
+            choices: Vec::new(),
         };
         for chunk in inner.split("<input").skip(1) {
             let Some((tag, _)) = chunk.split_once('>') else {
@@ -551,6 +571,20 @@ fn forms_of(html: &str) -> Vec<Form> {
             };
             let tag = format!(" {tag}");
             let kind = attr(&tag, "type").unwrap_or_else(|| "text".to_owned());
+            if matches!(kind.as_str(), "radio" | "checkbox") {
+                if let Some(name) = attr(&tag, "name") {
+                    let value = attr(&tag, "value").unwrap_or_default();
+                    if tag.contains(" checked") {
+                        form.fields.push(Field {
+                            name: name.clone(),
+                            value: value.clone(),
+                            textarea: false,
+                        });
+                    }
+                    form.choices.push((name, value));
+                }
+                continue;
+            }
             if !matches!(kind.as_str(), "hidden" | "text" | "password") {
                 continue;
             }
@@ -574,6 +608,33 @@ fn forms_of(html: &str) -> Vec<Form> {
                     name,
                     value: unescape(content),
                     textarea: true,
+                });
+            }
+        }
+        // A browser sends a menu's chosen option, or its first when none is marked.
+        for chunk in inner.split("<select").skip(1) {
+            let Some((tag, after_tag)) = chunk.split_once('>') else {
+                continue;
+            };
+            let options = after_tag.split_once("</select>").map_or("", |c| c.0);
+            let mut chosen: Option<String> = None;
+            for option in options.split("<option").skip(1) {
+                let Some((otag, _)) = option.split_once('>') else {
+                    continue;
+                };
+                let otag = format!(" {otag}");
+                let value = attr(&otag, "value").unwrap_or_default();
+                if otag.contains(" selected") {
+                    chosen = Some(value);
+                    break;
+                }
+                chosen.get_or_insert(value);
+            }
+            if let Some(name) = attr(&format!(" {tag}"), "name") {
+                form.fields.push(Field {
+                    name,
+                    value: chosen.unwrap_or_default(),
+                    textarea: false,
                 });
             }
         }
@@ -1330,3 +1391,5 @@ fn an_invited_person_signs_in_proposes_is_reviewed_and_accepted_and_the_pages_sa
 }
 
 mod api;
+
+mod knowledge;

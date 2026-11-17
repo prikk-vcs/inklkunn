@@ -761,11 +761,13 @@ dependencies = [
  "inklkunn-auth",
  "inklkunn-core",
  "inklkunn-fetch",
+ "inklkunn-markup",
  "inklkunn-prikk",
  "inklkunn-store",
  "inklkunn-web",
  "rusqlite",
  "rustix",
+ "serde_json",
 ]
 
 [[package]]

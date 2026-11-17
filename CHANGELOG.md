@@ -1911,6 +1911,40 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
 - **K82 (handoff 005, readiness items of 2026-11-17): two one-line points (review L-a, L-b).** The Japanese sentences of a carried check (`invalid.knowledge_check_unstated`, `know.check_unstated` and their glossary rows) say 「…提案の中で示してください」, which is grammatical, instead of 「提案が示してください」. `submitDraft`'s description names `knowledge-check-unstated` and the way to state a check (`checked` in a curation; the proposal's own id in `last_reviewed.proposal` in a hand-written file), as `createProposal`'s and `reviseProposal`'s do.
 - **M49 (handoff 010, readiness): what an operator can add back to the container, measured, and run by the release step (review M47's ruling).** Under podman 6.2 (the image built from the repository's `Dockerfile` on Debian 13 with bubblewrap 0.12; the host-built binary needs a newer glibc than Debian 12's, so the measurement could not use the release's base), `wiki create` on a scratch volume succeeds with `--cap-drop ALL`, with `--security-opt no-new-privileges`, with `--read-only` (podman already gives `/tmp` a tmpfs; docker's does not, hence the explicit `--tmpfs /tmp`) and with all of them together, beside the three settings; in the container the effective and bounding capability sets are empty, `NoNewPrivs` is 1 and `/usr` is read-only, and `serve` starts under all of them and says `confined by bubblewrap`. None failed, so none is dropped. The release step's `docker run` carries `--cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp` beside the three settings (docker's own run of them is the architect's rehearsal), and SECURITY.md's container paragraph names them as what an operator adds, with the measurement. The paragraph *A server started without the means to sign still serves* has its own heading, `### When the server cannot sign`.
 - **M49, the sentence that remained (handoff 010, readiness, 2026-11-17): the docker measurement is stated as made.** SECURITY.md's *What an operator adds back* said docker's run of the four additions was what the release workflow's image step measures; it now says it **was measured**, in the release rehearsal of 2026-11-17 (run 44103325108): the release's own image on Debian 12, amd64 and arm64, with the three settings and all four additions. The Debian 13 caveat stays with the podman measurement only.
+- **R-2 (0.3.0 readiness): the end-to-end proof of the knowledge layer on a real prikk (2026-11-18).** One test,
+  `serve::writes_on::tests::knowledge::the_knowledge_layer_works_end_to_end_on_a_real_prikk`, in the shape of U6: the binary's own
+  `prepare` over a real prikk, key store and SQLite store behind a real socket, accounts from the operator's invitations, every
+  form read off its page with its CSRF token. **The story, as a reader would live it:** a contributor attaches a source to a
+  paragraph of *Help* through the form, and while the proposal is held no reader sees a claim and nothing is written; a maintainer
+  approves and accepts it; a reader with no account sees one quiet *Sources and views* link on that paragraph only (and still
+  one *Why is this here?* link), the claim's page with its source, relation and bearing in words, the API's answer for the same
+  claim, and *Why is this here?* for the claim's paragraph and for an ordinary one (the ordinary one labelled *traced by matching
+  the text*); a reviewer creates a view and a contributor is offered no form for it; a change of wording, a curation of the status
+  (with the one confirmation step) and a challenging source land in the view; the claim reads *judged on an earlier wording* in
+  the view that rewrote the paragraph until the confirmation clears it, and *compare views* (and the page's own diff) shows the
+  wording, the status and the sources; three proposals written against one tip (a status, a second source, a status again) are
+  accepted in turn, the second merges key by key and loses no relation, the third stops with *changes overlap* and writes
+  nothing; a script's proposal that names a claim file is refused (`path-outside-pages`) and records nothing; *Sources to review*
+  lists the source reviewed in March 2022 with its reason and the claim that relies on it and does not list the one reviewed
+  today; a thread of two comments is written and shown (markup as letters); the server is stopped and `wiki export` writes a
+  bundle whose manifest validates against wiki-commons' schema (the core's own checker and copy) with `inklkunn-knowledge`
+  declared, whose claim and source files, thread (fenced text, authors named) and views record are there and in `SHA256SUMS`;
+  offered to another wiki, that bundle is refused whole, by file and rule, for the status and review days it carries (an import
+  brings no curated state), and a claim file that is not one is refused by name, each with nothing written. Every assertion names
+  the acceptance criterion of RFC 005 part 2 it carries (`AC D-n`); the pages of the story pass a retired-words check (no
+  *true*, *false*, *verified*, *proven*, *canonical*, *official*, *adopted* as a word a reader reads). **Harness, shared with U6's
+  tests:** `forms_of` now reads menus (`<select>`, the chosen or first option) and radio buttons and boxes (`Form::check`), as a
+  browser sends them; U6's helpers `json_field`, `json_quote`, `api` and `API` are `pub(super)`. **Dev-dependencies of `inklkunn`:**
+  `serde_json` and `inklkunn-markup`, both already in the lock (one more line each in the `inklkunn` entry of `Cargo.lock`; no new
+  crate): the core's JSON Schema checker is reused through `#[path]`, not copied. **One new prikk-dependent test** (it prints
+  `skipping: prikk not on PATH` once). Run on prikk 0.55.0 and on the host's 0.57.0. Mutations that kill it (each restored): the
+  comparison's sources and its status made equal; the judgement made always current; the knowledge merge made to take one side;
+  the API's page-only rule lifted; the import's knowledge judgement skipped, and its read of a file skipped; freshness's `overdue`
+  made false; the export's threads dropped, and the manifest's extension left out, and the manifest's `format` misspelt (the
+  schema check fails); the claim link removed from the page; *Why is this here?* made to say every paragraph is traced by its
+  anchor; a retired word put in a claim sentence; the API's claim without its sources; the thread's comments not shown. Not
+  mutation-checked: that an open proposal changes nothing a reader sees (D-3), the negative half of D-7 (no control on a paragraph
+  with no claim), the view's listing, the people and review lines of *Why is this here?*.
 
 ## [0.2.0] — 2026-11-04
 

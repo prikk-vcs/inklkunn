@@ -27,6 +27,11 @@ rustix = { version = "1", default-features = false, features = ["process", "std"
 # Test-only, already in the lock for the store: the account tests break the audit trail to show that an act the
 # trail cannot take is not begun.
 rusqlite = { workspace = true }
+# Test-only, both already in the lock: the end-to-end proof of the knowledge layer checks the exported bundle's manifest
+# against wiki-commons' schema with the core's own checker, which reads the manifest as the wiki reads YAML
+# (`inklkunn-markup`) and speaks `serde_json::Value`.
+serde_json = { workspace = true }
+inklkunn-markup = { path = "../inklkunn-markup", version = "0.2.0" }
 # The tests that prepare a server more than once in a process need an authority each (`claim` answers once);
 # the product build never enables it.
 inklkunn-core = { path = "../inklkunn-core", version = "0.2.0", features = ["test-authority"] }

@@ -5,7 +5,7 @@
 use super::*;
 
 /// The string or bare value of the first member `key` in a JSON text (enough for the ids and flags the tests read).
-fn json_field(body: &str, key: &str) -> Option<String> {
+pub(super) fn json_field(body: &str, key: &str) -> Option<String> {
     let (_, after) = body.split_once(&format!("\"{key}\":"))?;
     let after = after.trim_start();
     let Some(quoted) = after.strip_prefix('"') else {
@@ -33,7 +33,7 @@ fn json_field(body: &str, key: &str) -> Option<String> {
     None
 }
 
-fn json_quote(text: &str) -> String {
+pub(super) fn json_quote(text: &str) -> String {
     let mut out = String::from("\"");
     for c in text.chars() {
         match c {
@@ -51,7 +51,7 @@ fn json_quote(text: &str) -> String {
 }
 
 /// A script's request to the write API: a bearer token (or none), an `If-Match`, a JSON body.
-fn api(
+pub(super) fn api(
     running: &Running,
     method: &str,
     path: &str,
@@ -78,7 +78,7 @@ fn api(
     )
 }
 
-const API: &str = "/handbook/-/api/v1";
+pub(super) const API: &str = "/handbook/-/api/v1";
 
 fn problem(reply: &Reply) -> String {
     json_field(&reply.body, "type").unwrap_or_default()
