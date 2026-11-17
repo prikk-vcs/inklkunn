@@ -585,7 +585,13 @@ fn post(
         base: &base,
         renames: &sub.renames,
     };
-    let (carried_lines, carried_curated) = match file_lines(ctx, t, &place, &files(true), "") {
+    // A proposal that is revised names itself (K81): the rule of a stated check asks for the proposal's own id (K77); one
+    // that is being opened has none yet.
+    let own_id = existing
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let (carried_lines, carried_curated) = match file_lines(ctx, t, &place, &files(true), &own_id) {
         Ok(found) => (found.lines, found.curated),
         Err(e) => return read_failure(page, ctx, e),
     };

@@ -316,7 +316,16 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
         // The expectation is this table's own, not the rule's (F-e.1): none of these cases names this proposal in a
         // review day, so one whose reference differs and whose source carries any check (a day, or an answer) carries it
         // unstated; one with no check carries nothing, and one with the same reference is not a move at all.
-        let moved = after.reference != before.reference
+        // A place spelled with other white space is the same place (K81): the table says it as the rule does, in its own words.
+        let place = |s: &Source| {
+            s.reference.as_ref().map(|r| {
+                (
+                    r.form,
+                    r.value.split_whitespace().collect::<Vec<_>>().join(" "),
+                )
+            })
+        };
+        let moved = place(after) != place(before)
             && (after.last_reviewed.is_some() || after.availability != Availability::Unknown);
         let by_curation: Vec<_> = validate(&files, &touched, &One, &One)
             .iter()
@@ -380,6 +389,14 @@ fn what_a_checked_source_is_and_where_it_is_found_is_curation_and_before_the_che
         );
         both_surfaces(
             &changed(&|s| s.reference = None),
+            &checked,
+            Some("reference"),
+            how,
+        );
+        // The same place spelled with other white space (K81): still a change of the reference for a page edit (K30), but
+        // not a move for a curation proposal, which carries no check then.
+        both_surfaces(
+            &changed(&|s| s.reference = Some(reference("https://example.org/a "))),
             &checked,
             Some("reference"),
             how,

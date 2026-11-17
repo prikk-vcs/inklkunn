@@ -152,7 +152,9 @@ pub(crate) fn mistake_text(t: T, m: Mistake) -> String {
         Mistake::ReplacedByItself => t.get(Key::CurateReplacedByItself),
         Mistake::UnknownSuccessor => t.get(Key::CurateUnknownSuccessor),
         Mistake::SuccessorCycle => t.get(Key::CurateSuccessorCycle),
-        // The surfaces that make a curation name the source (`check_text`); this is the sentence for one that does not.
+        // Unreachable by today's callers (K81): the curation form and the curation API answer `Mistake::Check(at, why)`
+        // themselves, with the source named (`check_html`, `check_text`), and the attach path never makes one. This is the
+        // sentence for a caller that would not name the source; `"-"` stands for the id it has not got, never a made-up one.
         Mistake::Check(_, why) => check_text(t, why, &t.get(Key::CurateSourceUntitled), "-", None),
         Mistake::Unwritable => t.get(Key::AttachUnwritable),
     }

@@ -1843,6 +1843,14 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   `DayNotCome` in both forms. Mutated (`{id}` of the day-not-come sentence left empty), the API test and the unit test failed. No
   prikk-dependent test is added.
 
+- **K81 (handoff 005 corrections, tenth round): small points (review H-d).** (1) The submit page's lines (`submit.rs`) pass the
+  existing proposal's own id to `file_lines` on a revision (`""` only for a proposal being opened), so `.carried` is the rule
+  K77 asks for wherever someone reads it; today only the proposal's page reads it, so no test can see the difference. (2) The
+  status table's expectation (`knowledge/tests/status.rs`) compares references as the rule does, white space ignored, in its own
+  words, and gains a respelling case on every kind of checked source: a reference with other white space is a change of the
+  reference for a page edit (K30) and not a move for a curation proposal; mutated (the table comparing the raw text), it failed.
+  (3) `mistake_text`'s `"-"` fallback for a refused check says why it is unreachable. No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
