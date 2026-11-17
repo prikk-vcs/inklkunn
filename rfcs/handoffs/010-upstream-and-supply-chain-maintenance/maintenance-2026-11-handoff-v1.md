@@ -360,3 +360,12 @@ measurement settles remains:
     **Whichever fails** is dropped from both, with bubblewrap's reason recorded.
   - **SECURITY.md:** the paragraph *A server started without the means to sign still serves* gets its own heading,
     `### When the server cannot sign`, in place.
+
+## M49 reviewed (2026-11-17)
+
+M49 is **Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-11-review-result.md`). The release
+rehearsal, run 44103325108, ran both images confined under docker on Debian 12 (amd64 and arm64), with every option
+SECURITY.md names. One sentence remains, at the next touch of SECURITY.md (before 0.3.0):
+
+- *What an operator adds back* should say that docker's run **was measured**: in that rehearsal, on Debian 12, amd64
+  and arm64. The Debian 13 caveat then applies to the podman measurement only.
