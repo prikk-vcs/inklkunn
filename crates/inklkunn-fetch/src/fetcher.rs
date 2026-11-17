@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use inklkunn_prikk::sandbox::{
-    BWRAP, PRLIMIT, probe_bwrap, probe_prlimit, resolve_binary, run_command, with_data_ceiling,
+    BWRAP, PRLIMIT, bind_target, probe_bwrap, probe_prlimit, resolve_binary, run_command,
+    with_data_ceiling,
 };
 
 use crate::args::{TRAILER_LEN, invocation};
@@ -151,7 +152,8 @@ impl CurlFetcher {
     }
 
     fn curl_path(&self) -> Result<PathBuf, CurlError> {
-        let path = resolve_binary(&self.curl);
+        // The file itself: the vector binds it, and a link is no mount point (see `bind_target`).
+        let path = bind_target(&resolve_binary(&self.curl));
         if path.is_file() {
             Ok(path)
         } else {

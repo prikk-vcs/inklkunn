@@ -93,6 +93,23 @@ fn a_missing_curl_is_found_before_anything_is_built() {
 }
 
 #[test]
+fn a_curl_that_is_a_link_is_the_file_it_leads_to() {
+    // The vector binds curl and runs it there; a link is no mount point (`/usr/bin/curl -> /etc/alternatives/curl`, and
+    // no sandbox mounts `/etc`), so the file is what is named.
+    let dir = std::env::temp_dir().join(format!("inklkunn-fetch-curl-link-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("alternatives")).unwrap();
+    std::fs::create_dir_all(dir.join("opt")).unwrap();
+    let real = dir.join("opt/curl");
+    std::fs::write(&real, "#!/bin/sh\n").unwrap();
+    let link = dir.join("alternatives/curl");
+    std::os::unix::fs::symlink("../opt/curl", &link).unwrap();
+    let f = CurlFetcher::new().with_programs("bwrap", &link);
+    assert_eq!(f.curl_path().unwrap(), real.canonicalize().unwrap());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn errors_say_what_happened_in_words_an_operator_can_use() {
     let shown = [
         CurlError::TimedOut,

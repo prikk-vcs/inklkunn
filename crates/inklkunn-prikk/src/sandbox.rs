@@ -351,13 +351,13 @@ impl Sandbox {
 
 impl BwrapConfig {
     fn command(&self, prikk_binary: &OsStr, mounts: &Mounts, args: &[&str]) -> Command {
-        let prikk = resolve_binary(prikk_binary);
+        let prikk = bind_target(&resolve_binary(prikk_binary));
         let repo = mounts.repo.as_path();
         let mut c = Command::new(&self.bwrap);
         c.env_clear().env("PATH", "/usr/bin:/bin");
         // A read-only view of the system, laid out as the host's own root is (see [`root_layout`]).
         c.args(root_layout(Path::new("/")));
-        // The prikk binary itself, wherever it lives.
+        // The prikk binary itself, wherever it lives: the file it leads to, as a link is no mount point.
         c.arg("--ro-bind").arg(&prikk).arg(&prikk);
         c.arg("--proc").arg("/proc");
         c.arg("--dev").arg("/dev");
@@ -720,6 +720,19 @@ pub fn probe_bwrap(binary: &OsStr) -> Result<(), String> {
         }
         Err(e) => Err(format!("`{}` could not run: {e}", binary.to_string_lossy())),
     }
+}
+
+/// The file a bubblewrap bind of a program must name: `binary` with every link resolved (the path itself when it cannot
+/// be resolved, so the program's own error is the one that is reported). bubblewrap follows the source of a bind, but
+/// not its destination: `--ro-bind <link> <link>` is refused (`Can't mount on symlink destination`) wherever the link
+/// lies inside a tree that is already mounted, such as `/usr/bin/prikk -> /etc/alternatives/prikk` or
+/// `/usr/local/bin/prikk -> /opt/prikk/bin/prikk` under the sandbox's `/usr`, and `/etc` is not in any sandbox. The
+/// resolved file is bound at its own path and run there. Used for prikk's binary here and `curl` in the fetch crate's
+/// vector; the CA bundle's path is resolved the same way.
+pub fn bind_target(binary: &Path) -> PathBuf {
+    binary
+        .canonicalize()
+        .unwrap_or_else(|_| binary.to_path_buf())
 }
 
 /// Resolve a binary to an absolute path: a bare name through `PATH` (bwrap must bind it), a relative path

@@ -163,6 +163,118 @@ fn resolve_binary_makes_paths_absolute() {
     assert!(resolve_binary(OsStr::new("./prikk")).is_absolute());
 }
 
+/// A program (a script that says it ran) at `<tmp>/opt/prikk`, reached through a chain of links: a relative one at
+/// `<tmp>/etc/alternatives/prikk` and an absolute one at `<tmp>/repo/prikk` (a place the sandbox mounts, as `/usr` is).
+/// Returns the file's own (canonical) path and the end of the chain.
+fn linked_program(tmp: &Tmp) -> (PathBuf, PathBuf) {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let real = tmp.0.join("opt/prikk");
+    std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(tmp.0.join("etc/alternatives")).unwrap();
+    std::fs::create_dir_all(tmp.0.join("repo")).unwrap();
+    std::fs::write(&real, "#!/bin/sh\necho ran-as-the-file\n").unwrap();
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o755)).unwrap();
+    symlink("../../opt/prikk", tmp.0.join("etc/alternatives/prikk")).unwrap();
+    symlink(
+        tmp.0.join("etc/alternatives/prikk"),
+        tmp.0.join("repo/prikk"),
+    )
+    .unwrap();
+    (real.canonicalize().unwrap(), tmp.0.join("repo/prikk"))
+}
+
+#[test]
+fn the_bind_target_of_a_link_is_the_file_it_leads_to_and_of_anything_else_itself() {
+    let tmp = Tmp::new("bind-target");
+    let (real, link) = linked_program(&tmp);
+    assert_eq!(
+        bind_target(&link),
+        real,
+        "a chain of relative and absolute links"
+    );
+    assert_eq!(bind_target(&real), real);
+    // What cannot be resolved stays as it is, so the program's own error is the one reported.
+    let dangling = tmp.0.join("repo/dangling");
+    std::os::unix::fs::symlink(tmp.0.join("nowhere"), &dangling).unwrap();
+    assert_eq!(bind_target(&dangling), dangling);
+    assert_eq!(
+        bind_target(Path::new("/nonexistent/prikk")),
+        Path::new("/nonexistent/prikk")
+    );
+}
+
+#[test]
+fn a_prikk_that_is_a_link_is_bound_and_run_as_the_file_it_leads_to() {
+    // A link is no mount point: bubblewrap refuses `--ro-bind <link> <link>` where the link lies inside a tree that is
+    // mounted (`/usr/bin/prikk -> /etc/alternatives/prikk`, and no sandbox mounts `/etc`).
+    let tmp = Tmp::new("link-command");
+    let (real, link) = linked_program(&tmp);
+    let c = Sandbox::default().command_mounts(
+        link.as_os_str(),
+        &Mounts::read(Path::new("/repo"), None),
+        &["tree"],
+        CallLimits {
+            data_ceiling: None,
+            ..CallLimits::default()
+        },
+    );
+    let a = args_of(&c);
+    let real = real.display().to_string();
+    assert!(
+        a.windows(3).any(|w| w == ["--ro-bind", &real, &real]),
+        "{a:?}"
+    );
+    assert!(a.windows(3).any(|w| w == ["--", &real, "tree"]), "{a:?}");
+    assert!(
+        !a.iter()
+            .any(|x| x.contains("alternatives") || x.ends_with("repo/prikk")),
+        "the link itself is named nowhere: {a:?}"
+    );
+}
+
+#[test]
+fn a_prikk_that_is_a_link_inside_a_mounted_tree_runs_confined() {
+    // The same on the real bubblewrap: the link lies in the repository, which the sandbox mounts, and leads outside it.
+    // (Bound as itself it cannot be: bubblewrap says `Can't mount on symlink destination`.)
+    if let Err(why) = probe_bwrap(std::ffi::OsStr::new(BWRAP)) {
+        println!("skipping: {why}");
+        return;
+    }
+    let tmp = Tmp::new("link-confined");
+    let (_, link) = linked_program(&tmp);
+    let repo = tmp.0.join("repo");
+    let mut run = None;
+    for _ in 0..50 {
+        let r = Sandbox::default()
+            .run_mounts(
+                link.as_os_str(),
+                &Mounts::read(&repo, None),
+                &[],
+                CallLimits {
+                    data_ceiling: None,
+                    ..CallLimits::default()
+                },
+                Some(Duration::from_secs(20)),
+            )
+            .expect("runs");
+        // The script was just written, and a concurrent fork may still hold it open.
+        if String::from_utf8_lossy(&r.stderr).contains("busy") {
+            std::thread::sleep(Duration::from_millis(40));
+            continue;
+        }
+        run = Some(r);
+        break;
+    }
+    let run = run.expect("not busy for two seconds");
+    assert!(
+        run.status.success(),
+        "{:?}: {}",
+        run.status,
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(run.stdout, b"ran-as-the-file\n");
+}
+
 #[test]
 fn write_mounts_bind_the_repo_rw_the_keys_ro_and_set_the_variables() {
     let m = Mounts::write(

@@ -1769,6 +1769,19 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
   it, and `floor-check` holds it (`test_prikk_shape_violations`: the with-prikk run's line must say `--no-fail-fast`; a planted
   test removes it). No prikk-dependent test is added or removed.
 
+- **M44, first point's question (handoff 010 corrections, eighth round): a production bind that is a link.** It can be one.
+  bubblewrap follows the *source* of a bind but not its *destination*: `--ro-bind <link> <link>` is refused (`Can't mount on
+  symlink destination`) wherever the link lies inside a tree the sandbox already mounts, such as `/usr/bin/prikk ->
+  /etc/alternatives/prikk` or `/usr/local/bin/prikk -> /opt/prikk/bin/prikk` under the sandbox's `/usr` (measured on the host
+  with `/usr/bin/awk -> gawk`), and the program then also runs by a path whose target no sandbox has. A link elsewhere (home,
+  `/opt`) already worked. New `inklkunn_prikk::sandbox::bind_target(path)` (the path with every link resolved; the path itself when
+  it cannot be resolved, so the program's own error is reported): prikk's binary in `BwrapConfig::command` and `curl` in the
+  fetcher (`CurlFetcher::curl_path`) are bound at, and run as, the file they lead to; the CA bundle already was. Tests: the
+  target of a chain of relative and absolute links, a dangling one and a missing one; the command's arguments name the file and
+  not the link; a confined run of a prikk that is a link in the repository (a mounted tree; it fails without the change with
+  bubblewrap's own words, and prints `skipping: <bubblewrap's reason>` where bubblewrap cannot confine); the fetcher's `curl_path`.
+  Each call site was reverted and its test failed. No prikk-dependent test is added.
+
 ## [0.2.0] — 2026-11-04
 
 **M2 — propose and accept.** People sign in, propose changes to pages, review them, and a maintainer accepts them into the
