@@ -242,11 +242,15 @@ jobs:
         # `wiki create` on a scratch volume is a command that cannot succeed unless bubblewrap confines prikk in the image: it
         # probes bubblewrap first and refuses to run prikk unconfined (there is no `--dev-unconfined` here). The three
         # `--security-opt` settings are what docker needs to let bubblewrap make its namespaces and mount `/proc` in a
-        # container (docs: SECURITY.md, "What a host needs for confinement"). Any failure fails the job, with bubblewrap's reason.
+        # container (docs: SECURITY.md, "What a host needs for confinement"). The second line of options is what an operator
+        # adds back beside them (no capabilities, no new privileges, a read-only root with a tmpfs for the scratch secret);
+        # measured under podman (M49), and what is documented there is what runs here. Any failure fails the job, with
+        # bubblewrap's reason.
         run: |
           set -euo pipefail
           OUT="$(docker run --rm \
             --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined \
+            --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp \
             -v "inklkunn-confine-check-${ARCH}:/var/lib/inklkunn" \
             -e INKLKUNN_DATA_DIR=/var/lib/inklkunn/data -e INKLKUNN_SECRET_FILE=/tmp/secret \
             --entrypoint /bin/sh "inklkunn-built:${ARCH}" -c \

@@ -192,11 +192,24 @@ What the probe needs:
   **With them lifted the server and everything it starts in the container lose those layers**, not only bubblewrap's
   children, so **bubblewrap's sandbox around prikk and around `curl` is then the confinement inside the container**;
   what stays is the container's own isolation from the host (its namespaces and cgroups, its capability set, and the
-  unprivileged user). The image carries setuid programs (`su`, `mount`), which that user can still run. An operator who
-  cannot accept this runs the server on the host instead, where only user namespaces are needed (none of the container's
-  seccomp, AppArmor or `/proc` settings is involved). An operator who runs the container gives it these three settings and
-  the volumes it names, and nothing more: no added capabilities, no `--privileged`.
+  unprivileged user). The image carries setuid programs (`su`, `mount`), which that user can still run unless the next
+  options are given. An operator who cannot accept this runs the server on the host instead, where only user namespaces
+  are needed (none of the container's seccomp, AppArmor or `/proc` settings is involved). An operator who runs the
+  container gives it these three settings and the volumes it names, and nothing more: no added capabilities, no
+  `--privileged`.
+  **What an operator adds back.** Beside the three settings, bubblewrap works with **`--cap-drop ALL`** (the server and
+  bubblewrap use user namespaces, not capabilities), **`--security-opt no-new-privileges`** (the setuid programs gain
+  nothing) and **`--read-only`** with **`--tmpfs /tmp`** (the root is read-only; the server writes to the data volume,
+  to the seed directory (`/dev/shm`, which the runtimes mount as a tmpfs) and, if you keep the secret file there, to
+  `/tmp`). The release workflow's run of the image is made with all of them. **Measured** under podman 6.2 with the
+  image built from this repository's `Dockerfile` (on Debian 13 with bubblewrap 0.12, not the Debian 12 the release
+  builds on): `wiki create` succeeds with each of them alone and with all of them together, and in the container the
+  effective and bounding capability sets are empty, `NoNewPrivs` is 1 and `/usr` is read-only; `serve` starts under all
+  of them and says `prikk … (confined by bubblewrap)`. Podman's `--read-only` already gives `/tmp` a tmpfs; docker's does
+  not, hence the explicit `--tmpfs /tmp`. Docker's own run of them is what the release workflow's image step measures.
 - **The data directory's filesystem** must support `flock` between the processes that share it (see `INKLKUNN_DATA_DIR`).
+
+### When the server cannot sign
 
 **A server started without the means to sign still serves.** If the secret file is not there, or the key store does
 not open (a wrong secret, a key directory open to others, no keys made yet, a seed directory that is not on a
