@@ -479,3 +479,23 @@ K71 is **Approved for the merge**; K72 – K75 are **Conditionally Approved**
     - `visible()` escapes `]` too, and a literal `(none)` is shown so that it cannot pass for the marker;
     - the pattern reader refuses an unclosed `{`;
     - one mutation test for the 6-digit reserve.
+
+## Corrections from the review of 2026-11-17, second round (binding; **before 0.3.0**)
+
+K76 and K77 are **Approved**; K78 is **Conditionally Approved** (`.git-exclude/reviewed/005-knowledge-layer-corrections-9-review-result.md`).
+Hand back K79 – K81 as one request, `005-knowledge-layer-corrections-10-review-request.md`.
+
+- **K79 — the bound refusals say their own sentence** (H-a, decision 2). Add a catalog pair (en, ja, glossary), for example
+  `know.check_before_review` and `know.check_not_come`. `sentence_key` routes `Refusal::bound` to them before the rule's
+  key. The K78 test gains both cases in both languages.
+- **K80 — the check sentences name the source and say what is true** (H-b, H-c, decision 3).
+  - `curate.check_old_day`, `curate.check_old_answer` and `curate.day_not_come` carry `{id}` as the other `curate.check_*` do.
+  - The two old-field sentences say that the old value **must stay as the base has it** (the move clears it), and that the
+    check of the new place goes in the field for the new reference.
+  - `invalid.knowledge_check_unstated` and `know.check_unstated` say the source carries a day or an answer **this proposal
+    does not state**. They name the way: `checked` in a curation, or the proposal's own id in `last_reviewed.proposal`. The
+    OpenAPI description of the generic write path says the same.
+- **K81 — small points** (H-d).
+  - `submit.rs:588` passes the existing proposal's id on a revision.
+  - The `status.rs` table compares references as the rule does (white space ignored) and gains one respelling case.
+  - `mistake_text`'s `"-"` fallback says why it is unreachable.

@@ -278,3 +278,38 @@ also states these gates' threat model: **accidents, not deliberate evasion**. Ha
   - **The release workflow runs the built image once before it publishes:** `docker run` with the user-namespace setting the docs give, and a command that confines prikk, for example `wiki create` on a scratch volume, or a probe subcommand. It fails if the image cannot confine.
   - **`docs/` and the image's README** say what a host needs for confinement, measured in that run.
   - **For 0.2.1** (the owner's decision): the same change applies on `release/0.2`. Say whether it cherry-picks clean.
+
+## Corrections from the review of 2026-11-17, second round (binding; **before 0.3.0**)
+
+M41 – M43 are **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-corrections-7-review-result.md`).
+M43's layout holds on Debian bookworm, Ubuntu 24.04, Fedora, Alpine and absolute-link roots. Hand back M44 – M46 as one
+request, `010-maintenance-2026-11-corrections-8-review-request.md`, **except M44's first point, which comes first, on its
+own commit, and is pushed alone by the architect** (main's CI is red, run 44065172543).
+
+- **M44 — first: main green on Ubuntu; then a missing bubblewrap is a guarded skip, never a silent one** (G-0, G-a, G-b).
+  - **First (G-0):**
+    - The stand-ins in `real_vector.rs:216` and `standin.rs:371` read `/proc/self/limits` with shell builtins only, not
+      `awk`. On Ubuntu `awk` is a link through `/etc/alternatives`, and no sandbox mounts `/etc`.
+    - The with-prikk test step in `ci.yml` and `release.yml` runs `cargo test` with `--no-fail-fast`, so one red never
+      hides the rest of the workspace. floor-check holds it.
+    - Say whether a production bind (prikk's binary, curl's) can be a link through `/etc`. If it can, bind the resolved
+      file, with a test.
+  - The probe's spawn error says `bubblewrap cannot confine a process here (`bwrap` could not run: …)`, so every skip line
+    for it matches the guard's `bubblewrap cannot confine` fragment. A planted test shows a missing binary's line is guarded.
+  - The real-probe test in `sandbox/tests.rs` skips with that guarded line when bwrap cannot be spawned. It fails only on
+    bubblewrap's own `execvp … No such file or directory` (the loader not found).
+- **M45 — prikk's sandbox and the probe are tied to `root_layout`** (G-c). A parity test like the vector's for
+  `BwrapConfig::command`, and one for the probe through the stand-in bwrap harness. Reverting either call site to a fixed
+  list fails a test on any host.
+- **M46 — what an operator reads** (G-d, G-e; decisions 1, 2).
+  - **SECURITY.md** says what the three container settings take away (docker's seccomp filter, its AppArmor profile, the
+    `/proc` masks), and that bubblewrap's sandbox around prikk and curl is then the confinement inside the container. It says
+    the docker names are the ones the release workflow runs with; the architect's rehearsal measures them before a candidate.
+  - **The release notes'** runtime-prerequisites line points to *What a host needs for confinement*. The image carries an
+    `org.opencontainers.image.documentation` label with that URL.
+  - **Small points:**
+    - `vector.rs:7` names all five entries;
+    - the two module docs (`guarded_skips.rs:30-31`, the signer's `prikk_probes.rs:5-6`) name the guard as it is;
+    - the with-prikk step's name says what the guard holds, not *none may skip*;
+    - `config.rs:158`'s advice for a refusal that is bubblewrap's `execvp … No such file or directory` names the host's
+      loader and libraries (see SECURITY.md), not user namespaces.
