@@ -1573,6 +1573,27 @@ fn the_text_of_a_verify_that_names_a_finding_of_another_condition_is_refused() {
 }
 
 #[test]
+fn prikks_in_flight_publication_is_information_that_no_reader_of_verify_acts_on() {
+    // Maintenance M53 (prikk 0.58.0): `PRIKK-VERIFY-REF-PUBLICATION-IN-FLIGHT` is `info` and `verify` exits 0: a
+    // publisher is still running, and nothing is to be done but to run `verify` again. The text of such a `verify`
+    // carries one more line, of the shape every finding has (the message here is made up: prikk's is its own and
+    // decides nothing, and no run of ours could produce the state, since the publisher would have to be somebody
+    // else's). No reader of the text finds anything in it, and no code of ours names the id.
+    use crate::writes::{
+        PublicationTrust, findings_of_other_conditions, parse_publication_trust,
+        parse_sealed_blocks, pending_cleanup_findings,
+    };
+    let text = "verified repository: /srv/r/.prikk\nref publication issues: 0\nref-publication [PRIKK-VERIFY-REF-PUBLICATION-IN-FLIGHT]: tags/t1 is being published by another command (pid 4242)\n";
+    assert_eq!(pending_cleanup_findings(text), (0, false));
+    assert_eq!(parse_publication_trust(text), PublicationTrust::default());
+    assert!(parse_sealed_blocks(text).is_empty());
+    // The one reader that would take the line for a finding of another condition is asked only when the verdict
+    // *failed* (`verify_run_inner`: `!report.verdict.ok`); an exit 0 never reaches it, and on a failing verdict it
+    // refuses and concludes nothing, which is what "run `verify` again when it finishes" asks for.
+    assert_eq!(findings_of_other_conditions(text), ["ref-publication"]);
+}
+
+#[test]
 fn a_finding_of_another_condition_in_the_text_is_refused_even_when_everything_else_is_the_retirements()
  {
     // Q3: the verdict (the first run) says publication trust only; the text (the second) holds a finding of another
