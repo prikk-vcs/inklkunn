@@ -752,6 +752,47 @@ pub fn fetch_spawn_violations(source: &str) -> Vec<(usize, String)> {
     out
 }
 
+/// The one test file outside the spawning crates that may spawn (0.3.0 readiness, R-3): it runs the 0.2.0 release binary of
+/// inklkunn itself, as a process, to make the data directory this tree opens. Path equality, relative to the workspace root.
+pub const UPGRADE_TEST_FILE: &str = "crates/inklkunn/src/serve/writes_on/tests/upgrade.rs";
+/// What [`UPGRADE_TEST_FILE`] may give `Command::new`: a program it found on `PATH` (`c`) or was handed (`bin`), never prikk,
+/// a shell or a computed name.
+pub const UPGRADE_SPAWN_ALLOWED_ARGS: &[&str] = &["c", "bin"];
+
+/// What the source file `src` (under `root`) spawns that it may not, as readable lines for the gate's message; empty when it
+/// spawns nothing it may not. The policy of the spawn gate in one place, so the real tree and a planted file are judged by
+/// the same code:
+/// - `inklkunn-fetch`: only [`FETCH_SPAWN_ALLOWED_ARGS`] (see [`fetch_spawn_violations`]);
+/// - [`UPGRADE_TEST_FILE`], exactly that path: only [`UPGRADE_SPAWN_ALLOWED_ARGS`];
+/// - `inklkunn-prikk` and `inklkunn-signer`: anything;
+/// - every other file: nothing (see [`spawn_lines`]).
+pub fn spawn_gate_violations(root: &Path, src: &Path, text: &str) -> Vec<String> {
+    if src.starts_with(root.join("crates/inklkunn-fetch")) {
+        return fetch_spawn_violations(text)
+            .into_iter()
+            .map(|(line, what)| format!("line {line}: {what} (only bwrap or curl)"))
+            .collect();
+    }
+    if src == root.join(UPGRADE_TEST_FILE) {
+        return command_new_arguments(text)
+            .into_iter()
+            .filter(|(_, arg)| !UPGRADE_SPAWN_ALLOWED_ARGS.contains(&arg.as_str()))
+            .map(|(line, arg)| {
+                format!("line {line}: Command::new({arg}) (only the 0.2.0 binary it found)")
+            })
+            .collect();
+    }
+    if src.starts_with(root.join("crates/inklkunn-prikk"))
+        || src.starts_with(root.join("crates/inklkunn-signer"))
+    {
+        return Vec::new();
+    }
+    spawn_lines(text)
+        .into_iter()
+        .map(|line| format!("line {line}: spawns a process"))
+        .collect()
+}
+
 /// Lines (1-based) of `source` that name `curl` as a word, in code or in a string literal, in any case
 /// (`Curl` the type, `"curl"` the program, `curl` the variable; `CurlFetcher` and `curly` are other words).
 /// Comments are excluded: prose may say what the fetcher is.

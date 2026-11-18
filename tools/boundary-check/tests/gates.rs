@@ -287,44 +287,14 @@ fn key_store_exposure_gate_catches_planted_exposures() {
 
 #[test]
 fn only_the_driver_the_signer_and_the_fetcher_spawn_a_process() {
+    // The policy (the fetch crate: bwrap or curl; the upgrade test file: the 0.2.0 binary it found; the driver and the
+    // signer: anything; every other file: nothing) is `spawn_gate_violations`, which the planted tests below also use.
     let root = workspace_root();
     for src in rust_sources(&root.join("crates")) {
-        let text = read(&src);
-        if src.starts_with(root.join("crates/inklkunn-fetch")) {
-            // The third crate allowed to spawn, and only the sandbox that runs curl (or curl, unconfined,
-            // for tests): see `fetch_spawn_violations`.
-            let hits = fetch_spawn_violations(&text);
-            assert!(
-                hits.is_empty(),
-                "PRIKK SPAWN violation (LAY-3, IQ-3): {} spawns something other than bwrap or curl: {hits:?}",
-                src.display()
-            );
-            continue;
-        }
-        // The upgrade test (0.3.0 readiness, R-3) runs the 0.2.0 release binary of inklkunn itself, as a process, to make
-        // the data directory this tree opens: the one test file outside these crates that spawns, and only a program it
-        // found on `PATH` (`c`) or was handed (`bin`), never prikk, a shell or a computed name.
-        if src == root.join("crates/inklkunn/src/serve/writes_on/tests/upgrade.rs") {
-            let hits: Vec<_> = command_new_arguments(&text)
-                .into_iter()
-                .filter(|(_, arg)| !matches!(arg.as_str(), "c" | "bin"))
-                .collect();
-            assert!(
-                hits.is_empty(),
-                "SPAWN violation (R-3): {} spawns something other than the 0.2.0 binary it found: {hits:?}",
-                src.display()
-            );
-            continue;
-        }
-        let allowed = src.starts_with(root.join("crates/inklkunn-prikk"))
-            || src.starts_with(root.join("crates/inklkunn-signer"));
-        if allowed {
-            continue;
-        }
-        let hits = spawn_lines(&text);
+        let hits = spawn_gate_violations(&root, &src, &read(&src));
         assert!(
             hits.is_empty(),
-            "PRIKK SPAWN violation (RFC 001 D-2 c): {} spawns a process at lines {hits:?}",
+            "PRIKK SPAWN violation (RFC 001 D-2 c; LAY-3, IQ-3, R-3): {} {hits:?}",
             src.display()
         );
     }
@@ -396,6 +366,89 @@ fn prikk_spawn_gate_catches_planted_violations_including_a_planted_file() {
     for f in found {
         assert!(!spawn_lines(&read(&f)).is_empty(), "{}", f.display());
     }
+}
+
+#[test]
+fn the_upgrade_test_exemption_is_one_file_and_two_bindings_and_a_planted_second_spawner_is_refused()
+{
+    // The exemption (R-3) is exactly one path and `Command::new(c|bin)`. Judged by the gate's own function, on planted
+    // files in a scratch tree laid out like the workspace.
+    let scratch = Scratch::new("upgradespawn");
+    let root = &scratch.0;
+    let exempt = root.join(UPGRADE_TEST_FILE);
+    let judge = |path: &Path, text: &str| spawn_gate_violations(root, path, text);
+
+    // The file itself, spawning what it found or was handed: allowed.
+    assert!(
+        judge(
+            &exempt,
+            "let out = Command::new(c).arg(\"--version\").output();\n"
+        )
+        .is_empty()
+    );
+    assert!(judge(&exempt, "let out = Command::new(&bin).output();\n").is_empty());
+    assert!(judge(&exempt, "use std::process::Command;\n").is_empty());
+
+    // The file itself, spawning anything else: refused, each by its line.
+    for (bad, line) in [
+        ("let o = Command::new(\"prikk\").output();\n", 1),
+        ("\n\nlet o = Command::new(\"sh\").output();\n", 3),
+        ("let o = Command::new(program()).output();\n", 1),
+        ("let o = Command::new(prikk_binary).output();\n", 1),
+        ("let o = Command::new(\"curl\").output();\n", 1),
+    ] {
+        let hits = judge(&exempt, bad);
+        assert_eq!(hits.len(), 1, "{bad:?}: {hits:?}");
+        assert!(
+            hits.first()
+                .is_some_and(|h| h.starts_with(&format!("line {line}:"))),
+            "{hits:?}"
+        );
+    }
+    // One allowed and one refused in the same file: only the refused one is reported.
+    let both = "let a = Command::new(c);\nlet b = Command::new(\"prikk\");\n";
+    assert_eq!(judge(&exempt, both).len(), 1);
+
+    // A second file that spawns, even with the exempt file's bindings and even beside it, is refused.
+    let beside = root.join("crates/inklkunn/src/serve/writes_on/tests/other.rs");
+    let elsewhere = root.join("crates/inklkunn-web/src/x.rs");
+    for planted in [&beside, &elsewhere] {
+        for text in [
+            "let o = Command::new(c).output();\n",
+            "let o = Command::new(bin).output();\n",
+            "use std::process::Command;\n",
+        ] {
+            assert!(
+                !judge(planted, text).is_empty(),
+                "{} was let spawn: {text:?}",
+                planted.display()
+            );
+        }
+    }
+    // Path equality, not a suffix or a prefix: the same file name in another directory is another file.
+    let lookalike = root.join("crates/inklkunn/src/serve/tests/upgrade.rs");
+    assert!(!judge(&lookalike, "let o = Command::new(c).output();\n").is_empty());
+    let nested = root.join(format!("{UPGRADE_TEST_FILE}.d/x.rs"));
+    assert!(!judge(&nested, "let o = Command::new(c).output();\n").is_empty());
+
+    // Discovery: a spawner planted next to the exempt file is found by the walk the real gate does, and refused.
+    let tests_dir = root.join("crates/inklkunn/src/serve/writes_on/tests");
+    fs::create_dir_all(&tests_dir).unwrap();
+    fs::write(&exempt, "let o = Command::new(c).output();\n").unwrap();
+    fs::write(
+        tests_dir.join("other.rs"),
+        "let o = Command::new(c).output();\n",
+    )
+    .unwrap();
+    let violating: Vec<_> = rust_sources_under(root, &root.join("crates"))
+        .into_iter()
+        .filter(|f| !judge(f, &read(f)).is_empty())
+        .collect();
+    assert_eq!(violating, vec![tests_dir.join("other.rs")]);
+
+    // The other crates keep their own rules: the driver and the signer spawn freely.
+    let driver = root.join("crates/inklkunn-prikk/src/x.rs");
+    assert!(judge(&driver, "let o = Command::new(\"prikk\").output();\n").is_empty());
 }
 
 #[test]

@@ -130,3 +130,78 @@ fn a_body_over_the_limit_is_refused_and_a_lead_is_cut_at_its_line() {
 
     fs::remove_dir_all(&dir).expect("remove the scratch directory");
 }
+
+#[test]
+fn a_body_of_exactly_the_limit_passes_and_one_byte_over_is_refused() {
+    let dir = std::env::temp_dir().join(format!(
+        "inklkunn-release-notes-limit-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&dir).expect("a scratch directory");
+    let write = |lead: &str| {
+        fs::write(
+            dir.join("CHANGELOG.md"),
+            format!(
+                "# Changelog\n\n## [9.9.9] — 2099-01-01\n\n{lead}\n\n{LEAD_END}.\n\n- an entry\n\n## [9.9.8]\n\nOlder.\n"
+            ),
+        )
+        .expect("write");
+    };
+    // The body is the lead, a fixed sentence and a link; the script prints it and one newline. Measure the fixed part with a
+    // one-byte lead, so the lead that makes the body exactly LIMIT bytes is computed and not guessed.
+    write("x");
+    let out = run(&dir, "9.9.9");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let fixed = out.stdout.len() - 1 /* the printed newline */ - 1 /* the lead's one byte */;
+    let lead_len = LIMIT - fixed;
+
+    // Exactly at the limit: passes (the limit is "at most 100,000").
+    write(&"x".repeat(lead_len));
+    let out = run(&dir, "9.9.9");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        out.stdout.len(),
+        LIMIT + 1,
+        "the body is LIMIT bytes and the printed newline"
+    );
+    let body = String::from_utf8(out.stdout).expect("UTF-8");
+    assert!(body.trim_start().starts_with("xxxx") && body.contains("blob/9.9.9/CHANGELOG.md"));
+
+    // One byte over: refused, with the reason, and nothing printed.
+    write(&"x".repeat(lead_len + 1));
+    let out = run(&dir, "9.9.9");
+    assert!(
+        !out.status.success(),
+        "a body one byte over the limit was printed"
+    );
+    let why = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        why.contains(&format!("{} bytes", LIMIT + 1)) && why.contains("125,000"),
+        "the refusal does not say why: {why}"
+    );
+    assert!(
+        out.stdout.is_empty(),
+        "something was printed with the refusal"
+    );
+
+    // The limit counts bytes, not characters: a Japanese lead of about a third of LIMIT characters is over it in bytes.
+    let chars = LIMIT / 3 + 1;
+    assert!(chars < LIMIT);
+    write(&"あ".repeat(chars));
+    let out = run(&dir, "9.9.9");
+    assert!(
+        !out.status.success(),
+        "a body over the limit in bytes (not in characters) was printed"
+    );
+    assert!(out.stdout.is_empty());
+
+    fs::remove_dir_all(&dir).expect("remove the scratch directory");
+}
