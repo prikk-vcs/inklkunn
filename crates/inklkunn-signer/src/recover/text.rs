@@ -19,8 +19,9 @@ pub const UNREACHED_OBJECT_CODE: &str = "PRIKK-DOCTOR-UNREACHED-OBJECT";
 pub const ACKNOWLEDGED_DAMAGE_CODE: &str = "PRIKK-DOCTOR-COMMIT-WITNESS-ACKNOWLEDGED-DAMAGE";
 /// A commit the repository acknowledged and the active WAL no longer holds at all (RFC 166 row 5 of prikk).
 pub const ACKNOWLEDGED_LOSS_CODE: &str = "PRIKK-DOCTOR-COMMIT-WITNESS-ACKNOWLEDGED-LOSS";
-/// The warning prikk gives beside an acknowledged damage: stale ref metadata for an empty WAL, "no repair is
-/// required" (measured on prikk 0.55.0).
+/// The finding prikk gives beside an acknowledged damage, or alone after a killed `seal`: stale ref metadata for an
+/// empty WAL, "no repair is required" (measured on prikk 0.55.0). A warning up to 0.57.0, `info` from 0.58.0 (the id
+/// is the same; ledger PK-46).
 pub const ACTIVE_REF_METADATA_DEBRIS_CODE: &str = "PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS";
 /// The error prikk gives when a `seal` published its block and stopped before it drained the queue: "pointer and log
 /// agree but matching active publication state remains", recommending `prikk seal --allow-no-audit` for the ref
@@ -97,10 +98,13 @@ impl Diagnostic {
         (hex && matches!(kind, "block" | "ref-state" | "ref-update")).then_some((kind, id))
     }
 
-    /// The warning that asks for nothing: stale ref metadata, which the next commit replaces (it rides along with an
-    /// acknowledged damage, or stands alone after a `seal` was killed).
+    /// The finding that asks for nothing: stale ref metadata, which the next commit replaces (it rides along with an
+    /// acknowledged damage, or stands alone after a `seal` was killed). A `warning` up to prikk 0.57.0 and `info` from
+    /// 0.58.0 (ledger PK-46, maintenance M52), and it is the same finding either way, so the plan's note and every
+    /// decision read it alike on both. An error of that code is not this: nothing prikk has said makes it harmless.
     pub fn is_metadata_debris(&self) -> bool {
-        self.severity == Severity::Warning && self.code == ACTIVE_REF_METADATA_DEBRIS_CODE
+        matches!(self.severity, Severity::Warning | Severity::Info)
+            && self.code == ACTIVE_REF_METADATA_DEBRIS_CODE
     }
 
     /// The error of exactly [`ACTIVE_CLEANUP_PENDING_CODE`]: a publication whose cleanup a `seal` did not finish.

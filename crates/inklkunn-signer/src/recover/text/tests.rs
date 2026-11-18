@@ -877,6 +877,84 @@ fn a_prikk_without_uncommit_is_told_by_its_exact_refusal_and_by_nothing_else() {
     assert!(!uncommit_is_unknown(Some(0), ""));
 }
 
+/// What prikk 0.58.0 prints for a lone metadata debris (measured on the released binary after a `seal` killed just
+/// after it published): the same id as up to 0.57.0, `info` where it was `warning`, and a new recommendation.
+const DOCTOR_DEBRIS_0_58: &str = "\
+doctor repository: /srv/r/.prikk
+info [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: active WAL is empty but stale ref metadata remains for heads/main
+  recommendation: nothing to do: the next `prikk commit` replaces it
+info [PRIKK-DOCTOR-VERIFY-OK]: repository structural verification scan completed
+  recommendation: review the remaining diagnostics before deciding whether action is required
+issue summary: errors=0, warnings=0, info=2
+";
+
+#[test]
+fn the_metadata_debris_is_the_same_finding_as_a_warning_and_as_information() {
+    // Maintenance M52 (ledger PK-46): the id is the same on every prikk; only its severity moved, so the plan's note
+    // and every decision read it alike.
+    let info = parse_doctor_output(DOCTOR_DEBRIS_0_58).unwrap();
+    assert_eq!((info.errors, info.warnings, info.info), (0, 0, 2));
+    assert!(nth(&info.diagnostics, 0).is_metadata_debris());
+    assert_eq!(nth(&info.diagnostics, 0).severity, Severity::Info);
+    assert!(!nth(&info.diagnostics, 1).is_metadata_debris());
+    assert!(info.others().is_empty());
+    let warning = parse_doctor_output(
+        &DOCTOR_DEBRIS_0_58
+            .replace(
+                "info [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]",
+                "warning [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]",
+            )
+            .replace(
+                "errors=0, warnings=0, info=2",
+                "errors=0, warnings=1, info=1",
+            ),
+    )
+    .unwrap();
+    assert!(nth(&warning.diagnostics, 0).is_metadata_debris());
+    assert_eq!(
+        info.diagnostics
+            .iter()
+            .filter(|d| d.is_metadata_debris())
+            .count(),
+        warning
+            .diagnostics
+            .iter()
+            .filter(|d| d.is_metadata_debris())
+            .count()
+    );
+    // An error of that code is not harmless on either, and the code alone is what makes it debris.
+    let error = "doctor repository: /x\nerror [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: x\nissue summary: errors=1, warnings=0, info=0\n";
+    assert!(!nth(&parse_doctor_output(error).unwrap().diagnostics, 0).is_metadata_debris());
+    let other = "doctor repository: /x\ninfo [PRIKK-DOCTOR-SOMETHING-ELSE]: x\nissue summary: errors=0, warnings=0, info=1\n";
+    assert!(!nth(&parse_doctor_output(other).unwrap().diagnostics, 0).is_metadata_debris());
+    // It is in nobody's way beside a pending cleanup or an interrupted publication, at either severity: the signer's
+    // two steps that ask for exactly one finding read it through the same rule as the plan (M16, M23).
+    for severity in ["warning", "info"] {
+        let counts = if severity == "warning" {
+            "errors=1, warnings=1, info=0"
+        } else {
+            "errors=1, warnings=0, info=1"
+        };
+        let cleanup = format!(
+            "doctor repository: /x\nerror [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree but matching active publication state remains\n  recommendation: run signer-backed `prikk seal --allow-no-audit` for the affected ref\n{severity} [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: x\nissue summary: {counts}\n"
+        );
+        assert!(
+            parse_doctor_output(&cleanup)
+                .unwrap()
+                .is_only_cleanup_pending(),
+            "{severity}"
+        );
+        let lead = format!(
+            "doctor repository: /x\nerror [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/draft`\n  recommendation: run `prikk ref complete heads/draft`; doctor does not sign or append\n{severity} [PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS]: x\nissue summary: {counts}\n"
+        );
+        assert_eq!(
+            parse_doctor_output(&lead).unwrap().only_ref_lead(),
+            Some("heads/draft"),
+            "{severity}"
+        );
+    }
+}
+
 #[test]
 fn the_end_of_a_take_back_names_the_run_it_can_be_undone_from_exactly_once() {
     let done = "\
