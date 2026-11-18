@@ -174,6 +174,178 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
     );
 }
 
+/// Every address of the knowledge layer that names a claim, a source or a page's provenance, for the wiki `{}`: the claim
+/// page, *Why is this here?*, the list of views and *Compare views* (each on the main view and on another), and the API's
+/// `claims/{id}`, `sources/{id}`, `provenance/{title}` and view comparison.
+fn knowledge_addresses() -> Vec<String> {
+    let claim = common::claim_id(1);
+    let source = common::source_id(1);
+    [
+        format!("/{{}}/-/claim/{claim}"),
+        format!("/{{}}/-/claim/{claim}?view=alt"),
+        "/{}/-/why/Home".to_owned(),
+        "/{}/-/why/Home?view=alt".to_owned(),
+        "/{}/-/views".to_owned(),
+        "/{}/-/views/compare?a=main&b=alt".to_owned(),
+        format!("/{{}}/-/api/v1/claims/{claim}"),
+        format!("/{{}}/-/api/v1/sources/{source}"),
+        "/{}/-/api/v1/provenance/Home".to_owned(),
+        "/{}/-/api/v1/views/compare?b=alt".to_owned(),
+    ]
+    .into()
+}
+
+/// A wiki whose `Home` says a claim (with a source) in its first paragraph, and has a second view.
+fn holding_a_claim(slug: &str, name: &str, visibility: Visibility) -> World {
+    let said = "The hidden bridge opened in 1950.";
+    let w = common::with_accounts(World::with_visibility(
+        slug,
+        name,
+        visibility,
+        &[("pages/Home.md", &common::home_with(said))],
+    ));
+    w.fake.add_view("alt");
+    let mut c = common::claim(1, inklkunn_core::knowledge::Standing::Contested, None, said);
+    c.sources = vec![common::link(
+        1,
+        inklkunn_core::knowledge::Link::Supports,
+        inklkunn_core::knowledge::Bearing::Direct,
+        said,
+    )];
+    common::put(
+        &w,
+        &common::home_with(said),
+        &[c],
+        &[common::source(
+            1,
+            inklkunn_core::knowledge::SourceKind::Primary,
+        )],
+    );
+    w
+}
+
+async fn ask_as(
+    world: &World,
+    method: &str,
+    uri: &str,
+    account: Option<&inklkunn_store::AccountId>,
+) -> Answer {
+    let config = WebConfig::new(
+        "127.0.0.1:8080",
+        "http://localhost:8080",
+        "http://localhost:8081",
+    )
+    .unwrap();
+    let site = site_with(&config, Some(world.services.clone())).unwrap();
+    let mut req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, "localhost:8080");
+    if let Some(account) = account {
+        req = req.header("x-test-account", account.as_str());
+    }
+    let res = site
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let (parts, body) = res.into_parts();
+    let bytes = axum::body::to_bytes(body, 1 << 22).await.unwrap();
+    let mut headers: Vec<(String, String)> = parts
+        .headers
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_owned()))
+        .collect();
+    headers.sort();
+    Answer {
+        status: parts.status,
+        headers,
+        body: String::from_utf8_lossy(&bytes).into_owned(),
+    }
+}
+
+#[tokio::test]
+async fn a_restricted_wiki_that_holds_a_claim_answers_every_knowledge_address_as_an_absent_wiki_does()
+ {
+    // RFC 005 part 2 and threat model INV-4 (existence neutrality): a claim, a source, a page's provenance and the
+    // comparison of views are the wiki's own, so a visitor who may not read the wiki is told nothing a wiki that is not
+    // there would not tell: not by status, header or byte (but the visitor's own address echoed in the language buttons).
+    let secret = holding_a_claim("secret", "Secret Wiki", Visibility::Restricted);
+    // A public wiki with the same claim, to show the addresses are real and answer when they may.
+    let open = holding_a_claim("open", "Open Wiki", Visibility::Public);
+    let stranger = common::person(9);
+    common::add_person(&secret, &stranger, "A stranger", None);
+    let member = common::person(1);
+    common::let_read(&secret, &member);
+
+    let mut compared = 0;
+    for pattern in knowledge_addresses() {
+        // The addresses are real: on a wiki that may be read, with the same claim, each answers a page or a document.
+        let read = ask_as(&open, "GET", &pattern.replace("{}", "open"), None).await;
+        assert_eq!(read.status, StatusCode::OK, "{pattern} on a public wiki");
+        assert!(
+            read.body.contains("hidden bridge")
+                || read.body.contains(common::claim_id(1).as_str())
+                || read.body.contains(common::source_id(1).as_str())
+                || pattern.contains("/views"),
+            "{pattern}: the control page does not carry the claim: {}",
+            read.body
+        );
+        // The person the wiki is open to reads it all the same.
+        let member_read = ask_as(
+            &secret,
+            "GET",
+            &pattern.replace("{}", "secret"),
+            Some(&member),
+        )
+        .await;
+        assert_eq!(member_read.status, StatusCode::OK, "{pattern} for a reader");
+
+        for (who, account) in [
+            ("anonymous", None),
+            ("a signed-in non-member", Some(&stranger)),
+        ] {
+            for method in ["GET", "HEAD"] {
+                let real = ask_as(&secret, method, &pattern.replace("{}", "secret"), account).await;
+                let absent = ask_as(
+                    &secret,
+                    method,
+                    &pattern.replace("{}", "no-such-wiki"),
+                    account,
+                )
+                .await;
+                let which = format!("{method} {pattern} as {who}");
+                assert_eq!(real.status, StatusCode::NOT_FOUND, "{which}");
+                let norm = |a: &Answer, slug: &str| {
+                    let headers: Vec<_> = a
+                        .headers
+                        .iter()
+                        .filter(|(k, _)| k != "content-length")
+                        .cloned()
+                        .collect();
+                    (a.status, headers, a.body.replace(slug, "X"))
+                };
+                assert_eq!(
+                    norm(&real, "secret"),
+                    norm(&absent, "no-such-wiki"),
+                    "{which}: the refusal tells a restricted wiki that holds a claim from an absent one"
+                );
+                for hidden in [
+                    "hidden bridge",
+                    "Secret Wiki",
+                    &common::claim_id(1).to_string(),
+                ] {
+                    assert!(
+                        !real.body.contains(hidden) || pattern.contains(hidden),
+                        "{which}: leaked `{hidden}`"
+                    );
+                }
+                compared += 1;
+            }
+        }
+    }
+    assert_eq!(compared, knowledge_addresses().len() * 4);
+}
+
 #[tokio::test]
 async fn the_list_of_wikis_never_names_a_wiki_the_visitor_may_not_read() {
     let world = restricted();
