@@ -38,7 +38,7 @@ const MANIFEST_SCHEMA: &str =
 const CLAIMED: usize = 3;
 
 /// A source as the form asks for it.
-struct Cited<'a> {
+pub(super) struct Cited<'a> {
     kind: &'a str,
     title: &'a str,
     author: &'a str,
@@ -48,7 +48,7 @@ struct Cited<'a> {
     note: &'a str,
 }
 
-const SURVEY: Cited = Cited {
+pub(super) const SURVEY: Cited = Cited {
     kind: "secondary",
     title: "A survey of wiki link syntax",
     author: "R. Example",
@@ -69,7 +69,7 @@ const FIELD_NOTES: Cited = Cited {
 };
 
 /// What a reader reads of a page: between `<main` and `</main>`, without the page's frame.
-fn main_of(page: &Reply) -> &str {
+pub(super) fn main_of(page: &Reply) -> &str {
     let after = page.body.split_once("<main").map_or("", |p| p.1);
     after.split_once("</main>").map_or(after, |p| p.0)
 }
@@ -115,7 +115,7 @@ fn retired_words_in(page: &Reply) -> Vec<&'static str> {
 }
 
 /// Every id of the shape of a UUID that follows `marker` in `html`, in order of appearance, once each.
-fn ids_after(html: &str, marker: &str) -> Vec<String> {
+pub(super) fn ids_after(html: &str, marker: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for chunk in html.split(marker).skip(1) {
         let id: String = chunk
@@ -129,8 +129,21 @@ fn ids_after(html: &str, marker: &str) -> Vec<String> {
     out
 }
 
+/// The text of the paragraph (`<p ...>` to `</p>`) of `html` that holds `needle`, without its opening tag.
+fn paragraph_with<'a>(html: &'a str, needle: &str) -> &'a str {
+    let at = html.find(needle).expect("the page has the marker");
+    let open = html
+        .get(..at)
+        .unwrap()
+        .rfind("<p")
+        .expect("inside a paragraph");
+    let inner = html.get(open..).unwrap();
+    let inner = inner.split_once('>').expect("the tag ends").1;
+    inner.split_once("</p>").map_or(inner, |p| p.0)
+}
+
 /// A reviewer's approval and the maintainer's acceptance of a proposal: the accept page's answer.
-fn approve_and_accept(maya: &mut Person, id: &str) -> Reply {
+pub(super) fn approve_and_accept(maya: &mut Person, id: &str) -> Reply {
     let page = maya.browser.get(&proposal_page(id));
     let mut form = form_to(&page, &format!("{}/decide", proposal_page(id)));
     form.set("body", "Read, and it says what it says.");
@@ -141,7 +154,7 @@ fn approve_and_accept(maya: &mut Person, id: &str) -> Reply {
     maya.browser.submit(&form, None)
 }
 
-fn signed_into_history(accepted: &Reply) {
+pub(super) fn signed_into_history(accepted: &Reply) {
     assert_eq!(accepted.status, 200, "{}\n{}", accepted.head, accepted.body);
     assert!(
         accepted.body.contains("Signed into the history"),
@@ -151,7 +164,7 @@ fn signed_into_history(accepted: &Reply) {
 }
 
 /// *Attach a source* (or *Challenge this*) to part 4 of *Help*, in `view`, through the form; the id of the proposal.
-fn attach(
+pub(super) fn attach(
     person: &mut Person,
     view: Option<&str>,
     relation: &str,
@@ -307,8 +320,19 @@ fn the_knowledge_layer_works_end_to_end_on_a_real_prikk() {
     assert_eq!(
         help.body.matches("class=\"claim-link\"").count(),
         1,
-        "AC D-7: one quiet link, on the paragraph that holds the claim\n{}",
+        "AC D-7: one quiet link\n{}",
         help.body
+    );
+    // ... and it is on part 4, the paragraph under *Reading* the claim was proposed on, and on no other.
+    let paragraph = paragraph_with(&help.body, "class=\"claim-link\"");
+    assert!(
+        paragraph.starts_with("Pages link to each other with double brackets")
+            && help
+                .body
+                .contains("<h3 id=\"h-reading\">Reading</h3>\n<p id=\"h-^k")
+            && !paragraph.contains("A change is proposed"),
+        "AC D-7: the link is on part {} of Help (the paragraph under Reading): {paragraph}",
+        CLAIMED + 1
     );
     assert_eq!(
         help.body.matches(">Why is this here?</a>").count(),
@@ -380,7 +404,8 @@ fn the_knowledge_layer_works_end_to_end_on_a_real_prikk() {
             && claimed.contains("Latest change found in")
             && claimed.contains("Earliest wording found in")
             && claimed.contains("Sources and views"),
-        "AC D-8: the claim's paragraph, its changes and its way in to the claim: {claimed}"
+        "AC D-8: the claim's paragraph (traced by matching its text: the paragraph gained its `^id` in the very change \
+         that made it a claim, so the `^id` chain is `tests/why_page/`'s), its changes and its way in to the claim: {claimed}"
     );
     let ordinary = mine
         .split("<li id=\"w-")
@@ -593,6 +618,17 @@ fn the_knowledge_layer_works_end_to_end_on_a_real_prikk() {
         stopped.contains("Needs a revision") || stopped.contains("needs a revision"),
         "AC D-4: {stopped}"
     );
+    // Both texts: the wiki's now (the accepted status) and the proposal's (the one it wanted), in the claim's file.
+    let theirs = stopped.find("<td>status: contested\n");
+    let ours = stopped.find("<td>status: unresolved\n");
+    assert!(
+        stopped.contains("Where the changes overlap")
+            && stopped.contains(&format!("knowledge/claims/{claim}.yaml"))
+            && theirs.is_some()
+            && ours.is_some()
+            && theirs < ours,
+        "AC D-4: the overlap shows both texts, the wiki's first and the proposal's second: {stopped}"
+    );
     let seen = anonymous.get(&claim_page);
     assert!(
         main_of(&seen).contains("This claim is contested in this view.")
@@ -639,13 +675,23 @@ fn the_knowledge_layer_works_end_to_end_on_a_real_prikk() {
         Some(&format!("\"{state}\"")),
         Some(&body),
     );
-    assert_eq!(made.status, 422, "AC D-3: {}\n{}", made.head, made.body);
+    // This is the API's scope rule (a script's proposal names pages only), one of the paths D-3 closes; the core's
+    // tests try the others.
+    assert_eq!(
+        made.status, 422,
+        "the API's scope rule: {}\n{}",
+        made.head, made.body
+    );
     assert!(
         made.body.contains("path-outside-pages"),
-        "AC D-3: a proposal names pages only: {}",
+        "the API's scope rule: a proposal names pages only: {}",
         made.body
     );
-    assert_eq!(world.blocks(), before, "AC D-3: nothing was written");
+    assert_eq!(
+        world.blocks(),
+        before,
+        "the API's scope rule: nothing was written"
+    );
     let proposals = page_text(&mut noor.browser, "/handbook/-/proposals?state=all");
     assert!(
         proposals.contains("Cite the link syntax") && !proposals.contains("Decide it by hand"),
@@ -726,7 +772,15 @@ fn the_knowledge_layer_works_end_to_end_on_a_real_prikk() {
             && body.contains("Noor Contributor")
             && body.contains("Quinn Reviewer")
             && body.contains("Page 14, the third paragraph &#60;b&#62;of it&#60;/b&#62;."),
-        "AC D-11: the thread, in order, with the markup shown as letters: {body}"
+        "AC D-11: the thread, with the markup shown as letters: {body}"
+    );
+    let (first_comment, second_comment) = (
+        body.find("Where in chapter 2 is this said?"),
+        body.find("Page 14, the third paragraph"),
+    );
+    assert!(
+        first_comment.is_some() && first_comment < second_comment,
+        "AC D-11: the thread is in the order it was written (Noor's, then Quinn's): {body}"
     );
     assert!(
         body.contains("This claim is contested in this view."),
@@ -738,7 +792,7 @@ fn the_knowledge_layer_works_end_to_end_on_a_real_prikk() {
     let stopped = running.stop();
     assert!(
         !stopped.contains(SECRET),
-        "AC D-12: no secret in the server's output"
+        "no secret in the server's output (the server's secrets rule; not a criterion of D-12)"
     );
     let bundle = world.tmp.0.join("bundle");
     let (status, out, err) = world.cli(&[
