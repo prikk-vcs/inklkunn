@@ -1954,6 +1954,23 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
 - **R-3 (0.3.0 readiness), a sentence made true: *a page with no claims is the page it was, byte for byte*.** Compared against the 0.2.0 release binary's own pages (the upgrade test), the HTML of a page with no claims is 0.2.0's except the one *Why is this here?* link; the style sheet is 0.2.0's with additions and one changed rule, `code { overflow-wrap: anywhere }` (K32), which applies to every page. K-T6's entry now says *its HTML*.
 - **RC-2 (0.3.0 readiness, correction round): the lead says only what is true.** The API sentence names what it reaches (claims, sources, provenance and the comparison of views, and the curation proposals it writes) and says a claim's thread and the list of views are not in it yet; the claim page *states* how a view differs and links to *Compare views*; *Sources to review* also lists sources nobody has recorded looking at and those marked unavailable; *Why is this here?* says *earliest wording found* when it traced a paragraph by matching its text; podman's settings carry SECURITY.md's AppArmor caveat.
 - **RC-1 (0.3.0 readiness, correction round), a defect fixed: *Why is this here?* no longer says *No source was given with the proposal* on a change that attached a source.** The section printed only the proposal's own free-text *Sources* field, while the normal way to attach a source fills the claim's file instead, so the page denied what the change had done. The section is now named for what it shows (*The proposal's Sources field*, as the form's label has it; ja *提案の「出典」欄*) and is shown only when that field is not empty; there is no sentence for an empty one (the catalog entry and its glossary row are gone). The claim paragraph's link to the claim page stays the way to the attached sources. The API's `provenance` change member `proposal.sources` carries the same free-text list and its OpenAPI description now says so, and that the sources attached to a claim are at `claims/{id}`. Listing the sources attached in that change (RFC 005 part 2 D-8's full sentence) is recorded for 0.4.0. Tests: an empty field shows no section and no *No source* sentence; a filled one shows the new heading and each line. Mutated (the section shown again when the field is empty), the first failed.
+- **RC-3 (0.3.0 readiness, correction round): R-2's assertions match their labels (review P-d).** In `serve/writes_on/tests/knowledge.rs`:
+  the thread is asserted by position (the first comment's text comes before the second's), the overlap shows both texts (the wiki's
+  `status: contested` in the *In the wiki now* column, before the proposal's `status: unresolved`, in the claim's file), the
+  paragraph that carries the claim is named (the one that begins *Pages link to each other with double brackets*, under *Reading*,
+  and not the one a change is proposed in); the API's `422` is labelled as the API's scope rule (a script's proposal names pages
+  only), not as D-3's whole property; the server's secret check is no longer labelled D-12; and the claim paragraph of *Why is this
+  here?* says it is traced by matching its text (the paragraph gained its `^id` in the very change that made it a claim; the `^id`
+  chain is `tests/why_page/`'s). Mutations that kill the new assertions (each restored): the overlap's two columns swapped; the
+  thread's comments read newest first. Not mutation-checked: the paragraph's name. No product code changed; no prikk-dependent
+  test added.
+- **RC-4 (0.3.0 readiness, correction round): the upgrade test uses 0.3.0 on the migrated store (review P-e), and compares
+  `/handbook`'s redirect.** After the store has migrated from 15 to 18, `upgrade.rs` reuses R-2's helpers (now `pub(super)`):
+  the contributor attaches a source to a paragraph by proposal, the maintainer accepts it, an anonymous reader sees the claim link
+  and the claim page with the source, and a comment is written in the claim's thread and shown. Replacing version 18's migration by
+  a statement that makes no table fails the test (the comment form is gone). D-7's comparison also compares the `Location` of the
+  303 that `/handbook` answers (0.2.0's and this tree's, with the ports masked): the comparison covers 14 paths, 13 of them by
+  status and body and `/handbook` by status and `Location`. No prikk-dependent test added.
 
 ## [0.2.0] — 2026-11-04
 

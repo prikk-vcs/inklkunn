@@ -18,6 +18,10 @@
 //! health index) are named in `undo_what_0_3_0_adds`, each exactly. The stylesheet is compared too: this tree's is
 //! 0.2.0's, with additions and one changed rule.
 //!
+//! **0.3.0 on the migrated store** (RC-4): the last steps use the layer the migration (versions 16 - 18) made room
+//! for, over data 0.2.0 wrote: a source is attached to a paragraph by proposal, accepted, shown on the claim page, and
+//! a comment is written in its thread (version 18's table). A store whose migration lacked a table fails there.
+//!
 //! Needs prikk and the 0.2.0 binary. Without prikk the test prints `skipping: prikk not on PATH` (counted by
 //! `EXPECTED_SKIPS`); with prikk and without the binary it prints `skipping: inklkunn 0.2.0 not found`, a line the
 //! with-prikk run in CI fails on (`WITH_PRIKK_GUARDED`), because CI installs the binary.
@@ -25,6 +29,9 @@
 use std::fs::File;
 use std::process::{Child, Command, Stdio};
 
+use super::knowledge::{
+    SURVEY, approve_and_accept, attach, ids_after, main_of, signed_into_history,
+};
 use super::*;
 
 /// The commit the 0.2.0 release was built from (its `build-info.txt`): what `inklkunn --version` of the real asset
@@ -213,13 +220,17 @@ fn pages_to_compare(block: &str) -> Vec<String> {
     ]
 }
 
-/// What a reader was shown at each path: the status and the body.
-fn capture(mut reader: Browser, paths: &[String]) -> BTreeMap<String, (u16, String)> {
+/// What a reader was shown at each path: the status, the body and the `Location` (a redirect's, else none).
+fn capture(
+    mut reader: Browser,
+    paths: &[String],
+) -> BTreeMap<String, (u16, String, Option<String>)> {
     paths
         .iter()
         .map(|p| {
             let r = reader.get(p);
-            (p.clone(), (r.status, r.body))
+            let location = r.header("location");
+            (p.clone(), (r.status, r.body, location))
         })
         .collect()
 }
@@ -459,6 +470,11 @@ fn a_directory_made_by_the_0_2_0_binary_is_opened_migrated_and_used_by_this_tree
     };
     let paths = pages_to_compare(&block);
     let before = capture(server.browser(), &paths);
+    assert_eq!(
+        before.get("/handbook").map(|r| r.0),
+        Some(303),
+        "0.2.0 answers /handbook with a redirect"
+    );
     let old_css_path = stylesheet_of(&before.get(HELP).unwrap().1);
     let old_css = reader.get(&old_css_path).body;
     assert!(!old_css.is_empty());
@@ -513,9 +529,15 @@ fn a_directory_made_by_the_0_2_0_binary_is_opened_migrated_and_used_by_this_tree
     let new_ports = [running.port, running.content_port];
     let mut changed = Vec::new();
     for path in &paths {
-        let (old_status, old_html) = before.get(path).unwrap();
-        let (new_status, new_html) = after.get(path).unwrap();
+        let (old_status, old_html, old_location) = before.get(path).unwrap();
+        let (new_status, new_html, new_location) = after.get(path).unwrap();
         assert_eq!(old_status, new_status, "{path}: the status differs");
+        // The 303 of /handbook says where it goes in `Location`; that is compared too (with the ports masked).
+        assert_eq!(
+            old_location.as_deref().map(|l| masked(l, old_ports)),
+            new_location.as_deref().map(|l| masked(l, new_ports)),
+            "{path}: the Location differs"
+        );
         let (undone, touched) = undo_what_0_3_0_adds(path, new_html);
         if touched {
             changed.push(path.as_str());
@@ -603,6 +625,68 @@ fn a_directory_made_by_the_0_2_0_binary_is_opened_migrated_and_used_by_this_tree
     assert!(
         help.contains(TRUST_AFTER),
         "the open proposal joined it: {help}"
+    );
+
+    // ---- 0.3.0's knowledge layer over the migrated store (V16 - V18 on data 0.2.0 made): a source is attached to a
+    //      paragraph by proposal, accepted into the history, read by anyone, and a comment is written in its thread
+    let mut maya_p = Person {
+        login: "maya",
+        name: "Maya Maintainer",
+        password: password_for("maya"),
+        browser: maya_now,
+    };
+    let mut noor_p = Person {
+        login: "noor",
+        name: "Noor Contributor",
+        password: password_for("noor"),
+        browser: noor_now,
+    };
+    let before_source = world.blocks();
+    let attached = attach(
+        &mut noor_p,
+        None,
+        "supports",
+        &SURVEY,
+        "Cite the link syntax",
+    );
+    signed_into_history(&approve_and_accept(&mut maya_p, &attached));
+    assert_eq!(
+        world.blocks().len(),
+        before_source.len() + 1,
+        "prikk log: the attached source is one new block"
+    );
+    let help = anonymous.get(HELP);
+    assert_eq!(
+        help.body.matches("class=\"claim-link\"").count(),
+        1,
+        "the paragraph the source was attached to now carries the claim: {}",
+        help.body
+    );
+    let claim = ids_after(&help.body, "/handbook/-/claim/")
+        .into_iter()
+        .next()
+        .expect("the claim link names the claim");
+    let claim_page = format!("/handbook/-/claim/{claim}");
+    let seen = anonymous.get(&claim_page);
+    assert_eq!(seen.status, 200, "{}", seen.body);
+    assert!(
+        main_of(&seen).contains("A survey of wiki link syntax")
+            && main_of(&seen).contains("supports, directly"),
+        "the claim page, read over the migrated store, lists the source: {}",
+        main_of(&seen)
+    );
+    let page = noor_p.browser.get(&claim_page);
+    let discuss = format!("{claim_page}/discuss");
+    let mut form = form_to(&page, &discuss);
+    form.set("body", "Where in chapter 2 is this said?");
+    let said = noor_p.browser.submit(&form, None);
+    assert_eq!(said.status, 303, "{}\n{}", said.head, said.body);
+    let seen = anonymous.get(&claim_page);
+    assert!(
+        main_of(&seen).contains("Where in chapter 2 is this said?")
+            && main_of(&seen).contains("Noor Contributor"),
+        "the comment is in the claim's thread (version 18's table): {}",
+        main_of(&seen)
     );
 
     // ---- nothing secret was printed by either half
