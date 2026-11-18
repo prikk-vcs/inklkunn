@@ -459,3 +459,126 @@ fn an_import_is_judged_as_the_service_so_a_redirect_page_and_claims_import_toget
         plan.report()
     );
 }
+
+/// A source a person checked: found at `reference`, reviewed on a day, said to be available.
+fn checked(reference: &str) -> Source {
+    use crate::knowledge::{Availability, Reference, ReferenceForm, Reviewed};
+    let mut s = source();
+    s.reference = Some(Reference {
+        form: ReferenceForm::Url,
+        value: reference.to_owned(),
+    });
+    s.availability = Availability::Available;
+    s.last_reviewed = Some(Reviewed {
+        date: "2026-01-05".to_owned(),
+        proposal: None,
+    });
+    s
+}
+
+/// The plan of a bundle whose source is `brought`, over a wiki that holds `at_tip` as the source's file (none: the wiki
+/// has no such file), replacing what the wiki has.
+fn replacing(tag: &str, rig: &Rig, at_tip: Option<&Source>, brought: &Source) -> (Dir, ImportPlan) {
+    let d = dir(tag);
+    bundle(&d.0, &claim(), brought);
+    let mut existing = Existing::at(&rig.fake.block_id());
+    if let Some(held) = at_tip {
+        existing = existing.with_file(&source_path(), held.to_yaml().as_bytes());
+    }
+    let plan = plan_folder(&d.0, &existing, true, &ReadConfig::default()).unwrap();
+    (d, plan)
+}
+
+/// RC-5 (0.3.0 readiness; the threat model's §7.4): an import is the service writing, not a curation proposal, so it may
+/// not move the reference of a source a person checked, nor state a check, nor take one away (K30, K71). The dry run and the
+/// run, which judges the same set again at the service's own path, each refuse it by the source's file and the field, and
+/// nothing is written: the signer is never asked, no act is recorded and the tip has not moved.
+#[test]
+fn an_import_that_moves_a_checked_sources_reference_or_states_a_check_is_refused_by_name_and_nothing_is_written()
+ {
+    use crate::knowledge::Availability;
+    let held = checked("https://example.org/survey");
+    let moved = checked("https://example.org/elsewhere");
+    let mut redated = held.clone();
+    redated.last_reviewed.as_mut().unwrap().date = "2026-02-01".to_owned();
+    let mut moved_and_redated = moved.clone();
+    moved_and_redated.last_reviewed = redated.last_reviewed.clone();
+    let mut answered = held.clone();
+    answered.availability = Availability::Unavailable;
+    let mut cleared = moved.clone();
+    cleared.availability = Availability::Unknown;
+    cleared.last_reviewed = None;
+    let mut stated_new = source();
+    stated_new.last_reviewed = held.last_reviewed.clone();
+
+    for (tag, at_tip, brought, field) in [
+        // The reference moves and the check is left on it: the old check is the old reference's.
+        ("moved", Some(&held), &moved, "reference"),
+        // The reference moves and a day is stated with it: a check is curation's to state.
+        (
+            "moved-and-checked",
+            Some(&held),
+            &moved_and_redated,
+            "last_reviewed",
+        ),
+        // The reference moves and the check is taken away.
+        ("moved-and-cleared", Some(&held), &cleared, "availability"),
+        // A check of the same reference, stated: a new day, or another answer.
+        ("redated", Some(&held), &redated, "last_reviewed"),
+        ("answered", Some(&held), &answered, "availability"),
+        // A source the wiki does not have, which comes already checked.
+        ("new-and-checked", None, &stated_new, "last_reviewed"),
+    ] {
+        let tag = format!("k-checked-{tag}");
+        let (rig, accept, acts) = world_with_reads(&tag);
+        if let Some(held) = at_tip {
+            rig.fake.set_files(&[(source_path(), held.to_yaml())]);
+        }
+        let tip = rig.fake.block_id();
+
+        // The dry run says so, by the source's file and the field, and refuses nothing else.
+        let (_d, mut plan) = replacing(&tag, &rig, at_tip, brought);
+        assert!(plan.is_importable(), "{tag}: {}", plan.report());
+        judge_knowledge(&mut plan, &rig.reads, &*rig.fake, &rig.layout, &rig.wiki).unwrap();
+        assert!(!plan.is_importable(), "{tag}: {}", plan.report());
+        assert_eq!(plan.refused.len(), 1, "{tag}: {}", plan.report());
+        let refusal = plan.refused.first().unwrap();
+        assert_eq!(refusal.name, source_path(), "{tag}");
+        assert!(
+            refusal.reason.contains(&format!("(`{field}`)")),
+            "{tag}: {}",
+            refusal.reason
+        );
+
+        // The run, which has not seen the dry run, refuses the same, and writes nothing.
+        let (_d, plan) = replacing(&tag, &rig, at_tip, brought);
+        let err = run_import(&acts, &rig.wiki, &plan).unwrap_err();
+        let why = match err {
+            ImportError::Act(SystemActFailure::Invalid(why)) => why,
+            other => panic!("{tag}: {other}"),
+        };
+        assert!(
+            why.contains(&source_path()) && why.contains(&format!("(`{field}`)")),
+            "{tag}: {why}"
+        );
+        assert!(
+            accept.seen.lock().unwrap().is_none(),
+            "{tag}: the signer was asked"
+        );
+        assert!(
+            rig.store.system_acts(&rig.wiki.id).unwrap().is_empty(),
+            "{tag}: an act was recorded for an import that was refused"
+        );
+        assert_eq!(rig.fake.block_id(), tip, "{tag}: the tip moved");
+    }
+
+    // The same bundle with the source as the wiki has it is not refused: the source is unchanged and the rest is written.
+    let (rig, accept, acts) = world_with_reads("k-checked-same");
+    rig.fake.set_files(&[(source_path(), held.to_yaml())]);
+    let (_d, plan) = replacing("k-checked-same", &rig, Some(&held), &held);
+    assert!(plan.is_importable(), "{}", plan.report());
+    assert_eq!(plan.unchanged, vec![source_path()]);
+    let done = run_import(&acts, &rig.wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(done.files, 2);
+    assert!(accept.seen.lock().unwrap().is_some());
+}
