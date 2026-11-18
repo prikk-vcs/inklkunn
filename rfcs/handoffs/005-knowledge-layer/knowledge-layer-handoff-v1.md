@@ -588,3 +588,14 @@ R-7, the candidate, after the architect's review.
   - A planted violation for the spawn-gate exemption (a second file that spawns is refused).
   - A `release-notes.sh` case at exactly 100,000 bytes.
   - Update the report's numbers for the round.
+
+## 0.3.0 readiness approved; R-7 may begin (2026-11-18)
+
+RC-1 – RC-6 are **Approved** (`.git-exclude/reviewed/0.3.0-readiness-corrections-review-result.md`). **R-7 — the candidate:**
+the workspace version and the CHANGELOG heading become 0.3.0, and **nothing else changes**:
+- the heading is `## [0.3.0] — <the cut's date>`, with an empty `## [Unreleased]` above it, as `docs/RELEASING.md` says;
+- `Cargo.lock` follows the version;
+- `.github/release-notes.sh`'s test passes on the new section.
+
+Hand it back as `0.3.0-candidate-review-request.md`. The architect then runs the gates and the release rehearsal on it
+(R-8) and brings the cut to the owner.
