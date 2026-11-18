@@ -497,6 +497,20 @@ pub struct Queue {
     pub target_ref_status: Option<String>,
     /// The patches, oldest first.
     pub patches: Vec<QueuedPatch>,
+    /// Where prikk 0.58.0 and later says the queue is **already sealed**: a `seal` published its block and stopped
+    /// before it drained the queue (ledger PK-44; `doctor` names the error `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`
+    /// then). `null`, and so `None`, for an ordinary queue and on every older prikk, which refuse `status --format
+    /// json` in that state instead. Only the block's id is read; the `route` prikk prints beside it is its own advice
+    /// and decides nothing here (maintenance M51).
+    #[serde(default)]
+    pub already_sealed: Option<AlreadySealed>,
+}
+
+/// What `queue.already_sealed` says (prikk 0.58.0, `status-report-v1`): the block the queued patches are already in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlreadySealed {
+    /// The block the ref points at, which holds the queued patches (the tip `prikk log` prints).
+    pub block_id: String,
 }
 
 /// What `status` says about the repository and its active write-ahead log: the witness recovery reads to tell a

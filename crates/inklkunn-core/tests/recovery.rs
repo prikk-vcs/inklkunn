@@ -134,6 +134,7 @@ if [ -e "$CTL/failafter-$verb" ]; then
   if [ "$c" -ge "$n" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 fi
 if [ "$verb" = seal ] && [ -e "$CTL/say-until-seal" ]; then : > "$CTL/sealed"; fi
+if [ "$verb $2" = "status --format" ] && [ -e "$CTL/say-status-json" ] && ! ( [ -e "$CTL/say-until-seal" ] && [ -e "$CTL/sealed" ] ); then cat "$CTL/say-status-json"; exit 0; fi
 if [ -e "$CTL/say-$verb" ] && ! ( [ -e "$CTL/say-until-seal" ] && [ -e "$CTL/sealed" ] ); then cat "$CTL/say-$verb"; exit 0; fi
 if [ -e "$CTL/runfail-$verb" ]; then
   "{real}" "$@" > /dev/null 2>&1
@@ -898,10 +899,8 @@ fn a_seal_killed_between_publishing_and_draining_is_finished_with_prikks_own_rec
             before.len() + 1,
             "the block is published"
         );
-        assert!(
-            w.storage.status(&w.repo).is_err(),
-            "`status --format json` refuses over the state a killed seal leaves"
-        );
+        // `status --format json` refuses over the state a killed seal leaves up to 0.57.0; 0.58.0 reads it (M51).
+        prikk_probes::assert_status_shows_a_pending_cleanup(&w.storage, &w.repo, &w.tip());
         let doctor = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
         assert!(doctor.is_only_cleanup_pending(), "{doctor:?}");
         assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1);
@@ -938,7 +937,7 @@ fn a_seal_killed_between_publishing_and_draining_is_finished_with_prikks_own_rec
             shown.lines()
         );
         assert_eq!(seals(&w), seals_before, "a plan runs nothing");
-        assert!(w.storage.status(&w.repo).is_err());
+        prikk_probes::assert_status_shows_a_pending_cleanup(&w.storage, &w.repo, &w.tip());
 
         // The run.
         let r = w.recover();
@@ -1037,7 +1036,7 @@ fn a_pending_cleanup_is_not_finished_unless_doctor_names_exactly_that_and_the_bl
             w.store.recovery_flag(&w.wiki.id).unwrap().is_some(),
             "{what}"
         );
-        assert!(w.storage.status(&w.repo).is_err(), "{what}");
+        prikk_probes::assert_status_shows_a_pending_cleanup(&w.storage, &w.repo, &w.tip());
         assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1, "{what}");
     };
 
@@ -1123,7 +1122,156 @@ fn a_pending_cleanup_is_not_finished_unless_doctor_names_exactly_that_and_the_bl
     assert_eq!(w.history(), blocks);
     assert_eq!(seals(), seals_before, "no seal ran");
     assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
-    assert!(w.storage.status(&w.repo).is_err());
+    prikk_probes::assert_status_shows_a_pending_cleanup(&w.storage, &w.repo, &w.tip());
+}
+
+/// What `prikk status --format json` says in the state a killed seal leaves, as prikk 0.58.0 says it, made up for any
+/// prikk: the stand-in answers `status` with it (`say-status`), so the 0.58.0 reading is exercised on every prikk. The
+/// queue is `patches` (ids; the messages and operations are of no use to the reader), sealed in `block`, if any.
+fn canned_status(block: Option<&str>, patches: &[String]) -> String {
+    serde_json::json!({
+        "schema_version": "status-report-v1",
+        "active_wal_records": patches.len(),
+        "trailing_partial_wal_bytes": 0,
+        "current_branch": MAIN,
+        "provisional_worktree": null,
+        "interrupted_materialization": null,
+        "queue": {
+            "count": patches.len(),
+            "target_ref": MAIN,
+            "target_ref_status": null,
+            "already_sealed": block.map(|b| serde_json::json!({"block_id": b, "route": "prikk seal --allow-no-audit"})),
+            "patches": patches.iter().map(|id| serde_json::json!({
+                "patch_id": id, "message": "m", "operations": []
+            })).collect::<Vec<_>>(),
+        },
+    })
+    .to_string()
+}
+
+#[test]
+fn a_status_that_reads_the_pending_cleanup_must_agree_with_the_history_and_with_doctor() {
+    // Maintenance M51: from prikk 0.58.0 `status --format json` reads the state a killed seal leaves and says which
+    // block the queue is already sealed in. Where it does, the decision is the same as where it refuses (the
+    // acceptance's block, `doctor`'s one error); where it disagrees with the history or with `doctor` it is a stop and
+    // not a step: nothing is concluded from either. (The answers are made up through the stand-in so that every prikk
+    // meets them; the real answer of each prikk is asserted by `assert_status_shows_a_pending_cleanup`.)
+    let Some(w) = World::new("cleanup-reads", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &[]);
+    let blocks = w.history();
+    let tip = blocks.first().unwrap();
+    let patches: Vec<String> = tip
+        .patch_messages
+        .iter()
+        .map(|m| m.patch_id.clone())
+        .collect();
+    let seals = || {
+        std::fs::read_to_string(w.ctl.join("calls.log"))
+            .unwrap()
+            .lines()
+            .filter(|v| *v == "seal")
+            .count()
+    };
+    let seals_before = seals();
+    let refuses = |what: &str, said: &str| {
+        for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+            let r = w.recovery.recover(&w.wiki, mode);
+            assert!(
+                matches!(&r, Err(RecoveryError::Witness(why)) if why.contains("prikk status") && why.contains(said)),
+                "{what}: {r:?}"
+            );
+        }
+        assert_eq!(w.history(), blocks, "{what}");
+        assert_eq!(seals(), seals_before, "{what}: no seal ran");
+        assert!(
+            w.store.recovery_flag(&w.wiki.id).unwrap().is_some(),
+            "{what}"
+        );
+        assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1, "{what}");
+    };
+    // Another block than the tip: a stop, not a step.
+    let elsewhere = "e".repeat(64);
+    w.control(
+        "say-status-json",
+        &canned_status(Some(&elsewhere), &patches),
+    );
+    refuses("another block", "already sealed in block");
+    // An ordinary queue while `doctor` names a pending cleanup.
+    w.control("say-status-json", &canned_status(None, &patches));
+    refuses("an ordinary queue", "ordinary queue");
+    // A queue that is not the block's patches (more, fewer or others).
+    for (what, queue) in [
+        ("another patch", vec!["f".repeat(64)]),
+        ("none", Vec::new()),
+        (
+            "one more",
+            patches
+                .iter()
+                .cloned()
+                .chain(std::iter::once("f".repeat(64)))
+                .collect(),
+        ),
+    ] {
+        w.control(
+            "say-status-json",
+            &canned_status(Some(&tip.block_id), &queue),
+        );
+        refuses(what, "not the patches of the newest block");
+    }
+    // The block is named, and `doctor` names no cleanup.
+    w.control(
+        "say-status-json",
+        &canned_status(Some(&tip.block_id), &patches),
+    );
+    w.control(
+        "say-doctor",
+        "doctor repository: /x\ninfo [PRIKK-DOCTOR-VERIFY-OK]: done\nissue summary: errors=0, warnings=0, info=1\n",
+    );
+    refuses("doctor names none", "names no pending cleanup");
+    w.uncontrol("say-doctor");
+
+    // Where it agrees, the plan is the same as where the answer was a refusal, and the run finishes it.
+    w.control(
+        "say-status-json",
+        &canned_status(Some(&tip.block_id), &patches),
+    );
+    w.control("say-until-seal", "");
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    assert_eq!(
+        step_names(&shown),
+        [
+            "complete-publication",
+            "restore-worktree",
+            "end-sealed",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert!(
+        shown.lines().iter().any(|l| l.contains(&format!(
+            "saw: prikk status: 1 patch(es) queued, all already sealed in block {}",
+            tip.block_id
+        ))),
+        "{:#?}",
+        shown.lines()
+    );
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert_eq!(seals(), seals_before + 1, "prikk's recommendation, once");
+    assert_eq!(w.history(), blocks, "no second block");
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_none());
+    w.uncontrol("say-status-json");
+    w.uncontrol("say-until-seal");
+    assert!(w.verifies());
 }
 
 /// A `seal` killed just after it published (the queue drained, the ref's metadata stale): recovery notes the one
@@ -1148,17 +1296,8 @@ fn a_lone_metadata_debris_is_noted_and_recovery_finishes(w: &World) {
         .iter()
         .find(|d| d.is_metadata_debris())
         .unwrap();
-    assert!(
-        debris
-            .message
-            .contains("active WAL is empty but stale ref metadata remains")
-    );
-    assert_eq!(
-        debris.recommendation.as_deref(),
-        Some(
-            "no repair is required; the next guarded active-WAL append will replace stale metadata"
-        )
-    );
+    // A warning up to prikk 0.57.0 and `info` from 0.58.0 (M52); recovery reads it alike on both.
+    prikk_probes::assert_debris_is_worded_as_this_prikk_words_it(&w.storage, debris);
     assert!(w.verifies(), "nothing is lost: the repository verifies");
 
     // The plan is no stop: it ends the act as sealed and carries the one-line note.
@@ -1173,6 +1312,7 @@ fn a_lone_metadata_debris_is_noted_and_recovery_finishes(w: &World) {
         "{:?}",
         shown.plan.notes
     );
+    assert_eq!(shown.plan.notes.len(), 1, "the one note, on any prikk");
     // The run recovers: records ended, the flag cleared, the history untouched.
     let r = w.recover();
     assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());

@@ -107,3 +107,67 @@ fn a_status_report_of_a_shape_the_driver_does_not_know_is_refused_not_guessed() 
         matches!(parse(&lying), Err(StorageError::Damaged { detail, .. }) if detail.contains("count"))
     );
 }
+
+/// `prikk status --format json` as prikk 0.58.0 prints it over the state a `seal` leaves that published its block and
+/// stopped before it drained the queue (copied from a measured run; up to 0.57.0 this exits 1 with an integrity error).
+const STATUS_ALREADY_SEALED: &str = r#"{
+  "schema_version": "status-report-v1",
+  "repository": "/srv/r/.prikk",
+  "active_wal_records": 1,
+  "trailing_partial_wal_bytes": 0,
+  "heads_main_ref_state": "66b5e7f3c9d3e6451759030f930df944e72d0d51e856e7ba699deaaa8d5dd2bf",
+  "current_branch": "heads/main",
+  "provisional_worktree": null,
+  "interrupted_materialization": null,
+  "queue": {
+    "count": 1,
+    "target_ref": "heads/main",
+    "target_ref_status": null,
+    "threshold_status": "none",
+    "warn_threshold": 800,
+    "hard_limit": 1000,
+    "already_sealed": {"block_id": "b3ba4930ac61a8c248b874faf56609f757b7a3893d86ded09e4cfec1224a49e7", "route": "prikk seal --allow-no-audit"},
+    "patches": [
+      {"patch_id": "dfb2f5613b88f2d2219e49e37ab4db1b92a4691c6e35c226483aff712ac854e1", "message": "second", "operations": [
+        {"kind": "create-file", "paths": [{"path": "b.md"}]}
+      ]}
+    ]
+  }
+}"#;
+
+const ALREADY_SEALED_FIELD: &str = r#"{"block_id": "b3ba4930ac61a8c248b874faf56609f757b7a3893d86ded09e4cfec1224a49e7", "route": "prikk seal --allow-no-audit"}"#;
+
+#[test]
+fn the_block_a_queue_is_already_sealed_in_is_read_and_its_route_is_not() {
+    // Maintenance M51 (prikk 0.58.0, `queue.already_sealed`): the block id is read, and only that.
+    let sealed = parse(STATUS_ALREADY_SEALED).unwrap();
+    assert_eq!(
+        sealed.queue.already_sealed.map(|a| a.block_id),
+        Some("b3ba4930ac61a8c248b874faf56609f757b7a3893d86ded09e4cfec1224a49e7".to_owned())
+    );
+    assert_eq!(sealed.queue.count, 1);
+    // An ordinary queue says `null` (0.58.0) or says nothing (0.55.0 - 0.57.0): no block either way.
+    assert_eq!(parse(STATUS_QUEUED).unwrap().queue.already_sealed, None);
+    let null = STATUS_ALREADY_SEALED.replace(ALREADY_SEALED_FIELD, "null");
+    assert_eq!(parse(&null).unwrap().queue.already_sealed, None);
+    // The advice is prikk's, and what is said of the state does not depend on it.
+    let other_route =
+        STATUS_ALREADY_SEALED.replace("prikk seal --allow-no-audit", "something else");
+    assert_eq!(
+        parse(&other_route).unwrap().queue.already_sealed,
+        parse(STATUS_ALREADY_SEALED).unwrap().queue.already_sealed
+    );
+    // A field of another shape is damaged output, never a guess.
+    for broken in [
+        STATUS_ALREADY_SEALED.replace("\"block_id\"", "\"block\""),
+        STATUS_ALREADY_SEALED.replace(
+            ALREADY_SEALED_FIELD,
+            "\"b3ba4930ac61a8c248b874faf56609f757b7a3893d86ded09e4cfec1224a49e7\"",
+        ),
+    ] {
+        assert!(
+            matches!(parse(&broken), Err(StorageError::Damaged { .. })),
+            "{broken}"
+        );
+    }
+}

@@ -10,11 +10,11 @@
 // Each test file of the crate mounts this module and uses some of it.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use inklkunn_core::Witnesses;
-use inklkunn_prikk::{Admission, PrikkCli, Sandbox};
+use inklkunn_prikk::{Admission, PrikkCli, Sandbox, Storage};
 use inklkunn_store::WikiId;
 
 /// The first `prikk` on `PATH` (the first directory that has one), in whatever version.
@@ -89,4 +89,63 @@ fn has_uncommit(witnesses: &Witnesses, wiki: &WikiId) -> bool {
 /// made over [`prikk_floor`] has not: this says so where the subject depends on it).
 pub fn assert_has_verb(witnesses: &Witnesses, wiki: &WikiId, expected: bool) {
     assert_eq!(has_uncommit(witnesses, wiki), expected);
+}
+
+/// The `(major, minor, patch)` of the prikk behind `storage`; a test that asserts per version asks it through a probe
+/// below and nowhere else (it is private: no test branches on it, a probe asserts).
+fn version_of(storage: &PrikkCli) -> (u64, u64, u64) {
+    inklkunn_prikk::parse_version(storage.version()).expect("prikk's version is read")
+}
+
+/// Asserts what `prikk status --format json` shows in the state a `seal` leaves that published its block and stopped
+/// before it drained the queue, whose tip block is `tip` (maintenance M51, ledger PK-44): up to 0.57.0 it **refuses**
+/// with an integrity error; from 0.58.0 it exits 0, lists the queue (the one patch) and says `queue.already_sealed`:
+/// that block. Called wherever a test used to say that `status` refuses.
+pub fn assert_status_shows_a_pending_cleanup(storage: &PrikkCli, repo: &Path, tip: &str) {
+    let status = storage.status(repo);
+    if version_of(storage) < (0, 58, 0) {
+        let refused =
+            status.expect_err("up to prikk 0.57.0 `status --format json` refuses in this state");
+        assert!(refused.to_string().contains("integrity error"), "{refused}");
+    } else {
+        let status = status.expect("from prikk 0.58.0 `status --format json` reads this state");
+        assert_eq!(status.queue.count, 1);
+        assert_eq!(
+            status.queue.already_sealed.map(|sealed| sealed.block_id),
+            Some(tip.to_owned()),
+            "the queue is already sealed in the tip"
+        );
+    }
+}
+
+/// Asserts how prikk words the finding `PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS` that `doctor` printed, on this prikk
+/// (maintenance M52, ledger PK-46): a **warning** with "no repair is required; the next guarded active-WAL append will
+/// replace stale metadata" up to 0.57.0, and from 0.58.0 **info** with "nothing to do: the next `prikk commit`
+/// replaces it". The id is the same and recovery reads it alike (`Diagnostic::is_metadata_debris`).
+pub fn assert_debris_is_worded_as_this_prikk_words_it(
+    storage: &PrikkCli,
+    debris: &inklkunn_signer::recover::text::Diagnostic,
+) {
+    use inklkunn_signer::recover::text::Severity;
+    assert!(
+        debris
+            .message
+            .contains("active WAL is empty but stale ref metadata remains"),
+        "{debris:?}"
+    );
+    if version_of(storage) < (0, 58, 0) {
+        assert_eq!(debris.severity, Severity::Warning);
+        assert_eq!(
+            debris.recommendation.as_deref(),
+            Some(
+                "no repair is required; the next guarded active-WAL append will replace stale metadata"
+            )
+        );
+    } else {
+        assert_eq!(debris.severity, Severity::Info);
+        assert_eq!(
+            debris.recommendation.as_deref(),
+            Some("nothing to do: the next `prikk commit` replaces it")
+        );
+    }
 }

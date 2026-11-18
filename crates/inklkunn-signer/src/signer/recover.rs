@@ -333,8 +333,8 @@ impl Recover for Signer {
                 "the published block was not made on the block the change was made on",
             );
         }
-        // Nothing else is queued (Q2). `status --format json` refuses in this state, but the plain text of `status`
-        // reads, and states the queue's size: exactly one patch, on this view, in a log with one record and no torn
+        // Nothing else is queued (Q2). `status --format json` refuses in this state up to prikk 0.57.0, but the plain
+        // text of `status` reads on every prikk, and states the queue's size: exactly one patch, on this view, in a log with one record and no torn
         // byte. The queue's **content** is checked as well, by what prikk reports and what was read above: `verify`
         // reports this code (`doctor` names its finding) only when the queue holds exactly the patches of the block
         // the ref points at (ledger PK-44), and that tip block was required to hold exactly the one published patch.
@@ -351,20 +351,34 @@ impl Recover for Signer {
                 "the repository's queue is not exactly the one patch that was published (more is queued, or the log is torn)",
             );
         }
-        // Where the JSON `status` can still be read (it cannot in the state this step is for), the patch itself.
-        if let Ok(status) = w.status_full(&repo)
-            && (status.trailing_partial_wal_bytes != 0
+        // Where the JSON `status` can be read (it cannot up to prikk 0.57.0 in the state this step is for; 0.58.0 reads
+        // it), the patch itself, and the block the queue is already sealed in (maintenance M51): the block prikk names
+        // must be the tip that was read above, and a status that reads an ordinary queue while `doctor` names a
+        // pending cleanup is two answers of prikk's that disagree. Nothing else of `already_sealed` is read.
+        if let Ok(status) = w.status_full(&repo) {
+            if status.trailing_partial_wal_bytes != 0
                 || status.provisional_worktree.is_some()
                 || status.interrupted_materialization.is_some()
                 || status
                     .queue
                     .patches
                     .iter()
-                    .any(|q| q.patch_id != published.patch_id))
-        {
-            return mismatch(
-                "the repository has a torn log, an interrupted state or a queued patch that is not the published one",
-            );
+                    .any(|q| q.patch_id != published.patch_id)
+            {
+                return mismatch(
+                    "the repository has a torn log, an interrupted state or a queued patch that is not the published one",
+                );
+            }
+            if status
+                .queue
+                .already_sealed
+                .as_ref()
+                .is_none_or(|sealed| sealed.block_id != tip.block_id)
+            {
+                return mismatch(
+                    "prikk's status does not say that the queue is already sealed in the block that was published",
+                );
+            }
         }
         // Its files are the ones that were accepted, read from the block (the worktree cannot be asked yet).
         let change = w.change(&repo, &tip.block_id)?;

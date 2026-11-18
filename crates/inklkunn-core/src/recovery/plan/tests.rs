@@ -37,6 +37,7 @@ fn status(queue: Vec<QueuedPatch>, torn: u64) -> RepoStatus {
             },
             target_ref_status: None,
             patches: queue,
+            already_sealed: None,
         },
     }
 }
@@ -645,6 +646,7 @@ fn cleanup_pending() -> Witness {
     w.worktree = None;
     w.cleanup_pending = Some(CleanupPending {
         status_refused: true,
+        already_sealed: None,
         published: Some(published_block()),
     });
     w
@@ -743,6 +745,65 @@ fn a_pending_cleanup_of_the_acts_own_block_is_finished_with_seal_once_and_record
         declarations: 0,
     });
     assert!(!names(&build(&w)).contains(&"restore-worktree"));
+}
+
+/// The same witness as `refused`, as prikk 0.58.0 shows the state: `status` reads, lists the queue (the tip block's
+/// patches) and says which block it is already sealed in (maintenance M51).
+fn read_instead_of_refused(refused: &Witness, patches: Vec<QueuedPatch>) -> Witness {
+    let mut w = refused.clone();
+    w.status = status(patches, 0);
+    if let Some(c) = w.cleanup_pending.as_mut() {
+        c.status_refused = false;
+        c.already_sealed = Some(PUBLISHED.repeat(64));
+    }
+    w
+}
+
+#[test]
+fn a_pending_cleanup_is_decided_the_same_whether_status_refuses_or_reads_it() {
+    // Maintenance M51: prikk up to 0.57.0 refuses `status --format json` in the state a killed seal leaves, 0.58.0
+    // reads it. The steps, the recorded operations and the stops are the same; only what the plan says it saw differs.
+    let base = cleanup_pending();
+    let refused = build(&base);
+    let read = build(&read_instead_of_refused(&base, vec![patch(MESSAGE)]));
+    assert_eq!(read.stop, None, "{:#?}", read.lines());
+    assert_eq!(names(&read), names(&refused));
+    assert_eq!(read.ops(), refused.ops());
+    let said = |plan: &Plan, what: &str| plan.lines().iter().any(|l| l.contains(what));
+    assert!(said(
+        &refused,
+        "saw: prikk status refuses (an integrity error)"
+    ));
+    assert!(!said(&read, "prikk status refuses"));
+    assert!(
+        said(
+            &read,
+            &format!(
+                "saw: prikk status: 1 patch(es) queued, all already sealed in block {}",
+                PUBLISHED.repeat(64)
+            )
+        ),
+        "{:#?}",
+        read.lines()
+    );
+    // A queue of several patches is the tip block's several patches (PK-44), and is not a stop of its own: the block
+    // that holds more than the act's one change is not the act's, as it is where status refuses.
+    const ANOTHER: &str = "Another\n\nKind: proposal\n";
+    let mut two = base.clone();
+    if let Some(p) = two
+        .cleanup_pending
+        .as_mut()
+        .and_then(|c| c.published.as_mut())
+    {
+        p.message_digests.push(message_digest(ANOTHER));
+    }
+    let read_two = read_instead_of_refused(&two, vec![patch(MESSAGE), patch(ANOTHER)]);
+    assert_eq!(build(&two).stop, Some(Stop::PublishedBlockIsNotTheAct));
+    assert_eq!(build(&read_two).stop, Some(Stop::PublishedBlockIsNotTheAct));
+    // Without a pending cleanup, several queued patches are `several-queued` still.
+    let mut plain = flagged();
+    plain.status = status(vec![patch(MESSAGE), patch(ANOTHER)], 0);
+    assert_eq!(build(&plain).stop, Some(Stop::SeveralQueued));
 }
 
 #[test]
@@ -934,13 +995,11 @@ fn a_pending_cleanup_is_a_stop_unless_doctor_names_exactly_that_code_and_the_blo
             .iter()
             .any(|l| l.contains("STOP (published-block-is-not-the-act)"))
     );
-    // More than one unfinished act, or more than one patch queued, stops before the row is reached.
+    // More than one unfinished act stops before the row is reached (so does more than one patch queued, but not beside
+    // a pending cleanup, whose queue is the block's own patches: `a_pending_cleanup_is_decided_the_same_...`).
     let mut w = cleanup_pending();
     w.acts = vec![published_act(), published_act()];
     assert_eq!(stop_of(&w), Some(Stop::SeveralActs));
-    let mut w = cleanup_pending();
-    w.status = status(vec![patch(MESSAGE), patch(MESSAGE)], 0);
-    assert_eq!(stop_of(&w), Some(Stop::SeveralQueued));
     // A foreign process stops it like every step.
     let mut w = cleanup_pending();
     w.foreign = vec![Foreign {
@@ -1285,6 +1344,7 @@ fn a_view_creation_in_any_other_state_is_a_stop_with_its_own_word_and_nothing_is
             w.doctor = doctor(vec![cleanup_error()]);
             w.cleanup_pending = Some(CleanupPending {
                 status_refused: true,
+                already_sealed: None,
                 published: None,
             });
             w

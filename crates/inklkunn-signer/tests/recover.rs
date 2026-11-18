@@ -116,6 +116,7 @@ if [ "$verb" = doctor ] && [ $# -eq 1 ] && [ -e "$CTL/say-doctor" ]; then cat "$
 if [ "$1 $2" = "ref complete" ] && [ -z "$4" ] && [ -e "$CTL/ref-complete-does-nothing" ]; then echo "$3 completed"; exit 0; fi
 if [ "$1 $2" = "ref complete" ] && [ "$4" = "--plan-only" ] && [ -e "$CTL/say-completion-plan" ]; then cat "$CTL/say-completion-plan"; exit 0; fi
 if [ "$verb" = status ] && [ $# -eq 1 ] && [ -e "$CTL/say-status-text" ]; then cat "$CTL/say-status-text"; exit 0; fi
+if [ "$verb" = status ] && [ $# -gt 1 ] && [ -e "$CTL/say-status-json" ]; then cat "$CTL/say-status-json"; exit 0; fi
 if [ "$verb" = verify ] && [ $# -eq 1 ] && [ -e "$CTL/say-verify-text" ]; then cat "$CTL/say-verify-text"; exit 1; fi
 if [ "$verb" = verify ] && [ $# -gt 1 ] && [ -e "$CTL/say-verify-json" ]; then cat "$CTL/say-verify-json"; exit 1; fi
 exec "{real}" "$@"
@@ -408,17 +409,17 @@ impl Fixture {
         for (path, bytes) in kept {
             std::fs::write(path, bytes).unwrap();
         }
-        assert_eq!(
-            self.queue_count(),
-            u64::MAX,
-            "`status --format json` refuses over the state a killed seal leaves"
-        );
-        assert!(self.cleanup_is_pending());
-        self.prikk_json(&["log", "--ref", MAIN, "--limit", "1", "--format", "json"])
+        let block = self
+            .prikk_json(&["log", "--ref", MAIN, "--limit", "1", "--format", "json"])
             .pointer("/blocks/0/block_id")
             .and_then(serde_json::Value::as_str)
             .unwrap()
-            .to_owned()
+            .to_owned();
+        // `status --format json` refuses over the state a killed seal leaves up to prikk 0.57.0, and 0.58.0 reads it and
+        // says which block the queue is already sealed in (maintenance M51).
+        prikk_probes::assert_status_json_shows_a_pending_cleanup(&self.real, &self.repo, &block);
+        assert!(self.cleanup_is_pending());
+        block
     }
 
     fn cleanup_is_pending(&self) -> bool {
@@ -1453,6 +1454,66 @@ fn the_queue_is_read_from_the_plain_text_of_status_and_only_the_published_patch_
     // The state as prikk prints it finishes.
     f.finish_publication(&p)
         .expect("the queue is the published patch");
+    assert!(!f.cleanup_is_pending());
+    assert_eq!(f.blocks(), blocks);
+}
+
+#[test]
+fn where_status_reads_the_pending_cleanup_it_names_the_published_block_or_the_step_is_not_taken() {
+    // Maintenance M51: from prikk 0.58.0 `status --format json` reads the state and says `queue.already_sealed`. The
+    // answers are made up through the stand-in so that every prikk meets them: one that names another block, one that
+    // reads an ordinary queue, and one that is not the published patch are each refused with nothing done; the
+    // answer that agrees finishes the publication.
+    let Some(f) = fixture("publish-status-json") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    let block = f.publish_and_leave_the_queue(&p);
+    // The one patch, as the block that was published holds it (where `status` refuses it cannot be asked).
+    let patch = f
+        .prikk_json(&["log", "--ref", MAIN, "--limit", "1", "--format", "json"])
+        .pointer("/blocks/0/patch_messages/0/patch_id")
+        .and_then(serde_json::Value::as_str)
+        .expect("the block holds one patch")
+        .to_owned();
+    let blocks = f.blocks();
+    let said = |already_sealed: serde_json::Value, patch_id: &str| {
+        serde_json::json!({
+            "schema_version": "status-report-v1",
+            "active_wal_records": 1,
+            "trailing_partial_wal_bytes": 0,
+            "current_branch": MAIN,
+            "provisional_worktree": null,
+            "interrupted_materialization": null,
+            "queue": {
+                "count": 1,
+                "target_ref": MAIN,
+                "target_ref_status": null,
+                "already_sealed": already_sealed,
+                "patches": [{"patch_id": patch_id, "message": "m", "operations": []}],
+            },
+        })
+        .to_string()
+    };
+    let sealed_in =
+        |id: &str| serde_json::json!({"block_id": id, "route": "prikk seal --allow-no-audit"});
+    let refused = |what: &str, text: String| {
+        f.say("say-status-json", &text);
+        let r = f.finish_publication(&p);
+        assert!(
+            matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("already sealed") || why.contains("not the published one")),
+            "{what}: {r:?}"
+        );
+        assert!(f.cleanup_is_pending(), "{what}");
+        assert_eq!(f.blocks(), blocks, "{what}");
+    };
+    refused("another block", said(sealed_in(&"e".repeat(64)), &patch));
+    refused("an ordinary queue", said(serde_json::Value::Null, &patch));
+    refused("another patch", said(sealed_in(&block), &"f".repeat(64)));
+    // The answer that agrees with the block that was published finishes it, as the plain text alone did.
+    f.say("say-status-json", &said(sealed_in(&block), &patch));
+    f.finish_publication(&p)
+        .expect("status agrees with the history");
     assert!(!f.cleanup_is_pending());
     assert_eq!(f.blocks(), blocks);
 }

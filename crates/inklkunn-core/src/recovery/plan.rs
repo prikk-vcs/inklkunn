@@ -143,9 +143,13 @@ pub struct Published {
 /// --allow-no-audit` for the ref once more. Whether that is safe is a question of whose block was published.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CleanupPending {
-    /// `prikk status` refused (an integrity error) and so the queue could not be read; its absence from the witness
-    /// is a placeholder, not a finding.
+    /// `prikk status` refused (an integrity error) and so the queue could not be read (prikk up to 0.57.0); its
+    /// absence from the witness is a placeholder, not a finding.
     pub status_refused: bool,
+    /// The block `prikk status` says the queue is already sealed in (prikk 0.58.0 and later; maintenance M51). It is
+    /// the block of [`CleanupPending::published`] when that is there (a status that names another block is not read as
+    /// this state: see `cleanup::read`). `None` where `status` refused.
+    pub already_sealed: Option<String>,
     /// The newest block of the one unfinished act's view; `None` when there is not exactly one unfinished act.
     pub published: Option<Published>,
 }
@@ -1066,6 +1070,18 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
     let refused = w.cleanup_pending.as_ref().is_some_and(|c| c.status_refused);
     wit.push(if refused {
         "prikk status refuses (an integrity error): the queue cannot be read".to_owned()
+    } else if let Some(block) = w
+        .cleanup_pending
+        .as_ref()
+        .and_then(|c| c.already_sealed.as_deref())
+    {
+        // prikk 0.58.0 reads this state (M51): the queue it lists is the tip block's patches, already sealed.
+        format!(
+            "prikk status: {} patch(es) queued, all already sealed in block {block}, {} torn byte(s) at the end of the log, view {}",
+            q.count,
+            w.status.trailing_partial_wal_bytes,
+            w.status.current_branch.as_deref().unwrap_or("(none)")
+        )
     } else {
         format!(
             "prikk status: {} patch(es) queued, {} torn byte(s) at the end of the log, view {}",
@@ -1198,7 +1214,10 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
         stop(&mut plan, Stop::SeveralActs);
         return plan;
     }
-    if q.patches.len() > 1 {
+    // Beside a pending cleanup the queue is the tip block's patches (PK-44), which prikk 0.58.0 lists and 0.57.0 and
+    // earlier refuse to: whichever it says, the decision is the cleanup's own, taken below (a block of several patches
+    // is not the act's, and says so there; M51).
+    if q.patches.len() > 1 && w.cleanup_pending.is_none() {
         stop(&mut plan, Stop::SeveralQueued);
         return plan;
     }
