@@ -545,3 +545,46 @@ for 0.4.0. Hand back R-2 – R-5 as one request, `0.3.0-readiness-review-request
   architect's v0.3 lands (R-1), as at 0.2.0.
 - **R-7 (after the architect's review) — the candidate:** the workspace version and the CHANGELOG heading become
   0.3.0, and nothing else changes.
+
+## 0.3.0 readiness: the correction round (2026-11-18; binding, before the candidate)
+
+R-2 – R-5 are **Conditionally Approved** (`.git-exclude/reviewed/0.3.0-readiness-review-result.md`). This is the plan's one
+budgeted round. Hand back RC-1 – RC-6 as one request, `0.3.0-readiness-corrections-review-request.md`, by 2026-11-20. Then
+R-7, the candidate, after the architect's review.
+
+- **RC-1 — _Why is this here?_ must not deny an attached source** (P-a, decision 3).
+  - The section names what it shows: the proposal's own *Sources* field (the form's label). When that field is empty,
+    the section is not shown; there is no *No source was given* sentence.
+  - The claim paragraph's link to the claim page stays the way to the attached sources.
+  - The API's provenance member that carries the same list says, in its OpenAPI description, that it is the proposal's
+    free-text *Sources* field.
+  - en, ja, the glossary rows, and the `why_page` tests that held the old sentence.
+  - Listing the sources attached in that change (D-8's full sentence) is **recorded for 0.4.0**, not built now.
+- **RC-2 — the release notes' lead says only what is true** (P-b, P-c).
+  - The API sentence names what it reaches: claims, sources, provenance and the view comparison, and the curation
+    proposals it writes. It says that threads and the list of views are not in the API yet.
+  - Also:
+    - the claim page states the differences and links to *Compare views*;
+    - *Sources to review* also lists sources never reviewed and those marked unavailable;
+    - *Why is this here?* says *earliest wording found* when it traced by matching text;
+    - podman's settings carry SECURITY.md's AppArmor caveat.
+- **RC-3 — R-2's assertions match their labels** (P-d).
+  - The thread's order is asserted by position.
+  - The overlap shows both texts (D-4).
+  - The paragraph that carries the claim is named.
+  - Correct the labels of `:642` (the API's scope rule) and `:740` (the secret check), and of D-8's claim paragraph
+    (traced by matching text; the `^id` chain is `tests/why_page/`'s).
+- **RC-4 — the upgrade test uses 0.3.0 on the migrated store** (P-e). After the migration, reusing R-2's helpers, a source
+  is attached to a paragraph by proposal, accepted, and one comment is written in its thread. This exercises V16 – V18
+  over migrated data. Dropping `V18` must then fail this test.
+- **RC-5 — two of §7.4's gaps closed** (decision 5).
+  - **A restricted wiki that holds a claim:** its claim page, its *Why is this here?*, *Compare views* and the API's
+    `claims/{id}`, `sources/{id}` and `provenance/{title}` answer exactly as an absent wiki does, to an anonymous visitor
+    and to a signed-in non-member.
+  - **An import that moves a checked source's reference, or states a check,** is refused by name, and nothing is written.
+- **RC-6 — the record** (P-f, P-g).
+  - The report's §3 says D-7 compares 13 pages and lists what is excluded; compare the 303's `Location` too.
+  - §7.4's two stale cells (eight fragments; R-2's import on a real history).
+  - A planted violation for the spawn-gate exemption (a second file that spawns is refused).
+  - A `release-notes.sh` case at exactly 100,000 bytes.
+  - Update the report's numbers for the round.

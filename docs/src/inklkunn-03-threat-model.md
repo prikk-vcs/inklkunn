@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | **v0.3, 2026-11-18** (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
+| Version | **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -325,13 +325,14 @@ Claims and sources are text from strangers that a reader is invited to trust. Th
   - A repository that holds invalid knowledge files (planted, or from before a rule) still serves its pages, lists the
     files in the health list, and reads none of them.
 - **C-17d — Text is data, escaped, and cannot impersonate.**
-  - Every field is printed escaped.
-  - The twelve bidirectional controls are refused in knowledge text (the signer's `is_direction_or_format`).
-    Display scrubs all of Cf. The two sets differ on purpose, so that ZWNJ, ZWJ and the other format characters
-    that real text needs stay writable.
+  - Every field is printed escaped, with its white space collapsed.
+  - The twelve bidirectional controls are refused in knowledge text (the signer's `is_direction_or_format`). The other
+    format characters (ZWNJ, ZWJ and those real text needs) stay as written. The wider Cf scrub is for subprocess
+    output only: bubblewrap's reason line and `curl`'s stderr.
   - Identifiers are shown whole, in `<code>`, wherever two sources could share a title.
-  - **A reference and an archive address are shown as text, never as a link, and never fetched.** No crawler, no link
-    check, no preview: the knowledge layer adds no fetch site, so T-8 is unchanged.
+  - **A reference is shown as text, never as a link. A snapshot's archive address and attachment path are not shown at
+    all. Nothing is fetched.** No crawler, no link check, no preview: the knowledge layer adds no fetch site, so T-8 is
+    unchanged.
   - A snapshot kept as an attachment is served like any attachment, from the content origin (C-6c).
 - **C-17e — The knowledge files merge and never resolve** (D-4).
   - Key by key; an overlap stops with both texts, as C-1i does for pages.
@@ -343,7 +344,7 @@ Claims and sources are text from strangers that a reader is invited to trust. Th
 - **C-17g — Threads** (D-11).
   - Append-only records (the store refuses an update, a delete and a replacing insert, by trigger), read under the
     claim page's own `authorize()` (C-7a).
-  - Notifications never carry content the recipient could not read (C-7b).
+  - A comment raises no notification in 0.3.0, so nothing of a thread reaches an inbox (C-7b holds trivially).
   - A thread never changes a claim; only a curation proposal does.
   - Exported as one JSON line per comment, the body a fenced text block, so no Markdown reader of the bundle sees a
     construct in it.
@@ -545,8 +546,8 @@ never rendered as the record).
   without a curation proposal that states it, is refused (a test per path: a page edit, an import, a system act, the
   generic write API; a check carried across a moved reference, at submit and at acceptance).
 - **C-17c:** a repository with planted invalid knowledge files serves its pages and lists the files.
-- **C-17d:** a reference and an archive address are text, never `href`; a bidirectional control in knowledge text
-  is refused.
+- **C-17d:** a reference is text, never `href`, and an archive address is not rendered; a bidirectional control in
+  knowledge text is refused.
 - **C-17g:** a restricted wiki's thread through every route answers as an absent wiki does (the route enumeration).
 - **C-17i:** the retired-words test in both languages.
 - **INV-12, C-18a:** `root_layout` for planted Arch-style, Debian-style and mixed roots; the probe and prikk's sandbox
