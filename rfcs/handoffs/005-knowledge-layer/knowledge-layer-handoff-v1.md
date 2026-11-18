@@ -599,3 +599,11 @@ the workspace version and the CHANGELOG heading become 0.3.0, and **nothing else
 
 Hand it back as `0.3.0-candidate-review-request.md`. The architect then runs the gates and the release rehearsal on it
 (R-8) and brings the cut to the owner.
+
+## The 0.3.0 candidate approved (2026-11-18)
+
+R-7 (`2c9c955`) is **Approved** (`.git-exclude/reviewed/0.3.0-candidate-review-result.md`). The upgrade test's footer mask
+is accepted as the one necessary change. The architect adds the README's status line (`docs/RELEASING.md` step 5, which
+the R-7 list omitted), runs the release rehearsal on the result (R-8) and brings the cut to the owner (R-9).
+**Nothing is asked of the dev team for 0.3.0.** Until the tag, a change to `main` waits, unless it fixes a defect in the
+candidate. The next work is RFC 006 (0.4.0), after the cut.

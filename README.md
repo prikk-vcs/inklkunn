@@ -19,8 +19,9 @@ embeds, block identifiers, tags, callouts, directives), keeps each wiki as a Por
 repository, and signs on the wiki's behalf with per-wiki keys it holds. It is designed to run alone and,
 later, as a module of the [planeter](https://github.com/prikk-vcs/planeter) forge.
 
-**Status: 0.2.0 (M2) — people sign in, propose changes, review them, and accepted changes are signed into the wiki's
-history.** See [`CHANGELOG.md`](CHANGELOG.md) for what each release holds (and what to do before deploying 0.2.0),
+**Status: 0.3.0 (M3) — a page can say where its statements come from: claims, the sources they rest on, and
+views (named lines of the wiki) to compare, all made through proposals and review.** See [`CHANGELOG.md`](CHANGELOG.md)
+for what each release holds (and what to do before deploying 0.3.0),
 [`docs/STATUS.md`](docs/STATUS.md) for the read-first brief, and [`ROADMAP.md`](ROADMAP.md) for where it goes.
 
 ## Why
