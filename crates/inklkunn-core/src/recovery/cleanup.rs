@@ -9,9 +9,9 @@
 //! ([`super::plan::Step::CompletePublication`]), but only on this witness: `doctor` names that error and, as the plan
 //! then requires, nothing else; `status` either reads or refuses with an integrity error (any other refusal, or a call
 //! that could not run, is not this state and stays a witness error). **The decision is the same on both:** the queue
-//! is the tip block's patches (ledger PK-44) and recovery decides nothing from the queue `status` lists, and where
-//! 0.58.0 does state the block the queue is already sealed in, it must be the block found in the history: a stop, not a
-//! step, when it is not.
+//! is the tip block's patches (ledger PK-44); where 0.58.0 lists it, recovery checks that it is, and that the block
+//! `status` says it is already sealed in is the block found in the history. Where it is not, that is a witness error
+//! and nothing is done (a stop, not a step); the queue `status` lists decides nothing else.
 
 use std::path::Path;
 
