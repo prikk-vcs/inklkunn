@@ -5,6 +5,8 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-23
+
 **M3 — claims and views.** A page can now say where its statements come from. A *claim* is one statement on a page, kept
 as a small file beside the page, with the *sources* it rests on; claims and sources are made and changed only by
 proposals, through a form, and a reviewer accepts them like any other change. A reader sees, on the page, a quiet *Sources

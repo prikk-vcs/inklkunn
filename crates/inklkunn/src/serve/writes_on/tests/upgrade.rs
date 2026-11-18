@@ -235,11 +235,18 @@ fn capture(
         .collect()
 }
 
-/// A page as it is compared: the two servers' ports and the stylesheet's name (a hash of its content) masked.
+/// A page as it is compared: the two servers' ports, the stylesheet's name (a hash of its content) and the footer's
+/// version masked. The footer says `inklkunn version X.Y.Z`, which differs between the two binaries by definition once this
+/// tree is a later release than the one that made the directory; only that version is masked, not the line.
 fn masked(html: &str, ports: [u16; 2]) -> String {
     let mut out = html
         .replace(&format!("localhost:{}", ports[0]), "localhost:PORT")
-        .replace(&format!("localhost:{}", ports[1]), "localhost:CONTENT-PORT");
+        .replace(&format!("localhost:{}", ports[1]), "localhost:CONTENT-PORT")
+        .replace("inklkunn version 0.2.0", "inklkunn version VERSION")
+        .replace(
+            &format!("inklkunn version {}", env!("CARGO_PKG_VERSION")),
+            "inklkunn version VERSION",
+        );
     let mut from = 0;
     while let Some(at) = out
         .get(from..)
