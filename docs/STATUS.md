@@ -521,11 +521,15 @@
   unknown severity word. **prikk's JSON letter of 2026-11-18 is answered in a draft for the owner to send**, which also
   carries the 0.58.0 thanks. Next: CI and the release rehearsal on the pushed tip, then the cut proposal.
 
+- **2026-11-19 — the 0.3.0 cut proposed again** (`docs/releases/0.3.0-plan.md` §9). The candidate is `128b7e1`: CI run
+  44418546306 is green, and **the release rehearsal is green** (run 44418434708, with the test-only prikk 0.58.0; both
+  images run confined). Every exit criterion but the owner's authorization holds.
+
 ## Pending on the owner
 
-- **Authorize the 0.3.0 cut** when the architect brings it again, after the prikk 0.58.0 fix M50 – M55 (`docs/releases/0.3.0-plan.md` §8; target 2026-11-23; the plan itself was authorized 2026-11-18).
+- **Authorize the 0.3.0 cut: the candidate `128b7e1` is ready** (`docs/releases/0.3.0-plan.md` §9; target 2026-11-23; the plan itself was authorized 2026-11-18).
 
-- **Send the reply to prikk** (`.git-exclude/upstream/prikk/draft/2026-11-19-what-we-read-in-your-json-and-0-58-0.md`): it answers their JSON questions and thanks them for 0.58.0. Not urgent: nothing changes in prikk until their owner rules.
+- **Send the reply to prikk** (`.git-exclude/upstream/prikk/send/draft/2026-11-19-what-we-read-in-your-json-and-0-58-0.md`): it answers their JSON questions and thanks them for 0.58.0. Not urgent: nothing changes in prikk until their owner rules.
 
 - **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
   `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
