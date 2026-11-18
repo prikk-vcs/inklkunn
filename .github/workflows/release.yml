@@ -1,5 +1,5 @@
 # RFC 010 D-10: a release is a bare-version tag plus attested artifacts. On a tag push the gates run on the
-# tagged commit (the same two test runs as CI: prikk at the floor on PATH, with the test-only 0.57.0 beside it, and
+# tagged commit (the same two test runs as CI: prikk at the floor on PATH, with the test-only 0.58.0 beside it, and
 # shimmed off), the Linux binaries are built, the container image is built natively per architecture and joined under one tag by a
 # manifest list, the tarballs and the image are attested, the GitHub release is created from the CHANGELOG
 # section, and the crates are published in dependency order. The `rehearsal` dispatch mode exercises every
@@ -38,8 +38,8 @@ env:
   # The SECOND, test-only prikk (maintenance M25; one value with ci.yml, held by floor-check): never a floor, never in
   # the image. The tests of what 0.57.0 added run on the first prikk 0.57.0 or newer on PATH (the floor's *no verb*
   # answer on the first prikk on PATH), and print a guarded skip line when there is none; the gates fail on it.
-  PRIKK_TEST_VERSION: "0.57.0"
-  PRIKK_TEST_SHA256_X86_64: "4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8"
+  PRIKK_TEST_VERSION: "0.58.0"
+  PRIKK_TEST_SHA256_X86_64: "0462b9a590d0b945bb6266ce09983055768cb564415837bdb8ed462b5aa10dfe"
   # The release the upgrade test starts from (0.3.0 readiness, R-3; held by floor-check): the 0.2.0 release binary of
   # this project, a pinned release asset like the test-only prikk. The upgrade test has it make a data directory (a
   # wiki, two accounts, a key store, an accepted change, an open proposal) and opens that directory with this tree's

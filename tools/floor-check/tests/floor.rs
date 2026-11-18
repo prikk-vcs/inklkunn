@@ -100,21 +100,21 @@ fn the_test_only_prikk_is_one_value_in_both_workflows_and_is_never_a_floor() {
 
 #[test]
 fn the_test_only_prikk_shape_rules_catch_planted_failures() {
-    let ok = "env:\n  PRIKK_TEST_VERSION: \"0.57.0\"\n  PRIKK_TEST_SHA256_X86_64: \"4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8\"\nsteps:\n  curl \"releases/download/${PRIKK_TEST_VERSION}/prikk\"\n  echo \"${PRIKK_TEST_SHA256_X86_64}  x\" | sha256sum -c -\n  curl \"releases/download/${PRIKK_VERSION}/prikk\"\n  cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee with-prikk.log\n  if grep -n -E 'skipping(: (prikk 0\\.57\\.0 or newer not found|no prikk older than 0\\.57\\.0|PID namespaces unavailable|prikk not on PATH|bubblewrap cannot confine|bwrap or curl not available|inklkunn 0\\.2\\.0 not found)| the confined policy)' with-prikk.log; then\n    echo \"skipped\" >&2\n    exit 1\n  fi\n  SYSTEM_PATH=\"$(echo \"$PATH\" | grep -v -x -e \"$HOME/.local/bin\" -e \"$HOME/.local/prikk-test/bin\")\"\n  cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee shimmed.log\n";
+    let ok = "env:\n  PRIKK_TEST_VERSION: \"0.58.0\"\n  PRIKK_TEST_SHA256_X86_64: \"0462b9a590d0b945bb6266ce09983055768cb564415837bdb8ed462b5aa10dfe\"\nsteps:\n  curl \"releases/download/${PRIKK_TEST_VERSION}/prikk\"\n  echo \"${PRIKK_TEST_SHA256_X86_64}  x\" | sha256sum -c -\n  curl \"releases/download/${PRIKK_VERSION}/prikk\"\n  cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee with-prikk.log\n  if grep -n -E 'skipping(: (prikk 0\\.57\\.0 or newer not found|no prikk older than 0\\.57\\.0|PID namespaces unavailable|prikk not on PATH|bubblewrap cannot confine|bwrap or curl not available|inklkunn 0\\.2\\.0 not found)| the confined policy)' with-prikk.log; then\n    echo \"skipped\" >&2\n    exit 1\n  fi\n  SYSTEM_PATH=\"$(echo \"$PATH\" | grep -v -x -e \"$HOME/.local/bin\" -e \"$HOME/.local/prikk-test/bin\")\"\n  cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee shimmed.log\n";
     assert!(test_prikk_shape_violations(ok).is_empty());
     assert_eq!(
         test_prikk(ok),
         Some((
-            "0.57.0".into(),
-            "4e621147c3064c1f456803c67f120df9ea35d93e40554e920c9ea55e69d3f9a8".into()
+            "0.58.0".into(),
+            "0462b9a590d0b945bb6266ce09983055768cb564415837bdb8ed462b5aa10dfe".into()
         ))
     );
     let broken = |from: &str, to: &str| ok.replacen(from, to, 1);
     for (what, yaml) in [
-        ("not recorded", broken("PRIKK_TEST_VERSION: \"0.57.0\"", "")),
+        ("not recorded", broken("PRIKK_TEST_VERSION: \"0.58.0\"", "")),
         (
             "a checksum that is not a checksum",
-            broken("4e621147c3064c1f", "zzzzzzzzzzzzzzzz"),
+            broken("0462b9a590d0b945", "zzzzzzzzzzzzzzzz"),
         ),
         (
             "installed after the floor",

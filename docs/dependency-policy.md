@@ -38,7 +38,7 @@
    `rustup default`. Moving the compiler is one commit: the file, every install, `RUST_TOOLCHAIN`.
 9. **The prikk floor is one value; the test-only prikk is a second, and never a floor** (RFC 010 D-3, amended by
    maintenance M25). The floor is the driver's `MIN_PRIKK_VERSION`, the prikk of the image and the first prikk on
-   `PATH` in the test runs. CI and the release gates also install one newer, **test-only** prikk (today 0.57.0)
+   `PATH` in the test runs. CI and the release gates also install one newer, **test-only** prikk (today 0.58.0)
    with its own checksum recorded in the workflow, measured against the release asset and not fetched beside it,
    after the floor on `PATH`, never in the image. A test of what only it can do runs on it and prints a guarded
    skip line (`skipping: prikk 0.57.0 or newer not found`) when it is absent; the with-prikk run fails if one
@@ -83,7 +83,7 @@
 
 ## Runtime prerequisites (not crates, but part of the supply chain)
 
-prikk ≥ 0.54.0 (the floor; checksum-verified release asset in the image; CI and the release gates add the test-only 0.57.0 beside it, checksum-verified too, never shipped), bubblewrap, prlimit (util-linux), curl (outbound HTTPS for OpenID Connect, run only by `inklkunn-fetch`, in its own bubblewrap under `prlimit`; needed when OpenID Connect is configured, `INKLKUNN_OIDC_ISSUER`; in the image) and a system CA bundle.
+prikk ≥ 0.54.0 (the floor; checksum-verified release asset in the image; CI and the release gates add the test-only 0.58.0 beside it, checksum-verified too, never shipped), bubblewrap, prlimit (util-linux), curl (outbound HTTPS for OpenID Connect, run only by `inklkunn-fetch`, in its own bubblewrap under `prlimit`; needed when OpenID Connect is configured, `INKLKUNN_OIDC_ISSUER`; in the image) and a system CA bundle.
 
 ## Appendix — lock inventory
 

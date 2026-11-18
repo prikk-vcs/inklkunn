@@ -67,14 +67,16 @@ glibc 2.35 or newer; a step refuses a binary that needs a newer glibc. The conta
 **The floor and the test-only prikk.** The floor (`PRIKK_VERSION`, today 0.54.0) is the oldest prikk inklkunn
 runs against: it is the driver's `MIN_PRIKK_VERSION`, the prikk in the image, and the first prikk on `PATH` in the
 test runs, so every test that takes "the prikk" takes it. CI and the release gates also install **one test-only
-prikk** (`PRIKK_TEST_VERSION`, today 0.57.0; RFC 010 D-3, amended by maintenance M25): a newer release, with its own
+prikk** (`PRIKK_TEST_VERSION`, today 0.58.0; RFC 010 D-3, amended by maintenance M25): a newer release, with its own
 checksum recorded in the workflow (`PRIKK_TEST_SHA256_X86_64`, the checksum of the release asset inklkunn measured,
 not one fetched beside it), whose only use is to run the tests of what the floor cannot (the take-back, the
 stale-lock preview, the format-marker classifier). It is never a floor, never in the driver's constant or the image,
 and it is the second prikk on `PATH`. Each such test finds it itself, runs its subject on it, and prints
 `skipping: prikk 0.57.0 or newer not found` (or `skipping: no prikk older than 0.57.0 (and at the floor) found`
 for the test of the floor's *no verb* answer) when it is not there; the with-prikk run fails if either line
-appears, so in CI no such test passes by skipping. Moving the test-only prikk is a one-value change in `ci.yml`
+appears, so in CI no such test passes by skipping. The `0.57.0` in those two lines is the release that added what the
+tests exercise, a threshold and not the test-only prikk's version (which is 0.58.0, newer, so the tests run on it);
+0.57.0 itself is run by the architect's gates, not by a workflow. Moving the test-only prikk is a one-value change in `ci.yml`
 and `release.yml` (version and checksum), checked by `floor-check`; moving the floor is a decision (RFC 010 D-3).
 
 **The release the upgrade test starts from.** The upgrade test (0.3.0 readiness, R-3) has the **0.2.0 release binary of inklkunn** make a data directory and this tree open it, so CI and the release gates install that binary too (`UPGRADE_FROM_VERSION`, `UPGRADE_FROM_SHA256_X86_64` in `ci.yml` and `release.yml`: the checksum of the release asset, checked before it is unpacked, held equal in both by `floor-check`). It is on `PATH` in a directory of its own and only that test looks for it; it prints `skipping: inklkunn 0.2.0 not found` when it is not there, and the with-prikk run fails if that line appears. A release after 0.3.0 moves it, if the owner wants the upgrade shown from a later release, by changing the version and the checksum in both workflows and the version the test looks for (a release's `inklkunn --version` names its commit).
