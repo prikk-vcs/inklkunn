@@ -83,6 +83,16 @@ own PID namespace and cannot find one in another container; the lock on the wiki
 `prikk` someone runs by hand. The data directory must be on a local filesystem (or a bind mount of one); a network
 filesystem (NFS, SMB, any `local_lock` setup) is unsupported, and none of the locks here is promised to hold there.
 
+**Stale locks.** A killed acceptance can leave prikk's lock files behind. The first step of a recovery clears each lock
+the plan names, with `prikk unlock --lock <path> --force`, **on the word of the service's own lease record** (no holder of
+the wiki is alive, and no foreign process is in the repository), and never on what `prikk unlock` says of the holder: a
+lock's recorded process id means nothing inside another PID namespace. `--force` is the one form that clears on every
+prikk from 0.54.0 on. `--yes` is refused by prikk 0.57.0 for a holder it says appears running, and by 0.58.0 also for a
+holder whose liveness it cannot judge (a lock an older prikk wrote, which records no start time); 0.54.0 and 0.55.0
+refuse `--yes` and `--force` together, so recovery gives one of them. Every other check stays: the lock must still be
+held, of a kind an acceptance leaves, and inside the wiki's own `.prikk`. An *empty* lock is not cleared by recovery at
+all (see below): it names no process, so no lease record can say it is ours.
+
 `<wiki>` is the slug or the id. The plan names every witness recovery read (the lease record, the unfinished
 acts, `prikk status`, `prikk doctor`, the worktree) and either lists the steps it will take, each one something
 the acceptance itself would have done, or says **STOP** with a fixed word and what that word means. A recovery

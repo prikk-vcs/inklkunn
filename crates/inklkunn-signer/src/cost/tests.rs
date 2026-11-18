@@ -74,7 +74,7 @@ fn every_verb_the_signer_runs_has_a_rule_and_is_found_by_its_arguments() {
         (&["doctor"], WriteVerb::Doctor),
         (&["doctor", "--discard-damaged-commits"], WriteVerb::Doctor),
         (&["unlock"], WriteVerb::Unlock),
-        (&["unlock", "--lock", "/x/y", "--yes"], WriteVerb::Unlock),
+        (&["unlock", "--lock", "/x/y", "--force"], WriteVerb::Unlock),
         (
             &["cat", "--path", "p", "--ref", "heads/main"],
             WriteVerb::Cat,

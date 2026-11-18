@@ -88,7 +88,7 @@ pub(crate) enum WriteVerb {
     ArchiveExport,
     /// `doctor`: the read-only diagnostics, and `--discard-damaged-commits` (recovery; handoff 004 T5).
     Doctor,
-    /// `unlock`: the listing, and `--lock <path> --yes` (recovery; handoff 004 T5).
+    /// `unlock`: the listing, and `--lock <path> --force` (recovery; handoff 004 T5, maintenance M50).
     Unlock,
     /// `cat`: one file's bytes at a ref (recovery restores a worktree from the tip).
     Cat,

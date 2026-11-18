@@ -1110,10 +1110,17 @@ impl Writes {
         })
     }
 
-    /// `prikk unlock --lock <path> --yes`: clear one lock file. **The caller has decided** (recovery, from the
+    /// `prikk unlock --lock <path> --force`: clear one lock file. **The caller has decided** (recovery, from the
     /// lease record; never from the liveness line). Signs nothing.
+    ///
+    /// `--force` is the one form that clears on every prikk from 0.54.0 on, whatever the lock says of its holder
+    /// (maintenance M50, measured): `--yes` is refused from 0.57.0 for a holder that appears running and from 0.58.0
+    /// also for one whose liveness is unknown (an empty lock, a lock an older prikk wrote), and `--yes` together
+    /// with `--force` is refused as a duplicate by 0.54.0 and 0.55.0. prikk's own check is no evidence inside a PID
+    /// namespace (PL-8) and the lease record has already decided; prikk's letter of 2026-11-18 agrees that `--force`
+    /// on the lease's word is the right use.
     pub(crate) fn unlock(&self, repo: &Path, path: &str) -> Result<(), SignerError> {
-        self.write_keyless(repo, &["unlock", "--lock", path, "--yes"])
+        self.write_keyless(repo, &["unlock", "--lock", path, "--force"])
             .map(|_| ())
     }
 

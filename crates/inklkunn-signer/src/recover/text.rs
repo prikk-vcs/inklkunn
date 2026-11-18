@@ -389,15 +389,6 @@ pub struct HeldLock {
     pub liveness: String,
 }
 
-impl HeldLock {
-    /// Does prikk say the process that took this lock appears to be running? A positive answer is prikk's reliable
-    /// one, and prikk 0.57.0's `unlock --yes` does not clear such a lock (measured, maintenance M10). Used only for what a plan
-    /// promises of a clear (maintenance M31); a negative or unknown answer says nothing.
-    pub fn appears_running(&self) -> bool {
-        self.liveness.starts_with("appears running")
-    }
-}
-
 /// Read the stdout of `prikk unlock` (the listing; it clears nothing).
 pub fn parse_unlock_output(stdout: &str) -> Result<Vec<HeldLock>, String> {
     let mut out: Vec<HeldLock> = Vec::new();

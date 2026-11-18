@@ -14,7 +14,10 @@
 //! made on cue: handoff 004, P15; `leaves-the-lock` adds the stale `active.lock` the killed process would have left,
 //! and `leaves-only-the-metadata` puts back the ref's metadata but not the queue: the other state a kill just after
 //! the publication leaves, a lone `ACTIVE-REF-METADATA-DEBRIS` warning); `fail-unlock-clear` fails `unlock` only when
-//! it is asked to clear a lock (`unlock --lock <path> ...`), so the listing still works; `leads-after-branch-create`
+//! it is asked to clear a lock (`unlock --lock <path> ...`), so the listing still works; `appears-running` lists every lock as one
+//! whose holder appears running and refuses a clear that is not `--force` (prikk 0.57.0's `--yes`), and `refuse-yes` refuses
+//! a clear that is not `--force` for any holder (prikk 0.58.0's `--yes` for a holder it cannot judge): every clear's arguments
+//! are logged, for `World::unlock_calls`; `leads-after-branch-create`
 //! runs the real `branch create` and puts the ref log back as it was (a view's creation killed between the pointer and
 //! the log, as in `view_recovery.rs`); `list-fails-after-clear` fails
 //! the listing of locks once a clear has been asked for, and `relock-after-clear` (holding a path) lets the real clear
@@ -102,12 +105,16 @@ if [ "$verb" = uncommit ] && [ -e "$CTL/hold-uncommit" ]; then
   n=0
   while [ ! -e "$CTL/release" ] && [ "$n" -lt 400 ]; do sleep 0.05; n=$((n + 1)); done
 fi
+if [ "$verb" = unlock ] && [ "$#" -gt 1 ]; then echo "$*" >> "$CTL/unlock-args.log"; fi
 if [ "$verb" = unlock ] && [ -e "$CTL/appears-running" ]; then
   if [ "$#" -eq 1 ]; then
     "{real}" "$@" | sed 's/^  liveness: .*/  liveness: appears running -- do not clear: the process that took the lock is still running (same pid and start time)/'
     exit 0
   fi
-  echo "error: precondition not met: the process that took the lock appears running -- refusing to clear its lock. --yes does not clear a lock whose holder appears running." >&2; exit 1
+  case " $* " in *" --force "*) ;; *) echo "error: precondition not met: the process that took the lock appears running -- refusing to clear its lock. --yes does not clear a lock whose holder appears running." >&2; exit 1;; esac
+fi
+if [ "$verb" = unlock ] && [ "$#" -gt 1 ] && [ -e "$CTL/refuse-yes" ]; then
+  case " $* " in *" --force "*) ;; *) echo "error: precondition not met: whether the process that took the lock is still running cannot be established (written by an older prikk, which recorded no start time to check against) -- refusing to clear its lock. --yes does not clear a lock whose holder's liveness is unknown. --force clears it anyway." >&2; exit 1;; esac
 fi
 if [ "$verb" = unlock ] && [ "$#" -gt 1 ] && [ -e "$CTL/fail-unlock-clear" ]; then echo "error: precondition not met: injected failure of unlock --lock" >&2; exit 1; fi
 if [ "$verb" = unlock ] && [ "$#" -eq 1 ] && [ -e "$CTL/list-fails-after-clear" ] && [ -e "$CTL/unlock-cleared" ]; then echo "error: precondition not met: injected failure of unlock (listing)" >&2; exit 1; fi
@@ -591,6 +598,16 @@ impl World {
             .lines()
             .filter(|l| *l == "uncommit")
             .count()
+    }
+
+    /// Every `unlock --lock <path> ...` call prikk was given, as the stand-in logged it (the verb first): how recovery
+    /// asked for each clear (maintenance M50).
+    fn unlock_calls(&self) -> Vec<String> {
+        std::fs::read_to_string(self.ctl.join("unlock-args.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
     }
 
     fn recover(&self) -> inklkunn_core::RecoveryReport {
@@ -2173,68 +2190,33 @@ fn on_0_57_0_a_plan_with_a_stale_lock_says_the_run_clears_it_and_stops_with_the_
 }
 
 #[test]
-fn on_0_57_0_a_plan_with_a_lock_whose_holder_appears_running_says_the_run_stops_at_the_lock() {
-    // Maintenance M31 (W-f). prikk 0.57.0's `unlock --yes` refuses a holder that appears running (measured, M10; the
-    // stand-in prints that listing and that refusal, because an old-style body reads `unknown` on 0.57.0 whatever its
-    // pid is). The plan promised a clear and a preview; now it says what the run does, and the run does exactly that.
+fn on_0_57_0_a_plan_with_a_lock_whose_holder_appears_running_says_the_run_clears_it_and_it_does() {
+    // Maintenance M31 (W-f) said the run stops here, because prikk 0.57.0's `unlock --yes` refuses a holder that appears
+    // running (measured, M10; the stand-in prints that listing and that refusal, because an old-style body reads
+    // `unknown` on 0.57.0 whatever its pid is). M50: the run clears with `--force` on the lease record's word (PL-8),
+    // which that prikk accepts, so the plan promises the clear and the preview, exactly as for any stale lock, and the
+    // run does exactly that.
     let Some(w) = World::new_057("promise-running-057", LeaseConfig::default()) else {
         return;
     };
-    w.plant_queued_patch(
-        "pages/Home.md",
-        "---\ntitle: Home\nid: p-home\n---\n\nPlanted.\n",
-    );
-    let lock = plant_lock(
-        &w.repo,
-        "active/default/active.lock",
-        2_147_483_000,
-        "active",
-    );
-    w.flag(RecoveryReason::Interrupted);
     w.control("appears-running", "");
-    let id = w.queued_patch_id();
-    let word = RecoverOptions {
-        discard_queued_patch: Some(id),
-    };
-    let said = "a lock held by a process prikk says appears running stands in the way: a run stops at clear-locks, shows no preview, and takes nothing back";
-    let planned = w
-        .recovery
-        .recover_with(&w.wiki, RecoveryMode::PlanOnly, &word)
-        .unwrap();
-    assert_eq!(planned.plan.discard_unused.as_deref(), Some(said));
-    let notes = planned.plan.notes.join("\n");
+    plan_then_run(&w, true, true);
+    let asked = w.unlock_calls();
+    assert_eq!(asked.len(), 1, "{asked:?}");
     assert!(
-        notes.contains("appears running")
-            && notes.contains("stops at that step, with no preview")
-            && !notes.contains("the run clears it first"),
-        "{notes}"
+        asked
+            .iter()
+            .all(|a| a.ends_with(" --force") && !a.contains("--yes")),
+        "{asked:?}"
     );
-    let run = w
-        .recovery
-        .recover_with(&w.wiki, RecoveryMode::Run, &word)
-        .unwrap();
-    assert!(
-        matches!(
-            &run.outcome,
-            RecoveryOutcome::Stopped { at: Some("clear-locks"), why }
-                if why.starts_with("the lock was not cleared: ") && why.contains("appears running")
-        ),
-        "{:#?}",
-        run.lines()
-    );
-    assert!(run.done.is_empty());
-    assert!(Path::new(&lock).exists(), "the lock stays");
-    assert_eq!(w.uncommit_calls(), 0, "no preview was read");
-    assert_eq!(w.queue_count(), 1, "nothing was taken back");
-    assert_eq!(run.plan.discard_unused.as_deref(), Some(said));
     w.uncontrol("appears-running");
 }
 
 #[test]
-fn on_0_57_0_a_plain_stale_lock_whose_holder_appears_running_is_planned_as_the_attempt_it_is() {
-    // Maintenance M36 (Z-d). The same listing and refusal as the test above (prikk 0.57.0's), with nothing queued: the
-    // plan used to say only "clear 1 stale lock(s) ... prikk's own liveness line is not consulted", and the run then
-    // stopped at clear-locks. The step's line says that prikk says the holder appears running and what the run does.
+fn on_0_57_0_a_plain_stale_lock_whose_holder_appears_running_is_planned_and_cleared_like_any_other()
+{
+    // Maintenance M36 (Z-d) planned a stop at a holder prikk calls running (0.57.0's refusal of `--yes`). M50: the run
+    // clears it with `--force`, the plan says only what it says of every stale lock, and nothing is left held.
     let Some(w) = World::new_057("plain-running-057", LeaseConfig::default()) else {
         return;
     };
@@ -2250,28 +2232,9 @@ fn on_0_57_0_a_plain_stale_lock_whose_holder_appears_running_is_planned_as_the_a
     assert_eq!(nth(&step_names(&planned), 0), &"clear-locks");
     let line = nth(&planned.plan.steps, 0).line();
     assert!(
-        line.contains("prikk says the holder of active (recorded pid 2147483000) appears running")
-            && line
-                .contains("the run tries to clear it, and if prikk refuses it stops at this step"),
-        "{line}"
-    );
-    let run = w.recover();
-    assert!(
-        matches!(
-            &run.outcome,
-            RecoveryOutcome::Stopped { at: Some("clear-locks"), why }
-                if why.starts_with("the lock was not cleared: ") && why.contains("appears running")
-        ),
-        "the plan said so: {:#?}",
-        run.lines()
-    );
-    assert!(Path::new(&lock).exists(), "the lock stays");
-    // A holder prikk does not say is running is the plain promise, and the run keeps it.
-    w.uncontrol("appears-running");
-    let planned = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
-    let line = nth(&planned.plan.steps, 0).line();
-    assert!(
-        !line.contains("appears running") && !line.contains("stops at this step"),
+        line.contains("active recorded pid 2147483000 prikk says \"appears running")
+            && !line.contains("stops at this step")
+            && !line.contains("does not clear a holder"),
         "{line}"
     );
     let run = w.recover();
@@ -2282,6 +2245,15 @@ fn on_0_57_0_a_plain_stale_lock_whose_holder_appears_running_is_planned_as_the_a
         run.lines()
     );
     assert!(!Path::new(&lock).exists(), "the lock was cleared");
+    let asked = w.unlock_calls();
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert!(
+        asked
+            .iter()
+            .all(|a| a.ends_with(" --force") && !a.contains("--yes")),
+        "{asked:?}"
+    );
+    w.uncontrol("appears-running");
 }
 
 #[test]
@@ -2573,6 +2545,10 @@ fn a_planted_stale_lock_is_cleared_and_reported_even_when_prikk_thinks_its_proce
     );
     let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
     assert_eq!(nth(&step_names(&shown), 0), &"clear-locks");
+    // M50: prikk 0.58.0 refuses `unlock --yes` for a holder whose liveness it cannot establish (an old-style body is
+    // one), 0.57.0 for one that appears running. The stand-in refuses `--yes` whatever prikk runs underneath, so that
+    // this holds on every prikk in the range: the step is `--force`, on the lease record's word.
+    w.control("refuse-yes", "");
     let r = w.recover();
     assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
     assert_eq!(nth(&step_names(&r), 0), &"clear-locks");
@@ -2580,6 +2556,14 @@ fn a_planted_stale_lock_is_cleared_and_reported_even_when_prikk_thinks_its_proce
         nth(&r.done, 0).detail.contains("2 lock(s) cleared"),
         "{:?}",
         r.done
+    );
+    let asked = w.unlock_calls();
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    assert!(
+        asked.iter().all(|a| a.starts_with("unlock --lock ")
+            && a.ends_with(" --force")
+            && !a.contains("--yes")),
+        "{asked:?}"
     );
     assert!(witnesses.locks(&w.wiki.id).unwrap().is_empty());
     assert!(!Path::new(&live).exists() && !Path::new(&dead).exists());
@@ -4168,8 +4152,8 @@ fn an_error_after_the_take_back_carries_the_steps_that_were_done() {
 
 #[test]
 fn a_lock_that_could_not_be_cleared_is_a_stop_at_that_step_with_nothing_done() {
-    // Maintenance M18 (R-c). 0.57.0's `unlock --yes` can refuse a holder that appears running; the run stops at
-    // `clear-locks`, no preview is shown, and the plan still carries its intent (the sentence the end event no longer
+    // Maintenance M18 (R-c). A clear prikk refuses (the stand-in's `fail-unlock-clear`; before M50 it was 0.57.0's
+    // refusal of `--yes` for a holder that appears running); the run stops at `clear-locks`, no preview is shown, and the plan still carries its intent (the sentence the end event no longer
     // takes from it: `inklkunn`'s `discard_word_fate` reads `outcome` and `done`). Needs 0.57.0 for the preview.
     let Some(w) = World::new_057("lock-not-cleared", LeaseConfig::default()) else {
         return;

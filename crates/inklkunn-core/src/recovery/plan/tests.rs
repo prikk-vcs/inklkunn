@@ -2012,21 +2012,17 @@ fn a_plan_with_a_stale_lock_held_never_promises_the_take_back_whatever_it_was_gi
 }
 
 #[test]
-fn a_plan_promises_a_clear_only_when_prikk_does_not_say_the_holder_is_running() {
-    // M31 (W-f): prikk 0.57.0's `unlock --yes` does not clear a holder that appears running, so the plan says the run
-    // stops at the lock and why, and never that it clears it and shows the preview. A holder prikk calls not running,
-    // or cannot judge, is the promise it was (the lease record decides: PL-8).
+fn a_plan_promises_the_clear_whatever_prikk_says_of_the_holder() {
+    // M50 (prikk 0.58.0): the run clears with `unlock --force` on the lease record's word (PL-8), which every prikk from
+    // 0.54.0 on accepts for a holder that appears running, one that does not, and one that cannot be judged (an empty
+    // lock, a lock an older prikk wrote). The plan used to say the run stops at a holder that appears running (M31, for
+    // 0.57.0's refusal of `--yes`); it promises the clear for all of them, and says nothing of a stop.
     let (mut w, id) = orphan();
-    for (liveness, running) in [
-        (
-            "appears running -- do not clear: the process that took the lock is still running",
-            true,
-        ),
-        (
-            "does not appear to be running (not proof it is safe to clear)",
-            false,
-        ),
-        ("unknown: written by an older prikk", false),
+    for liveness in [
+        "appears running -- do not clear: the process that took the lock is still running",
+        "does not appear to be running (not proof it is safe to clear)",
+        "unknown: written by an older prikk",
+        "unknown: the lock body is incomplete: still being written, or damaged",
     ] {
         w.locks = vec![lock("active", 2_147_483_000, liveness)];
         for offer in [DiscardOffer::InARun, DiscardOffer::AfterLocks] {
@@ -2034,52 +2030,34 @@ fn a_plan_promises_a_clear_only_when_prikk_does_not_say_the_holder_is_running() 
             let notes = said.notes.join("\n");
             let word = said.discard_unused.clone().unwrap_or_default();
             assert_eq!(said.stop, Some(Stop::ForeignQueuedPatch));
-            // The step is the run's attempt either way.
             assert_eq!(names(&said), ["clear-locks"]);
-            if running {
-                assert!(
-                    notes.contains("appears running")
-                        && notes
-                            .contains("the run tries to clear it (step 1) and stops at that step")
-                        && !notes.contains("the run clears it first")
-                        && !notes.contains("and the command"),
-                    "{offer:?}: {notes}"
-                );
-                assert_eq!(
-                    word,
-                    "a lock held by a process prikk says appears running stands in the way: a run stops at clear-locks, shows no preview, and takes nothing back"
-                );
-                assert!(!word.contains("next run takes the patch back"));
-            } else {
-                assert!(
-                    notes.contains("the run clears it first") && !notes.contains("appears running"),
-                    "{offer:?}: {notes}"
-                );
-                assert!(
-                    word.contains("a run clears it and stops with the preview"),
-                    "{word}"
-                );
-            }
+            assert!(
+                notes.contains("the run clears it first")
+                    && !notes.contains("appears running")
+                    && !notes.contains("stops at that step"),
+                "{liveness}: {offer:?}: {notes}"
+            );
+            assert!(
+                word.contains("a run clears it and stops with the preview")
+                    && !word.contains("stops at clear-locks"),
+                "{liveness}: {word}"
+            );
         }
     }
 }
 
 #[test]
-fn a_plain_stale_lock_whose_holder_appears_running_says_the_run_tries_and_may_stop_at_it() {
-    // M36 (Z-d): M31 covered only the lock that stands in front of a take-back. A stale lock with nothing queued was still
-    // planned as "clear ... prikk's own liveness line is not consulted", with no warning, and on 0.57.0 the run then
-    // failed at clear-locks. The step's line now says that prikk says the holder appears running, that 0.57.0's
-    // `unlock --yes` does not clear such a holder, and what the run does about it. The words are 0.57.0's listing's.
+fn a_plain_stale_lock_is_planned_as_the_clear_whatever_prikk_says_of_its_holder() {
+    // M36 (Z-d) said, of a holder prikk calls running, that 0.57.0's `unlock --yes` does not clear it and that the run
+    // may stop at it. M50: the run clears with `--force`, so the step's line carries prikk's words as the record of
+    // what it said (the lease record decides) and promises the clear for every answer.
     let running = "appears running -- do not clear: the process that took the lock is still running (same pid and start time)";
-    for (liveness, said) in [
-        (running, true),
-        // The older prikks' words for the same answer, and the answers that promise the clear.
-        ("appears running -- do not clear", true),
-        (
-            "does not appear to be running (not proof it is safe to clear)",
-            false,
-        ),
-        ("unknown: written by an older prikk", false),
+    for liveness in [
+        running,
+        "appears running -- do not clear",
+        "does not appear to be running (not proof it is safe to clear)",
+        "unknown: written by an older prikk",
+        "unknown: the lock body is incomplete: still being written, or damaged",
     ] {
         let mut w = flagged();
         w.locks = vec![
@@ -2091,32 +2069,16 @@ fn a_plain_stale_lock_whose_holder_appears_running_says_the_run_tries_and_may_st
         assert_eq!(plan.stop, None, "{liveness}");
         assert_eq!(nth(&names(&plan), 0), &"clear-locks");
         let line = nth(&plan.steps, 0).line();
-        // The step is the same either way: the run tries, and the lease record decides (PL-8).
         assert!(
             line.starts_with("clear 2 stale lock(s) (")
-                && line.contains("prikk's own liveness line is not consulted"),
-            "{line}"
+                && line.contains("prikk's own liveness line is not consulted")
+                && line.contains(&format!(
+                    "active recorded pid 2147483000 prikk says \"{liveness}\""
+                ))
+                && !line.contains("stops at this step")
+                && !line.contains("does not clear a holder"),
+            "{liveness}: {line}"
         );
-        if said {
-            assert!(
-                line.contains(
-                    "prikk says the holder of active (recorded pid 2147483000) appears running"
-                ) && !line.contains("container:object-store (recorded pid")
-                    && line
-                        .contains("`unlock --yes` does not clear a holder it says appears running")
-                    && line.contains(
-                        "stops at this step with the lock still held and nothing after it done"
-                    ),
-                "{liveness}: {line}"
-            );
-        } else {
-            assert!(
-                !line.contains("appears running")
-                    && !line.contains("stops at this step")
-                    && !line.contains("does not clear a holder"),
-                "{liveness}: {line}"
-            );
-        }
     }
 }
 

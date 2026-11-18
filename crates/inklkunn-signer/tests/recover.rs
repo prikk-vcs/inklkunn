@@ -84,7 +84,9 @@ fn account(name: &str) -> Actor {
 }
 
 /// The stand-in: every call goes to the real prikk unless a control file names the verb (`fail-<verb>`), or says what
-/// the plain-text `status` (`say-status-text`) or `verify` (`say-verify-text`, `say-verify-json`) prints.
+/// the plain-text `status` (`say-status-text`) or `verify` (`say-verify-text`, `say-verify-json`) prints. Every clear of
+/// a lock (`unlock --lock ...`) is logged in `unlock-args.log`, and `refuse-yes` refuses one that is not `--force`,
+/// which is what prikk 0.58.0 does with `--yes` for a holder it cannot judge (maintenance M50).
 fn write_standin(ctl: &Path, real: &Path) -> PathBuf {
     let script = format!(
         r#"#!/bin/sh
@@ -96,6 +98,10 @@ if [ "$verb" = ref ] && [ -e "$CTL/lockseeds-ref" ]; then chmod 0500 "$(dirname 
 if [ "$1 $2" = "ref complete" ] && [ -z "$4" ] && [ -e "$CTL/lockseeds-ref-complete" ]; then chmod 0500 "$(dirname "${{PRIKK_AUTHOR_SEED_FILE:-$PRIKK_MAINTAINER_SEED_FILE}}")"; fi
 if [ "$1 $2" = "ref complete" ] && [ -z "$4" ] && [ -e "$CTL/fail-ref-complete" ]; then echo "error: precondition not met: injected failure of the completion" >&2; exit 1; fi
 if [ -e "$CTL/fail-$verb" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
+if [ "$verb" = unlock ] && [ "$#" -gt 1 ]; then echo "$*" >> "$CTL/unlock-args.log"; fi
+if [ "$verb" = unlock ] && [ "$#" -gt 1 ] && [ -e "$CTL/refuse-yes" ]; then
+  case " $* " in *" --force "*) ;; *) echo "error: precondition not met: whether the process that took the lock is still running cannot be established (written by an older prikk, which recorded no start time to check against) -- refusing to clear its lock. --yes does not clear a lock whose holder's liveness is unknown. --force clears it anyway." >&2; exit 1;; esac
+fi
 if [ "$1 $2 $3" = "trust maintainer remove" ] && [ -e "$CTL/fail-trust-remove" ]; then echo "error: precondition not met: injected failure of the removal" >&2; exit 1; fi
 if [ "$1 $2" = "branch create" ] && [ -e "$CTL/leads-after-branch-create" ]; then
   # A `branch create` killed after it published the ref's pointer and before it appended the ref log, made on cue:
@@ -855,6 +861,10 @@ fn a_stale_lock_is_cleared_on_the_record_and_prikks_own_liveness_check_decides_n
     let act = f.act(vec![RecoveryOp::ClearLocks {
         paths: vec![live.clone(), dead.clone()],
     }]);
+    // M50: prikk 0.58.0 refuses `unlock --yes` for both of these (an old-style body is a holder it cannot judge), 0.57.0
+    // for one that appears running. The stand-in refuses `--yes` on every prikk, so that this test holds, and fails
+    // without `--force`, on each prikk in the range.
+    std::fs::write(f.ctl.join("refuse-yes"), "").unwrap();
     let cleared = f
         .leased(|| {
             f.signer
@@ -866,6 +876,14 @@ fn a_stale_lock_is_cleared_on_the_record_and_prikks_own_liveness_check_decides_n
         2,
         "the lock that appears to be held is cleared too: PL-8"
     );
+    let asked = std::fs::read_to_string(f.ctl.join("unlock-args.log")).unwrap();
+    assert_eq!(asked.lines().count(), 2, "{asked}");
+    assert!(
+        asked.lines().all(|l| l.starts_with("unlock --lock ")
+            && l.ends_with(" --force")
+            && !l.contains("--yes")),
+        "each lock is cleared with --force and never --yes: {asked}"
+    );
     assert!(f.witnesses.locks(&f.wiki).unwrap().is_empty());
     // A lock that is already gone is not an error, and is not listed as cleared.
     let again = f
@@ -875,6 +893,80 @@ fn a_stale_lock_is_cleared_on_the_record_and_prikks_own_liveness_check_decides_n
         })
         .unwrap();
     assert!(again.is_empty());
+}
+
+/// The body a prikk of 0.57.0 or newer writes for a holder that is running now (`prikk-lock-v2`: the holder's start time,
+/// the boot, the namespaces and the machine, read from `/proc` as prikk reads them), planted for `holder`. `None` where
+/// `/proc` or the machine's identity is not there to read, which is not the place for this test.
+fn plant_live_lock(repo: &Path, relative: &str, holder: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{holder}/stat")).ok()?;
+    // The command name is in parentheses and may hold spaces: the fields count from the last `)`; the start time is
+    // field 22 of the line, the 20th after the name's `)` and the state.
+    let start = stat
+        .rsplit_once(')')?
+        .1
+        .split_whitespace()
+        .nth(19)?
+        .to_owned();
+    let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let pidns = std::fs::read_link("/proc/self/ns/pid").ok()?;
+    let machine = std::fs::read_to_string("/etc/machine-id").ok()?;
+    let mut body = format!(
+        "prikk-lock-v2\npid={holder}\nkind=active\nos=linux\nstart={start}\nboot={}\npidns={}\n",
+        boot.trim(),
+        pidns.display()
+    );
+    if let Ok(timens) = std::fs::read_link("/proc/self/ns/time") {
+        body.push_str(&format!("timens={}\n", timens.display()));
+    }
+    body.push_str(&format!("machine={}\nend-of-lock-v2\n", machine.trim()));
+    let path = repo.join(".prikk").join(relative);
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    std::fs::write(&path, body).ok()?;
+    Some(std::fs::canonicalize(&path).ok()?.display().to_string())
+}
+
+#[test]
+fn a_lock_whose_holder_is_running_now_is_cleared_on_the_leases_word_with_force() {
+    // M50: the lock a live prikk holds, as 0.57.0 and 0.58.0 write it (prikk says: "appears running"; 0.54.0 and 0.55.0
+    // read the pid alone and say the same). Recovery decides from the lease record, which shows no live holder, so
+    // `--force` clears it: `--yes` is refused by 0.57.0 and 0.58.0 for it, and the stand-in refuses it on every prikk.
+    let Some(f) = fixture("livelock") else {
+        return;
+    };
+    let mut holder = Command::new("sleep").arg("60").spawn().expect("a holder");
+    let planted = plant_live_lock(&f.repo, "active/default/active.lock", holder.id());
+    let Some(live) = planted else {
+        let _ = holder.kill();
+        let _ = holder.wait();
+        println!("skipping: no /proc or machine identity to write a live holder's lock body from");
+        return;
+    };
+    let listed = f.witnesses.locks(&f.wiki).expect("the listing is read");
+    let said = listed
+        .iter()
+        .find(|l| l.path == live)
+        .map(|l| l.liveness.clone());
+    assert!(
+        said.as_deref()
+            .is_some_and(|s| s.starts_with("appears running")),
+        "the setup: prikk calls this holder running ({listed:?})"
+    );
+    let act = f.act(vec![RecoveryOp::ClearLocks {
+        paths: vec![live.clone()],
+    }]);
+    std::fs::write(f.ctl.join("refuse-yes"), "").unwrap();
+    let cleared = f
+        .leased(|| {
+            f.signer
+                .clear_locks(&f.wiki, &act, std::slice::from_ref(&live))
+        })
+        .expect("cleared");
+    let _ = holder.kill();
+    let _ = holder.wait();
+    assert_eq!(cleared, std::slice::from_ref(&live));
+    assert!(!Path::new(&live).exists());
+    assert!(f.witnesses.locks(&f.wiki).unwrap().is_empty());
 }
 
 #[test]
