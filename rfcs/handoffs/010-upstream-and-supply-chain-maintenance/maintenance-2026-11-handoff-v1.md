@@ -369,3 +369,68 @@ SECURITY.md names. One sentence remains, at the next touch of SECURITY.md (befor
 
 - *What an operator adds back* should say that docker's run **was measured**: in that rehearsal, on Debian 12, amd64
   and arm64. The Debian 13 caveat then applies to the podman measurement only.
+
+## prikk 0.58.0 (2026-11-18; binding, **before 0.3.0**)
+
+prikk 0.58.0 was released on 2026-11-18. It ships our asks 3, 4 and 5 (`.git-exclude/upstream/prikk/receive/2026-11-18-prikk-0-58-0-released-your-asks-3-4-5-shipped.md`).
+The architect ran the whole workspace on the 0.3.0 candidate (`3122e38`) against the published asset (sha256
+`d2e2c389…`, the binary) and against a local build, with the same result on both: **3,082 passed, 23 failed**, all in
+recovery (`inklkunn-core/tests/recovery.rs`, `inklkunn-signer/tests/recover.rs`, `inklkunn`'s `admin::tests`). Logs
+are at the architect's; the causes are the three changes prikk made at our request. **One is a defect of 0.3.0
+against the current prikk** (M50). The rest are tests that pin 0.57.0's behaviour (M51, M52). By the plan's rule, a
+defect found during readiness is fixed in 0.3.0. **The cut waits for this package.** The version stays 0.3.0, and
+the CHANGELOG heading stays as it is.
+
+- **M50 — recovery cannot clear a stale lock on 0.58.0 (the defect).**
+  - 0.58.0's `unlock --lock <path> --yes` refuses a lock whose holder's liveness is *unknown*: an empty lock, and a
+    lock written by an older prikk, which recorded no start time. The second is every lock left before an operator
+    upgrades prikk.
+  - Recovery then stops at `clear-locks`. The wiki stays flagged, and the server's start says so: *recovery stopped at
+    clear-locks: the lock was not cleared: prikk refused: precondition not met: …*. It fails closed, but the way out
+    is a manual `prikk unlock --force`.
+  - **Clear with `--force`, on the lease record's word,** which is already the only thing that decides (PL-8). prikk
+    agrees: *"Your fail-closed handling is right, with `--force` on your own lease's word."*
+  - **Every other guard stays:**
+    - the lock is still held;
+    - it is of a kind an acceptance leaves;
+    - it is inside the wiki's own `.prikk`;
+    - a foreign process in the repository stops every step.
+  - **Measure `--force` on 0.54.0 (the floor), 0.55.0, 0.57.0 and 0.58.0** before relying on it. 0.55.0's help reads
+    `[--yes|--force]`, so the two may be exclusive there. One rule across the range is preferred; if the range needs
+    two, the rule is chosen by version and the choice is recorded.
+  - Tests:
+    - an empty lock and a lock in the older format are both cleared on 0.58.0;
+    - the existing lock tests pass on every prikk in the range.
+- **M51 — the cleanup-pending state on 0.58.0** (ask 4).
+  - `status --format json` now exits 0 in that state, listing the queue, with `queue.already_sealed` =
+    `{block_id, route}`. `doctor`'s way-out heading is new.
+  - **Recovery's decision must be the same on 0.57.0 and 0.58.0:** doctor's cleanup-pending error, with the queue equal
+    to the tip block's patches (PK-44).
+  - Find why `a_pending_cleanup_is_not_finished_unless_doctor_names_exactly_that_and_the_block_is_the_acts` sees
+    *another error beside it* on 0.58.0, and whether any product code depends on 0.57.0's wording or on its exit 1.
+  - **Where 0.58.0 states `already_sealed`, it must agree** with the block that recovery found: the same `block_id`.
+    If it disagrees, that is a stop, not a step. Read nothing else from it.
+  - Assert the fixtures' preconditions per version: ≤ 0.57.0 refuses, ≥ 0.58.0 exits 0 with `already_sealed`.
+- **M52 — the debris notice is `info` on 0.58.0** (ask 5).
+  - `PRIKK-DOCTOR-ACTIVE-REF-METADATA-DEBRIS` keeps its id. `is_metadata_debris` matches `Warning` only.
+  - **Recognize it at either severity,** so that the plan's note and every decision read the same on both versions.
+  - The tests assert per version.
+- **M53 — `PRIKK-VERIFY-REF-PUBLICATION-IN-FLIGHT`** (`info`, exit 0: a publisher is still running).
+  - Show that nothing in inklkunn treats it as a failure or acts on it. A parse-level test is enough.
+  - prikk's residual (a `verify` during a running `sync seal` can fail `local-tag-trust`) does not apply if inklkunn
+    never runs `sync seal`; say whether it does.
+- **M54 — CI and the release.**
+  - `PRIKK_TEST_VERSION` becomes **0.58.0** in `ci.yml` and `release.yml`, with sha256 (x86_64 tarball)
+    `0462b9a590d0b945bb6266ce09983055768cb564415837bdb8ed462b5aa10dfe`. Check it yourself against prikk's published
+    `.sha256`.
+  - The floor stays 0.54.0. Update `EXPECTED_SKIPS` if it moves.
+  - 0.57.0 stays in the architect's gates.
+- **M55 — the record.**
+  - The ledger: PK-44, PK-45 and PK-46 as shipped in 0.58.0; a new entry for the in-flight id and prikk's residual.
+  - `docs/RECOVERY.md`, wherever it describes `unlock`'s behaviour by version.
+  - One CHANGELOG entry under `## [0.3.0]` (entries, not the lead). The lead's runtime line stays *prikk 0.54.0 or
+    later*, and it then holds for 0.58.0.
+
+Hand back as `010-maintenance-2026-11-prikk-0-58-0-review-request.md`, with the whole workspace's numbers on 0.55.0
+first, shimmed off, on 0.57.0 and on 0.58.0. **No letter to prikk now:** the release asks nothing of us. An
+acknowledgement goes with the next letter.
