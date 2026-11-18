@@ -40,11 +40,10 @@
 {% endfor %}</ul>
 {% endif %}{% if let Some(text) = r.more %}<p class="why-note">{{ text }}</p>
 {% endif %}{% endif %}{% if let Some(s) = c.sources %}<h4>{{ s.heading }}</h4>
-{% if let Some(text) = s.none %}<p>{{ text }}</p>
-{% else %}<ul class="why-sources">
+<ul class="why-sources">
 {% for item in s.items %}<li>{{ item }}</li>
 {% endfor %}</ul>
-{% endif %}{% endif %}<p><a href="{{ c.open.href }}">{{ c.open.label }}</a></p>
+{% endif %}<p><a href="{{ c.open.href }}">{{ c.open.label }}</a></p>
 </li>
 {% endfor %}</ol>
 {% endif %}{% endblock %}

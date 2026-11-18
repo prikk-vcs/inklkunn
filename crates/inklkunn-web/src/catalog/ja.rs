@@ -2559,8 +2559,7 @@ pub const CATALOG: &[Entry] = &[
         "レビューのうちさらに {count} 件は提案のページにあります。",
         "レビューのうちさらに {count} 件は提案のページにあります。",
     ),
-    msg("why.sources_heading", "提案に添えられた出典"),
-    msg("why.sources_none", "提案に出典は添えられていません。"),
+    msg("why.sources_heading", "提案の「出典」欄"),
     // Why is this here? (K-T7): end
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): start
     msg("parts.attach", "出典を付ける"),

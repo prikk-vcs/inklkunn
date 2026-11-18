@@ -88,7 +88,6 @@ struct ReviewView {
 
 struct SourcesView {
     heading: String,
-    none: Option<String>,
     items: Vec<String>,
 }
 
@@ -329,14 +328,14 @@ fn change_view(
         return out;
     }
     out.review = reading.review(&id);
-    out.sources = Some(SourcesView {
-        heading: t.get(Key::WhySourcesHeading),
-        none: record
-            .sources
-            .is_empty()
-            .then(|| t.get(Key::WhySourcesNone)),
-        items: record.sources.iter().map(|s| shortened(s)).collect(),
-    });
+    // The proposal's own *Sources* field, as the proposer wrote it. A source attached to the claim is not in it (the
+    // attach form fills the claim's file instead), so an empty field says nothing here: the claim page lists those.
+    if !record.sources.is_empty() {
+        out.sources = Some(SourcesView {
+            heading: t.get(Key::WhySourcesHeading),
+            items: record.sources.iter().map(|s| shortened(s)).collect(),
+        });
+    }
     out
 }
 

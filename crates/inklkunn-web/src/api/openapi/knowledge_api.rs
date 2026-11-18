@@ -176,7 +176,7 @@ pub(super) fn schemas() -> Map<String, Value> {
             "properties": {
                 "id": {"type": "string"},
                 "summary": {"type": "string", "description": "Untrusted text."},
-                "sources": {"type": "array", "items": {"type": "string"}, "description": "The sources the proposer gave with it, each cut at 300 characters. Untrusted text."},
+                "sources": {"type": "array", "items": {"type": "string"}, "description": "What the proposer wrote in the proposal's own free-text *Sources* field (one entry per line), each cut at 300 characters; empty when the field is empty. It is not the list of sources attached to a claim in that change: the claim's `sources` (`claims/{id}`) lists those. Untrusted text."},
             },
         }),
     );

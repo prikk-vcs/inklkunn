@@ -1134,8 +1134,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `why.decision_words` | after a decision, when the reviewer wrote words with it | "They wrote: “{text}”" | "次のように書き添えました:「{text}」" |
 | `why.comment` | a comment in the review | "{author} commented, on revision {number}: “{text}”" | "{author}さんが改訂 {number} についてコメントしました:「{text}」" |
 | `why.review_more` | after the review, when it is longer than one page of this kind shows | "{count} more item of the review is on the proposal's page." / "{count} more items of the review are on the proposal's page." | "レビューのうちさらに {count} 件は提案のページにあります。" |
-| `why.sources_heading` | a change in that list: the heading of the sources the proposer gave | "Sources given with the proposal" | "提案に添えられた出典" |
-| `why.sources_none` | under it when there is none | "No source was given with the proposal." | "提案に出典は添えられていません。" |
+| `why.sources_heading` | a change in that list: the heading of what the proposer wrote in the proposal's own *Sources* field (shown only when the field is not empty; the sources attached to the claim are on its page) | "The proposal's Sources field" | "提案の「出典」欄" |
 | `parts.attach` | the link after a paragraph in the list of parts: the form that attaches a source to it | "Attach a source" | "出典を付ける" |
 | `parts.challenge` | the link after a paragraph in the list of parts: the form that adds a source that speaks against it | "Challenge this" | "これに異議を示す" |
 | `parts.attach_for` | the name a screen reader says for that link; `{number}` is the number of the part | "Attach a source to part {number}" | "部分 {number} に出典を付ける" |

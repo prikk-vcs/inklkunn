@@ -2481,8 +2481,7 @@ pub const CATALOG: &[Entry] = &[
         "{count} more item of the review is on the proposal's page.",
         "{count} more items of the review are on the proposal's page.",
     ),
-    msg("why.sources_heading", "Sources given with the proposal"),
-    msg("why.sources_none", "No source was given with the proposal."),
+    msg("why.sources_heading", "The proposal's Sources field"),
     // Why is this here? (K-T7): end
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): start
     msg("parts.attach", "Attach a source"),

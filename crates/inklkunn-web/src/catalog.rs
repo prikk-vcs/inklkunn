@@ -1395,7 +1395,6 @@ keys! {
     WhyComment => "why.comment",
     WhyReviewMore => "why.review_more",
     WhySourcesHeading => "why.sources_heading",
-    WhySourcesNone => "why.sources_none",
     // Why is this here? (K-T7): end
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): start
     PartsAttach => "parts.attach",

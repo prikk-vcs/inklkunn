@@ -202,9 +202,9 @@ async fn a_change_from_a_proposal_names_its_people_its_proposal_its_review_and_t
         two.contains("Rin Sato commented, on revision 1: “Looks fine to me”"),
         "{two}"
     );
-    // The sources given with the proposal, as the proposer wrote them.
+    // The proposal's own *Sources* field, as the proposer wrote it, under the form's own name for it.
     assert!(
-        two.contains("<h4>Sources given with the proposal</h4>"),
+        two.contains("<h4>The proposal&#39;s Sources field</h4>"),
         "{two}"
     );
     assert!(two.contains("<li>https://example.org/report</li>"), "{two}");
@@ -224,7 +224,7 @@ async fn a_change_from_a_proposal_names_its_people_its_proposal_its_review_and_t
 }
 
 #[tokio::test]
-async fn a_proposal_with_no_review_and_no_sources_says_so() {
+async fn a_proposal_with_no_review_and_an_empty_sources_field_shows_no_sources_section() {
     let c = cast();
     let id = propose(&c, "Improve the second paragraph", "", "submit").await;
     accept_by_hand(&c.w, &id, &c.maintainer, &c.contributor);
@@ -235,10 +235,12 @@ async fn a_proposal_with_no_review_and_no_sources_says_so() {
         two.contains("Nobody commented or decided on this proposal."),
         "{two}"
     );
-    assert!(
-        two.contains("No source was given with the proposal."),
-        "{two}"
-    );
+    // An empty *Sources* field says nothing: no section, and no sentence that denies a source (a source attached to
+    // the claim is not in that field, and the claim page lists it).
+    assert!(!two.contains("Sources field"), "{two}");
+    assert!(!two.contains("<h4>Sources"), "{two}");
+    assert!(!two.contains("No source"), "{two}");
+    assert!(!two.contains("why-sources"), "{two}");
 }
 
 #[tokio::test]
@@ -300,7 +302,7 @@ async fn a_proposal_the_records_do_not_tie_to_the_change_shows_no_review() {
     );
     assert!(!two.contains("Made from the proposal"), "{two}");
     assert!(!two.contains("<h4>Review</h4>"), "{two}");
-    assert!(!two.contains("Sources given"), "{two}");
+    assert!(!two.contains("Sources field"), "{two}");
 }
 
 #[tokio::test]
