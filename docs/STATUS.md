@@ -503,11 +503,13 @@
   - Gates on the pinned 1.99.1: **3,105 passed** with prikk 0.55.0 and the 0.2.0 binary (no guarded line), shimmed off
     (318 self-skips), on 0.57.0 and on the release asset.
   - The architect added the README's status line (`docs/RELEASING.md` step 5).
-  - Next: the release rehearsal on this commit (R-8), then the cut proposal to the owner (R-9).
+  - **The release rehearsal is green on `e88b1bd`** (run 44251053912): both binaries, and both images run confined;
+    CI run 44251033646 is green. **The cut proposal is with the owner** (`docs/releases/0.3.0-plan.md` §7): cut on
+    authorization, five days ahead of the target.
 
 ## Pending on the owner
 
-- **Authorize the 0.3.0 cut** when the architect brings the candidate (target 2026-11-23; the plan itself was authorized 2026-11-18).
+- **Authorize the 0.3.0 cut: the candidate `e88b1bd` is ready** (`docs/releases/0.3.0-plan.md` §7; target 2026-11-23; the plan itself was authorized 2026-11-18).
 
 - **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
   `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
