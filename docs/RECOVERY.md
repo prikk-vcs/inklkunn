@@ -195,19 +195,20 @@ guess. Two states have no word, because recovery cannot even read them; they are
 
 Not a stop, and nothing for you to do: this is what recovery does by itself, so that you know what its plan means.
 A `seal` publishes the block and then empties the queue. Killed between the two, it leaves the block in the history
-**and** the patch in the queue. `prikk status --format json` then refuses (`integrity error`), and `prikk doctor`
+**and** the patch in the queue. `prikk status --format json` then refuses (`integrity error`) up to 0.57.0, and from 0.58.0 exits 0, lists the queue and says
+`queue.already_sealed` (`{block_id, route}`); and `prikk doctor`
 reports exactly one error, `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`, whose recommendation is to run `prikk seal
 --allow-no-audit` for the ref. The plan shows it as the step *run seal --allow-no-audit once, as prikk's doctor
 recommends* (`complete-publication`), and recovery takes it **only when** `doctor` names that code and nothing
 else, and the block that was published is the unfinished act's own: the one patch it seals has the act's message
 and files, to the digest, and sits on the block the act was made on. The step makes no block (the ref is already
 published); recovery checks that the tip is the same block afterwards, and that `doctor` no longer reports the
-cleanup, **and that the queue is exactly that one patch**: `status --format json` refuses in this state, but the plain
+cleanup, **and that the queue is exactly that one patch**: `status --format json` refuses in this state up to 0.57.0, but the plain
 text of `prikk status` reads (it prints `queued patches: N targeting REF` and `active WAL records: N`), and the step is
 refused unless it shows one patch on the view in a log of one record with no torn byte. The queue's **content** is
 checked as well as its size: `prikk verify` reports this code only when the queue holds exactly the patches of the
 block the ref points at (prikk's answer, ledger PK-44), and the step requires that this tip block holds exactly the one
-published patch, so the queue is that patch and no other. Any other code beside it is `doctor-trouble`; a block that is not the act's, or no unfinished act, is the
+published patch, so the queue is that patch and no other. **From 0.58.0**, where `status --format json` reads this state, recovery also requires that its `queue.already_sealed.block_id` is the tip block and that its queued patch ids are the tip block's, and that `doctor` names the cleanup (an `already_sealed` that is `null` while `doctor` names one, or another block, is a witness error: nothing is done and the wiki stays flagged); the decision is the same on every prikk. Any other code beside it is `doctor-trouble`; a block that is not the act's, or no unfinished act, is the
 stop `published-block-is-not-the-act`, with nothing changed. For that stop, look as under `foreign-queued-patch`
 (`prikk log` shows the newest block; `prikk verify` says whether the repository is sound) and do not run `prikk
 seal` yourself.

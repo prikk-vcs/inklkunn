@@ -47,6 +47,11 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
   - a lone metadata-debris warning is harmless and is to become `info` (PK-46).
 
   What prikk proposes for 0.58.0 is prikk's owner's to decide. inklkunn's changes are maintenance M13 – M16. **No ask is outstanding.**
+- **prikk 0.58.0 was released on 2026-11-18** and ships asks 3, 4 and 5 (`receive/2026-11-18-prikk-0-58-0-released-your-asks-3-4-5-shipped.md`; **no letter goes back now**, the release asks nothing of us, and an acknowledgement goes with the next letter). Folded into ledger v1.8:
+  - ask 4: `status --format json` reads the cleanup-pending state and carries `queue.already_sealed` (PK-44; maintenance M51);
+  - ask 5: the debris warning is `info` (PK-46; M52), and `unlock --yes` refuses a lock of unknown liveness while `--force` clears it, so recovery clears with `--force` on the lease's word (PK-45; M50, IS-20);
+  - ask 3: `block_seals` is whole when `objects` is evaluated and `failed_objects` is empty, stated in the reference (PK-39);
+  - the new `verify` id `PRIKK-VERIFY-REF-PUBLICATION-IN-FLIGHT` (PK-48; M53).
 - **Open asks as of 2026-10-31: none outstanding; prikk will write about 0.57.0.**
   `send/2026-10-31-block-signer-time-path-history-and-an-orphan-queued-patch.md` (sent by the owner; four asks) was
   answered the same day (`receive/2026-10-31-four-asks-where-each-lands.md`): each block's `sealed_by` in `log` and
