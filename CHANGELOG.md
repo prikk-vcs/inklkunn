@@ -11,11 +11,14 @@ proposals, through a form, and a reviewer accepts them like any other change. A 
 and views* link at a claim's paragraph and *Why is this here?* among the page's tools. A claim's page names its sources
 and how directly each speaks to it, what its status is (accepted, contested, unresolved, not decided) and the proposal
 that decided it, and its own thread of discussion. *Why is this here?* shows, for each paragraph, the change that last
-changed it and the one that first wrote it, with the proposals and reviews behind them. A *view* is a named line of the
-wiki (an experiment or an interpretation) that a reviewer creates and that changes can land in; the claim page compares
-views side by side (wording, status, sources). *Sources to review* lists the sources whose review date has passed. Nothing
+changed it and the one that first wrote it (*earliest wording found*, when it had to trace the paragraph by matching its
+text), with the proposals and reviews behind them. A *view* is a named line of the
+wiki (an experiment or an interpretation) that a reviewer creates and that changes can land in; the claim page states in
+sentences how a view differs (wording, status, sources) and links to *Compare views*. *Sources to review* lists the
+sources whose review date has passed, those nobody has recorded looking at, and those marked unavailable. Nothing
 is scored, ranked or called true or false. The wiki's export carries the claims, sources, views and threads under a
-declared extension, and the API (OpenAPI 3.1) reaches all of it.
+declared extension. The API (OpenAPI 3.1) reads claims, sources, provenance and the comparison of views, and writes
+curation proposals; **a claim's thread and the list of views are not in the API yet**.
 
 **Not offered yet.** You cannot remove or retire a claim or a source, or replace a file that cannot be read (planned with
 governance, the next cycle); there is no way to attach an existing source to another claim, so you add it again as a new
@@ -35,8 +38,8 @@ planned before 1.0 or the first public deployment).
   0.3.0 takes the host's own file layout, and **you should drop `--dev-unconfined`**: the server then starts confined. The
   release now runs the built image confined before it publishes it.
 - **In a container**, bubblewrap needs `--security-opt seccomp=unconfined`, `apparmor=unconfined` and
-  `systempaths=unconfined` (podman: `seccomp=unconfined` and `unmask=ALL`). They lift the runtime's own layers, so
-  bubblewrap's sandbox is then the confinement inside the container; add back `--cap-drop ALL`, `--security-opt
+  `systempaths=unconfined` (podman: `seccomp=unconfined` and `unmask=ALL`, measured on a host without AppArmor; on Debian or Ubuntu it may also
+  need `apparmor=unconfined`). They lift the runtime's own layers, so bubblewrap's sandbox is then the confinement inside the container; add back `--cap-drop ALL`, `--security-opt
   no-new-privileges`, `--read-only` with `--tmpfs /tmp`. What each setting gives up and what each addition takes back is
   in SECURITY.md, *What a host needs for confinement*. Where that cost is not acceptable, run the server on the host: it
   needs only user namespaces (on Ubuntu 24.04 and later, `kernel.apparmor_restrict_unprivileged_userns=0`).
@@ -1949,6 +1952,7 @@ two real-prikk tests that find their binaries themselves (`8` without its newlin
 - **R-2/R-3 (0.3.0 readiness), a defect found and fixed: the crate was built with dead code when it was a dependency of the product.** `merge::page::align_blocks` is called only by `merge::align_blocks`, which exists under `any(test, feature = "measurement-alignment")`; without either, a plain `cargo test -p inklkunn` or `cargo clippy -p inklkunn --all-targets -- -D warnings` warned `function align_blocks is never used` (workspace clippy was clean only through feature unification). It carries the same `cfg`.
 - **R-3 (0.3.0 readiness), the test: a directory made by the 0.2.0 release binary is opened by this tree.** `serve/writes_on/tests/upgrade.rs` (U6's harness, nothing copied) finds the 0.2.0 release binary on `PATH` (by the commit it was built from, `c6c7939c…`, since this tree's own binary still says 0.2.0), has it make a wiki, two invitations and a server of its own, redeems them on its pages (a maintainer and a contributor), signs both in, has the contributor propose two edits and the maintainer accept one, and leaves the other open; it stops that server with SIGTERM (status 0) and reads the store's schema: 15. It then opens the same directory with this tree's server (the binary's `prepare`, as U6 does): the signer opens over the key store 0.2.0 made, the store is at schema 18, the history is the two blocks 0.2.0 wrote, the page and the history page show the accepted change, both accounts sign in with the passwords chosen in 0.2.0, and the open proposal is accepted (one new block, the page holds both changes). **D-7 against 0.2.0's own output:** fourteen pages captured from the 0.2.0 process are compared with this tree's over the same directory (ports, the stylesheet's content-addressed name and the sign-in form's token masked): the page views are identical except the one *Why is this here?* line, on the page and on no other page of the sample; the wiki's About and health index differ by exactly one line each (the link to the views, the *Sources to review* entry); the stylesheet holds every line of 0.2.0's in order with additions, and one changed rule (`code` may break anywhere, K32). No secret reaches either half's output. It prints `skipping: prikk not on PATH` without prikk (one more prikk-dependent test) and the guarded `skipping: inklkunn 0.2.0 not found` without the binary. Mutated (the schema version not recorded; the migrations not run; one catalog word of the page's tools; one line of the stylesheet), it failed each time. The one file that starts a process outside the driver, the signer and the fetcher is exempted in `tools/boundary-check` by name, its `Command::new` arguments limited to the binary it found or was handed.
 - **R-3 (0.3.0 readiness), a sentence made true: *a page with no claims is the page it was, byte for byte*.** Compared against the 0.2.0 release binary's own pages (the upgrade test), the HTML of a page with no claims is 0.2.0's except the one *Why is this here?* link; the style sheet is 0.2.0's with additions and one changed rule, `code { overflow-wrap: anywhere }` (K32), which applies to every page. K-T6's entry now says *its HTML*.
+- **RC-2 (0.3.0 readiness, correction round): the lead says only what is true.** The API sentence names what it reaches (claims, sources, provenance and the comparison of views, and the curation proposals it writes) and says a claim's thread and the list of views are not in it yet; the claim page *states* how a view differs and links to *Compare views*; *Sources to review* also lists sources nobody has recorded looking at and those marked unavailable; *Why is this here?* says *earliest wording found* when it traced a paragraph by matching its text; podman's settings carry SECURITY.md's AppArmor caveat.
 
 ## [0.2.0] — 2026-11-04
 
