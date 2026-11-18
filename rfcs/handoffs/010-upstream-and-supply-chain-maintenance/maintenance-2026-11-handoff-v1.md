@@ -434,3 +434,18 @@ the CHANGELOG heading stays as it is.
 Hand back as `010-maintenance-2026-11-prikk-0-58-0-review-request.md`, with the whole workspace's numbers on 0.55.0
 first, shimmed off, on 0.57.0 and on 0.58.0. **No letter to prikk now:** the release asks nothing of us. An
 acknowledgement goes with the next letter.
+
+## prikk 0.58.0 reviewed (2026-11-19)
+
+M50 – M55 are **Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-prikk-0-58-0-review-result.md`), and
+IS-20 is fixed. Every decision request is confirmed as the dev team chose:
+- `--force` for every holder, on the lease's word;
+- the witness errors, not a new named stop;
+- the invented fixture text, labelled;
+- the `info` ids left unhandled.
+
+The handoff's bullet asking for an empty lock to be cleared was wrong, and the PK-45 rule stands. **Nothing is asked
+for 0.3.0.** The architect runs CI and the rehearsal on the pushed tip, and brings the cut to the owner. Two small
+points are recorded for 0.4.0 in the review result:
+- `report_outcome` and a `refusal-v1` on a non-zero exit;
+- a doctor line with an unknown severity word.
