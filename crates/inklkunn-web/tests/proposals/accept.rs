@@ -792,7 +792,10 @@ async fn a_server_started_without_the_means_to_sign_reads_and_refuses_an_accept_
         "{}",
         ja.body()
     );
-    assert!(ja.body().contains("履歴へ署名する設定がないため"));
+    assert!(
+        ja.body()
+            .contains("変更に署名して履歴に記録する設定になっていないため")
+    );
     // The checks that come first still come first: a visitor who may not accept is told *not allowed*.
     for who in [&c.contributor, &c.observer] {
         let a = accept(&c, &p, Some(who), SAME_SITE, "revision=1").await;

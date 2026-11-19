@@ -290,7 +290,7 @@ fn a_claim_that_is_made_is_named_by_a_paragraph_and_says_its_kind_standing_life_
                 .flat_map(|l| std::iter::once(&l.text).chain(&l.more))
                 .any(|l| l
                     .as_str()
-                    .contains("この提案を反映した結果で主張が持たない文言")),
+                    .contains("この提案を反映した後の主張にはない文言に基づく判断です")),
             "the Japanese line says the same of the same link"
         );
     }
@@ -1363,7 +1363,10 @@ fn a_cite_line_frames_the_wording_as_the_one_it_has_in_this_proposals_result_in_
     assert!(!line.contains("has now"), "{line}");
     let ja = lines(japanese(), std::slice::from_ref(&item), &know).remove(0);
     let line = ja.more.first().unwrap().as_str().to_owned();
-    assert!(line.contains("この提案を反映した結果"), "{line}");
+    assert!(
+        line.contains("この提案を反映した後の主張の文言に基づく判断です"),
+        "{line}"
+    );
     assert!(!line.contains("現在"), "{line}");
 }
 

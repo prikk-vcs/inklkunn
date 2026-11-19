@@ -55,7 +55,7 @@ pub const CATALOG: &[Entry] = &[
     msg("form_refused.heading", "フォームを受け付けられませんでした"),
     msg(
         "form_refused.body",
-        "このサイトのページから送信されたものだと確認できなかったため、何も変更していません。前のページに戻り、再読み込みしてからもう一度お試しください。",
+        "フォームがこのサイトのページから送信されたものだと確認できなかったため、何も変更していません。前のページに戻り、ページを再読み込みしてからもう一度お試しください。",
     ),
     // answers that are not pages
     msg(
@@ -162,7 +162,7 @@ pub const CATALOG: &[Entry] = &[
     msg("assurance.verified", "検証済み"),
     msg("assurance.verification_failed", "検証に失敗"),
     msg("assurance.could_not_be_checked_now", "現在は確認できません"),
-    msg("assurance.not_checked_yet", "まだ確認していません"),
+    msg("assurance.not_checked_yet", "まだ確認されていません"),
     msg("badge.sentence", "検証: {state}"),
     msg("title.verification", "検証 · {wiki} · {product}"),
     msg("verification.heading", "検証"),
@@ -170,7 +170,7 @@ pub const CATALOG: &[Entry] = &[
         "explain.verification",
         "検証では、このウィキの履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、前回の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。",
     ),
-    msg("verification.explain_summary", "これは何を意味しますか"),
+    msg("verification.explain_summary", "これはどういう意味ですか"),
     msg(
         "verification.state_verified",
         "前回の確認では、問題は見つかりませんでした。",
@@ -253,23 +253,23 @@ pub const CATALOG: &[Entry] = &[
         "about.accessibility_people",
         "支援技術を使っている方による、このサイトの確認はまだ行われていません。うまく使えないところがあれば、このサーバーの管理者にお知らせください。",
     ),
-    msg("title.wikis", "ウィキ · {product}"),
-    msg("wikis.heading", "ウィキ"),
+    msg("title.wikis", "ウィキの一覧 · {product}"),
+    msg("wikis.heading", "ウィキの一覧"),
     msg("wikis.intro", "ここで読めるウィキの一覧です。"),
     msg("wikis.none", "ここで読めるウィキはまだありません。"),
     // transclusion (a page that includes another)
     msg("transclusion.from", "{title} から"),
     msg(
         "transclusion.cycle",
-        "含めません。自分自身を含むことになります: {chain}",
+        "含めていません。自分自身を含むことになるためです: {chain}",
     ),
     msg(
         "transclusion.too_deep",
-        "含めません。{limit} 段より深くなります: {title}",
+        "含めていません。{limit} 段より深くなるためです: {title}",
     ),
     msg(
         "transclusion.over_budget",
-        "含めません。1 ページに含められる量には上限があります: {title}",
+        "含めていません。1 ページに含められる量には上限があります: {title}",
     ),
     // a request this address does not take
     msg("title.method_not_allowed", "ここではできません · {product}"),
@@ -319,7 +319,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.redirect_broken.hint",
-        "ウィキを管理する方にリダイレクトの修正を依頼するか、行き先のはずのページを直接指定してください。",
+        "ウィキを管理する人にリダイレクトの修正を依頼するか、行き先のはずのページを直接指定してください。",
     ),
     msg("problem.page_unreadable.title", "ページを表示できません"),
     msg(
@@ -328,7 +328,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.page_unreadable.hint",
-        "ページを書いている方に修正を依頼してください。",
+        "ページを書いている人に修正を依頼してください。",
     ),
     msg(
         "problem.invalid_title.title",
@@ -390,7 +390,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.not_available.detail",
-        "このサーバーのビルドでは、提供されていません。",
+        "このサーバーのビルドでは、この機能は提供されていません。",
     ),
     msg(
         "problem.not_available.hint",
@@ -456,14 +456,14 @@ pub const CATALOG: &[Entry] = &[
     msg("history.link_version", "変更 {number} の後のページ"),
     msg("people.proposed_by", "提案者: {name}"),
     msg("people.accepted_by", "受け入れた人: {name}"),
-    msg("people.made_by", "{name} による変更"),
+    msg("people.made_by", "変更した人: {name}"),
     msg("people.service", "ウィキサービス"),
     msg("people.anonymous", "匿名の投稿者（{token}）"),
     msg(
         "people.unrecorded",
         "この変更の記録には、誰が行ったかが書かれていません。",
     ),
-    msg("flag.undo", "以前の変更を取り消します"),
+    msg("flag.undo", "以前の変更を取り消す変更"),
     msg("flag.import", "インポート"),
     msg("flag.service", "ウィキサービス自身が行った変更"),
     msg("flag.first", "このウィキの最初の変更"),
@@ -569,7 +569,7 @@ pub const CATALOG: &[Entry] = &[
     msg("at.current_label", "このページの現在の版"),
     msg(
         "at.links",
-        "このページのリンクは、そのときのページではなく、現在のページに移動します。",
+        "このページ内のリンクは、当時のページではなく、現在のページにつながっています。",
     ),
     msg("at.missing_heading", "そのときこのページはありませんでした"),
     msg(
@@ -603,7 +603,7 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.all_views", "すべてのビュー"),
     msg(
         "changes.filter_automated",
-        "ウィキサービス自身または機械の補助による変更",
+        "ウィキサービス自身または自動化ツールの補助による変更",
     ),
     msg("changes.opt_show", "表示する"),
     msg("changes.opt_hide", "表示しない"),
@@ -618,11 +618,11 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.active_view", "ビュー {view} のみ"),
     msg(
         "changes.active_hide",
-        "ウィキサービス自身または機械の補助による変更は表示していません",
+        "ウィキサービス自身または自動化ツールの補助による変更は表示していません",
     ),
     msg(
         "changes.active_only",
-        "ウィキサービス自身または機械の補助による変更のみ",
+        "ウィキサービス自身または自動化ツールの補助による変更のみ",
     ),
     msg("changes.clear", "すべての変更を表示"),
     msg("changes.caption", "変更の一覧（新しい順）"),
@@ -649,7 +649,7 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.none", "表示できる変更はありません。"),
     msg(
         "changes.more",
-        "ここに表示されたより古い変更があります。確認したのは新しい変更のみです。",
+        "これより古い変更もあります。調べたのは新しい変更のみです。",
     ),
     msg(
         "changes.pages_missing",
@@ -746,7 +746,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.col_problem", "問題"),
     msg("health.col_mark", "付いている印"),
     msg("health.col_changed", "最後の変更"),
-    msg("health.see_links", "{title} へのリンク元のページ"),
+    msg("health.see_links", "{title} にリンクしているページ"),
     msg("health.propose_page", "このページを提案する（{title}）"),
     msg(
         "health.wanted_action",
@@ -900,10 +900,10 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_judged",
-        "変更が設定した判断（出典との結びつきまたはコミュニティでの扱い）が、その主張のどの段落にも結果として存在しない文言で判断されています。",
+        "変更が設定した判断（出典との結びつきまたはコミュニティでの扱い）が、変更後の主張のどの段落にもない文言に対して行われています。",
     ),
     msg("title.links", "{page} へのリンク · {wiki} · {product}"),
-    msg("links.heading", "{page} へのリンク元のページ"),
+    msg("links.heading", "{page} にリンクしているページ"),
     msg(
         "links.missing",
         "このタイトルのページはまだありません。次のページがリンクしています。",
@@ -958,7 +958,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.forbidden.title", "許可されていません"),
     msg(
         "problem.forbidden.detail",
-        "この認証情報ではこの操作はできません。このウィキでのアカウントの役割か、トークンの発行時のスコープが許していないか、セッション Cookie を伴うリクエストが別のサイトから来ています。",
+        "この認証情報ではこの操作はできません。このウィキでのアカウントの役割か、トークンの発行時のスコープが許可していないか、セッション Cookie を伴うリクエストが別のサイトから送られています。",
     ),
     msg(
         "problem.forbidden.hint",
@@ -971,7 +971,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.base_required.hint",
-        "If-Match に提案の修正版の ETag を付けて送ってください。新しい提案では、ビューの先頭の状態 ID を送ってください。",
+        "If-Match に提案の修正版の ETag を付けて送ってください。新しい提案では、ビューの最新の状態 ID を送ってください。",
     ),
     msg("problem.stale_base.title", "基準が古くなっています"),
     msg(
@@ -985,7 +985,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.invalid_body.title", "本文を受け付けられません"),
     msg(
         "problem.invalid_body.detail",
-        "本文が、このエンドポイントの形の JSON オブジェクトではありません。メンバー {member} が、ない、重複している、未知である、または許されない値です。",
+        "本文が、このエンドポイントが受け付ける形の JSON オブジェクトではありません。メンバー {member} がないか、重複しているか、未知であるか、許されない値になっています。",
     ),
     msg(
         "problem.invalid_body.hint",
@@ -1024,7 +1024,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.not_in_this_state.title", "今はできません"),
     msg(
         "problem.not_in_this_state.detail",
-        "提案が {state} の間は、これはできません。",
+        "提案が「{state}」の状態の間は、これはできません。",
     ),
     msg(
         "problem.not_in_this_state.hint",
@@ -1069,7 +1069,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.needs_recovery.title", "ウィキの復旧が必要です"),
     msg(
         "problem.needs_recovery.detail",
-        "このウィキへの書き込みが完了しませんでした。復旧が確認するまで、ウィキは新しい変更を受け付けませんが、読み取りはできます。",
+        "このウィキへの書き込みが完了しませんでした。復旧処理で確認されるまで、ウィキは新しい変更を受け付けません。読み取りはできます。",
     ),
     msg(
         "problem.needs_recovery.hint",
@@ -1078,7 +1078,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.overlap.title", "変更が重なっています"),
     msg(
         "problem.overlap.detail",
-        "停止しました。提案とウィキが同じ箇所を変更しており、{overlaps} 件あります。提案は修正が必要な状態になり、ウィキは変わっていません。",
+        "受け入れを停止しました。提案とウィキが同じ箇所（{overlaps} 件）を変更していました。提案は「修正が必要」の状態になり、ウィキは変わっていません。",
     ),
     msg(
         "problem.overlap.hint",
@@ -1106,7 +1106,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.acceptance_in_progress.hint",
-        "しばらく待ってから、もう一度お試しください。先の受け入れが中断されていた場合は、復旧が解決します。",
+        "しばらく待ってから、もう一度お試しください。以前の受け入れが中断されていた場合は、復旧処理で解決されます。",
     ),
     msg("problem.acceptance_failed.title", "受け入れに失敗しました"),
     msg(
@@ -1123,7 +1123,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.signing_not_configured.detail",
-        "このサーバーには変更を履歴へ署名する設定がないため、提案を履歴に取り込めません。読み取り、提案、コメントはできます。",
+        "このサーバーは変更に署名して履歴に記録する設定になっていないため、提案を履歴に取り込めません。読み取り、提案、コメントはできます。",
     ),
     msg(
         "problem.signing_not_configured.hint",
@@ -1195,7 +1195,7 @@ pub const CATALOG: &[Entry] = &[
     msg("inbox.account_heading", "アカウントが必要です"),
     msg(
         "inbox.account_body",
-        "受信箱はアカウントごとのものです。サインインすると、あなたの提案やフォローしているページに起きたことを確認できます。",
+        "受信箱を使うにはアカウントが必要です。サインインすると、あなたの提案やフォローしているページに起きたことを確認できます。",
     ),
     msg("inbox.following_heading", "フォローしているページ"),
     msg(
@@ -1210,7 +1210,7 @@ pub const CATALOG: &[Entry] = &[
     msg("inbox.unfollow", "{what} のフォローをやめる"),
     msg("watch.heading_followed", "フォロー中"),
     msg("watch.heading_stopped", "フォローをやめました"),
-    msg("watch.heading_full", "フォローできる数の上限です"),
+    msg("watch.heading_full", "フォロー数が上限に達しています"),
     msg(
         "watch.page_followed",
         "ページ「{title}」をフォローしました。このページへの変更が署名されて履歴に記録されると、受信箱でお知らせします。",
@@ -1229,7 +1229,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "watch.account_body",
-        "ページのフォローはアカウントごとの機能です。サインインしてから、もう一度フォローしてください。",
+        "ページのフォローにはアカウントが必要です。サインインしてから、もう一度フォローしてください。",
     ),
     msg(
         "watch.full_body",
@@ -1254,7 +1254,7 @@ pub const CATALOG: &[Entry] = &[
     msg("page.propose_change", "変更を提案する"),
     msg("page.propose_part", "セクションや一部分への変更を提案する"),
     msg("page.discussion", "ディスカッション"),
-    msg("propose.new_page_link", "このページを提案する"),
+    msg("propose.new_page_link", "このページの作成を提案する"),
     msg("state.draft", "下書き"),
     msg("state.held", "レビュー待ちで保持中"),
     msg("state.needs_revision", "修正が必要"),
@@ -1349,7 +1349,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.knowledge_invalid",
-        "この提案の主張または出典のファイルが、ウィキが読める形になっていないか、この変更によって別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちで保持されたままです。ファイルを直してから、もう一度受け入れてください。",
+        "この提案の主張または出典のファイルが、ウィキの読める形式になっていません。または、この変更によって、別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちで保持されたままです。ファイルを直してから、もう一度受け入れてください。",
     ),
     msg("outcome.too_large", "大きすぎて今は署名できません"),
     msg(
@@ -1367,7 +1367,7 @@ pub const CATALOG: &[Entry] = &[
     msg("outcome.unavailable", "今は実行できません"),
     msg(
         "outcome_note.unavailable",
-        "記録または履歴を今は利用できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。",
+        "記録または履歴を利用できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。",
     ),
     msg("outcome.in_progress", "この修正版は署名の最中です"),
     msg(
@@ -1403,7 +1403,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "accept.unconfigured",
-        "このサーバーには履歴へ署名する設定がないため、何も変更しておらず、提案はレビュー待ちで保持されたままです（このサーバーの管理者にお知らせください）。",
+        "このサーバーは変更に署名して履歴に記録する設定になっていないため、何も変更しておらず、提案はレビュー待ちで保持されたままです。このサーバーの管理者にお知らせください。",
     ),
     msg(
         "accept.unconfigured_note",
@@ -1626,7 +1626,10 @@ pub const CATALOG: &[Entry] = &[
         "スラッシュを使うと、ページをグループに入れられます。例: Guides/Setup",
     ),
     msg("propose.new_page_name", "新しいページ"),
-    msg("propose.label_summary", "何をなぜ（{limit} 文字まで）"),
+    msg(
+        "propose.label_summary",
+        "何を、なぜ変えるか（{limit} 文字まで）",
+    ),
     msg(
         "propose.summary_hint",
         "1 行で書いてください。例: 最初の会合の日付を訂正。",
@@ -1653,7 +1656,7 @@ pub const CATALOG: &[Entry] = &[
     msg("propose.suggestions", "改善のヒント"),
     msg(
         "propose.front_unreadable",
-        "ページ先頭の情報が読み取れません。各行は「名前」「コロン」「値」の形にしてください。",
+        "ページ先頭の情報が読み取れません。各行は「名前: 値」の形で書いてください。",
     ),
     msg(
         "propose.front_owned",
@@ -1691,14 +1694,14 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.part_removed", "部分 {number} が削除されます"),
     msg(
         "changes.unchanged_parts",
-        "{count} 件の部分は変更されません。",
+        "変更のない部分が {count} 件あります。",
     ),
     msg("title.proposal", "提案: {summary} · {wiki} · {product}"),
-    msg("proposal.proposed_by", "提案者: {author}、{when}。"),
-    msg("proposal.pages", "変更するページ: {count} 件。"),
+    msg("proposal.proposed_by", "提案者: {author}（{when}）"),
+    msg("proposal.pages", "{count} ページを変更します。"),
     msg(
         "proposal.revision",
-        "{total} 件中の {number} 番目の修正版です。",
+        "修正版 {number}（全 {total} 件中）です。",
     ),
     msg("proposal.view", "ビュー {view} に対する提案です。"),
     msg("proposal.sources_heading", "出典"),
@@ -1753,7 +1756,7 @@ pub const CATALOG: &[Entry] = &[
     msg("reason.decline_heading", "この提案を見送る"),
     msg(
         "reason.decline_intro",
-        "提案者の労をねぎらい、履歴に取り込まない理由と、次にできることを書いてください。提案者に伝わり、提案を読む人全員に理由が表示されます。",
+        "提案者にお礼を述べたうえで、履歴に取り込まない理由と、次にできることを書いてください。提案者に伝わり、提案を読む人全員に理由が表示されます。",
     ),
     msg("reason.decline_button", "見送る"),
     msg("reason.withdraw_heading", "この提案を取り下げる"),
@@ -1806,7 +1809,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "lint.no_info",
-        "{guideline}: ページ先頭に情報がありません。タイトルを書くと、ページを持ち運びやすくなります。",
+        "{guideline}: ページ先頭に情報がありません。タイトルを書いておくと、ページをほかの場所へ移しやすくなります。",
     ),
     msg(
         "lint.no_title",
@@ -1854,7 +1857,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "lint.heading_top",
-        "{guideline}: ページが最上位の見出しを使っているか、見出しの段階を飛ばしています。",
+        "{guideline}: ページが最上位の見出しを使っているか、見出しのレベルを飛ばしています。",
     ),
     msg(
         "lint.heading_dup",
@@ -2039,7 +2042,7 @@ pub const CATALOG: &[Entry] = &[
     msg("account.token_scope", "スコープ: {scope}"),
     msg("account.token_live", "{when} まで使えます"),
     msg("account.token_expired", "{when} に期限が切れました"),
-    msg("account.token_revoked", "{when} に取り消しました"),
+    msg("account.token_revoked", "{when} に取り消されました"),
     msg("account.token_revoke", "取り消す"),
     msg(
         "account.token_revoked_note",
@@ -2272,7 +2275,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views.kind_interpretation_note",
-        "競合する理解を、既定のビューと並べて保っています。",
+        "既定のビューとは別の理解を示すもので、既定のビューと並べて置かれています。",
     ),
     msg("views.forked_from", "{view} から分岐しました。"),
     msg(
@@ -2304,7 +2307,7 @@ pub const CATALOG: &[Entry] = &[
     msg("views_new.name_label", "名前"),
     msg(
         "views_new.name_hint",
-        "半角の小文字、数字、ドット、ハイフン、アンダースコア。先頭は小文字か数字で、64 文字までです。",
+        "半角英小文字、数字、ドット、ハイフン、アンダースコア。先頭は英小文字か数字で、64 文字までです。",
     ),
     msg("views_new.kind_legend", "このビューの目的"),
     msg("views_new.from_label", "分岐元"),
@@ -2315,11 +2318,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views_new.problem_name_start",
-        "名前の先頭は、半角の小文字か数字にしてください。",
+        "名前の先頭は、半角英小文字か数字にしてください。",
     ),
     msg(
         "views_new.problem_name_chars",
-        "名前に使えるのは、半角の小文字、数字、ドット、ハイフン、アンダースコアだけです（ドットの連続や末尾のドットは使えません）。",
+        "名前に使えるのは、半角英小文字、数字、ドット、ハイフン、アンダースコアだけです（ドットの連続や末尾のドットは使えません）。",
     ),
     msg("views_new.problem_name_long", "名前は 64 文字までです。"),
     msg(
@@ -2382,7 +2385,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views_new.unconfigured",
-        "このサーバーには履歴へ署名する設定がないため、ビューを作成できません（このサーバーの管理者にお知らせください）。何も変更していません。",
+        "このサーバーは変更に署名して履歴に記録する設定になっていないため、ビューを作成できません。何も変更していません。このサーバーの管理者にお知らせください。",
     ),
     msg("title.compare", "ビューの比較 · {wiki} · {product}"),
     msg("compare.heading", "ビューの比較"),
@@ -2449,7 +2452,7 @@ pub const CATALOG: &[Entry] = &[
     msg("claim.others_heading", "ほかのビュー"),
     msg(
         "claim.others_none",
-        "ほかのビューで、この主張が異なって読めるものはありません。",
+        "この主張の内容が異なるほかのビューはありません。",
     ),
     msg("claim.others_compare", "{view} と比べる"),
     msg(
@@ -2572,11 +2575,11 @@ pub const CATALOG: &[Entry] = &[
     msg("attach.heading_challenges", "{page} の一部に異議を示す"),
     msg(
         "attach.intro_supports",
-        "出典とは、ある記述のよりどころとなるものです。本、記事、記録、人の証言などがあります。出典を付けると、この段落が主張として記録され、何をよりどころにしているかをほかの人が見られるようになります。段落の文章も変更できます。変更と出典は一つの提案になります。",
+        "出典とは、ある記述のよりどころとなるものです。本、記事、記録、人の証言などがあります。出典を付けると、この段落が主張として記録され、何をよりどころにしているかをほかの人が見られるようになります。段落の文章も変更できます。文章の変更と出典は、一つの提案にまとめられます。",
     ),
     msg(
         "attach.intro_challenges",
-        "異議を示す出典は、ある記述、またはその一部に反することを述べています。追加すると、この段落が主張として記録され、何がそれに反して述べられているかが示されます。段落の文章も変更できます。変更と出典は一つの提案になります。",
+        "異議を示す出典は、ある記述、またはその一部に反することを述べています。追加すると、この段落が主張として記録され、何がそれに反して述べられているかが示されます。段落の文章も変更できます。文章の変更と出典は、一つの提案にまとめられます。",
     ),
     msg(
         "attach.claim_exists",
@@ -2614,7 +2617,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("attach.bearing_direct", "段落全体にふれている"),
     msg("attach.bearing_partial", "段落の一部にふれている"),
-    msg("attach.bearing_indirect", "言外の含みとしてふれている"),
+    msg("attach.bearing_indirect", "暗にふれている"),
     msg("attach.label_note", "メモ（任意）"),
     msg(
         "attach.hint_note",
@@ -2647,7 +2650,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "attach.full",
-        "この主張には、一つの主張が持てる数の出典がすでにあります。",
+        "この主張の出典は、すでに上限の数に達しています。",
     ),
     msg(
         "attach.says_nothing",
@@ -2679,7 +2682,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.no_wording",
-        "この主張はいま、どの段落にも書かれていないため、出典や状態を判断する文章がありません。",
+        "この主張はいま、どの段落にも書かれていないため、出典や扱いを判断するための文言がありません。",
     ),
     msg(
         "curate.day_not_come",
@@ -2687,7 +2690,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "propose.claim_held_one",
-        "この段落はほかの人が頼りにしています。出典が付いています。目印はこちらで保っておくので、文章だけを編集してください。",
+        "この段落には出典が付いていて、ほかの人が頼りにしています。目印はこちらで保っておくので、文章だけを編集してください。",
     ),
     msg(
         "propose.claim_held_many",
@@ -2709,11 +2712,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.cite",
-        "出典 {source} を引用します: {relation}（{bearing}）。この提案を反映した結果で主張が持つ文言で判断しています。",
+        "出典 {source} を引用します: {relation}（{bearing}）。この提案を反映した後の主張の文言に基づく判断です。",
     ),
     msg(
         "know.cite_unjudged",
-        "出典 {source} を引用します: {relation}（{bearing}）。この提案を反映した結果で主張が持たない文言で判断されています。",
+        "出典 {source} を引用します: {relation}（{bearing}）。この提案を反映した後の主張にはない文言に基づく判断です。",
     ),
     msg(
         "know.source_recorded",
@@ -2771,7 +2774,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.source_change_reference",
-        "参照先が（{form}）{reference} になります。",
+        "参照先が {reference}（{form}）になります。",
     ),
     msg(
         "know.source_change_snapshot",
@@ -2803,7 +2806,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_judged",
-        "この提案は主張に対する判断（出典との結びつきまたはコミュニティでの扱い）を設定または変更していますが、その判断は、提案を反映した結果にその主張のどの段落にも存在しない文言に基づいています。このままでは受け入れられません。",
+        "この提案は主張に対する判断（出典との結びつきまたはコミュニティでの扱い）を設定または変更していますが、その判断は、提案を反映した後のその主張のどの段落にもない文言に基づいています。このままでは受け入れられません。",
     ),
     msg("know.kind_observation", "観察"),
     msg("know.kind_interpretation", "解釈"),
@@ -2851,7 +2854,7 @@ pub const CATALOG: &[Entry] = &[
         "curate.intro",
         "キュレーション提案は、主張の扱い、出典が主張にどうかかわるか、出典を最後に確認した日を変更します。ページは変更しません。権限のある人が履歴に取り込むまで何も変わりません。コミュニティでの扱いは、この方法でのみ設定されます。",
     ),
-    msg("curate.wording", "現在の書かれ方: 「{words}」"),
+    msg("curate.wording", "現在の文言: 「{words}」"),
     msg(
         "curate.wording_none",
         "この主張は現在、どの段落にも書かれていません。",
@@ -2863,7 +2866,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.earlier",
-        "これは、この主張の以前の文面について判断されたものです。",
+        "これは、この主張の以前の文言に基づいて判断されたものです。",
     ),
     msg("curate.source_legend", "出典: {title}"),
     msg("curate.source_untitled", "タイトルのない出典"),
@@ -2909,15 +2912,15 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "touch.links_earlier",
-        "{count} 件の出典は以前の文面について判断されています。以前の文面について判断されたものとして表示されます。",
+        "{count} 件の出典は以前の文言に基づいて判断されています。以前の文言に基づいて判断されたものとして表示されます。",
     ),
     msg(
         "touch.standing_earlier",
-        "コミュニティでの扱い（{status}）は以前の文面について決められています。以前の文面について判断されたものとして表示されます。",
+        "コミュニティでの扱い（{status}）は以前の文言に基づいて決められています。以前の文言に基づいて判断されたものとして表示されます。",
     ),
     msg(
         "touch.nothing_earlier",
-        "以前の文面について判断されたものはありません。",
+        "以前の文言に基づいて判断されたものはありません。",
     ),
     msg(
         "touch.reconfirm_hint",
@@ -2946,7 +2949,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "touch.reconfirm_of",
-        "この提案は、{proposal} による変更で以前の文面について判断されたままになった主張を、改めて判断します。",
+        "この提案は、{proposal} による変更で以前の文言に基づいて判断されたままになった主張を、改めて判断します。",
     ),
     // knowledge: the claims a change touches (handoff 005 K-T5): end
     msg(
@@ -2955,11 +2958,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "invalid.knowledge_unjudged",
-        "この提案が主張に追加または変更する出典との結びつきは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。",
+        "この提案が主張に追加または変更する出典との結びつきは、提案を反映した後のその主張のどの段落にもない文言で判断されています。送信できません。",
     ),
     msg(
         "invalid.knowledge_status_unjudged",
-        "この提案が主張に設定するコミュニティでの扱いは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。",
+        "この提案が主張に設定するコミュニティでの扱いは、提案を反映した後のその主張のどの段落にもない文言で判断されています。送信できません。",
     ),
     msg(
         "know.change_rejudged",
@@ -2987,11 +2990,11 @@ pub const CATALOG: &[Entry] = &[
     // knowledge: direction characters refused (handoff 005 corrections K14): end
     msg(
         "know.replaced_unreadable_claim",
-        "読み取れない主張ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。",
+        "読み取れない主張ファイル（{id}）を置き換えるか削除します。その内容は分かりません。",
     ),
     msg(
         "know.replaced_unreadable_source",
-        "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。",
+        "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かりません。",
     ),
     msg("know.made_lifecycle", "主張の段階: {lifecycle}。"),
     msg(
@@ -3002,7 +3005,7 @@ pub const CATALOG: &[Entry] = &[
         "know.source_made_availability",
         "入手できるかどうか: {availability}。",
     ),
-    msg("know.source_where", "参照先（{form}）: {reference}。"),
+    msg("know.source_where", "参照先: {reference}（{form}）。"),
     msg("know.source_copy", "写しが保存されています。"),
     msg(
         "know.source_change_unsuperseded",
@@ -3065,7 +3068,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.sources_last", "最後の確認は {day} です。"),
     msg(
         "health.sources_overdue",
-        "最後の確認は {day} で、{limit} 日を超えて前です。",
+        "最後の確認は {day} です（{limit} 日を超えて経過しています）。",
     ),
     msg(
         "health.sources_claims",
@@ -3179,19 +3182,19 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.source_spacing_title",
-        "タイトルの空白だけが変わります（␣ は空白、⇥ はタブ、↵ は改行、[U+XXXX] は文字をコードポイントで示したもので、そのほかの空白と、本文にある上記の記号や [ と ] を表します）: {was} が {now} になります。",
+        "タイトルの空白だけが変わります（␣ は空白、⇥ はタブ、↵ は改行、[U+XXXX] は文字をコードポイントで示したもので、そのほかの空白と、元の文字列にある上記の記号や [ と ] を表します）: {was} が {now} になります。",
     ),
     msg(
         "know.source_spacing_author",
-        "著者または発行者の空白だけが変わります（␣ は空白、⇥ はタブ、↵ は改行、[U+XXXX] は文字をコードポイントで示したもので、そのほかの空白と、本文にある上記の記号や [ と ] を表します）: {was} が {now} になります。",
+        "著者または発行者の空白だけが変わります（␣ は空白、⇥ はタブ、↵ は改行、[U+XXXX] は文字をコードポイントで示したもので、そのほかの空白と、元の文字列にある上記の記号や [ と ] を表します）: {was} が {now} になります。",
     ),
     msg(
         "know.source_spacing_date",
-        "日付の空白だけが変わります（␣ は空白、⇥ はタブ、↵ は改行、[U+XXXX] は文字をコードポイントで示したもので、そのほかの空白と、本文にある上記の記号や [ と ] を表します）: {was} が {now} になります。",
+        "日付の空白だけが変わります（␣ は空白、⇥ はタブ、↵ は改行、[U+XXXX] は文字をコードポイントで示したもので、そのほかの空白と、元の文字列にある上記の記号や [ と ] を表します）: {was} が {now} になります。",
     ),
     msg(
         "know.source_spacing_reference",
-        "参照先の空白だけが変わります（␣ は空白、⇥ はタブ、↵ は改行、[U+XXXX] は文字をコードポイントで示したもので、そのほかの空白と、本文にある上記の記号や [ と ] を表します）: {was} が {now} になります。",
+        "参照先の空白だけが変わります（␣ は空白、⇥ はタブ、↵ は改行、[U+XXXX] は文字をコードポイントで示したもので、そのほかの空白と、元の文字列にある上記の記号や [ と ] を表します）: {was} が {now} になります。",
     ),
     msg("know.source_spacing_none", "（なし）"),
     msg(
