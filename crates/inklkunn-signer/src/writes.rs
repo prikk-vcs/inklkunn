@@ -749,9 +749,22 @@ pub(crate) fn parse_publication_trust(text: &str) -> PublicationTrust {
     out
 }
 
+/// prikk's `refusal-v1` report: what it says on stdout, under `--format json`, when it refuses (the read driver
+/// parses the same document; the signer needs only the schema and the words).
+#[derive(Deserialize)]
+struct RefusalOnStdout {
+    schema_version: String,
+    #[serde(default)]
+    message: String,
+}
+
 /// Like [`outcome`], for a verb whose **report is the answer even when it exits 1**: `worktree-status` exits
 /// 1 on a dirty tree and `verify` on a failing verdict, each still printing its JSON report on stdout. A
 /// non-zero exit with a report on stdout is returned as the report; one without is the refusal it says.
+///
+/// **What stdout says is read before it is taken for the report** (M57): a document whose `schema_version` is
+/// `refusal-v1` is prikk's refusal, as the read driver reads it, and its `message` is preferred to stderr's words
+/// (an empty one falls back to them). It is never handed on as the report, where it would read as a damaged one.
 fn report_outcome(
     binary: &std::ffi::OsStr,
     verb: &str,
@@ -760,6 +773,24 @@ fn report_outcome(
 ) -> Result<Vec<u8>, SignerError> {
     let has_report = run.stdout.first() == Some(&b'{');
     if has_report && !run.timed_out && !run.output_exceeded {
+        let refusal = serde_json::from_slice::<RefusalOnStdout>(&run.stdout)
+            .ok()
+            .filter(|r| r.schema_version == "refusal-v1");
+        // A death of the memory ceiling is `outcome`'s to classify first, as for every other verb.
+        if let Some(r) = refusal
+            && !run.died_of_ceiling()
+        {
+            let message = scrub(r.message.trim());
+            if !message.is_empty() {
+                return Err(SignerError::Refused(message));
+            }
+            return match outcome(binary, verb, run, ceiling) {
+                Err(e) => Err(e),
+                Ok(_) => Err(SignerError::Refused(format!(
+                    "`{verb}` refused without a reason"
+                ))),
+            };
+        }
         return Ok(run.stdout);
     }
     outcome(binary, verb, run, ceiling)

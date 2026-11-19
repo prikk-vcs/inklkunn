@@ -953,3 +953,140 @@ fn the_same_sentence_from_a_prikk_that_reads_the_format_is_a_damaged_or_unknown_
         "a refusal-v1 report: {e:?}"
     );
 }
+
+// ---- a `refusal-v1` on a non-zero exit is prikk's refusal, for each verb whose report is the answer (M57)
+
+/// A repository directory and a `prikk` that is a script: every call prints `stdout` and `stderr` and exits with `exit`.
+struct SaysFixture {
+    dir: PathBuf,
+}
+
+impl SaysFixture {
+    fn new(tag: &str, stdout: &str, stderr: &str, exit: i32) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("inklkunn-says-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("repo/.prikk")).unwrap();
+        std::fs::write(dir.join("out.txt"), stdout).unwrap();
+        std::fs::write(dir.join("err.txt"), stderr).unwrap();
+        let script = format!(
+            "#!/bin/sh\nD='{d}'\ncat \"$D/out.txt\"; cat \"$D/err.txt\" >&2; exit {exit}\n",
+            d = dir.display()
+        );
+        let path = dir.join("prikk");
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        SaysFixture { dir }
+    }
+
+    fn writes(&self) -> Writes {
+        Writes::new(self.dir.join("prikk"), Sandbox::Unconfined)
+    }
+
+    fn repo(&self) -> PathBuf {
+        self.dir.join("repo")
+    }
+
+    /// Run `f` again while a script just written is refused with `ETXTBSY` (a sibling test forks).
+    fn retry<T>(&self, mut f: impl FnMut() -> Result<T, SignerError>) -> Result<T, SignerError> {
+        let mut r = f();
+        for _ in 0..50 {
+            if !matches!(&r, Err(SignerError::Unavailable(m)) if m.contains("Text file busy")) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            r = f();
+        }
+        r
+    }
+
+    /// What each of the three verbs answers (verb, error), when it answers with one.
+    fn answers(&self) -> Vec<(&'static str, Option<SignerError>)> {
+        let (writes, repo) = (self.writes(), self.repo());
+        vec![
+            ("verify", self.retry(|| writes.verify(&repo)).err()),
+            (
+                "worktree-status",
+                self.retry(|| writes.worktree_clean(&repo)).err(),
+            ),
+            ("status", self.retry(|| writes.status(&repo)).err()),
+        ]
+    }
+}
+
+impl Drop for SaysFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+const REFUSAL: &str = r#"{"schema_version":"refusal-v1","refusal":"precondition-not-met","reason":null,"message":"the queue is not readable: x"}"#;
+
+#[test]
+fn a_refusal_v1_on_exit_1_is_the_refusal_for_verify_worktree_status_and_status_and_never_damaged() {
+    // The words come from the report's `message`, not from stderr (which says something else here).
+    let f = SaysFixture::new("refusal", REFUSAL, "error: stderr's own words\n", 1);
+    for (verb, answer) in f.answers() {
+        assert_eq!(
+            answer,
+            Some(SignerError::Refused(
+                "the queue is not readable: x".to_owned()
+            )),
+            "{verb}"
+        );
+    }
+}
+
+#[test]
+fn a_refusal_v1_without_a_message_falls_back_to_stderrs_words_and_then_to_a_plain_refusal() {
+    let empty = r#"{"schema_version":"refusal-v1","refusal":"x","reason":null,"message":""}"#;
+    let f = SaysFixture::new("empty-err", empty, "error: stderr's own words\n", 1);
+    for (verb, answer) in f.answers() {
+        assert_eq!(
+            answer,
+            Some(SignerError::Refused("stderr's own words".to_owned())),
+            "{verb}"
+        );
+    }
+    // No stderr either: still a refusal, never a damaged report.
+    let f = SaysFixture::new("empty-none", empty, "", 1);
+    for (verb, answer) in f.answers() {
+        assert!(
+            matches!(answer, Some(SignerError::Refused(_))),
+            "{verb}: {answer:?}"
+        );
+    }
+}
+
+#[test]
+fn a_refusal_v1_message_never_carries_a_seed_path() {
+    let said = r#"{"schema_version":"refusal-v1","refusal":"x","reason":null,"message":"no seed at /run/inklkunn-seeds-00ff/author.seed."}"#;
+    let f = SaysFixture::new("scrub", said, "", 1);
+    for (verb, answer) in f.answers() {
+        let Some(SignerError::Refused(m)) = answer else {
+            panic!("{verb}: {answer:?}");
+        };
+        assert!(
+            !m.contains("inklkunn-seeds-") && m.contains("<seed directory>"),
+            "{verb}: {m}"
+        );
+    }
+}
+
+#[test]
+fn another_report_on_stdout_is_still_the_report_and_a_document_of_another_schema_is_still_damaged()
+{
+    // The answer of `worktree-status` on a dirty tree: exit 1 and its own report. It is read, not refused.
+    let dirty = r#"{"schema_version":"worktree-status-report-v1","clean":false}"#;
+    let f = SaysFixture::new("dirty", dirty, "", 1);
+    assert_eq!(f.retry(|| f.writes().worktree_clean(&f.repo())), Ok(false));
+    // A document that is no report of the verb's schema is a damaged report, as before.
+    let other = r#"{"schema_version":"something-else-v9","message":"hello"}"#;
+    let f = SaysFixture::new("other", other, "", 1);
+    for (verb, answer) in f.answers() {
+        assert!(
+            matches!(answer, Some(SignerError::Damaged(_))),
+            "{verb}: {answer:?}"
+        );
+    }
+}
