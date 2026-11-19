@@ -473,10 +473,10 @@ async fn a_source_is_named_in_japanese_with_the_japanese_words_around_its_own() 
     with_named_sources(&w, "橋の調査", "港湾局");
     let main = main_of(&request(&w, APP, "GET", &claim_uri(1), JA).await);
     assert!(
-        main.contains("「橋の調査」、港湾局 による、日付 Spring 1950（一次）: 直接に裏付けている。 所在: https://example.org/survey。"),
+        main.contains("「橋の調査」、港湾局 による、日付 Spring 1950（一次資料）: 直接裏付けている。 所在: https://example.org/survey。"),
         "{main}"
     );
-    assert!(main.contains("題名のない出典"), "{main}");
+    assert!(main.contains("タイトルのない出典"), "{main}");
 }
 
 /// A claim that cites two sources which say exactly the same of themselves (title, author, date and reference).
@@ -543,10 +543,10 @@ async fn a_claim_page_in_japanese_is_a_page_of_its_own_words() {
     let a = request(&w, APP, "GET", &claim_uri(1), JA).await;
     let main = main_of(&a);
     assert!(main.contains("この主張の種類: 観察。"), "{main}");
-    assert!(main.contains("直接に裏付けている"), "{main}");
-    assert!(main.contains("一部に異議を唱えている"), "{main}");
+    assert!(main.contains("直接裏付けている"), "{main}");
+    assert!(main.contains("一部に異議を示している"), "{main}");
     assert!(
-        main.contains("このビューでは、この主張は争われています。"),
+        main.contains("このビューでは、この主張には異論があります。"),
         "{main}"
     );
 }

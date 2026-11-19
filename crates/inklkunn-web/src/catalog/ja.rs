@@ -117,7 +117,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "redirect.loop",
-        "ページ「{title}」のリダイレクトは、ぐるぐると回り続けます。",
+        "ページ「{title}」のリダイレクトは循環しています。",
     ),
     msg(
         "redirect.too_long",
@@ -168,20 +168,20 @@ pub const CATALOG: &[Entry] = &[
     msg("verification.heading", "検証"),
     msg(
         "explain.verification",
-        "検証では、このウィキの履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、直前の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。",
+        "検証では、このウィキの履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、前回の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。",
     ),
     msg("verification.explain_summary", "これは何を意味しますか"),
     msg(
         "verification.state_verified",
-        "直前の確認では、問題は見つかりませんでした。",
+        "前回の確認では、問題は見つかりませんでした。",
     ),
     msg(
         "verification.state_failed",
-        "直前の確認で、このウィキの履歴に問題が見つかりました。このサーバーの管理者が調べることができます。",
+        "前回の確認で、このウィキの履歴に問題が見つかりました。このサーバーの管理者が調べることができます。",
     ),
     msg(
         "verification.state_could_not",
-        "直前の確認は最後まで実行できませんでした。履歴に問題があるかどうかについては、何も分かっていません。",
+        "前回の確認は最後まで実行できませんでした。このことから、履歴に問題があるかどうかは分かりません。",
     ),
     msg(
         "verification.state_unknown",
@@ -208,7 +208,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "verification.busy",
-        "サーバーが他の作業で混み合っているため、確認を実行できませんでした。しばらくしてから、もう一度お試しください。",
+        "サーバーがほかの作業で混み合っているため、確認を実行できませんでした。しばらくしてから、もう一度お試しください。",
     ),
     msg(
         "verification.limit",
@@ -228,7 +228,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "verification.explained_by_retirement",
-        "確認に失敗した箇所は、鍵 {key} の失効時に記録されたものだけです。その鍵はこのウィキの信頼から外されたため、その鍵が署名した部分は確認できなくなっています。ほかに失敗はありません。",
+        "確認に失敗した箇所は、鍵 {key} の廃止時に記録されたものだけです。その鍵はこのウィキが信頼する鍵から外されたため、その鍵が署名した部分は確認できなくなっています。ほかに失敗はありません。",
     ),
     // about, and the list of wikis
     msg("title.about", "{wiki} について · {product}"),
@@ -464,7 +464,7 @@ pub const CATALOG: &[Entry] = &[
         "この変更の記録には、誰が行ったかが書かれていません。",
     ),
     msg("flag.undo", "以前の変更を取り消します"),
-    msg("flag.import", "取り込み"),
+    msg("flag.import", "インポート"),
     msg("flag.service", "ウィキサービス自身が行った変更"),
     msg("flag.first", "このウィキの最初の変更"),
     msg("event.created", "ページが作成されました"),
@@ -548,11 +548,11 @@ pub const CATALOG: &[Entry] = &[
         "diff.refinement",
         "印の付いた語は、inklkunn が変更された行を語ごとに比べて見つけたものです。行そのものは prikk が出力したものです。",
     ),
-    msg("diff.hunk_near", "{line} 行目付近の変更"),
-    msg("diff.hunk_plain", "変更"),
+    msg("diff.hunk_near", "{line} 行目付近の変更箇所"),
+    msg("diff.hunk_plain", "変更箇所"),
     msg(
         "diff.hunk_raw",
-        "この部分は変更の一覧として読み取れませんでした。そのまま表示しています。",
+        "この部分は差分として読み取れませんでした。そのまま表示しています。",
     ),
     msg("diff.added_label", "追加:"),
     msg("diff.removed_label", "削除:"),
@@ -588,7 +588,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "changes.seen_note",
-        "履歴には変更を行った日時が記録されないため、各変更にはこのサーバーが最初に確認した日時を表示しています。",
+        "履歴には変更を行った日時が記録されないため、各変更にはこのサーバーが初めて確認した日時を表示しています。",
     ),
     msg("changes.filter_legend", "表示する変更を選ぶ"),
     msg(
@@ -730,7 +730,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.help_name", "手助けが必要なページ"),
     msg(
         "health.help_desc",
-        "作業中、下書き、またはスタブと示されているページ。",
+        "作業中、下書き、またはスタブの印が付いているページ。",
     ),
     msg("health.stale_name", "長く変更されていないページ"),
     msg(
@@ -744,7 +744,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.col_action", "解決するための対応"),
     msg("health.col_target", "リダイレクト先"),
     msg("health.col_problem", "問題"),
-    msg("health.col_mark", "表示されている状態"),
+    msg("health.col_mark", "付いている印"),
     msg("health.col_changed", "最後の変更"),
     msg("health.see_links", "{title} へのリンク元のページ"),
     msg("health.propose_page", "このページを提案する（{title}）"),
@@ -791,7 +791,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.mark_stub", "スタブ"),
     msg(
         "health.help_action",
-        "ページを仕上げるか改善してから、その表示を外します。",
+        "ページを仕上げるか改善してから、その印を外します。",
     ),
     msg(
         "health.stale_never",
@@ -824,7 +824,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.none_help",
-        "手助けが必要と示されているページはありません。",
+        "手助けが必要という印が付いているページはありません。",
     ),
     msg("health.none_stale", "表示できるページはありません。"),
     msg("health.knowledge_name", "読み取れない知識ファイル"),
@@ -880,7 +880,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_reference",
-        "ウィキにない出典または主張が指定されているか、置き換えの連なりが輪になっています。",
+        "ウィキにない出典または主張が指定されているか、置き換えの連なりが循環しています。",
     ),
     msg(
         "health.rule_anchor",
@@ -896,11 +896,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_status",
-        "コミュニティの状態、確認日、入手できるかどうかの設定、主張がすでに持つ出典リンクの変更・削除、確認済みの出典の題名・著者・日付・参照先・置き換え先の変更が、キュレーション提案ではない変更で行われています。",
+        "コミュニティでの扱い、確認日、入手できるかどうかの設定、主張がすでに持つ出典との結びつきの変更・削除、確認済みの出典のタイトル・著者・日付・参照先・置き換え先の変更が、キュレーション提案ではない変更で行われています。",
     ),
     msg(
         "health.rule_judged",
-        "変更が設定した判断（出典リンクまたはコミュニティでの扱い）が、その主張のどの段落にも結果として存在しない文言で判断されています。",
+        "変更が設定した判断（出典との結びつきまたはコミュニティでの扱い）が、その主張のどの段落にも結果として存在しない文言で判断されています。",
     ),
     msg("title.links", "{page} へのリンク · {wiki} · {product}"),
     msg("links.heading", "{page} へのリンク元のページ"),
@@ -971,7 +971,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.base_required.hint",
-        "If-Match に提案のリビジョンの ETag を付けて送ってください。新しい提案では、ビューの先頭の状態 ID を送ってください。",
+        "If-Match に提案の修正版の ETag を付けて送ってください。新しい提案では、ビューの先頭の状態 ID を送ってください。",
     ),
     msg("problem.stale_base.title", "基準が古くなっています"),
     msg(
@@ -980,7 +980,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.stale_base.hint",
-        "現在の状態を読み、変更を照らし合わせてから、If-Match に現在の値を付けて送り直してください。この問題の応答にその値が含まれています。",
+        "現在の状態を読み、編集内容を照らし合わせてから、If-Match に現在の値を付けて送り直してください。この問題の応答にその値が含まれています。",
     ),
     msg("problem.invalid_body.title", "本文を受け付けられません"),
     msg(
@@ -998,7 +998,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.body_too_large.hint",
-        "送る量を減らしてください。変更を分けるか、テキストを短くします。",
+        "送る量を減らしてください。内容を分けるか、テキストを短くします。",
     ),
     msg(
         "problem.unsupported_media_type.title",
@@ -1033,11 +1033,11 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.already_decided.title", "すでに判断しています"),
     msg(
         "problem.already_decided.detail",
-        "このリビジョンにはすでに判断を出しており、判断は変更できません。",
+        "この修正版にはすでに判断を出しており、判断は変更できません。",
     ),
     msg(
         "problem.already_decided.hint",
-        "次のリビジョンができたら、そのときにあらためて判断してください。",
+        "次の修正版ができたら、そのときにあらためて判断してください。",
     ),
     msg("problem.own_proposal.title", "自分の提案です"),
     msg(
@@ -1046,7 +1046,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.own_proposal.hint",
-        "ほかのレビュー担当者に判断を依頼してください。自分の提案にコメントすることはできます。",
+        "ほかのレビュアーに判断を依頼してください。自分の提案にコメントすることはできます。",
     ),
     msg("problem.refused_limit.title", "拒否: 上限に達しました"),
     msg(
@@ -1073,16 +1073,16 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.needs_recovery.hint",
-        "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。",
+        "このサーバーの管理者にお知らせください。このリクエストでは何も行われていません。",
     ),
     msg("problem.overlap.title", "変更が重なっています"),
     msg(
         "problem.overlap.detail",
-        "停止しました。提案とウィキが同じ箇所を変更しており、{overlaps} 件あります。提案は改訂が必要な状態になり、ウィキは変わっていません。",
+        "停止しました。提案とウィキが同じ箇所を変更しており、{overlaps} 件あります。提案は修正が必要な状態になり、ウィキは変わっていません。",
     ),
     msg(
         "problem.overlap.hint",
-        "提案に記録された重なりを読み、両方のテキストを踏まえた改訂を書いて送ってください。",
+        "提案に記録された重なりを読み、両方のテキストを踏まえた新しい修正版を書いて送ってください。",
     ),
     msg(
         "problem.nothing_to_change.title",
@@ -1090,7 +1090,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.nothing_to_change.detail",
-        "このリビジョンが求める内容は、すでにウィキにあります。",
+        "この修正版が求める内容は、すでにウィキにあります。",
     ),
     msg(
         "problem.nothing_to_change.hint",
@@ -1106,7 +1106,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.acceptance_in_progress.hint",
-        "しばらく待ってから、もう一度試してください。先の受け入れが中断されていた場合は、復旧が解決します。",
+        "しばらく待ってから、もう一度お試しください。先の受け入れが中断されていた場合は、復旧が解決します。",
     ),
     msg("problem.acceptance_failed.title", "受け入れに失敗しました"),
     msg(
@@ -1115,7 +1115,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.acceptance_failed.hint",
-        "もう一度試すか、このサーバーを運用している人に知らせてください。",
+        "もう一度お試しになるか、このサーバーの管理者にお知らせください。",
     ),
     msg(
         "problem.signing_not_configured.title",
@@ -1127,19 +1127,19 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.signing_not_configured.hint",
-        "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。",
+        "このサーバーの管理者にお知らせください。このリクエストでは何も行われていません。",
     ),
     msg(
         "problem.retirement_unfinished.title",
-        "ウィキの鍵の変更が完了していません",
+        "ウィキの鍵の更新作業が完了していません",
     ),
     msg(
         "problem.retirement_unfinished.detail",
-        "このウィキの鍵の変更が完了していないため、運用している人が鍵の変更を完了するか取りやめるまで、履歴に新しく署名することはできません。変更は行われておらず、提案はそのまま保たれています。",
+        "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しく署名することはできません。変更は行われておらず、提案はそのまま保たれています。",
     ),
     msg(
         "problem.retirement_unfinished.hint",
-        "このウィキを運用している人に知らせてください。完了または取りやめになったら、もう一度この提案を受け入れてください。",
+        "このウィキを運営している人にお知らせください。完了または取りやめになったら、もう一度この提案を受け入れてください。",
     ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "受信箱 · {product}"),
@@ -1158,7 +1158,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "inbox.event_accepted",
-        "{wiki} のあなたの提案 {proposal} は受け入れられ、署名して履歴に記録されました。",
+        "{wiki} のあなたの提案 {proposal} は受け入れられ、署名されて履歴に記録されました。",
     ),
     msg(
         "inbox.event_declined",
@@ -1178,11 +1178,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "inbox.event_replied",
-        "{person}が {wiki} の {proposal} の議論にコメントしました。",
+        "{person}が {wiki} の {proposal} のディスカッションにコメントしました。",
     ),
     msg(
         "inbox.event_mentioned",
-        "{person}が {wiki} の {proposal} の議論であなたに言及しました。",
+        "{person}が {wiki} の {proposal} のディスカッションであなたに言及しました。",
     ),
     msg(
         "inbox.event_watched",
@@ -1213,11 +1213,11 @@ pub const CATALOG: &[Entry] = &[
     msg("watch.heading_full", "フォローできる数の上限です"),
     msg(
         "watch.page_followed",
-        "ページ「{title}」をフォローしました。このページへの変更が署名して履歴に記録されると、受信箱でお知らせします。",
+        "ページ「{title}」をフォローしました。このページへの変更が署名されて履歴に記録されると、受信箱でお知らせします。",
     ),
     msg(
         "watch.namespace_followed",
-        "「{title}」の下にあるページをフォローしました。それらへの変更が署名して履歴に記録されると、受信箱でお知らせします。",
+        "「{title}」の下にあるページをフォローしました。それらへの変更が署名されて履歴に記録されると、受信箱でお知らせします。",
     ),
     msg(
         "watch.page_stopped",
@@ -1264,7 +1264,7 @@ pub const CATALOG: &[Entry] = &[
     msg("state.superseded", "置き換え済み"),
     msg(
         "state_note.draft",
-        "下書きです。始めた本人だけが見られます。まだ誰にもレビューを依頼していません。",
+        "下書きです。始めた本人だけが閲覧できます。まだ誰にもレビューを依頼していません。",
     ),
     msg(
         "state_note.held",
@@ -1342,7 +1342,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.unchanged_refused",
-        "履歴は、用意された変更をそのままでは受け付けませんでした。何も変更しておらず、提案はレビュー待ちのままです。",
+        "履歴は、用意された変更をそのままでは受け付けませんでした。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
     ),
     msg(
         "outcome.knowledge_invalid",
@@ -1350,25 +1350,25 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.knowledge_invalid",
-        "この提案の主張または出典のファイルが、ウィキが読める形になっていないか、この変更によって別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちのままです。ファイルを直してから、もう一度受け入れてください。",
+        "この提案の主張または出典のファイルが、ウィキが読める形になっていないか、この変更によって別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちで保持されたままです。ファイルを直してから、もう一度受け入れてください。",
     ),
     msg("outcome.too_large", "大きすぎて今は署名できません"),
     msg(
         "outcome_note.too_large",
-        "この変更の署名には、1 回の署名で使える量を超えるメモリが必要です。何も変更しておらず、提案はレビュー待ちのままです。",
+        "この変更の署名には、1 回の署名で使える量を超えるメモリが必要です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
     ),
     msg(
         "outcome.retirement_unfinished",
-        "署名されませんでした: このウィキの鍵の変更が完了していません",
+        "署名されませんでした: このウィキの鍵の更新作業が完了していません",
     ),
     msg(
         "outcome_note.retirement_unfinished",
-        "このウィキの鍵の変更が完了していないため、運用している人が鍵の変更を完了するか取りやめるまで、履歴に新しく署名することはできません。何も変更しておらず、提案はそのまま保たれています。その人に伝えてください。完了または取りやめになったら、もう一度この提案を受け入れてください。",
+        "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しく署名することはできません。何も変更しておらず、提案はそのまま保たれています。その人にお知らせください。完了または取りやめになったら、もう一度この提案を受け入れてください。",
     ),
     msg("outcome.unavailable", "今は実行できません"),
     msg(
         "outcome_note.unavailable",
-        "記録または履歴を今は利用できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーを運用している人に伝えてください。",
+        "記録または履歴を今は利用できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。",
     ),
     msg("outcome.in_progress", "この修正版は署名の最中です"),
     msg(
@@ -1383,7 +1383,7 @@ pub const CATALOG: &[Entry] = &[
     msg("outcome.store", "結果は不明です"),
     msg(
         "outcome_note.store",
-        "変更を取り込む途中で、記録を利用できなくなりました。変更が履歴に入ったかどうかは分かりません。もう一度試す前に履歴を確認し、このサーバーを運用している人に伝えてください。",
+        "変更を取り込む途中で、記録を利用できなくなりました。変更が履歴に入ったかどうかは分かりません。もう一度試す前に履歴を確認し、このサーバーの管理者にお知らせください。",
     ),
     msg("accept.heading", "このビルドでは受け入れを利用できません"),
     msg(
@@ -1392,7 +1392,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "accept.not_served_kept",
-        "提案はレビュー待ちのままで、何も変更していません。",
+        "提案はレビュー待ちで保持されたままで、何も変更していません。",
     ),
     msg(
         "accept.not_served_note",
@@ -1404,7 +1404,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "accept.unconfigured",
-        "このサーバーには履歴へ署名する設定がないため、何も変更しておらず、提案はレビュー待ちのままです（このサーバーを運用している人に伝えてください）。",
+        "このサーバーには履歴へ署名する設定がないため、何も変更しておらず、提案はレビュー待ちで保持されたままです（このサーバーの管理者にお知らせください）。",
     ),
     msg(
         "accept.unconfigured_note",
@@ -1428,8 +1428,8 @@ pub const CATALOG: &[Entry] = &[
     msg("overlap.place_named", "{id} と名付けられた部分"),
     msg("overlap.place_page", "ページ全体"),
     msg("overlap.place_path", "ページのアドレス"),
-    msg("quota.open_proposals", "未決の提案が多すぎます"),
-    msg("quota.revisions", "1 つの提案の修正が多すぎます"),
+    msg("quota.open_proposals", "進行中の提案が多すぎます"),
+    msg("quota.revisions", "1 つの提案の修正版が多すぎます"),
     msg("quota.accepted_bytes", "本日受け入れられた文章が多すぎます"),
     msg("quota.hour_person", "直近 1 時間に出した提案が多すぎます"),
     msg(
@@ -1448,7 +1448,7 @@ pub const CATALOG: &[Entry] = &[
     msg("quota.reset_at", "{when} にリセットされます。"),
     msg(
         "quota.reset_proposal_closes",
-        "あなたの未決の提案のどれかが、受け入れ・見送り・取り下げ・置き換えのいずれかになるとリセットされます。",
+        "あなたの進行中の提案のどれかが、受け入れ・見送り・取り下げ・置き換えのいずれかになるとリセットされます。",
     ),
     msg(
         "quota.reset_queue",
@@ -1456,7 +1456,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "quota.reset_never_revisions",
-        "待っても解消しません。この提案はこれ以上修正できません。新しい提案を出してください。",
+        "待っても解消しません。この提案の修正版は、これ以上増やせません。新しい提案を出してください。",
     ),
     msg(
         "quota.reset_never_too_big",
@@ -1486,15 +1486,15 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "refused.already_decided",
-        "この修正にはすでに判断を記録しています。判断は変更できません。次の修正であらためて判断してください。",
+        "この修正版にはすでに判断を記録しています。判断は変更できません。次の修正版であらためて判断してください。",
     ),
     msg(
         "refused.own_proposal",
-        "自分の提案を承認したり、修正を求めたりすることはできません。ほかのレビュー担当者に判断を依頼してください。コメントはできます。",
+        "自分の提案を承認したり、修正を求めたりすることはできません。ほかのレビュアーに判断を依頼してください。コメントはできます。",
     ),
     msg(
         "refused.stale_revision",
-        "この提案には新しい修正（{latest} 番）があります。読み直して、そちらについて判断してください。",
+        "この提案には新しい修正版（{latest} 番）があります。読み直して、そちらについて判断してください。",
     ),
     msg(
         "refused.superseder",
@@ -1568,12 +1568,12 @@ pub const CATALOG: &[Entry] = &[
     msg("proposals.empty", "まだ提案はありません。"),
     msg("proposals.new_page", "新しいページを提案する"),
     msg("proposals.drafts", "あなたの下書き"),
-    msg("proposals.open", "未決の提案"),
+    msg("proposals.open", "進行中の提案"),
     msg("proposals.closed", "決着済みの提案"),
     msg("proposals.row_by", "提案者: {author} · 最終更新 {when}"),
     msg("proposal.no_summary", "（要約はまだありません）"),
-    msg("proposals.back", "提案の一覧へ戻る"),
-    msg("proposal.back", "提案へ戻る"),
+    msg("proposals.back", "提案の一覧に戻る"),
+    msg("proposal.back", "提案に戻る"),
     msg("person.unknown", "ある方"),
     msg(
         "title.propose_parts",
@@ -1591,7 +1591,7 @@ pub const CATALOG: &[Entry] = &[
     msg("parts.section_label", "セクション: {heading}"),
     msg("parts.part_label", "部分 {number}: {excerpt}"),
     msg("parts.cut", "最初の {limit} 件のみ表示しています。"),
-    msg("parts.back", "{page} へ戻る"),
+    msg("parts.back", "{page} に戻る"),
     msg(
         "title.propose_page",
         "{page} への変更を提案する · {wiki} · {product}",
@@ -1641,7 +1641,7 @@ pub const CATALOG: &[Entry] = &[
     msg("propose.submit_revision", "修正を送信"),
     msg(
         "propose.saved",
-        "下書きを保存しました。あなただけが見られます。",
+        "下書きを保存しました。あなただけが閲覧できます。",
     ),
     msg("propose.problems", "先に次の点を直してください"),
     msg("propose.continue_draft", "下書きの続きを書く"),
@@ -1651,7 +1651,7 @@ pub const CATALOG: &[Entry] = &[
         "propose.preview_note",
         "あなたの文章はこのように表示されます。まだ何も保存されていません。",
     ),
-    msg("propose.suggestions", "改善の提案"),
+    msg("propose.suggestions", "改善のヒント"),
     msg(
         "propose.front_unreadable",
         "ページ先頭の情報が読み取れません。各行は「名前」「コロン」「値」の形にしてください。",
@@ -1704,7 +1704,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "proposal.revision",
-        "{total} 件中の {number} 番目の修正です。",
+        "{total} 件中の {number} 番目の修正版です。",
     ),
     msg("proposal.view", "ビュー {view} に対する提案です。"),
     msg("proposal.sources_heading", "出典"),
@@ -1718,7 +1718,7 @@ pub const CATALOG: &[Entry] = &[
     msg("action.accept", "受け入れる"),
     msg("thread.heading", "ディスカッション"),
     msg("thread.none", "まだコメントはありません。"),
-    msg("comment.meta", "{when} · 修正 {number} について"),
+    msg("comment.meta", "{when} · 修正版 {number} について"),
     msg("comment.on_part", "{title} の部分 {number} について"),
     msg(
         "comment.orphaned",
@@ -1740,19 +1740,19 @@ pub const CATALOG: &[Entry] = &[
     msg("decisions.none", "まだ判断したレビュアーはいません。"),
     msg(
         "decision.approved",
-        "{reviewer}が承認しました（修正 {number} について）。",
+        "{reviewer}が承認しました（修正版 {number} について）。",
     ),
     msg(
         "decision.requested",
-        "{reviewer}が変更を求めました（修正 {number} について）。",
+        "{reviewer}が修正を求めました（修正版 {number} について）。",
     ),
     msg(
         "decision.older",
-        "この後に新しい修正が書かれました。この判断は、受け入れの条件としてはもう数えられません。",
+        "この後に新しい修正版が書かれました。この判断は、受け入れの条件としてはもう数えられません。",
     ),
     msg("decide.label", "判断に添えるメモ（省略可）"),
-    msg("decide.approve", "この修正を承認する"),
-    msg("decide.request", "変更を求める"),
+    msg("decide.approve", "この修正版を承認する"),
+    msg("decide.request", "修正を求める"),
     msg("title.decline", "提案を見送る · {wiki} · {product}"),
     msg("title.withdraw", "提案を取り下げる · {wiki} · {product}"),
     msg("title.ask", "修正を求める · {wiki} · {product}"),
@@ -1771,7 +1771,7 @@ pub const CATALOG: &[Entry] = &[
     msg("reason.ask_heading", "修正を求める"),
     msg(
         "reason.ask_intro",
-        "何をなぜ直す必要があるのかを書いて、提案者が次に何をすればよいか分かるようにしてください。提案者に伝わり、新しい修正を送れます。",
+        "何をなぜ直す必要があるのかを書いて、提案者が次に何をすればよいか分かるようにしてください。提案者に伝わり、新しい修正版を送れます。",
     ),
     msg("reason.ask_button", "修正を求める"),
     msg("reason.label", "理由"),
@@ -1900,7 +1900,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "lint.other",
-        "{guideline}: このテキストについて、リンターからの提案があります。",
+        "{guideline}: このテキストについて、改善のヒントがあります。",
     ),
     // proposals (handoff 004 T3): end
     // sign-in and accounts (the sign-in handoff U1, U2): begin
@@ -1919,7 +1919,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.unavailable",
-        "今回は処理できず、何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者に知らせてください。",
+        "今回は処理できず、何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。",
     ),
     msg("title.sign_in", "サインイン · {product}"),
     msg("sign_in.heading", "サインイン"),
@@ -1949,7 +1949,7 @@ pub const CATALOG: &[Entry] = &[
     msg("sign_out.heading", "サインアウト"),
     msg(
         "sign_out.body",
-        "このブラウザをサインアウトします。ほかのブラウザでのサインインはそのまま続きます。",
+        "このブラウザーをサインアウトします。ほかのブラウザーでのサインインはそのまま続きます。",
     ),
     msg("sign_out.not_signed_in", "サインインしていません。"),
     msg("title.join", "参加 · {product}"),
@@ -2029,16 +2029,16 @@ pub const CATALOG: &[Entry] = &[
     msg("account.sessions_heading", "サインインしている場所"),
     msg(
         "account.sessions_intro",
-        "各行は、いまあなたのアカウントにサインインしているブラウザです。セッションを終了すると、そのブラウザはサインアウトされます。",
+        "各行は、いまあなたのアカウントにサインインしているブラウザーです。セッションを終了すると、そのブラウザーはサインアウトされます。",
     ),
     msg("account.session_line", "開始 {started}、終了予定 {ends}"),
-    msg("account.session_current", "いま使っているブラウザです。"),
+    msg("account.session_current", "いま使っているブラウザーです。"),
     msg("account.session_end", "このセッションを終了"),
     msg("account.session_ended", "そのセッションを終了しました。"),
     msg("account.tokens_heading", "API トークン"),
     msg(
         "account.tokens_intro",
-        "API トークンを使うと、プログラムがあなたとして書き込み API を使えます。トークンにできるのは、与えたスコープの範囲と、あなたの役割で許される範囲までです。作成したときに 1 度だけ表示されます。",
+        "API トークンを使うと、プログラムがあなたとして書き込み API を使えます。トークンにできるのは、与えたスコープの範囲と、あなたの役割で許される範囲までです。作成したときに 1 回だけ表示されます。",
     ),
     msg("account.tokens_none", "トークンはありません。"),
     msg("account.token_unlabelled", "メモのないトークン"),
@@ -2073,7 +2073,7 @@ pub const CATALOG: &[Entry] = &[
     msg("account.token_made_heading", "新しいトークン"),
     msg(
         "account.token_made_body",
-        "いまコピーしてください。表示されるのは今回 1 度だけで、あとから再表示することはできません。",
+        "いまコピーしてください。表示されるのは今回 1 回だけで、あとから再表示することはできません。",
     ),
     msg(
         "account.token_made_use",
@@ -2096,7 +2096,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "sign_in.provider_failed",
-        "{provider} でのサインインがうまくいきませんでした。何も変更されていません。もう一度お試しください。繰り返し起きる場合は、このサーバーの管理者にお知らせください。",
+        "{provider} でのサインインがうまくいきませんでした。何も変更していません。もう一度お試しください。繰り返し起きる場合は、このサーバーの管理者にお知らせください。",
     ),
     msg(
         "sign_in.provider_state",
@@ -2108,7 +2108,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "sign_in.provider_unreachable",
-        "いまプロバイダーに接続できません。何も変更されていません。しばらくしてからもう一度お試しください。",
+        "いまプロバイダーに接続できません。何も変更していません。しばらくしてからもう一度お試しください。",
     ),
     msg(
         "invite.provider_intro",
@@ -2152,7 +2152,7 @@ pub const CATALOG: &[Entry] = &[
     msg("account.password_heading", "パスワード"),
     msg(
         "account.password_intro",
-        "パスワードを変更すると、このアカウントの他のセッションとすべての API トークンが終了します。このブラウザーはサインインしたままです。",
+        "パスワードを変更すると、このアカウントのほかのセッションとすべての API トークンが終了します。このブラウザーはサインインしたままです。",
     ),
     msg(
         "account.password_none",
@@ -2163,11 +2163,11 @@ pub const CATALOG: &[Entry] = &[
     msg("account.password_button", "パスワードを変更"),
     msg(
         "account.password_wrong",
-        "現在のパスワードが違います。何も変更されていません。",
+        "現在のパスワードが違います。何も変更していません。",
     ),
     msg(
         "account.password_changed",
-        "パスワードを変更しました。このアカウントの他のセッションとすべての API トークンは終了しました。",
+        "パスワードを変更しました。このアカウントのほかのセッションとすべての API トークンは終了しました。",
     ),
     // sign-in through a provider (the OpenID Connect handoff U3): end
     // the knowledge layer's reader (K-T6)
@@ -2190,7 +2190,7 @@ pub const CATALOG: &[Entry] = &[
     msg("claim.kind_decision", "決定"),
     msg("claim.kind_policy", "方針"),
     msg("claim.kind_question", "問い"),
-    msg("claim.kind_unknown", "示されていません"),
+    msg("claim.kind_unknown", "未記入"),
     msg("claim.said_heading", "この主張が述べられている場所"),
     msg(
         "claim.said_nowhere",
@@ -2202,27 +2202,27 @@ pub const CATALOG: &[Entry] = &[
         "この主張に付けられた出典はありません。",
     ),
     msg("claim.source_line", "出典 {id}（{kind}）: {how}。"),
-    msg("claim.source_primary", "一次"),
-    msg("claim.source_secondary", "二次"),
-    msg("claim.source_observational", "観察"),
-    msg("claim.source_computational", "計算"),
-    msg("claim.source_anecdotal", "逸話"),
+    msg("claim.source_primary", "一次資料"),
+    msg("claim.source_secondary", "二次資料"),
+    msg("claim.source_observational", "観察の記録"),
+    msg("claim.source_computational", "計算の結果"),
+    msg("claim.source_anecdotal", "本人の話"),
     msg("claim.source_other", "その他"),
     msg("claim.source_unreadable", "ファイルを読み取れません"),
     msg("claim.source_line_named", "{name}（{kind}）: {how}。"),
     msg("claim.source_titled", "「{title}」"),
-    msg("claim.source_untitled", "題名のない出典"),
+    msg("claim.source_untitled", "タイトルのない出典"),
     msg("claim.source_by", "{author} による"),
     msg("claim.source_dated", "日付 {date}"),
     msg("claim.source_join", "{first}、{second}"),
     msg("claim.source_found_at", "所在: {reference}。"),
     msg("claim.source_identifier", "識別子: {id}。"),
-    msg("claim.how_supports_direct", "直接に裏付けている"),
+    msg("claim.how_supports_direct", "直接裏付けている"),
     msg("claim.how_supports_partial", "一部を裏付けている"),
     msg("claim.how_supports_indirect", "間接的に裏付けている"),
-    msg("claim.how_challenges_direct", "直接に異議を唱えている"),
-    msg("claim.how_challenges_partial", "一部に異議を唱えている"),
-    msg("claim.how_challenges_indirect", "間接的に異議を唱えている"),
+    msg("claim.how_challenges_direct", "直接異議を示している"),
+    msg("claim.how_challenges_partial", "一部に異議を示している"),
+    msg("claim.how_challenges_indirect", "間接的に異議を示している"),
     msg(
         "claim.judged_earlier",
         "以前の文言に基づいて判断されたものです。",
@@ -2230,11 +2230,11 @@ pub const CATALOG: &[Entry] = &[
     msg("claim.status_heading", "このビューでの状態"),
     msg(
         "claim.status_accepted",
-        "このビューでは、この主張は認められています。",
+        "このビューでは、この主張は受け入れられています。",
     ),
     msg(
         "claim.status_contested",
-        "このビューでは、この主張は争われています。",
+        "このビューでは、この主張には異論があります。",
     ),
     msg(
         "claim.status_unresolved",
@@ -2356,11 +2356,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views_new.retirement_heading",
-        "作成されませんでした: このウィキの鍵の変更が完了していません",
+        "作成されませんでした: このウィキの鍵の更新作業が完了していません",
     ),
     msg(
         "views_new.retirement",
-        "このウィキの鍵の変更が完了していないため、運用している人がその変更を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人に伝えてください。完了または取りやめの後に、もう一度ビューを作成してください。",
+        "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人にお知らせください。完了または取りやめの後に、もう一度ビューを作成してください。",
     ),
     msg("views_new.failed_heading", "ビューは作成されませんでした"),
     msg(
@@ -2369,7 +2369,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views_new.uncertain",
-        "ビューができたかどうかは分かりません。作ったあとでウィキのビューを読めなかったか、ビューは一覧にあるものの、作成が完了したことをリポジトリが示しませんでした。ビューができているかもしれませんし、できていないかもしれません。もう一度試す前にビューの一覧を確認し、このサーバーを運用している人に伝えてください。その人が確認するまで、ウィキは変更を受け付けないことがあります。",
+        "ビューができたかどうかは分かりません。作ったあとでウィキのビューを読めなかったか、ビューは一覧にあるものの、作成が完了したことをリポジトリが示しませんでした。ビューができているかもしれませんし、できていないかもしれません。もう一度試す前にビューの一覧を確認し、このサーバーの管理者にお知らせください。その管理者が確認するまで、ウィキは変更を受け付けないことがあります。",
     ),
     msg(
         "views_new.not_kept_heading",
@@ -2385,7 +2385,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views_new.unconfigured",
-        "このサーバーには履歴へ署名する設定がないため、ビューを作成できません（このサーバーを運用している人に伝えてください）。何も変更していません。",
+        "このサーバーには履歴へ署名する設定がないため、ビューを作成できません（このサーバーの管理者にお知らせください）。何も変更していません。",
     ),
     msg("title.compare", "ビューの比較 · {wiki} · {product}"),
     msg("compare.heading", "ビューの比較"),
@@ -2414,7 +2414,7 @@ pub const CATALOG: &[Entry] = &[
         "compare.unreadable_in",
         "{view}にあるこの主張のファイルは読めないため、そこでの状態は示せません。",
     ),
-    msg("compare.status_accepted", "受け入れ済み"),
+    msg("compare.status_accepted", "受け入れられている"),
     msg("compare.status_contested", "異論あり"),
     msg("compare.status_unresolved", "未解決"),
     msg("compare.status_unknown", "未決定"),
@@ -2441,7 +2441,7 @@ pub const CATALOG: &[Entry] = &[
         "「削除」の行は{a}だけに、「追加」の行は{b}だけにあります。",
     ),
     msg("compare.page_read", "{view}で{page}を読む"),
-    msg("compare.page_back", "比較へ戻る"),
+    msg("compare.page_back", "比較に戻る"),
     msg(
         "compare.page_absent",
         "どちらのビューにもこのページはありません。",
@@ -2552,7 +2552,7 @@ pub const CATALOG: &[Entry] = &[
     msg("why.decision_words", "次のように書き添えました:「{text}」"),
     msg(
         "why.comment",
-        "{author}が改訂 {number} についてコメントしました:「{text}」",
+        "{author}が修正版 {number} についてコメントしました:「{text}」",
     ),
     plural_msg(
         "why.review_more",
@@ -2575,7 +2575,7 @@ pub const CATALOG: &[Entry] = &[
     msg("attach.heading_challenges", "{page} の一部に異議を示す"),
     msg(
         "attach.intro_supports",
-        "出典とは、ある記述のよりどころとなるものです。本、記事、記録、人の証言などがあります。出典を付けると、この段落が主張として記録され、何をよりどころにしているかを他の人が見られるようになります。段落の文章も変更できます。変更と出典は一つの提案になります。",
+        "出典とは、ある記述のよりどころとなるものです。本、記事、記録、人の証言などがあります。出典を付けると、この段落が主張として記録され、何をよりどころにしているかをほかの人が見られるようになります。段落の文章も変更できます。変更と出典は一つの提案になります。",
     ),
     msg(
         "attach.intro_challenges",
@@ -2670,7 +2670,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "attach.unwritable",
-        "出典を書き込めませんでした。何も変更されていません。もう一度お試しください。",
+        "出典を書き込めませんでした。何も変更していません。もう一度お試しください。",
     ),
     msg(
         "curate.not_a_day",
@@ -2690,11 +2690,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "propose.claim_held_one",
-        "この段落は他の人が頼りにしています。出典が付いています。目印はこちらで保っておくので、文章だけを編集してください。",
+        "この段落はほかの人が頼りにしています。出典が付いています。目印はこちらで保っておくので、文章だけを編集してください。",
     ),
     msg(
         "propose.claim_held_many",
-        "ここには出典が付いていて、他の人が頼りにしている段落があります。その段落の文章をそのままにしている間は、目印はこちらで保っておきます。その段落の文章を変えるときは、その部分だけを単独で変更してください。",
+        "ここには出典が付いていて、ほかの人が頼りにしている段落があります。その段落の文章をそのままにしている間は、目印はこちらで保っておきます。その段落の文章を変えるときは、その部分だけを単独で変更してください。",
     ),
     msg(
         "propose.claim_lost",
@@ -2733,7 +2733,7 @@ pub const CATALOG: &[Entry] = &[
     msg("know.change_kind", "記述の種類が {kind} になります。"),
     msg(
         "know.change_lifecycle",
-        "主張の扱いの段階が「{lifecycle}」になります。",
+        "主張の段階が「{lifecycle}」になります。",
     ),
     msg(
         "know.change_standing",
@@ -2802,11 +2802,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_curation",
-        "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除するか、確認済みの出典の題名・著者・日付・参照先・置き換え先の出典を変更していますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。",
+        "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典との結びつきを変更・削除するか、確認済みの出典のタイトル・著者・日付・参照先・置き換え先の出典を変更していますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。",
     ),
     msg(
         "know.not_judged",
-        "この提案は主張に対する判断（出典リンクまたはコミュニティでの扱い）を設定または変更していますが、その判断は、提案を反映した結果にその主張のどの段落にも存在しない文言に基づいています。このままでは受け入れられません。",
+        "この提案は主張に対する判断（出典との結びつきまたはコミュニティでの扱い）を設定または変更していますが、その判断は、提案を反映した結果にその主張のどの段落にも存在しない文言に基づいています。このままでは受け入れられません。",
     ),
     msg("know.kind_observation", "観察"),
     msg("know.kind_interpretation", "解釈"),
@@ -2822,7 +2822,7 @@ pub const CATALOG: &[Entry] = &[
     msg("know.source_computational", "計算の結果"),
     msg("know.source_anecdotal", "本人の話"),
     msg("know.source_other", "その他の種類"),
-    msg("know.supports", "支持する"),
+    msg("know.supports", "裏付ける"),
     msg("know.challenges", "異議を示す"),
     msg("know.directly", "直接"),
     msg("know.in_part", "部分的に"),
@@ -2832,8 +2832,8 @@ pub const CATALOG: &[Entry] = &[
     msg("know.life_retired", "役目を終えた"),
     msg("know.life_unknown", "未記入"),
     msg("know.standing_accepted", "受け入れられている"),
-    msg("know.standing_contested", "争われている"),
-    msg("know.standing_unresolved", "決着していない"),
+    msg("know.standing_contested", "異論がある"),
+    msg("know.standing_unresolved", "未解決"),
     msg("know.standing_unknown", "未決定"),
     msg("know.available", "入手できる"),
     msg("know.unavailable", "入手できない"),
@@ -2958,7 +2958,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "invalid.knowledge_unjudged",
-        "この提案が主張に追加または変更する出典リンクは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。",
+        "この提案が主張に追加または変更する出典との結びつきは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。",
     ),
     msg(
         "invalid.knowledge_status_unjudged",
@@ -2996,7 +2996,7 @@ pub const CATALOG: &[Entry] = &[
         "know.replaced_unreadable_source",
         "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。",
     ),
-    msg("know.made_lifecycle", "主張の扱いの段階：{lifecycle}。"),
+    msg("know.made_lifecycle", "主張の段階：{lifecycle}。"),
     msg(
         "know.made_related",
         "主張{other}との関係があります: {relation}。",
@@ -3015,7 +3015,7 @@ pub const CATALOG: &[Entry] = &[
         "know.source_change_reference_cleared",
         "参照先が書かれなくなります。",
     ),
-    msg("know.source_nameless", "題名も著者も日付もない出典"),
+    msg("know.source_nameless", "タイトルも著者も日付もない出典"),
     // knowledge: a file that cannot be read is replaced (handoff 005 corrections, second round K16): end
     msg("know.subject_claim", "{id}"),
     msg("know.subject_claim_id", "「{excerpt}」［主張 {id}］"),
@@ -3033,7 +3033,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.removed_had_link",
-        "出典 {source} とのつながりも一緒に削除されます: {relation}（{bearing}）。",
+        "出典 {source} との結びつきも一緒に削除されます: {relation}（{bearing}）。",
     ),
     msg(
         "know.removed_had_reviewed",
@@ -3047,19 +3047,19 @@ pub const CATALOG: &[Entry] = &[
     msg("health.sources_name", "見直す出典"),
     msg(
         "health.sources_desc",
-        "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が利用できないと記した出典を、それを引用する主張とともに示します。ウィキは何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。",
+        "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が入手できないと記した出典を、それを引用する主張とともに示します。ウィキは何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。",
     ),
     msg("health.col_source", "出典"),
     msg("health.col_why", "挙げられている理由"),
     msg("health.col_claims", "それを引用する主張"),
     msg(
         "health.sources_action",
-        "出典を確かめたうえで、確かめた日と、利用できるかどうかを提案してください。",
+        "出典を確かめたうえで、確かめた日と、入手できるかどうかを提案してください。",
     ),
     msg("health.none_sources", "見直す必要のある出典はありません。"),
     msg(
         "health.sources_unavailable",
-        "確認した人が、利用できないと記しています。",
+        "確認した人が、入手できないと記しています。",
     ),
     msg(
         "health.sources_never",
@@ -3155,7 +3155,7 @@ pub const CATALOG: &[Entry] = &[
     msg("curate.label_remove", "この主張はこの出典を引用しなくなる"),
     msg(
         "curate.remove_hint",
-        "この欄にチェックを入れると、主張と出典のリンクが外れます。出典自体の記録は残り、他の主張のリンクもそのままです。",
+        "この欄にチェックを入れると、主張と出典との結びつきが外れます。出典自体の記録は残り、ほかの主張の結びつきもそのままです。",
     ),
     msg(
         "curate.work_hint",
@@ -3168,7 +3168,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.removed_and_changed",
-        "リンクは変更するか外すかのどちらかです。両方はできません。チェックを外すか、リンクを元のままにしてください。",
+        "結びつきは変更するか外すかのどちらかです。両方はできません。チェックを外すか、結びつきを元のままにしてください。",
     ),
     msg(
         "curate.replaced_by_itself",
@@ -3261,7 +3261,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.knowledge_kept",
-        "何も変更しておらず、提案はレビュー待ちのままです。",
+        "何も変更しておらず、提案はレビュー待ちで保持されたままです。",
     ),
     msg(
         "curate.check_old_day",

@@ -44,8 +44,8 @@ fn the_status_rule_is_worded_with_what_a_curation_proposal_does_and_not_with_rem
     }
     let ja = crate::catalog::T::new(ja).get(rule_key(Rule::Status));
     for part in [
-        "出典リンク",
-        "確認済みの出典の題名・著者・日付・参照先・置き換え先",
+        "出典との結びつき",
+        "確認済みの出典のタイトル・著者・日付・参照先・置き換え先",
     ] {
         assert!(ja.contains(part), "{part}: {ja}");
     }
@@ -108,7 +108,7 @@ fn the_sentences_that_say_what_only_curation_does_say_it_alike_in_both_languages
         ),
         (
             T::new(Lang::from_def(&JA_DEF)),
-            &["題名・著者・日付・参照先・置き換え先"][..],
+            &["タイトル・著者・日付・参照先・置き換え先"][..],
         ),
     ] {
         for key in [Key::HealthRuleStatus, Key::KnowNotCuration] {
@@ -123,7 +123,7 @@ fn the_sentences_that_say_what_only_curation_does_say_it_alike_in_both_languages
     let ja = T::new(Lang::from_def(&JA_DEF));
     for key in [Key::HealthRuleStatus, Key::KnowNotCuration] {
         let text = ja.get(key);
-        assert!(text.contains("出典リンク"), "{text}");
+        assert!(text.contains("出典との結びつき"), "{text}");
         assert!(text.contains("変更・削除"), "{text}");
     }
     // The core's sentence is the English one.

@@ -82,6 +82,45 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A paragraph's own mark (`^id`) that names it through every rewording | anchor | アンカー | yes | RFC 005: a chain of changes followed through an anchor is exact; a paragraph without one is traced by matching its text, and the page says so | Drafted · ja: loanword |
 | A proposal that changes claims and sources and no page: where a community status, a review date and an availability are set | curation proposal | キュレーション提案 | yes | The only way a community status changes (RFC 005 part 2 D-3): never by a count, a tally or a timer | Drafted · ja: loanword |
 | What people say about one claim, apart from what is decided about it | discussion of this claim | この主張についての議論 | yes | RFC 005 part 2 D-11: an epistemic discussion with a label of its own, kept apart from the review of a proposal; it never changes a claim (a decision does, through a proposal people accept), and the page says so beside it | Drafted |
+| A numbered revision of a proposal | revision | 修正版 | yes | The numbered noun is 修正版 ({number} 番, 修正版 {number}); the act stays 修正 (修正を求める, 修正が必要, 修正を送信). 版 alone stays a page's version; never リビジョン or 改訂 | Named by the architect's final check (M60) |
+| A reviewer's decision to send a proposal back | ask for a revision | 修正を求める | yes | The same act as the state 修正が必要; never 変更を求める, because 変更 is the recorded step | Named by the architect's final check (M60) |
+| Whoever reads a proposal and decides on it | reviewer | レビュアー | yes | Beside メンテナー; never レビュー担当者, because 担当者 suggests an assignment | Named by the architect's final check (M60) |
+| A claim's community status, in a sentence | accepted in this view | 受け入れられている | yes | The four statuses are 受け入れられている · 異論がある (compact label: 異論あり) · 未解決 · 未決定; in sentences この主張は受け入れられています / この主張には異論があります / この主張は未解決です / この主張はまだ決定されていません. Never 認められている (it reads as recognized as valid), 争われている (combative) or 決着していない; 受け入れ済み is the state of a proposal | Named by the architect's final check (M60) |
+| A community status that people disagree about | contested | 異論がある | yes | States the epistemic fact calmly; never 争われ… | Named by the architect's final check (M60) |
+| A community status nobody has settled | unresolved | 未解決 | yes | One of the four statuses above | Named by the architect's final check (M60) |
+| A claim nobody has decided about | not decided | 未決定 | yes | One of the four statuses above | Named by the architect's final check (M60) |
+| The field a curation proposal sets | community status | コミュニティでの扱い | yes | Two fields, two names: this one, and the claim's lifecycle field below; never コミュニティの状態 | Named by the architect's final check (M60) |
+| The claim's lifecycle field | where it stands in its life | 主張の段階 | yes | The second of the two fields; never 扱いの段階 | Named by the architect's final check (M60) |
+| A source speaks for a claim | supports | 裏付ける | yes | Directly: 直接裏付けている; in part: 一部を裏付けている; indirectly: 間接的に裏付けている; never 支持する | Named by the architect's final check (M60) |
+| A source speaks against a claim | challenges | 異議を示す | yes | Directly: 直接異議を示している; in part: 一部に異議を示している; indirectly: 間接的に異議を示している; never 異議を唱え…, which makes the source a person | Named by the architect's final check (M60) |
+| The record that a claim cites a source, and how | source link | 出典との結びつき | yes | On a wiki リンク reads as a hyperlink, and a reference is never a link; never 出典リンク | Named by the architect's final check (M60) |
+| Whether a source can be had | whether it can be had | 入手できるかどうか | yes | Also 入手できる / 入手できない; the same field everywhere; never 利用できる… | Named by the architect's final check (M60) |
+| A source kind: the first-hand source | primary | 一次資料 | yes | The short labels equal the form's: 一次資料 · 二次資料 · 観察の記録 · 計算の結果 · 本人の話 · その他; never 一次, 二次, 観察, 計算, 逸話 alone | Named by the architect's final check (M60) |
+| A source kind: a source about first-hand sources | secondary | 二次資料 | yes | One of the source labels above | Named by the architect's final check (M60) |
+| A source kind: a record of an observation | observational | 観察の記録 | yes | One of the source labels above; 観察 alone is a claim kind | Named by the architect's final check (M60) |
+| A source kind: the result of a computation | computational | 計算の結果 | yes | One of the source labels above | Named by the architect's final check (M60) |
+| A source kind: a person's account | anecdotal | 本人の話 | yes | One of the source labels above | Named by the architect's final check (M60) |
+| A field the writer left unstated | not said | 未記入 | yes | One word wherever a kind or a stage was not said; never 示されていません | Named by the architect's final check (M60) |
+| A link that leads back | back to | に戻る | yes | Written 提案に戻る, never へ戻る | Named by the architect's final check (M60) |
+| Asking the reader to try again | try again | お試しください | yes | One expression for the request; never 試してください | Named by the architect's final check (M60) |
+| Asking the reader to tell someone | tell | お知らせください | yes | One expression for the request; never 知らせてください or 伝えてください | Named by the architect's final check (M60) |
+| The last time prikk checked the history | the last check | 前回の確認 | yes | Never 直前の確認, which overstates how fresh the check is | Named by the architect's final check (M60) |
+| A key taken out of use | retirement | 廃止 | yes | A key is 廃止 (鍵の廃止), never 失効 (that is a token's); the work of changing keys is 鍵の更新作業, never 鍵の変更, because 変更 is the recorded step | Named by the architect's final check (M60) |
+| What people say about a proposal | discussion | ディスカッション | yes | A proposal's discussion is ディスカッション; 議論 stays the discussion of a claim, so the two stay apart | Named by the architect's final check (M60) |
+| A proposal that is still waiting, said in a sentence | still held for review | レビュー待ちで保持されたまま | yes | The hard term of the state, in a sentence; never レビュー待ちのまま | Named by the architect's final check (M60) |
+| A part of a diff that was changed | changes near line | 変更箇所 | yes | Never 変更 alone for a place in a diff, because 変更 is the recorded step | Named by the architect's final check (M60) |
+| What the reader has written into a form or a request | your change | 編集内容 | yes | The reader's own edit is 編集内容 or 内容, never 変更, for the same reason | Named by the architect's final check (M60) |
+| What the linter offers | suggestions | 改善のヒント | yes | Never 改善の提案 or 提案, which is a proposal | Named by the architect's final check (M60) |
+| A flag on a change: it came from an import | import | インポート | yes | Never 取り込み: 取り込む is accepting into the history | Named by the architect's final check (M60) |
+| Proposals that have not been decided | open proposals | 進行中の提案 | yes | Never 未決の提案: 未決 is legal register | Named by the architect's final check (M60) |
+| Who can see a draft | can see | 閲覧できます | yes | Never 見られます, which is ambiguous between passive and potential | Named by the architect's final check (M60) |
+| The reassurance that a refused action did nothing | nothing was changed | 何も変更していません | yes | In a clause 何も変更しておらず; never 何も変更されていません | Named by the architect's final check (M60) |
+| The program that opens pages | browser | ブラウザー | yes | With the long vowel mark | Named by the architect's final check (M60) |
+| Another one of a kind | other | ほかの | yes | In hiragana, never 他の (その他 stays the label of a kind) | Named by the architect's final check (M60) |
+| Something shown one time only | once | 1 回 | yes | Never 1 度 | Named by the architect's final check (M60) |
+| What a page carries to say it needs work | mark | 印 | yes | The mark on a page, as proposed in the reader's list; never 示されている or 表示 for it | Named by the architect's final check (M60) |
+| Redirects or replacements that lead back to themselves | circle | 循環 | yes | Never ぐるぐると回り続ける or 輪になっている | Named by the architect's final check (M60) |
+| A change recorded under the wiki service's signature, as the subject of a sentence | is signed into the history | 署名されて履歴に記録 | yes | The change does not sign: 署名されて履歴に記録されます; never 署名して… for a change | Named by the architect's final check (M60) |
 
 ## 2. Messages
 
@@ -133,7 +172,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `ambiguous.body` | its sentence; `{title}` is the title asked for | "Several pages could be the one called {title}. Choose one." | "「{title}」に当たるページが複数あります。ひとつ選んでください。" |
 | `redirect.heading` | the heading of the page shown for a redirect that leads nowhere | "This redirect does not lead to a page" | "このリダイレクトの先にはページがありません" |
 | `redirect.dangling` | its sentence for a redirect to a title no page has; `{title}` is the redirecting page, `{target}` where it points | "The page {title} sends readers to {target}, and no page has that title." | "ページ「{title}」は「{target}」へリダイレクトしますが、そのタイトルのページはありません。" |
-| `redirect.loop` | its sentence for redirects that go round in a circle; `{title}` is the page the chain began at | "The page {title} sends readers round in a circle." | "ページ「{title}」のリダイレクトは、ぐるぐると回り続けます。" |
+| `redirect.loop` | its sentence for redirects that go round in a circle; `{title}` is the page the chain began at | "The page {title} sends readers round in a circle." | "ページ「{title}」のリダイレクトは循環しています。" |
 | `redirect.too_long` | its sentence for a chain of redirects that is too long; `{title}` is the page the chain began at | "The page {title} sends readers through too many other pages." | "ページ「{title}」のリダイレクトは、経由するページが多すぎます。" |
 | `unreadable.heading` | the heading of the page shown for a page that exists and cannot be shown | "This page cannot be shown" | "このページは表示できません" |
 | `unreadable.not_text` | its sentence when the page's file is not text | "The file of this page is not text that this site can read." | "このページのファイルは、このサイトが読み取れるテキストではありません。" |
@@ -153,11 +192,11 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `badge.sentence` | under every page of a wiki; `{state}` is one of the four labels above, linked to the verification page | "Verification: {state}" | "検証: {state}" |
 | `title.verification` | the title of the verification page | "Verification · {wiki} · {product}" | "検証 · {wiki} · {product}" |
 | `verification.heading` | the heading of the verification page | "Verification" | "検証" |
-| `explain.verification` | an explanation the reader opens on the verification page | "Verification asks prikk, the program that keeps this wiki's history, to check every part of that history and its signatures. “Verified” means the last check found nothing wrong. It does not mean the pages are correct." | "検証では、このウィキの履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、直前の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。" |
+| `explain.verification` | an explanation the reader opens on the verification page | "Verification asks prikk, the program that keeps this wiki's history, to check every part of that history and its signatures. “Verified” means the last check found nothing wrong. It does not mean the pages are correct." | "検証では、このウィキの履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、前回の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。" |
 | `verification.explain_summary` | the label of the explanation above, closed | "What does this mean?" | "これは何を意味しますか" |
-| `verification.state_verified` | a sentence on the verification page | "The last check found nothing wrong." | "直前の確認では、問題は見つかりませんでした。" |
-| `verification.state_failed` | a sentence on the verification page | "The last check found a problem with this wiki's history. The person who runs this server can look into it." | "直前の確認で、このウィキの履歴に問題が見つかりました。このサーバーの管理者が調べることができます。" |
-| `verification.state_could_not` | a sentence on the verification page | "The last check could not be completed. That says nothing about whether the history is sound." | "直前の確認は最後まで実行できませんでした。履歴に問題があるかどうかについては、何も分かっていません。" |
+| `verification.state_verified` | a sentence on the verification page | "The last check found nothing wrong." | "前回の確認では、問題は見つかりませんでした。" |
+| `verification.state_failed` | a sentence on the verification page | "The last check found a problem with this wiki's history. The person who runs this server can look into it." | "前回の確認で、このウィキの履歴に問題が見つかりました。このサーバーの管理者が調べることができます。" |
+| `verification.state_could_not` | a sentence on the verification page | "The last check could not be completed. That says nothing about whether the history is sound." | "前回の確認は最後まで実行できませんでした。このことから、履歴に問題があるかどうかは分かりません。" |
 | `verification.state_unknown` | a sentence on the verification page | "This wiki has not been checked yet." | "このウィキはまだ確認されていません。" |
 | `verification.checked_at` | a sentence on the verification page; `{when}` is a date and time in UTC | "Last checked: {when}." | "最終確認: {when}。" |
 | `verification.check_now` | the button that starts a check | "Check now" | "今すぐ確認" |
@@ -166,12 +205,12 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `verification.found_intro` | above the list of parts of the check that did not come out well | "These parts of the check did not come out well:" | "確認のうち、次の部分で問題がありました:" |
 | `verification.now_verified` | the result of a check just run | "The check you asked for found nothing wrong." | "いま実行した確認では、問題は見つかりませんでした。" |
 | `verification.not_saved` | after a check whose result could not be saved | "The result could not be saved, so the label on the pages has not changed." | "結果を保存できなかったため、ページに表示されるラベルは変わっていません。" |
-| `verification.busy` | the result of a check that could not start because the server was busy | "The server is busy with other work, so the check did not run. Try again in a little while." | "サーバーが他の作業で混み合っているため、確認を実行できませんでした。しばらくしてから、もう一度お試しください。" |
+| `verification.busy` | the result of a check that could not start because the server was busy | "The server is busy with other work, so the check did not run. Try again in a little while." | "サーバーがほかの作業で混み合っているため、確認を実行できませんでした。しばらくしてから、もう一度お試しください。" |
 | `verification.limit` | the result of a check that was stopped for want of time or memory | "The check needs more time or memory than this server is set up to give it. Tell the person who runs this server." | "この確認には、このサーバーに設定されている以上の時間またはメモリが必要です。このサーバーの管理者にお知らせください。" |
 | `verification.unavailable` | the result of a check that could not be started | "The check could not be started. Tell the person who runs this server." | "確認を開始できませんでした。このサーバーの管理者にお知らせください。" |
 | `verification.attempt_at` | on the verification page, when a check made after the last verdict could not be completed; `{when}` is a date and time in UTC | "A later check could not be completed ({when}). That says nothing about whether the history is sound, and the result above still stands." | "その後の確認は最後まで実行できませんでした（{when}）。履歴に問題があるかどうかについては何も分かっておらず、上の結果は変わりません。" |
 | `verification.running` | shown instead of a new check when a check of this wiki is already running | "A check of this wiki is already running. Wait for it to finish, then look at this page again." | "このウィキの確認はすでに実行中です。終わるまでお待ちになってから、このページをもう一度ご覧ください。" |
-| `verification.explained_by_retirement` | on the verification page, under the result of a check that failed, when every failure is one a key retirement recorded (handoff 004, P2′); `{key}` is the retired maintainer key's id; the label stays "Verification failed" | "The only failures are those the retirement of key {key} recorded. That key was removed from this wiki's trust, so what it signed can no longer be checked; nothing else failed." | "確認に失敗した箇所は、鍵 {key} の失効時に記録されたものだけです。その鍵はこのウィキの信頼から外されたため、その鍵が署名した部分は確認できなくなっています。ほかに失敗はありません。" |
+| `verification.explained_by_retirement` | on the verification page, under the result of a check that failed, when every failure is one a key retirement recorded (handoff 004, P2′); `{key}` is the retired maintainer key's id; the label stays "Verification failed" | "The only failures are those the retirement of key {key} recorded. That key was removed from this wiki's trust, so what it signed can no longer be checked; nothing else failed." | "確認に失敗した箇所は、鍵 {key} の廃止時に記録されたものだけです。その鍵はこのウィキが信頼する鍵から外されたため、その鍵が署名した部分は確認できなくなっています。ほかに失敗はありません。" |
 | `title.about` | the title of a wiki's about page | "About {wiki} · {product}" | "{wiki} について · {product}" |
 | `about.heading` | the heading of a wiki's about page | "About {wiki}" | "{wiki} について" |
 | `about.license` | a sentence on the about page | "Unless a page says otherwise, the pages of this wiki are shared under the license {license}." | "ページに別の記載がない限り、このウィキのページはライセンス {license} で共有されています。" |
@@ -251,7 +290,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `people.anonymous` | a name in the messages above: someone who proposed without an account; `{token}` is the temporary name the wiki gave them | "an anonymous contributor ({token})" | "匿名の投稿者（{token}）" |
 | `people.unrecorded` | beside a change whose record does not name the people | "The record of this change does not say who made it." | "この変更の記録には、誰が行ったかが書かれていません。" |
 | `flag.undo` | a mark on a change that undoes earlier changes | "Undoes earlier changes" | "以前の変更を取り消します" |
-| `flag.import` | a mark on a change that brought in content from another source | "Import" | "取り込み" |
+| `flag.import` | a mark on a change that brought in content from another source | "Import" | "インポート" |
 | `flag.service` | a mark on a change the wiki service made itself | "Made by the wiki service itself" | "ウィキサービス自身が行った変更" |
 | `flag.first` | a mark on the first change of a wiki | "The first change of this wiki" | "このウィキの最初の変更" |
 | `event.created` | what a change did to the page whose history is shown | "The page was created" | "ページが作成されました" |
@@ -293,9 +332,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `diff.no_lines` | under the summary: the lines cannot be shown | "The lines of this page cannot be shown. It may not be text, or it could not be compared." | "このページの行は表示できません。テキストではないか、比較できなかった可能性があります。" |
 | `diff.truncated` | under the lines when the difference is longer than is shown; `{limit}` is how many lines are shown | "Only the first {limit} lines are shown." | "最初の {limit} 行だけを表示しています。" |
 | `diff.refinement` | above the lines: where the marked words come from | "Marked words are found by inklkunn, which compares the changed lines word by word. The lines themselves come from prikk." | "印の付いた語は、inklkunn が変更された行を語ごとに比べて見つけたものです。行そのものは prikk が出力したものです。" |
-| `diff.hunk_near` | the heading of one group of changed lines; `{line}` is the line of the page where the group begins | "Changes near line {line}" | "{line} 行目付近の変更" |
-| `diff.hunk_plain` | as above, when the line is not known | "Changes" | "変更" |
-| `diff.hunk_raw` | above a group of lines that could not be read as changes and is shown as it is | "These lines could not be read as a list of changes. They are shown as they are." | "この部分は変更の一覧として読み取れませんでした。そのまま表示しています。" |
+| `diff.hunk_near` | the heading of one group of changed lines; `{line}` is the line of the page where the group begins | "Changes near line {line}" | "{line} 行目付近の変更箇所" |
+| `diff.hunk_plain` | as above, when the line is not known | "Changes" | "変更箇所" |
+| `diff.hunk_raw` | above a group of lines that could not be read as changes and is shown as it is | "These lines could not be read as a list of changes. They are shown as they are." | "この部分は差分として読み取れませんでした。そのまま表示しています。" |
 | `diff.added_label` | read aloud before an added line (not shown on screen) | "Added:" | "追加:" |
 | `diff.removed_label` | read aloud before a removed line (not shown on screen) | "Removed:" | "削除:" |
 | `diff.no_newline` | in place of a line that says the text ends without a line break | "The text ends here without a line break." | "ここでテキストは改行なしで終わっています。" |
@@ -312,7 +351,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `title.changes` | the title of the recent changes page | "Recent changes · {wiki} · {product}" | "最近の変更 · {wiki} · {product}" |
 | `changes.heading` | the heading of the recent changes page | "Recent changes" | "最近の変更" |
 | `changes.intro` | under the heading of the recent changes page; `{wiki}` is the wiki's name | "The changes recorded in the history of {wiki}, newest first." | "{wiki} の履歴に記録された変更を、新しい順に表示しています。" |
-| `changes.seen_note` | under the recent changes: why the time shown is not the time of the change | "The history does not record when a change was made, so each change shows when this server first saw it." | "履歴には変更を行った日時が記録されないため、各変更にはこのサーバーが最初に確認した日時を表示しています。" |
+| `changes.seen_note` | under the recent changes: why the time shown is not the time of the change | "The history does not record when a change was made, so each change shows when this server first saw it." | "履歴には変更を行った日時が記録されないため、各変更にはこのサーバーが初めて確認した日時を表示しています。" |
 | `changes.filter_legend` | the name of the group of filters on the recent changes page | "Choose which changes to show" | "表示する変更を選ぶ" |
 | `changes.filter_namespace` | the label of the field that limits the changes to the pages under a title | "Only pages under this title" | "このタイトルの下にあるページのみ" |
 | `changes.filter_namespace_hint` | the hint of that field | "For example Guides shows changes to Guides/Setup. Leave it empty for all pages." | "たとえば Guides と入力すると、Guides/Setup への変更が表示されます。空欄にするとすべてのページが対象になります。" |
@@ -382,7 +421,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.redirects_name` | the name of the list of redirects with a problem | "Redirect problems" | "リダイレクトの問題" |
 | `health.redirects_desc` | what that list shows | "Redirects that lead nowhere, go round in a circle, run too long, or lead to another redirect." | "行き先がない、循環している、長すぎる、または別のリダイレクトに続くリダイレクト。" |
 | `health.help_name` | the name of the list of pages marked as needing work | "Pages that want help" | "手助けが必要なページ" |
-| `health.help_desc` | what that list shows | "Pages marked as work in progress, draft or stub." | "作業中、下書き、またはスタブと示されているページ。" |
+| `health.help_desc` | what that list shows | "Pages marked as work in progress, draft or stub." | "作業中、下書き、またはスタブの印が付いているページ。" |
 | `health.stale_name` | the name of the list of pages that changed longest ago | "Pages unchanged longest" | "長く変更されていないページ" |
 | `health.stale_desc` | what that list shows | "Pages whose latest change is the oldest among the recent changes." | "最近の変更の中で、最後に変更された時期がいちばん古いページ。" |
 | `health.back` | a link from one list back to the page that names them all | "All health lists" | "ウィキの健全性の一覧すべて" |
@@ -392,7 +431,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.col_action` | the heading of the column that says what would resolve each row | "What would resolve it" | "解決するための対応" |
 | `health.col_target` | the heading of the column with a redirect's target | "Points to" | "リダイレクト先" |
 | `health.col_problem` | the heading of the column that names a redirect's problem | "Problem" | "問題" |
-| `health.col_mark` | the heading of the column that says how a page is marked | "Marked as" | "表示されている状態" |
+| `health.col_mark` | the heading of the column that says how a page is marked | "Marked as" | "付いている印" |
 | `health.col_changed` | the heading of the column that says when a page last changed | "Last change" | "最後の変更" |
 | `health.see_links` | a link to the pages that link to a wanted title; `{title}` is that title | "Pages that link to {title}" | "{title} へのリンク元のページ" |
 | `health.propose_page` | beside it, in the same row of the wanted pages: the link to the form that proposes the page; `{title}` is that title | "Propose this page ({title})" | "このページを提案する（{title}）" |
@@ -410,7 +449,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.mark_wip` | how a page is marked | "Work in progress" | "作業中" |
 | `health.mark_draft` | how a page is marked | "Draft" | "下書き" |
 | `health.mark_stub` | how a page is marked | "Stub" | "スタブ" |
-| `health.help_action` | the action beside a page that wants help | "Finish or improve the page, then remove the mark." | "ページを仕上げるか改善してから、その表示を外します。" |
+| `health.help_action` | the action beside a page that wants help | "Finish or improve the page, then remove the mark." | "ページを仕上げるか改善してから、その印を外します。" |
 | `health.stale_never` | in the last change column of a page the recent changes did not touch | "Not changed in the recent changes looked through" | "確認した最近の変更の中では変更されていません" |
 | `health.stale_seen` | in the last change column; `{when}` is when this server first saw the change | "In a change first seen {when}" | "{when} に初めて確認された変更" |
 | `health.stale_action` | the action beside a page unchanged for long | "Read the page, and update it if it is out of date." | "ページを読み、古くなっていれば更新します。" |
@@ -419,7 +458,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.none_orphans` | in place of the list of orphan pages when there are none | "Every page has a page that links to it." | "すべてのページが、ほかのページからリンクされています。" |
 | `health.none_dead_ends` | in place of the list of dead-end pages when there are none | "Every page links to another page." | "すべてのページが、ほかのページにリンクしています。" |
 | `health.none_redirects` | in place of the list of redirect problems when there are none | "Every redirect leads to a page." | "すべてのリダイレクトがページにつながっています。" |
-| `health.none_help` | in place of the list of pages that want help when there are none | "No page is marked as needing help." | "手助けが必要と示されているページはありません。" |
+| `health.none_help` | in place of the list of pages that want help when there are none | "No page is marked as needing help." | "手助けが必要という印が付いているページはありません。" |
 | `health.none_stale` | in place of the list of pages unchanged longest when the wiki has no page | "There are no pages to list." | "表示できるページはありません。" |
 | `health.knowledge_name` | the name of the list of claim and source files that cannot be read | "Knowledge files that cannot be read" | "読み取れない知識ファイル" |
 | `health.knowledge_desc` | what that list shows | "Claim and source files that are not in the form the wiki reads. Nothing is read from them, and the pages are not affected." | "ウィキが読める形になっていない、主張と出典のファイル。これらからは何も読み取られず、ページには影響しません。" |
@@ -439,12 +478,12 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.rule_id` | a reason in that list | "An identifier is not well formed." | "識別子の形式が正しくありません。" |
 | `health.rule_duplicate` | a reason in that list | "The same entry appears twice." | "同じ項目が 2 回現れています。" |
 | `health.rule_bounds` | a reason in that list | "A list or a text is longer than the format allows." | "リストまたはテキストが、形式で許される長さを超えています。" |
-| `health.rule_reference` | a reason in that list | "The file names a source or a claim the wiki does not have, or sources that replace one another in a circle." | "ウィキにない出典または主張が指定されているか、置き換えの連なりが輪になっています。" |
+| `health.rule_reference` | a reason in that list | "The file names a source or a claim the wiki does not have, or sources that replace one another in a circle." | "ウィキにない出典または主張が指定されているか、置き換えの連なりが循環しています。" |
 | `health.rule_anchor` | a reason in that list | "An expression names a page, or a paragraph of a page, that the wiki does not have." | "表現が、ウィキにないページまたはページ内の段落を指しています。" |
 | `health.rule_in_use` | a reason in that list | "The file is removed while another file still names it." | "別のファイルから指定されているファイルが削除されています。" |
 | `health.rule_owned` | a reason in that list | "The change also changes a page key that only the service writes." | "サービスだけが書くページのキーも変更されています。" |
-| `health.rule_status` | a reason in that list | "The change sets a community status, a review date or an availability, changes or removes a source link a claim already has, or changes a source that was checked in its title, author, date, reference or the source that replaces it, outside a curation proposal." | "コミュニティの状態、確認日、入手できるかどうかの設定、主張がすでに持つ出典リンクの変更・削除、確認済みの出典の題名・著者・日付・参照先・置き換え先の変更が、キュレーション提案ではない変更で行われています。" |
-| `health.rule_judged` | a reason in that list | "A judgement the change sets (a source link's or the community status's) is judged on a wording that no paragraph of its claim has in the result." | "変更が設定した判断（出典リンクまたはコミュニティでの扱い）が、その主張のどの段落にも結果として存在しない文言で判断されています。" |
+| `health.rule_status` | a reason in that list | "The change sets a community status, a review date or an availability, changes or removes a source link a claim already has, or changes a source that was checked in its title, author, date, reference or the source that replaces it, outside a curation proposal." | "コミュニティでの扱い、確認日、入手できるかどうかの設定、主張がすでに持つ出典との結びつきの変更・削除、確認済みの出典のタイトル・著者・日付・参照先・置き換え先の変更が、キュレーション提案ではない変更で行われています。" |
+| `health.rule_judged` | a reason in that list | "A judgement the change sets (a source link's or the community status's) is judged on a wording that no paragraph of its claim has in the result." | "変更が設定した判断（出典との結びつきまたはコミュニティでの扱い）が、その主張のどの段落にも結果として存在しない文言で判断されています。" |
 | `title.links` | the title of the page that lists the pages linking to a page; `{page}` is its title | "Links to {page} · {wiki} · {product}" | "{page} へのリンク · {wiki} · {product}" |
 | `links.heading` | its heading | "Pages that link to {page}" | "{page} へのリンク元のページ" |
 | `links.missing` | under that heading when no page has the title | "No page has this title yet. These pages link to it." | "このタイトルのページはまだありません。次のページがリンクしています。" |
@@ -471,16 +510,16 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.forbidden.hint` | the API's problem detail `forbidden`: the hint | "Ask a maintainer of the wiki for the role, or use a token issued with a wider scope." | "ウィキのメンテナーに役割を依頼するか、より広いスコープで発行したトークンを使ってください。" |
 | `problem.base_required.title` | the API's problem detail `base-required`: the title | "Base needed" | "基準が必要です" |
 | `problem.base_required.detail` | the API's problem detail `base-required`: the detail | "A write names the state it was written against, and this request has no If-Match header." | "書き込みは、書いた時点の状態を示す必要がありますが、このリクエストには If-Match ヘッダーがありません。" |
-| `problem.base_required.hint` | the API's problem detail `base-required`: the hint | "Send the ETag of the proposal's revision as If-Match; for a new proposal, send the state id of the view's tip." | "If-Match に提案のリビジョンの ETag を付けて送ってください。新しい提案では、ビューの先頭の状態 ID を送ってください。" |
+| `problem.base_required.hint` | the API's problem detail `base-required`: the hint | "Send the ETag of the proposal's revision as If-Match; for a new proposal, send the state id of the view's tip." | "If-Match に提案の修正版の ETag を付けて送ってください。新しい提案では、ビューの先頭の状態 ID を送ってください。" |
 | `problem.stale_base.title` | the API's problem detail `stale-base`: the title | "The base is out of date" | "基準が古くなっています" |
 | `problem.stale_base.detail` | the API's problem detail `stale-base`: the detail | "What this write was made against is no longer the current state: someone else got there first. Nothing was recorded." | "この書き込みの基準は、もう現在の状態ではありません。先に別の操作がありました。何も記録されていません。" |
-| `problem.stale_base.hint` | the API's problem detail `stale-base`: the hint | "Read the current state, check your change against it, and send again with the current value in If-Match. This problem carries that value." | "現在の状態を読み、変更を照らし合わせてから、If-Match に現在の値を付けて送り直してください。この問題の応答にその値が含まれています。" |
+| `problem.stale_base.hint` | the API's problem detail `stale-base`: the hint | "Read the current state, check your change against it, and send again with the current value in If-Match. This problem carries that value." | "現在の状態を読み、編集内容を照らし合わせてから、If-Match に現在の値を付けて送り直してください。この問題の応答にその値が含まれています。" |
 | `problem.invalid_body.title` | the API's problem detail `invalid-body`: the title | "Body not accepted" | "本文を受け付けられません" |
 | `problem.invalid_body.detail` | the API's problem detail `invalid-body`: the detail | "The body is not a JSON object of the shape this endpoint takes: the member {member} is missing, repeated, unknown or has a value it may not have." | "本文が、このエンドポイントの形の JSON オブジェクトではありません。メンバー {member} が、ない、重複している、未知である、または許されない値です。" |
 | `problem.invalid_body.hint` | the API's problem detail `invalid-body`: the hint | "Send the members the description of this endpoint lists, and no others." | "このエンドポイントの説明にあるメンバーだけを送ってください。" |
 | `problem.body_too_large.title` | the API's problem detail `body-too-large`: the title | "Body too large" | "本文が大きすぎます" |
 | `problem.body_too_large.detail` | the API's problem detail `body-too-large`: the detail | "The body is larger than this endpoint takes: at most {limit} bytes. Nothing was read of it." | "本文が、このエンドポイントの受け付ける大きさ（最大 {limit} バイト）を超えています。内容は読み込まれていません。" |
-| `problem.body_too_large.hint` | the API's problem detail `body-too-large`: the hint | "Send less: split the change, or shorten the text." | "送る量を減らしてください。変更を分けるか、テキストを短くします。" |
+| `problem.body_too_large.hint` | the API's problem detail `body-too-large`: the hint | "Send less: split the change, or shorten the text." | "送る量を減らしてください。内容を分けるか、テキストを短くします。" |
 | `problem.unsupported_media_type.title` | the API's problem detail `unsupported-media-type`: the title | "Not sent as JSON" | "JSON として送られていません" |
 | `problem.unsupported_media_type.detail` | the API's problem detail `unsupported-media-type`: the detail | "The body must be JSON, sent with the content type application/json." | "本文は JSON で、コンテンツタイプ application/json で送る必要があります。" |
 | `problem.unsupported_media_type.hint` | the API's problem detail `unsupported-media-type`: the hint | "Set the Content-Type header to application/json." | "Content-Type ヘッダーを application/json にしてください。" |
@@ -491,11 +530,11 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.not_in_this_state.detail` | the API's problem detail `not-in-this-state`: the detail | "This cannot be done while the proposal is {state}." | "提案が {state} の間は、これはできません。" |
 | `problem.not_in_this_state.hint` | the API's problem detail `not-in-this-state`: the hint | "Read the proposal: what is possible depends on its state." | "提案を読んでください。できることは提案の状態によって決まります。" |
 | `problem.already_decided.title` | the API's problem detail `already-decided`: the title | "Already decided" | "すでに判断しています" |
-| `problem.already_decided.detail` | the API's problem detail `already-decided`: the detail | "You have decided on this revision already, and a decision is not changed." | "このリビジョンにはすでに判断を出しており、判断は変更できません。" |
-| `problem.already_decided.hint` | the API's problem detail `already-decided`: the hint | "Decide again on the next revision, when there is one." | "次のリビジョンができたら、そのときにあらためて判断してください。" |
+| `problem.already_decided.detail` | the API's problem detail `already-decided`: the detail | "You have decided on this revision already, and a decision is not changed." | "この修正版にはすでに判断を出しており、判断は変更できません。" |
+| `problem.already_decided.hint` | the API's problem detail `already-decided`: the hint | "Decide again on the next revision, when there is one." | "次の修正版ができたら、そのときにあらためて判断してください。" |
 | `problem.own_proposal.title` | the API's problem detail `own-proposal`: the title | "Your own proposal" | "自分の提案です" |
 | `problem.own_proposal.detail` | the API's problem detail `own-proposal`: the detail | "A proposer cannot approve or ask for changes on their own proposal." | "提案者は、自分の提案を承認したり、修正を求めたりすることはできません。" |
-| `problem.own_proposal.hint` | the API's problem detail `own-proposal`: the hint | "Ask a reviewer to decide on it. You can still comment on your own proposal." | "ほかのレビュー担当者に判断を依頼してください。自分の提案にコメントすることはできます。" |
+| `problem.own_proposal.hint` | the API's problem detail `own-proposal`: the hint | "Ask a reviewer to decide on it. You can still comment on your own proposal." | "ほかのレビュアーに判断を依頼してください。自分の提案にコメントすることはできます。" |
 | `problem.refused_limit.title` | the API's problem detail `refused-limit`: the title | "Refused: a limit" | "拒否: 上限に達しました" |
 | `problem.refused_limit.detail` | the API's problem detail `refused-limit`: the detail | "A limit was reached: {limit}. The members allowed, current and asked give the numbers, and reset says when it will be possible again." | "上限に達しました: {limit}。allowed、current、asked の各メンバーが数を示し、reset がまた可能になる時刻を示します。" |
 | `problem.refused_limit.hint` | the API's problem detail `refused-limit`: the hint | "Where waiting helps, Retry-After says how long. Otherwise close a proposal of yours, or ask for less." | "待てば解消する場合は Retry-After が待つ秒数を示します。そうでない場合は、ご自身の提案を閉じるか、求める量を減らしてください。" |
@@ -504,25 +543,25 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.busy.hint` | the API's problem detail `busy`: the hint | "Send it again after the time Retry-After gives." | "Retry-After が示す時間のあとで、もう一度送ってください。" |
 | `problem.needs_recovery.title` | the API's problem detail `needs-recovery`: the title | "The wiki needs recovery" | "ウィキの復旧が必要です" |
 | `problem.needs_recovery.detail` | the API's problem detail `needs-recovery`: the detail | "A write to this wiki did not finish. The wiki accepts no more changes until recovery has looked at it, and reading still works." | "このウィキへの書き込みが完了しませんでした。復旧が確認するまで、ウィキは新しい変更を受け付けませんが、読み取りはできます。" |
-| `problem.needs_recovery.hint` | the API's problem detail `needs-recovery`: the hint | "Tell the person who runs this server. This request did nothing." | "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。" |
+| `problem.needs_recovery.hint` | the API's problem detail `needs-recovery`: the hint | "Tell the person who runs this server. This request did nothing." | "このサーバーの管理者にお知らせください。このリクエストでは何も行われていません。" |
 | `problem.overlap.title` | the API's problem detail `overlap`: the title | "Changes overlap" | "変更が重なっています" |
-| `problem.overlap.detail` | the API's problem detail `overlap`: the detail | "Stopped: the proposal and the wiki changed the same places, {overlaps} of them. The proposal now needs a revision, and the wiki is as it was." | "停止しました。提案とウィキが同じ箇所を変更しており、{overlaps} 件あります。提案は改訂が必要な状態になり、ウィキは変わっていません。" |
-| `problem.overlap.hint` | the API's problem detail `overlap`: the hint | "Read the overlap on the proposal, write a revision that takes both texts into account, and send it." | "提案に記録された重なりを読み、両方のテキストを踏まえた改訂を書いて送ってください。" |
+| `problem.overlap.detail` | the API's problem detail `overlap`: the detail | "Stopped: the proposal and the wiki changed the same places, {overlaps} of them. The proposal now needs a revision, and the wiki is as it was." | "停止しました。提案とウィキが同じ箇所を変更しており、{overlaps} 件あります。提案は修正が必要な状態になり、ウィキは変わっていません。" |
+| `problem.overlap.hint` | the API's problem detail `overlap`: the hint | "Read the overlap on the proposal, write a revision that takes both texts into account, and send it." | "提案に記録された重なりを読み、両方のテキストを踏まえた新しい修正版を書いて送ってください。" |
 | `problem.nothing_to_change.title` | the API's problem detail `nothing-to-change`: the title | "Nothing to change" | "変更するものがありません" |
-| `problem.nothing_to_change.detail` | the API's problem detail `nothing-to-change`: the detail | "The wiki already has everything this revision asks for." | "このリビジョンが求める内容は、すでにウィキにあります。" |
+| `problem.nothing_to_change.detail` | the API's problem detail `nothing-to-change`: the detail | "The wiki already has everything this revision asks for." | "この修正版が求める内容は、すでにウィキにあります。" |
 | `problem.nothing_to_change.hint` | the API's problem detail `nothing-to-change`: the hint | "Decline or withdraw the proposal, or revise it." | "提案を見送るか取り下げるか、修正してください。" |
 | `problem.acceptance_in_progress.title` | the API's problem detail `acceptance-in-progress`: the title | "Acceptance already underway" | "受け入れがすでに進行中です" |
 | `problem.acceptance_in_progress.detail` | the API's problem detail `acceptance-in-progress`: the detail | "An earlier acceptance of this revision has not finished." | "この修正版に対する以前の受け入れが、まだ完了していません。" |
-| `problem.acceptance_in_progress.hint` | the API's problem detail `acceptance-in-progress`: the hint | "Wait and ask again. Recovery settles it if the earlier one was interrupted." | "しばらく待ってから、もう一度試してください。先の受け入れが中断されていた場合は、復旧が解決します。" |
+| `problem.acceptance_in_progress.hint` | the API's problem detail `acceptance-in-progress`: the hint | "Wait and ask again. Recovery settles it if the earlier one was interrupted." | "しばらく待ってから、もう一度お試しください。先の受け入れが中断されていた場合は、復旧が解決します。" |
 | `problem.acceptance_failed.title` | the API's problem detail `acceptance-failed`: the title | "Acceptance failed" | "受け入れに失敗しました" |
 | `problem.acceptance_failed.detail` | the API's problem detail `acceptance-failed`: the detail | "The change was not made: {word}. The proposal stays open and the history is as it was." | "変更は行われませんでした: {word}。提案は開いたままで、履歴は変わっていません。" |
-| `problem.acceptance_failed.hint` | the API's problem detail `acceptance-failed`: the hint | "Try again, or tell the person who runs this server." | "もう一度試すか、このサーバーを運用している人に知らせてください。" |
+| `problem.acceptance_failed.hint` | the API's problem detail `acceptance-failed`: the hint | "Try again, or tell the person who runs this server." | "もう一度お試しになるか、このサーバーの管理者にお知らせください。" |
 | `problem.signing_not_configured.title` | the API's problem detail `signing-not-configured`: the title | "Signing is not set up" | "署名が設定されていません" |
 | `problem.signing_not_configured.detail` | the API's problem detail `signing-not-configured`: the detail | "This server is not set up to sign changes into the history, so it takes no proposal into the history; reading, proposing and commenting still work." | "このサーバーには変更を履歴へ署名する設定がないため、提案を履歴に取り込めません。読み取り、提案、コメントはできます。" |
-| `problem.signing_not_configured.hint` | the API's problem detail `signing-not-configured`: the hint | "Tell the person who runs this server. This request did nothing." | "このサーバーを運用している人に知らせてください。このリクエストでは何も行われていません。" |
-| `problem.retirement_unfinished.title` | the API's problem detail `retirement-unfinished`: the title | "A change to the wiki's keys is not finished" | "ウィキの鍵の変更が完了していません" |
-| `problem.retirement_unfinished.detail` | the API's problem detail `retirement-unfinished`: the detail | "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki finishes or gives up a change to its keys. The change was not made, and the proposal is kept." | "このウィキの鍵の変更が完了していないため、運用している人が鍵の変更を完了するか取りやめるまで、履歴に新しく署名することはできません。変更は行われておらず、提案はそのまま保たれています。" |
-| `problem.retirement_unfinished.hint` | the API's problem detail `retirement-unfinished`: the hint | "Tell the person who runs this wiki. When they have finished or given up the change, accept the proposal again." | "このウィキを運用している人に知らせてください。完了または取りやめになったら、もう一度この提案を受け入れてください。" |
+| `problem.signing_not_configured.hint` | the API's problem detail `signing-not-configured`: the hint | "Tell the person who runs this server. This request did nothing." | "このサーバーの管理者にお知らせください。このリクエストでは何も行われていません。" |
+| `problem.retirement_unfinished.title` | the API's problem detail `retirement-unfinished`: the title | "A change to the wiki's keys is not finished" | "ウィキの鍵の更新作業が完了していません" |
+| `problem.retirement_unfinished.detail` | the API's problem detail `retirement-unfinished`: the detail | "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki finishes or gives up a change to its keys. The change was not made, and the proposal is kept." | "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しく署名することはできません。変更は行われておらず、提案はそのまま保たれています。" |
+| `problem.retirement_unfinished.hint` | the API's problem detail `retirement-unfinished`: the hint | "Tell the person who runs this wiki. When they have finished or given up the change, accept the proposal again." | "このウィキを運営している人にお知らせください。完了または取りやめになったら、もう一度この提案を受け入れてください。" |
 | `title.inbox` | the title of the inbox | "Inbox · {product}" | "受信箱 · {product}" |
 | `inbox.heading` | the heading of the inbox | "Inbox" | "受信箱" |
 | `inbox.intro` | under the heading of the inbox | "What has happened to your proposals and to the pages you follow, newest first." | "あなたの提案と、フォローしているページに起きたことを、新しい順に表示します。" |
@@ -531,13 +570,13 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `inbox.mark_all_read` | the button under the list of events | "Mark everything as read" | "すべて既読にする" |
 | `inbox.someone` | in an event, in place of the name of a person who is not known | "Someone" | "だれか" |
 | `inbox.event_reviewed` | an event; `{person}` is who reviewed, `{proposal}` the proposal (a link), `{wiki}` the wiki | "{person} reviewed your proposal {proposal} in {wiki}." | "{person}が {wiki} のあなたの提案 {proposal} をレビューしました。" |
-| `inbox.event_accepted` | an event; `{proposal}` is the proposal (a link), `{wiki}` the wiki | "Your proposal {proposal} in {wiki} was accepted and signed into the history." | "{wiki} のあなたの提案 {proposal} は受け入れられ、署名して履歴に記録されました。" |
+| `inbox.event_accepted` | an event; `{proposal}` is the proposal (a link), `{wiki}` the wiki | "Your proposal {proposal} in {wiki} was accepted and signed into the history." | "{wiki} のあなたの提案 {proposal} は受け入れられ、署名されて履歴に記録されました。" |
 | `inbox.event_declined` | an event; `{person}` is who declined | "{person} declined your proposal {proposal} in {wiki}." | "{person}が {wiki} のあなたの提案 {proposal} を見送りました。" |
 | `inbox.event_needs_revision` | an event; `{person}` is who asked | "{person} asked for a revision of your proposal {proposal} in {wiki}." | "{person}が {wiki} のあなたの提案 {proposal} の修正を依頼しました。" |
 | `inbox.event_withdrawn` | an event, for the people who held the proposal; `{person}` is who took it back | "{person} withdrew the proposal {proposal} in {wiki}." | "{person}が {wiki} の提案 {proposal} を取り下げました。" |
 | `inbox.event_superseded` | an event; `{person}` is who put a later proposal in its place | "{person} replaced your proposal {proposal} in {wiki} with a later one." | "{person}が {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。" |
-| `inbox.event_replied` | an event; `{person}` is who commented | "{person} commented in the discussion of {proposal} in {wiki}." | "{person}が {wiki} の {proposal} の議論にコメントしました。" |
-| `inbox.event_mentioned` | an event; `{person}` is who wrote the comment | "{person} mentioned you in the discussion of {proposal} in {wiki}." | "{person}が {wiki} の {proposal} の議論であなたに言及しました。" |
+| `inbox.event_replied` | an event; `{person}` is who commented | "{person} commented in the discussion of {proposal} in {wiki}." | "{person}が {wiki} の {proposal} のディスカッションにコメントしました。" |
+| `inbox.event_mentioned` | an event; `{person}` is who wrote the comment | "{person} mentioned you in the discussion of {proposal} in {wiki}." | "{person}が {wiki} の {proposal} のディスカッションであなたに言及しました。" |
 | `inbox.event_watched` | an event; `{proposal}` is the proposal the change came from (a link) | "A page you follow in {wiki} changed. The change came from the proposal {proposal}." | "{wiki} でフォローしているページが変更されました。変更のもとになった提案は {proposal} です。" |
 | `inbox.event_unreadable` | an event about something the reader may not read any more | "Something happened that involves you, in a wiki you can no longer read." | "あなたに関わる出来事がありましたが、そのウィキはもう読むことができません。" |
 | `inbox.account_heading` | the heading of the page that says an account is needed (the inbox, and following a page) | "An account is needed" | "アカウントが必要です" |
@@ -550,8 +589,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `watch.heading_followed` | the heading of the answer to following a page | "Following" | "フォロー中" |
 | `watch.heading_stopped` | the heading of the answer to stopping | "No longer following" | "フォローをやめました" |
 | `watch.heading_full` | the heading of the answer when the reader follows as many as they may | "You follow as many as you can" | "フォローできる数の上限です" |
-| `watch.page_followed` | the answer to following a page; `{title}` is its title | "You follow the page {title}. When a change to it is signed into the history, you will be told in your inbox." | "ページ「{title}」をフォローしました。このページへの変更が署名して履歴に記録されると、受信箱でお知らせします。" |
-| `watch.namespace_followed` | the answer to following the pages under a title; `{title}` is the title | "You follow the pages under {title}. When a change to one of them is signed into the history, you will be told in your inbox." | "「{title}」の下にあるページをフォローしました。それらへの変更が署名して履歴に記録されると、受信箱でお知らせします。" |
+| `watch.page_followed` | the answer to following a page; `{title}` is its title | "You follow the page {title}. When a change to it is signed into the history, you will be told in your inbox." | "ページ「{title}」をフォローしました。このページへの変更が署名されて履歴に記録されると、受信箱でお知らせします。" |
+| `watch.namespace_followed` | the answer to following the pages under a title; `{title}` is the title | "You follow the pages under {title}. When a change to one of them is signed into the history, you will be told in your inbox." | "「{title}」の下にあるページをフォローしました。それらへの変更が署名されて履歴に記録されると、受信箱でお知らせします。" |
 | `watch.page_stopped` | the answer to stopping following a page; `{title}` is its title | "You no longer follow the page {title}." | "ページ「{title}」のフォローをやめました。" |
 | `watch.namespace_stopped` | the answer to stopping following the pages under a title | "You no longer follow the pages under {title}." | "「{title}」の下にあるページのフォローをやめました。" |
 | `watch.account_body` | the sentence under the heading that says an account is needed, when the reader tried to follow a page | "Following a page belongs to an account. Sign in, then follow the page again." | "ページのフォローはアカウントごとの機能です。サインインしてから、もう一度フォローしてください。" |
@@ -576,7 +615,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `state.declined` | the label of a proposal that was not taken into the history | "Declined" | "見送り済み" |
 | `state.withdrawn` | the label of a proposal its proposer took back | "Withdrawn" | "取り下げ済み" |
 | `state.superseded` | the label of a proposal that a later proposal replaced | "Superseded" | "置き換え済み" |
-| `state_note.draft` | under the label of a draft | "A draft. Only the person who started it can see it, and nobody has been asked to review it." | "下書きです。始めた本人だけが見られます。まだ誰にもレビューを依頼していません。" |
+| `state_note.draft` | under the label of a draft | "A draft. Only the person who started it can see it, and nobody has been asked to review it." | "下書きです。始めた本人だけが閲覧できます。まだ誰にもレビューを依頼していません。" |
 | `state_note.held` | under the label of a proposal held for review | "The wiki service holds this proposal for review. Nothing becomes part of a page until someone who is allowed to takes the proposal into the history." | "ウィキサービスはこの提案をレビュー待ちとして保持しています。権限のある人が提案を履歴に取り込むまで、ページには何も反映されません。" |
 | `state_note.needs_revision` | under the label of a proposal that needs a revision; `{author}` is its proposer | "This proposal needs a revision from {author} before it can be taken into the history." | "この提案は、履歴に取り込む前に {author}による修正が必要です。" |
 | `state_note.accepted` | under the label of an accepted proposal | "Accepted: someone who is allowed to took this proposal into the history." | "受け入れ済み: 権限のある人がこの提案を履歴に取り込みました。" |
@@ -602,27 +641,27 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `outcome_note.busy_depth` | under that: how many acceptances wait before this one; `{count}` is the number | "One acceptance is waiting ahead of yours." / "{count} acceptances are waiting ahead of yours." | "あなたの前に {count} 件の受け入れが待っています。" |
 | `outcome_note.recovery` | under the outcome the wiki needs recovery | "The wiki is being checked after an interruption. It can be read, but nothing can be changed until the check is done." | "ウィキは中断後の確認を行っています。読むことはできますが、確認が終わるまで変更はできません。" |
 | `outcome.unchanged_refused` | the outcome of an acceptance the history refused as it was prepared; nothing was changed | "Not signed: the history refused it" | "署名されませんでした: 履歴が受け付けませんでした" |
-| `outcome_note.unchanged_refused` | under the outcome not signed: the history refused it | "The history did not accept this change as it was prepared. Nothing was changed, and the proposal is still held for review." | "履歴は、用意された変更をそのままでは受け付けませんでした。何も変更しておらず、提案はレビュー待ちのままです。" |
+| `outcome_note.unchanged_refused` | under the outcome not signed: the history refused it | "The history did not accept this change as it was prepared. Nothing was changed, and the proposal is still held for review." | "履歴は、用意された変更をそのままでは受け付けませんでした。何も変更しておらず、提案はレビュー待ちで保持されたままです。" |
 | `outcome.knowledge_invalid` | the outcome of an acceptance refused before signing because a claim or source file in the proposal is not acceptable; nothing was changed | "Not signed: a claim or source file is not acceptable" | "署名されませんでした: 主張または出典のファイルを受け付けられません" |
-| `outcome_note.knowledge_invalid` | under that outcome | "A claim or source file in this proposal is not in the form the wiki reads, or the change would leave another file pointing at something that is not there. Nothing was changed, and the proposal is still held for review. Correct the file and accept again." | "この提案の主張または出典のファイルが、ウィキが読める形になっていないか、この変更によって別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちのままです。ファイルを直してから、もう一度受け入れてください。" |
+| `outcome_note.knowledge_invalid` | under that outcome | "A claim or source file in this proposal is not in the form the wiki reads, or the change would leave another file pointing at something that is not there. Nothing was changed, and the proposal is still held for review. Correct the file and accept again." | "この提案の主張または出典のファイルが、ウィキが読める形になっていないか、この変更によって別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちで保持されたままです。ファイルを直してから、もう一度受け入れてください。" |
 | `outcome.too_large` | the outcome of an acceptance that needed more memory than one signing may use | "Too large to sign now" | "大きすぎて今は署名できません" |
-| `outcome_note.too_large` | under the outcome too large to sign now | "This change needs more memory than one signing may use. Nothing was changed, and the proposal is still held for review." | "この変更の署名には、1 回の署名で使える量を超えるメモリが必要です。何も変更しておらず、提案はレビュー待ちのままです。" |
-| `outcome.retirement_unfinished` | the outcome of an acceptance the signer refused because a change to the wiki's keys (a key retirement) was begun and is not finished; nothing was changed | "Not signed: a change to this wiki's keys is not finished" | "署名されませんでした: このウィキの鍵の変更が完了していません" |
-| `outcome_note.retirement_unfinished` | under that outcome; the person who runs this wiki finishes or gives up the change | "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki finishes or gives up a change to its keys. Nothing was changed, and the proposal is kept. Tell that person; once it is finished or given up, accept the proposal again." | "このウィキの鍵の変更が完了していないため、運用している人が鍵の変更を完了するか取りやめるまで、履歴に新しく署名することはできません。何も変更しておらず、提案はそのまま保たれています。その人に伝えてください。完了または取りやめになったら、もう一度この提案を受け入れてください。" |
+| `outcome_note.too_large` | under the outcome too large to sign now | "This change needs more memory than one signing may use. Nothing was changed, and the proposal is still held for review." | "この変更の署名には、1 回の署名で使える量を超えるメモリが必要です。何も変更しておらず、提案はレビュー待ちで保持されたままです。" |
+| `outcome.retirement_unfinished` | the outcome of an acceptance the signer refused because a change to the wiki's keys (a key retirement) was begun and is not finished; nothing was changed | "Not signed: a change to this wiki's keys is not finished" | "署名されませんでした: このウィキの鍵の更新作業が完了していません" |
+| `outcome_note.retirement_unfinished` | under that outcome; the person who runs this wiki finishes or gives up the change | "A change to this wiki's keys is not finished, so nothing new can be signed into its history until the person who runs this wiki finishes or gives up a change to its keys. Nothing was changed, and the proposal is kept. Tell that person; once it is finished or given up, accept the proposal again." | "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しく署名することはできません。何も変更しておらず、提案はそのまま保たれています。その人にお知らせください。完了または取りやめになったら、もう一度この提案を受け入れてください。" |
 | `outcome.unavailable` | the outcome of an acceptance that could not be done now, before anything was changed | "Could not be done now" | "今は実行できません" |
-| `outcome_note.unavailable` | under the outcome could not be done now | "The records or the history could not be used just now. Nothing was changed. Try again in a little while; if it keeps happening, tell the person who runs this server." | "記録または履歴を今は利用できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーを運用している人に伝えてください。" |
+| `outcome_note.unavailable` | under the outcome could not be done now | "The records or the history could not be used just now. Nothing was changed. Try again in a little while; if it keeps happening, tell the person who runs this server." | "記録または履歴を今は利用できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。" |
 | `outcome.in_progress` | the outcome of an acceptance of a revision whose earlier acceptance has not finished | "This revision is being signed" | "この修正版は署名の最中です" |
 | `outcome_note.in_progress` | under the outcome this revision is being signed | "An earlier attempt to take this revision into the history has not finished. Nothing was done now. Wait a little and read the proposal again." | "この修正版を履歴に取り込もうとした前回の操作が、まだ終わっていません。今回は何も行っていません。しばらく待ってから、提案をもう一度開いてください。" |
 | `outcome.nothing_to_change` | the outcome of an acceptance whose changes the history already has | "Nothing to change" | "変更するものがありません" |
 | `outcome_note.nothing_to_change` | under the outcome nothing to change | "The history already has everything this proposal asks for. Nothing was changed." | "この提案が求める内容は、すでに履歴に入っています。何も変更していません。" |
 | `outcome.store` | the outcome of an acceptance when the records failed and it is not known whether the change is in the history | "The result is not certain" | "結果は不明です" |
-| `outcome_note.store` | under the outcome the result is not certain | "The records could not be used while the change was being taken in. It may or may not be in the history now: read the history before you try again, and tell the person who runs this server." | "変更を取り込む途中で、記録を利用できなくなりました。変更が履歴に入ったかどうかは分かりません。もう一度試す前に履歴を確認し、このサーバーを運用している人に伝えてください。" |
+| `outcome_note.store` | under the outcome the result is not certain | "The records could not be used while the change was being taken in. It may or may not be in the history now: read the history before you try again, and tell the person who runs this server." | "変更を取り込む途中で、記録を利用できなくなりました。変更が履歴に入ったかどうかは分かりません。もう一度試す前に履歴を確認し、このサーバーの管理者にお知らせください。" |
 | `accept.heading` | the heading of the page that answers the Accept button in a build that does not serve accepting (the shipped server always does; a build without an acceptor, as the tests make one, says this) | "Accepting is not available in this build" | "このビルドでは受け入れを利用できません" |
 | `accept.not_served` | on that page | "This build of the server does not take proposals into the history." | "このサーバーのビルドは、提案を履歴に取り込みません。" |
-| `accept.not_served_kept` | on that page | "The proposal stays held for review and nothing was changed." | "提案はレビュー待ちのままで、何も変更していません。" |
+| `accept.not_served_kept` | on that page | "The proposal stays held for review and nothing was changed." | "提案はレビュー待ちで保持されたままで、何も変更していません。" |
 | `accept.not_served_note` | beside the Accept button, in such a build | "Accepting is not available on this server." | "このサーバーでは、受け入れを利用できません。" |
 | `accept.unconfigured_heading` | the heading of the page that answers the Accept button when the server was started without the means to sign | "Accepting is not set up on this server" | "このサーバーでは受け入れが設定されていません" |
-| `accept.unconfigured` | on that page: the one sentence | "This server is not set up to sign changes into the history, so nothing was changed and the proposal stays held for review; tell the person who runs this server." | "このサーバーには履歴へ署名する設定がないため、何も変更しておらず、提案はレビュー待ちのままです（このサーバーを運用している人に伝えてください）。" |
+| `accept.unconfigured` | on that page: the one sentence | "This server is not set up to sign changes into the history, so nothing was changed and the proposal stays held for review; tell the person who runs this server." | "このサーバーには履歴へ署名する設定がないため、何も変更しておらず、提案はレビュー待ちで保持されたままです（このサーバーの管理者にお知らせください）。" |
 | `accept.unconfigured_note` | beside the Accept button, on such a server | "Accepting is not set up on this server." | "このサーバーでは、受け入れが設定されていません。" |
 | `overlap.heading` | the heading of the section of a proposal that needs a revision because it overlaps the wiki's current text | "Where the changes overlap" | "変更が重なっている箇所" |
 | `overlap.intro` | under that heading | "The wiki's current text and this proposal both changed the places below. Nothing was changed. Revise the proposal with both texts in front of you." | "ウィキの現在の文面とこの提案が、下の箇所をどちらも変更しています。何も変更していません。両方の文面を見ながら、提案を修正してください。" |
@@ -639,8 +678,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `overlap.place_named` | a place in that table: a part of the page that has a name; `{id}` is the name | "The part named {id}" | "{id} と名付けられた部分" |
 | `overlap.place_page` | a place in that table: the whole page | "The whole page" | "ページ全体" |
 | `overlap.place_path` | a place in that table: the page's address | "The page's address" | "ページのアドレス" |
-| `quota.open_proposals` | the name of the limit on open proposals, as a clause | "too many open proposals" | "未決の提案が多すぎます" |
-| `quota.revisions` | the name of the limit on revisions of one proposal | "too many revisions of one proposal" | "1 つの提案の修正が多すぎます" |
+| `quota.open_proposals` | the name of the limit on open proposals, as a clause | "too many open proposals" | "進行中の提案が多すぎます" |
+| `quota.revisions` | the name of the limit on revisions of one proposal | "too many revisions of one proposal" | "1 つの提案の修正版が多すぎます" |
 | `quota.accepted_bytes` | the name of the limit on text taken into the history in a day | "too much accepted text today" | "本日受け入れられた文章が多すぎます" |
 | `quota.hour_person` | the name of the limit on proposals a person opens in an hour | "too many proposals opened in the last hour" | "直近 1 時間に出した提案が多すぎます" |
 | `quota.hour_wiki` | the name of the limit on proposals opened in the wiki in an hour | "too many proposals opened in this wiki in the last hour" | "直近 1 時間にこのウィキで出された提案が多すぎます" |
@@ -648,9 +687,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `quota.comments_hour_person` | the name of the limit on comments a person makes in an hour | "too many comments in the last hour" | "直近 1 時間のコメントが多すぎます" |
 | `quota.counts` | under a refusal by a limit: the limit, the count now and what was asked | "The limit is {allowed}. The count now is {current}, and this asked for {asked}." | "上限は {allowed} です。現在の数は {current} で、今回の要求は {asked} です。" |
 | `quota.reset_at` | under a refusal by a limit: when it ends; `{when}` is a time in UTC | "It resets at {when}." | "{when} にリセットされます。" |
-| `quota.reset_proposal_closes` | under a refusal by the limit on open proposals | "It resets when one of your open proposals is accepted, declined, withdrawn or superseded." | "あなたの未決の提案のどれかが、受け入れ・見送り・取り下げ・置き換えのいずれかになるとリセットされます。" |
+| `quota.reset_proposal_closes` | under a refusal by the limit on open proposals | "It resets when one of your open proposals is accepted, declined, withdrawn or superseded." | "あなたの進行中の提案のどれかが、受け入れ・見送り・取り下げ・置き換えのいずれかになるとリセットされます。" |
 | `quota.reset_queue` | under a refusal by the limit on acceptances waiting | "It resets when a waiting acceptance gets its turn or gives up." | "待機中の受け入れの順番が来るか、取りやめになるとリセットされます。" |
-| `quota.reset_never_revisions` | under a refusal by the limit on revisions | "Waiting does not help: this proposal has all the revisions it can have. Open a new proposal instead." | "待っても解消しません。この提案はこれ以上修正できません。新しい提案を出してください。" |
+| `quota.reset_never_revisions` | under a refusal by the limit on revisions | "Waiting does not help: this proposal has all the revisions it can have. Open a new proposal instead." | "待っても解消しません。この提案の修正版は、これ以上増やせません。新しい提案を出してください。" |
 | `quota.reset_never_too_big` | under a refusal by a limit that one request can exceed alone | "Waiting does not help: this is more than the limit allows at any time. Make it smaller." | "待っても解消しません。この量は上限を超えています。もっと小さくしてください。" |
 | `size.mib` | a size in mebibytes; `{amount}` is the number | "{amount} MiB" | "{amount} MiB" |
 | `size.kib` | a size in kibibytes | "{amount} KiB" | "{amount} KiB" |
@@ -662,9 +701,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `refused.not_now_heading` | the heading of the page that says an act is not possible now | "Not possible now" | "今はできません" |
 | `refused.invalid_heading` | the heading of the page that says what was sent could not be used | "This could not be saved" | "保存できませんでした" |
 | `refused.not_in_this_state` | under that heading; `{state}` is the proposal's state | "This proposal is {state}, so this cannot be done now." | "この提案は「{state}」の状態なので、今はこの操作はできません。" |
-| `refused.already_decided` | when a reviewer decides twice on one revision | "You have already decided on this revision. A decision is not changed; decide again on the next revision." | "この修正にはすでに判断を記録しています。判断は変更できません。次の修正であらためて判断してください。" |
-| `refused.own_proposal` | when a proposer tries to approve or ask for changes on their own proposal | "You cannot approve or ask for changes on your own proposal. Ask a reviewer to decide on it; you can still comment." | "自分の提案を承認したり、修正を求めたりすることはできません。ほかのレビュー担当者に判断を依頼してください。コメントはできます。" |
-| `refused.stale_revision` | when a decision is on a revision that is not the latest; `{latest}` is the latest | "This proposal has a newer revision, number {latest}. Read it again and decide on that one." | "この提案には新しい修正（{latest} 番）があります。読み直して、そちらについて判断してください。" |
+| `refused.already_decided` | when a reviewer decides twice on one revision | "You have already decided on this revision. A decision is not changed; decide again on the next revision." | "この修正版にはすでに判断を記録しています。判断は変更できません。次の修正版であらためて判断してください。" |
+| `refused.own_proposal` | when a proposer tries to approve or ask for changes on their own proposal | "You cannot approve or ask for changes on your own proposal. Ask a reviewer to decide on it; you can still comment." | "自分の提案を承認したり、修正を求めたりすることはできません。ほかのレビュアーに判断を依頼してください。コメントはできます。" |
+| `refused.stale_revision` | when a decision is on a revision that is not the latest; `{latest}` is the latest | "This proposal has a newer revision, number {latest}. Read it again and decide on that one." | "この提案には新しい修正版（{latest} 番）があります。読み直して、そちらについて判断してください。" |
 | `refused.superseder` | when a proposal that cannot replace another is named; `{state}` is its state | "A proposal that is {state} cannot replace another one." | "「{state}」の提案は、別の提案に代わることはできません。" |
 | `refused.changed` | when the proposal changed while a form was being filled in | "The proposal changed while you were working on it. Read it again, then try again." | "作業している間に提案が変更されました。読み直してから、もう一度お試しください。" |
 | `invalid.incomplete` | when a form is not the one a page offers | "The form was not complete. Open it again from the page and try again." | "フォームの内容が不完全でした。ページからもう一度開いて、お試しください。" |
@@ -689,12 +728,12 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `proposals.empty` | when the list is empty | "Nobody has proposed anything yet." | "まだ提案はありません。" |
 | `proposals.new_page` | the link to the form that proposes a new page | "Propose a new page" | "新しいページを提案する" |
 | `proposals.drafts` | the heading of the reader's own drafts | "Your drafts" | "あなたの下書き" |
-| `proposals.open` | the heading of the proposals that are not decided | "Open proposals" | "未決の提案" |
+| `proposals.open` | the heading of the proposals that are not decided | "Open proposals" | "進行中の提案" |
 | `proposals.closed` | the heading of the proposals that are decided | "Decided proposals" | "決着済みの提案" |
 | `proposals.row_by` | under a proposal in the list; `{when}` is when it last changed | "Proposed by {author} · last changed {when}" | "提案者: {author} · 最終更新 {when}" |
 | `proposal.no_summary` | in place of the summary of a draft that has none yet | "(no summary yet)" | "（要約はまだありません）" |
-| `proposals.back` | a link back to the list of proposals | "Back to the proposals" | "提案の一覧へ戻る" |
-| `proposal.back` | a link back to the proposal | "Back to the proposal" | "提案へ戻る" |
+| `proposals.back` | a link back to the list of proposals | "Back to the proposals" | "提案の一覧に戻る" |
+| `proposal.back` | a link back to the proposal | "Back to the proposal" | "提案に戻る" |
 | `person.unknown` | in place of the name of a person who is not known | "someone" | "ある方" |
 | `title.propose_parts` | the title of the page that offers a page's sections and parts; `{page}` is its title | "Choose what to change in {page} · {wiki} · {product}" | "{page} の変更箇所を選ぶ · {wiki} · {product}" |
 | `parts.heading` | its heading | "Choose what to change in {page}" | "{page} の変更箇所を選ぶ" |
@@ -706,7 +745,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `parts.section_label` | the link to the form for one section; `{heading}` is its heading | "Section: {heading}" | "セクション: {heading}" |
 | `parts.part_label` | the link to the form for one part; `{excerpt}` is how it begins | "Part {number}: {excerpt}" | "部分 {number}: {excerpt}" |
 | `parts.cut` | under a list of parts that is cut; `{limit}` is how many are listed | "Only the first {limit} are listed." | "最初の {limit} 件のみ表示しています。" |
-| `parts.back` | a link back to the page; `{page}` is its title | "Back to {page}" | "{page} へ戻る" |
+| `parts.back` | a link back to the page; `{page}` is its title | "Back to {page}" | "{page} に戻る" |
 | `title.propose_page` | the title of the form that proposes a change to a page | "Propose a change to {page} · {wiki} · {product}" | "{page} への変更を提案する · {wiki} · {product}" |
 | `title.propose_new` | the title of the form that proposes a new page | "Propose a new page · {wiki} · {product}" | "新しいページを提案する · {wiki} · {product}" |
 | `title.propose_revise` | the title of the form that revises a proposal | "Revise a proposal · {wiki} · {product}" | "提案を修正する · {wiki} · {product}" |
@@ -733,13 +772,13 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `propose.save_draft` | the button that keeps the work as a draft | "Save as draft" | "下書きとして保存" |
 | `propose.submit` | the button that sends the proposal for review | "Submit" | "送信" |
 | `propose.submit_revision` | the button that sends a revision of a proposal for review | "Submit the revision" | "修正を送信" |
-| `propose.saved` | after a draft is saved | "Your draft is saved. Only you can see it." | "下書きを保存しました。あなただけが見られます。" |
+| `propose.saved` | after a draft is saved | "Your draft is saved. Only you can see it." | "下書きを保存しました。あなただけが閲覧できます。" |
 | `propose.problems` | the heading of what is wrong with a form | "Please fix this first" | "先に次の点を直してください" |
 | `propose.continue_draft` | a link to the draft the proposal was kept as | "Continue with your draft" | "下書きの続きを書く" |
 | `propose.removed_note` | in place of the text of a page the proposal removes; `{title}` is its title | "This proposal removes {title}." | "この提案は {title} を削除します。" |
 | `propose.preview_heading` | the heading of a preview; `{title}` is the page's title | "Preview of {title}" | "{title} のプレビュー" |
 | `propose.preview_note` | under it | "This is how your text will look. Nothing is saved yet." | "あなたの文章はこのように表示されます。まだ何も保存されていません。" |
-| `propose.suggestions` | the heading of what could be better in a text | "Suggestions" | "改善の提案" |
+| `propose.suggestions` | the heading of what could be better in a text | "Suggestions" | "改善のヒント" |
 | `propose.front_unreadable` | when the information at the top of a page cannot be read | "The information at the top of the page cannot be read. Each line needs a name, a colon and a value." | "ページ先頭の情報が読み取れません。各行は「名前」「コロン」「値」の形にしてください。" |
 | `propose.front_owned` | when the information at the top of a page changes names only the service writes; `{keys}` names them | "The lines {keys} at the top of the page can only be changed by an administrator of this wiki." | "ページ先頭の {keys} の行は、このウィキの管理者だけが変更できます。" |
 | `propose.title_empty` | when a new page has no title, or a part of it is empty | "A title cannot be empty, and no part of it between slashes can be empty." | "タイトルは空にできません。スラッシュで区切った各部分も空にできません。" |
@@ -761,7 +800,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `title.proposal` | the title of a proposal's page; `{summary}` is its summary | "Proposal: {summary} · {wiki} · {product}" | "提案: {summary} · {wiki} · {product}" |
 | `proposal.proposed_by` | a fact about a proposal; `{when}` is when it was sent | "Proposed by {author}, {when}." | "提案者: {author}、{when}。" |
 | `proposal.pages` | a fact: how many pages it changes | "It changes {count} page." / "It changes {count} pages." | "変更するページ: {count} 件。" |
-| `proposal.revision` | a fact: which revision the page shows | "This is revision {number} of {total}." | "{total} 件中の {number} 番目の修正です。" |
+| `proposal.revision` | a fact: which revision the page shows | "This is revision {number} of {total}." | "{total} 件中の {number} 番目の修正版です。" |
 | `proposal.view` | a fact: the view the proposal is for | "It is for the view {view}." | "ビュー {view} に対する提案です。" |
 | `proposal.sources_heading` | the heading of the sources | "Sources" | "出典" |
 | `proposal.signed_change` | the link from an accepted proposal to its change in the history | "See the change" | "変更を見る" |
@@ -774,7 +813,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `action.accept` | the button that accepts a proposal | "Accept" | "受け入れる" |
 | `thread.heading` | the heading of the discussion on a proposal | "Discussion" | "ディスカッション" |
 | `thread.none` | when nobody has commented | "Nobody has commented yet." | "まだコメントはありません。" |
-| `comment.meta` | under a comment's author: when, and the revision it was made on | "{when} · on revision {number}" | "{when} · 修正 {number} について" |
+| `comment.meta` | under a comment's author: when, and the revision it was made on | "{when} · on revision {number}" | "{when} · 修正版 {number} について" |
 | `comment.on_part` | on a comment about a part that is not among the changes shown | "About part {number} of {title}" | "{title} の部分 {number} について" |
 | `comment.orphaned` | on a comment whose part is no longer in the proposal; it was about the text quoted | "Orphaned: the part of {title} this comment was about is no longer in the proposal. It was about this text:" | "孤立したコメント: このコメントの対象だった {title} の部分は、提案から無くなっています。対象だった文章:" |
 | `comment.on_this_part` | the link that comments on a part; `{number}` is its position | "Comment on part {number}" | "部分 {number} にコメントする" |
@@ -785,12 +824,12 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `comment_form.reply_to` | on the comment form: whom it replies to | "Your comment is a reply to {author}." | "このコメントは {author}への返信です。" |
 | `decisions.heading` | the heading of the reviewers' decisions | "Decisions" | "判断" |
 | `decisions.none` | when no reviewer has decided | "No reviewer has decided yet." | "まだ判断したレビュアーはいません。" |
-| `decision.approved` | a decision: approved; `{number}` is the revision it is on | "{reviewer} approved, on revision {number}." | "{reviewer}が承認しました（修正 {number} について）。" |
-| `decision.requested` | a decision: changes requested | "{reviewer} asked for changes, on revision {number}." | "{reviewer}が変更を求めました（修正 {number} について）。" |
-| `decision.older` | under a decision on an earlier revision | "A newer revision was written after this. The decision no longer counts toward accepting it." | "この後に新しい修正が書かれました。この判断は、受け入れの条件としてはもう数えられません。" |
+| `decision.approved` | a decision: approved; `{number}` is the revision it is on | "{reviewer} approved, on revision {number}." | "{reviewer}が承認しました（修正版 {number} について）。" |
+| `decision.requested` | a decision: changes requested | "{reviewer} asked for changes, on revision {number}." | "{reviewer}が修正を求めました（修正版 {number} について）。" |
+| `decision.older` | under a decision on an earlier revision | "A newer revision was written after this. The decision no longer counts toward accepting it." | "この後に新しい修正版が書かれました。この判断は、受け入れの条件としてはもう数えられません。" |
 | `decide.label` | the label of the note with a decision | "A note with your decision (optional)" | "判断に添えるメモ（省略可）" |
-| `decide.approve` | the button that approves the revision | "Approve this revision" | "この修正を承認する" |
-| `decide.request` | the button that asks for changes | "Request changes" | "変更を求める" |
+| `decide.approve` | the button that approves the revision | "Approve this revision" | "この修正版を承認する" |
+| `decide.request` | the button that asks for changes | "Request changes" | "修正を求める" |
 | `title.decline` | the title of the form that declines a proposal | "Decline a proposal · {wiki} · {product}" | "提案を見送る · {wiki} · {product}" |
 | `title.withdraw` | the title of the form that takes a proposal back | "Withdraw a proposal · {wiki} · {product}" | "提案を取り下げる · {wiki} · {product}" |
 | `title.ask` | the title of the form that asks for a revision | "Ask for a revision · {wiki} · {product}" | "修正を求める · {wiki} · {product}" |
@@ -801,7 +840,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `reason.withdraw_intro` | under it | "Say why you are taking the proposal back. It stays here for the record, and everyone who reads it sees your reason." | "提案を取り下げる理由を書いてください。提案は記録として残り、読む人全員に理由が表示されます。" |
 | `reason.withdraw_button` | the button that withdraws | "Withdraw" | "取り下げる" |
 | `reason.ask_heading` | the heading of the form that asks for a revision | "Ask for a revision" | "修正を求める" |
-| `reason.ask_intro` | under it | "Say what needs to change, and why, so that the proposer knows what to do. The proposer is told and can send a new revision." | "何をなぜ直す必要があるのかを書いて、提案者が次に何をすればよいか分かるようにしてください。提案者に伝わり、新しい修正を送れます。" |
+| `reason.ask_intro` | under it | "Say what needs to change, and why, so that the proposer knows what to do. The proposer is told and can send a new revision." | "何をなぜ直す必要があるのかを書いて、提案者が次に何をすればよいか分かるようにしてください。提案者に伝わり、新しい修正版を送れます。" |
 | `reason.ask_button` | the button that asks for a revision | "Ask for a revision" | "修正を求める" |
 | `reason.label` | the label of the reason | "Reason" | "理由" |
 | `title.discussion` | the title of the discussion of a page | "Discussion of {page} · {wiki} · {product}" | "{page} のディスカッション · {wiki} · {product}" |
@@ -837,7 +876,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `lint.order` | a suggestion for a text, from the linter's finding `MKUP-6-order`; `{guideline}` is the guideline it comes from | "{guideline}: A link could mean more than one page; the nearest one is taken." | "{guideline}: リンクが複数のページを指しうるため、いちばん近いページが選ばれます。" |
 | `lint.dangling` | a suggestion for a text, from the linter's finding `NAV-3-dangling`; `{guideline}` is the guideline it comes from | "{guideline}: A link leads to a page that does not exist yet." | "{guideline}: まだ存在しないページへのリンクがあります。" |
 | `lint.ambiguous` | a suggestion for a text, from the linter's finding `MKUP-5-ambiguous`; `{guideline}` is the guideline it comes from | "{guideline}: A link matches several pages and none is nearer." | "{guideline}: リンクが複数のページに当てはまり、どれがいちばん近いかを決められません。" |
-| `lint.other` | a suggestion for a text, from the linter's finding `any other code`; `{guideline}` is the guideline it comes from | "{guideline}: The linter has a suggestion for this text." | "{guideline}: このテキストについて、リンターからの提案があります。" |
+| `lint.other` | a suggestion for a text, from the linter's finding `any other code`; `{guideline}` is the guideline it comes from | "{guideline}: The linter has a suggestion for this text." | "{guideline}: このテキストについて、改善のヒントがあります。" |
 | `header.account_nav` | the label of the account strip in the banner (for a screen reader) | "Account" | "アカウント" |
 | `header.signed_in` | the banner, a link to the account page; `{name}` is the signed-in person's name | "Signed in as {name}" | "{name} としてサインイン中" |
 | `header.sign_out` | the banner and the sign-out page, the button that signs the browser out | "Sign out" | "サインアウト" |
@@ -845,7 +884,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `title.form_expired` | the title of the page that says a form did not match the sign-in it was sent from | "Form expired · {product}" | "フォームの有効期限が切れました · {product}" |
 | `form_expired.heading` | its heading | "The form has expired" | "フォームの有効期限が切れました" |
 | `form_expired.body` | its sentence | "This form could not be matched to your sign-in, so nothing was changed. It may be old, or you may have signed in or out since you opened it. Go back, reload the page and try again." | "このフォームをあなたのサインインと照合できなかったため、何も変更していません。フォームが古いか、開いたあとにサインインまたはサインアウトした可能性があります。前のページに戻り、再読み込みしてからもう一度お試しください。" |
-| `problem.unavailable` | under a form of the sign-in pages when the server could not do what was asked; nothing was changed | "That did not work this time, and nothing was changed. Try again in a while; if it keeps happening, tell the person who runs this server." | "今回は処理できず、何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者に知らせてください。" |
+| `problem.unavailable` | under a form of the sign-in pages when the server could not do what was asked; nothing was changed | "That did not work this time, and nothing was changed. Try again in a while; if it keeps happening, tell the person who runs this server." | "今回は処理できず、何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。" |
 | `title.sign_in` | the title of the sign-in page | "Sign in · {product}" | "サインイン · {product}" |
 | `sign_in.heading` | the heading of the sign-in page | "Sign in" | "サインイン" |
 | `sign_in.login_label` | the label of the sign-in name field, on the sign-in page and the pages that make an account | "Sign-in name" | "サインイン名" |
@@ -860,7 +899,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `sign_in.join` | under the sign-in form, a link to the page that makes an account; shown only where anyone may join | "Join this wiki" | "このウィキに参加する" |
 | `title.sign_out` | the title of the sign-out page | "Sign out · {product}" | "サインアウト · {product}" |
 | `sign_out.heading` | the heading of the sign-out page | "Sign out" | "サインアウト" |
-| `sign_out.body` | its sentence, above the button | "This signs this browser out. Other browsers that are signed in to your account stay signed in." | "このブラウザをサインアウトします。ほかのブラウザでのサインインはそのまま続きます。" |
+| `sign_out.body` | its sentence, above the button | "This signs this browser out. Other browsers that are signed in to your account stay signed in." | "このブラウザーをサインアウトします。ほかのブラウザーでのサインインはそのまま続きます。" |
 | `sign_out.not_signed_in` | on the sign-out page of a visitor who is not signed in | "You are not signed in." | "サインインしていません。" |
 | `title.join` | the title of the page where anyone may make an account | "Join · {product}" | "参加 · {product}" |
 | `join.heading` | its heading | "Join this wiki" | "このウィキに参加する" |
@@ -895,13 +934,13 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `account.name_button` | the button of that section | "Save name" | "名前を保存" |
 | `account.name_saved` | a note at the top of the page after the name was saved | "Your name was saved." | "名前を保存しました。" |
 | `account.sessions_heading` | the heading of the section that lists where the account is signed in | "Where you are signed in" | "サインインしている場所" |
-| `account.sessions_intro` | under that heading | "Each line is a browser that is signed in to your account now. Ending a session signs that browser out." | "各行は、いまあなたのアカウントにサインインしているブラウザです。セッションを終了すると、そのブラウザはサインアウトされます。" |
+| `account.sessions_intro` | under that heading | "Each line is a browser that is signed in to your account now. Ending a session signs that browser out." | "各行は、いまあなたのアカウントにサインインしているブラウザーです。セッションを終了すると、そのブラウザーはサインアウトされます。" |
 | `account.session_line` | one line of that list; `{started}` and `{ends}` are moments | "Started {started}; ends {ends}" | "開始 {started}、終了予定 {ends}" |
-| `account.session_current` | beside the line of the browser being used | "This is the browser you are using." | "いま使っているブラウザです。" |
+| `account.session_current` | beside the line of the browser being used | "This is the browser you are using." | "いま使っているブラウザーです。" |
 | `account.session_end` | the button on each line of that list | "End this session" | "このセッションを終了" |
 | `account.session_ended` | a note at the top of the page after a session was ended | "That session was ended." | "そのセッションを終了しました。" |
 | `account.tokens_heading` | the heading of the section on API tokens | "API tokens" | "API トークン" |
-| `account.tokens_intro` | under that heading | "An API token lets a program act as you through the write API. It can do no more than the scope you give it, and no more than your roles allow. It is shown once, when you make it." | "API トークンを使うと、プログラムがあなたとして書き込み API を使えます。トークンにできるのは、与えたスコープの範囲と、あなたの役割で許される範囲までです。作成したときに 1 度だけ表示されます。" |
+| `account.tokens_intro` | under that heading | "An API token lets a program act as you through the write API. It can do no more than the scope you give it, and no more than your roles allow. It is shown once, when you make it." | "API トークンを使うと、プログラムがあなたとして書き込み API を使えます。トークンにできるのは、与えたスコープの範囲と、あなたの役割で許される範囲までです。作成したときに 1 回だけ表示されます。" |
 | `account.tokens_none` | instead of the list when the account has no tokens | "You have no tokens." | "トークンはありません。" |
 | `account.token_unlabelled` | the name of a token that was given no note | "A token with no note" | "メモのないトークン" |
 | `account.token_scope` | one line of the list of tokens; `{scope}` is one of the five scopes | "Scope: {scope}" | "スコープ: {scope}" |
@@ -927,16 +966,16 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `account.lifetime_year` | an option of that field | "1 year" | "1 年" |
 | `account.token_button` | the button of that form | "Make token" | "トークンを作る" |
 | `account.token_made_heading` | the heading of the box that shows a token once, at the top of the page | "Your new token" | "新しいトークン" |
-| `account.token_made_body` | in that box | "Copy it now. It is shown only this once and cannot be shown again." | "いまコピーしてください。表示されるのは今回 1 度だけで、あとから再表示することはできません。" |
+| `account.token_made_body` | in that box | "Copy it now. It is shown only this once and cannot be shown again." | "いまコピーしてください。表示されるのは今回 1 回だけで、あとから再表示することはできません。" |
 | `account.token_made_use` | in that box | "A program sends it in the Authorization header, as Bearer followed by the token." | "プログラムは、Authorization ヘッダーに Bearer とトークンを続けて送ります。" |
 | `account.token_too_many` | a problem: the account holds as many live tokens as it may; `{max}` is the most | "You already have {max} live tokens. Revoke one first." | "有効なトークンがすでに {max} 個あります。先に 1 つ取り消してください。" |
 | `account.token_label_long` | a problem: the note is too long | "The note is too long: at most 80 characters." | "メモが長すぎます。80 文字までです。" |
 | `sign_in.provider` | the link on the sign-in page that signs in through the provider; `{provider}` is the provider's host name | "Sign in with {provider}" | "{provider} でサインイン" |
 | `sign_in.provider_joins` | under that link, where the server lets a first sign-in through the provider make an account | "The first time you sign in with {provider}, an account is made for you." | "{provider} で初めてサインインすると、アカウントが作られます。" |
-| `sign_in.provider_failed` | a problem on the sign-in page after a sign-in through the provider did not work (the reason is for the operator's log) | "The sign-in with {provider} did not work, and nothing was changed. Try again; if it keeps happening, tell the person who runs this server." | "{provider} でのサインインがうまくいきませんでした。何も変更されていません。もう一度お試しください。繰り返し起きる場合は、このサーバーの管理者にお知らせください。" |
+| `sign_in.provider_failed` | a problem on the sign-in page after a sign-in through the provider did not work (the reason is for the operator's log) | "The sign-in with {provider} did not work, and nothing was changed. Try again; if it keeps happening, tell the person who runs this server." | "{provider} でのサインインがうまくいきませんでした。何も変更していません。もう一度お試しください。繰り返し起きる場合は、このサーバーの管理者にお知らせください。" |
 | `sign_in.provider_state` | a problem: the provider sent the browser back with a sign-in that this browser did not start, that was used already, or that took too long | "This sign-in did not start in this browser, or it has been used already, or it took too long. Start it again from this page." | "このサインインは、このブラウザーで始めたものではないか、すでに使われたか、時間がかかりすぎました。このページからもう一度始めてください。" |
 | `sign_in.provider_not_linked` | a problem: the provider vouched for the person, no account is linked to that sign-in and the server does not let a first sign-in make one | "The provider knows you, but no account here is linked to your sign-in there. Ask the person who runs this wiki for an invitation." | "プロバイダーはあなたを確認しましたが、そのサインインに結び付いたアカウントがここにはありません。招待が必要です。このウィキを運営している人にお願いしてください。" |
-| `sign_in.provider_unreachable` | a problem: the server could not reach the provider | "The provider could not be reached right now, and nothing was changed. Try again in a while." | "いまプロバイダーに接続できません。何も変更されていません。しばらくしてからもう一度お試しください。" |
+| `sign_in.provider_unreachable` | a problem: the server could not reach the provider | "The provider could not be reached right now, and nothing was changed. Try again in a while." | "いまプロバイダーに接続できません。何も変更していません。しばらくしてからもう一度お試しください。" |
 | `invite.provider_intro` | on an invitation page, above the link that uses the provider instead of a password | "Or, instead of a password, let your provider vouch for you. Your account is then tied to that sign-in, and there is no password to remember." | "パスワードの代わりに、プロバイダーに本人確認を任せることもできます。その場合、アカウントはそのサインインに結び付き、パスワードを覚える必要はありません。" |
 | `invite.provider_link` | the link on an invitation page that makes the account through the provider | "Use {provider} instead of a password" | "パスワードの代わりに {provider} を使う" |
 | `invite.provider_taken` | a problem on the sign-in page: the person's sign-in through the provider has an account already, so the invitation was not used | "Your sign-in with {provider} already has an account here, so this invitation was not used. Sign in with {provider} instead." | "{provider} でのサインインにはすでにここのアカウントがあるため、この招待は使われていません。代わりに {provider} でサインインしてください。" |
@@ -950,13 +989,13 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `account.token_provider_hint` | in the form that makes a token, for an account that signs in through a provider and so has no password | "This account signs in through a provider and has no password. A token can be made only within ten minutes of signing in." | "このアカウントはプロバイダーでサインインし、パスワードはありません。トークンは、サインインしてから 10 分以内にだけ作れます。" |
 | `account.token_sign_in_again` | a problem: the account has no password and its sign-in is older than ten minutes | "Your last sign-in was too long ago, so no token was made. Sign out, sign in again, and make the token within ten minutes." | "最後のサインインから時間がたっているため、トークンは作られませんでした。サインアウトしてもう一度サインインし、10 分以内にトークンを作ってください。" |
 | `account.password_heading` | the heading of the section of the account page that changes the password | "Password" | "パスワード" |
-| `account.password_intro` | under that heading, for an account that has a password | "Changing your password ends every other session of this account and every API token it has. This browser stays signed in." | "パスワードを変更すると、このアカウントの他のセッションとすべての API トークンが終了します。このブラウザーはサインインしたままです。" |
+| `account.password_intro` | under that heading, for an account that has a password | "Changing your password ends every other session of this account and every API token it has. This browser stays signed in." | "パスワードを変更すると、このアカウントのほかのセッションとすべての API トークンが終了します。このブラウザーはサインインしたままです。" |
 | `account.password_none` | under that heading, for an account that signs in through a provider and has no password | "This account has no password: it signs in through a provider." | "このアカウントにはパスワードがありません。プロバイダーでサインインします。" |
 | `account.password_current_label` | the label of the field for the password now in use | "Current password" | "現在のパスワード" |
 | `account.password_new_label` | the label of the field for the new password | "New password" | "新しいパスワード" |
 | `account.password_button` | the button that changes the password | "Change password" | "パスワードを変更" |
-| `account.password_wrong` | a problem: the current password given was not right | "The current password was not right. Nothing was changed." | "現在のパスワードが違います。何も変更されていません。" |
-| `account.password_changed` | a note at the top of the account page after the password was changed | "Your password was changed. Every other session and every API token of this account has ended." | "パスワードを変更しました。このアカウントの他のセッションとすべての API トークンは終了しました。" |
+| `account.password_wrong` | a problem: the current password given was not right | "The current password was not right. Nothing was changed." | "現在のパスワードが違います。何も変更していません。" |
+| `account.password_changed` | a note at the top of the account page after the password was changed | "Your password was changed. Every other session and every API token of this account has ended." | "パスワードを変更しました。このアカウントのほかのセッションとすべての API トークンは終了しました。" |
 | `page.link_why` | a page's tools: the link to the page that shows where each paragraph came from | "Why is this here?" | "なぜここにあるのか" |
 | `claim.link` | at the end of a paragraph that holds a claim: the link to that claim's page | "Sources and views" | "出典とビュー" |
 | `claim.link_name` | the accessible name of that link; `{paragraph}` says which paragraph | "Sources and views: {paragraph}" | "出典とビュー: {paragraph}" |
@@ -973,37 +1012,37 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `claim.kind_decision` | a kind of statement | "a decision" | "決定" |
 | `claim.kind_policy` | a kind of statement | "a policy" | "方針" |
 | `claim.kind_question` | a kind of statement | "a question" | "問い" |
-| `claim.kind_unknown` | a kind of statement: none was said | "not said" | "示されていません" |
+| `claim.kind_unknown` | a kind of statement: none was said | "not said" | "未記入" |
 | `claim.said_heading` | the heading of the list of pages that say the claim | "Where it is said" | "この主張が述べられている場所" |
 | `claim.said_nowhere` | in place of that list when no page has the paragraph now | "No page has the paragraph this claim is said in, as the pages are now." | "この主張が述べられている段落は、現在のどのページにもありません。" |
 | `claim.sources_heading` | the heading of a claim's sources | "Sources" | "出典" |
 | `claim.sources_none` | under it when the claim has none | "No source is attached to this claim." | "この主張に付けられた出典はありません。" |
 | `claim.source_line` | one source of a claim; `{id}` is its identifier, `{kind}` one of the kinds below, `{how}` one of the phrases below | "Source {id} ({kind}): {how}." | "出典 {id}（{kind}）: {how}。" |
-| `claim.source_primary` | a kind of source | "primary" | "一次" |
-| `claim.source_secondary` | a kind of source | "secondary" | "二次" |
-| `claim.source_observational` | a kind of source | "observational" | "観察" |
-| `claim.source_computational` | a kind of source | "computational" | "計算" |
-| `claim.source_anecdotal` | a kind of source | "anecdotal" | "逸話" |
+| `claim.source_primary` | a kind of source | "primary" | "一次資料" |
+| `claim.source_secondary` | a kind of source | "secondary" | "二次資料" |
+| `claim.source_observational` | a kind of source | "observational" | "観察の記録" |
+| `claim.source_computational` | a kind of source | "computational" | "計算の結果" |
+| `claim.source_anecdotal` | a kind of source | "anecdotal" | "本人の話" |
 | `claim.source_other` | a kind of source | "another kind" | "その他" |
 | `claim.source_unreadable` | in place of the kind of a source whose file the wiki cannot read | "its file cannot be read" | "ファイルを読み取れません" |
 | `claim.source_line_named` | one source of a claim whose file the wiki can read; `{name}` is made of the messages below, `{kind}` is one of the kinds above, `{how}` one of the phrases below | "{name} ({kind}): {how}." | "{name}（{kind}）: {how}。" |
 | `claim.source_titled` | the first part of a source's name: its title, as written | "“{title}”" | "「{title}」" |
-| `claim.source_untitled` | in place of it when the source gives no title | "A source without a title" | "題名のない出典" |
+| `claim.source_untitled` | in place of it when the source gives no title | "A source without a title" | "タイトルのない出典" |
 | `claim.source_by` | a part of a source's name: its author or publisher, as written | "by {author}" | "{author} による" |
 | `claim.source_dated` | a part of a source's name: its date, as written (a year, a season, a day) | "dated {date}" | "日付 {date}" |
 | `claim.source_join` | joins two parts of a source's name | "{first}, {second}" | "{first}、{second}" |
 | `claim.source_found_at` | after a source's line, when it gives a reference: the reference as written, never made a link | "Where it is found: {reference}." | "所在: {reference}。" |
 | `claim.source_identifier` | after the line of a source that gives no title, author, date or reference: its identifier, the one way left to tell it from another | "Its identifier is {id}." | "識別子: {id}。" |
-| `claim.how_supports_direct` | how a source bears on a claim: it supports it, and speaks to it directly | "supports, directly" | "直接に裏付けている" |
+| `claim.how_supports_direct` | how a source bears on a claim: it supports it, and speaks to it directly | "supports, directly" | "直接裏付けている" |
 | `claim.how_supports_partial` | how a source bears on a claim | "supports, in part" | "一部を裏付けている" |
 | `claim.how_supports_indirect` | how a source bears on a claim | "supports, indirectly" | "間接的に裏付けている" |
-| `claim.how_challenges_direct` | how a source bears on a claim: it challenges it, and speaks to it directly | "challenges, directly" | "直接に異議を唱えている" |
-| `claim.how_challenges_partial` | how a source bears on a claim | "challenges, in part" | "一部に異議を唱えている" |
-| `claim.how_challenges_indirect` | how a source bears on a claim | "challenges, indirectly" | "間接的に異議を唱えている" |
+| `claim.how_challenges_direct` | how a source bears on a claim: it challenges it, and speaks to it directly | "challenges, directly" | "直接異議を示している" |
+| `claim.how_challenges_partial` | how a source bears on a claim | "challenges, in part" | "一部に異議を示している" |
+| `claim.how_challenges_indirect` | how a source bears on a claim | "challenges, indirectly" | "間接的に異議を示している" |
 | `claim.judged_earlier` | beside a source or a status: it was judged on a wording the paragraph no longer has, until a reviewer confirms it | "Judged on an earlier wording." | "以前の文言に基づいて判断されたものです。" |
 | `claim.status_heading` | the heading of a claim's status | "Status in this view" | "このビューでの状態" |
-| `claim.status_accepted` | a claim's status | "This claim is accepted in this view." | "このビューでは、この主張は認められています。" |
-| `claim.status_contested` | a claim's status | "This claim is contested in this view." | "このビューでは、この主張は争われています。" |
+| `claim.status_accepted` | a claim's status | "This claim is accepted in this view." | "このビューでは、この主張は受け入れられています。" |
+| `claim.status_contested` | a claim's status | "This claim is contested in this view." | "このビューでは、この主張には異論があります。" |
 | `claim.status_unresolved` | a claim's status | "This claim is unresolved in this view." | "このビューでは、この主張は未解決です。" |
 | `claim.status_unknown` | a claim's status: nobody has decided | "This claim has not been decided in this view." | "このビューでは、この主張はまだ決定されていません。" |
 | `claim.decided_by` | under a status that was decided; `{proposal}` is the link to the proposal that decided it | "Decided by {proposal}." | "{proposal}によって決定されました。" |
@@ -1052,15 +1091,15 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `views_new.busy` | under the outcome the wiki is busy, for creating a view | "Another change is being made to the wiki. Nothing was changed; try again in a moment." | "ウィキに別の変更を加えている最中です。何も変更していません。しばらくしてからもう一度お試しください。" |
 | `views_new.too_many_heading` | the outcome of creating a view in a wiki that has as many as it may keep | "Too many views" | "ビューが多すぎます" |
 | `views_new.too_many` | under that outcome; `{bound}` is the number | "This wiki already has {bound} open views, the most it keeps. Nothing was changed." | "このウィキにはすでに {bound} 件のビューが開いており、これが上限です。何も変更していません。" |
-| `views_new.retirement_heading` | the outcome of creating a view while a change to the wiki's keys is not finished | "Not created: a change to this wiki's keys is not finished" | "作成されませんでした: このウィキの鍵の変更が完了していません" |
-| `views_new.retirement` | under that outcome | "A change to this wiki's keys is not finished, so nothing new can be made in its history until the person who runs this wiki finishes or gives up that change. Nothing was changed. Tell that person; once it is finished or given up, create the view again." | "このウィキの鍵の変更が完了していないため、運用している人がその変更を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人に伝えてください。完了または取りやめの後に、もう一度ビューを作成してください。" |
+| `views_new.retirement_heading` | the outcome of creating a view while a change to the wiki's keys is not finished | "Not created: a change to this wiki's keys is not finished" | "作成されませんでした: このウィキの鍵の更新作業が完了していません" |
+| `views_new.retirement` | under that outcome | "A change to this wiki's keys is not finished, so nothing new can be made in its history until the person who runs this wiki finishes or gives up that change. Nothing was changed. Tell that person; once it is finished or given up, create the view again." | "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人にお知らせください。完了または取りやめの後に、もう一度ビューを作成してください。" |
 | `views_new.failed_heading` | the outcome of creating a view that the history refused | "The view was not created" | "ビューは作成されませんでした" |
 | `views_new.failed` | under that outcome | "The history did not accept the new view. Nothing was changed." | "履歴は、新しいビューを受け付けませんでした。何も変更していません。" |
-| `views_new.uncertain` | under the outcome the result is not certain, for creating a view | "It is not known whether the view was made: the wiki's views could not be read afterwards, or the view is listed and the repository did not say that making it was finished. It may or may not be there. Look at the list of views before you try again, and tell the person who runs this server: the wiki may take no change until that person has looked at it." | "ビューができたかどうかは分かりません。作ったあとでウィキのビューを読めなかったか、ビューは一覧にあるものの、作成が完了したことをリポジトリが示しませんでした。ビューができているかもしれませんし、できていないかもしれません。もう一度試す前にビューの一覧を確認し、このサーバーを運用している人に伝えてください。その人が確認するまで、ウィキは変更を受け付けないことがあります。" |
+| `views_new.uncertain` | under the outcome the result is not certain, for creating a view | "It is not known whether the view was made: the wiki's views could not be read afterwards, or the view is listed and the repository did not say that making it was finished. It may or may not be there. Look at the list of views before you try again, and tell the person who runs this server: the wiki may take no change until that person has looked at it." | "ビューができたかどうかは分かりません。作ったあとでウィキのビューを読めなかったか、ビューは一覧にあるものの、作成が完了したことをリポジトリが示しませんでした。ビューができているかもしれませんし、できていないかもしれません。もう一度試す前にビューの一覧を確認し、このサーバーの管理者にお知らせください。その管理者が確認するまで、ウィキは変更を受け付けないことがあります。" |
 | `views_new.not_kept_heading` | the outcome of opening the form on a server that cannot create views | "Creating views is not available on this server" | "このサーバーではビューを作成できません" |
 | `views_new.not_kept` | under that outcome | "This server does not keep the record a new view needs, so no view can be created here yet. Nothing was changed." | "このサーバーには、新しいビューに必要な記録を保つ仕組みがないため、今はここでビューを作成できません。何も変更していません。" |
 | `views_new.unconfigured_heading` | the outcome of creating a view on a server started without the means to sign | "Creating views is not set up on this server" | "このサーバーではビューの作成が設定されていません" |
-| `views_new.unconfigured` | under that outcome | "This server is not set up to sign changes into the history, so no view can be created; tell the person who runs this server. Nothing was changed." | "このサーバーには履歴へ署名する設定がないため、ビューを作成できません（このサーバーを運用している人に伝えてください）。何も変更していません。" |
+| `views_new.unconfigured` | under that outcome | "This server is not set up to sign changes into the history, so no view can be created; tell the person who runs this server. Nothing was changed." | "このサーバーには履歴へ署名する設定がないため、ビューを作成できません（このサーバーの管理者にお知らせください）。何も変更していません。" |
 | `title.compare` | the title of the page that compares two views; `{wiki}` is the wiki's name | "Compare views · {wiki} · {product}" | "ビューの比較 · {wiki} · {product}" |
 | `compare.heading` | the heading of the page that compares two views | "Compare views" | "ビューの比較" |
 | `compare.intro` | under that heading | "This lists where two views differ. It does not say which one is right." | "2 つのビューの違いを一覧にします。どちらが正しいかは示しません。" |
@@ -1079,7 +1118,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `compare.diff_sources` | what differs about a claim: the sources that bear on it, or how, or what they are | "Its sources differ." | "出典が異なります。" |
 | `compare.only_in` | what differs about a claim or a page: only one view has it; `{view}` is that view named in words | "Only in {view}." | "{view}にだけあります。" |
 | `compare.unreadable_in` | what differs about a claim: a view has a file for it that cannot be read; `{view}` is that view named in words | "Its file in {view} cannot be read, so nothing is said of it there." | "{view}にあるこの主張のファイルは読めないため、そこでの状態は示せません。" |
-| `compare.status_accepted` | a claim's status in a comparison | "accepted" | "受け入れ済み" |
+| `compare.status_accepted` | a claim's status in a comparison | "accepted" | "受け入れられている" |
 | `compare.status_contested` | a claim's status in a comparison | "contested" | "異論あり" |
 | `compare.status_unresolved` | a claim's status in a comparison | "unresolved" | "未解決" |
 | `compare.status_unknown` | a claim's status in a comparison: nobody decided | "not decided" | "未決定" |
@@ -1094,7 +1133,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `compare.page_heading` | the heading of that page; `{title}` is the page's title | "{title}: how it differs between two views" | "{title}: 2 つのビューでの違い" |
 | `compare.page_range` | under that heading; `{a}` and `{b}` are the two views named in words | "Lines marked removed are in {a} only; lines marked added are in {b} only." | "「削除」の行は{a}だけに、「追加」の行は{b}だけにあります。" |
 | `compare.page_read` | on that page: the link to read the page in one view; `{page}` is its title, `{view}` the view named in words | "Read {page} in {view}" | "{view}で{page}を読む" |
-| `compare.page_back` | on that page: the link back to the comparison | "Back to the comparison" | "比較へ戻る" |
+| `compare.page_back` | on that page: the link back to the comparison | "Back to the comparison" | "比較に戻る" |
 | `compare.page_absent` | on that page: the page is in neither view | "Neither view has this page." | "どちらのビューにもこのページはありません。" |
 | `claim.others_heading` | the heading of the section of a claim's page that names the views where it reads differently | "Other views" | "ほかのビュー" |
 | `claim.others_none` | under that heading when no other view reads the claim differently | "No other view reads this claim differently." | "ほかのビューで、この主張が異なって読めるものはありません。" |
@@ -1132,7 +1171,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `why.review_heading` | a change in that list: the heading of what was said about the proposal | "Review" | "レビュー" |
 | `why.review_none` | under it when there is nothing | "Nobody commented or decided on this proposal." | "この提案にコメントや決定をした人はいません。" |
 | `why.decision_words` | after a decision, when the reviewer wrote words with it | "They wrote: “{text}”" | "次のように書き添えました:「{text}」" |
-| `why.comment` | a comment in the review | "{author} commented, on revision {number}: “{text}”" | "{author}が改訂 {number} についてコメントしました:「{text}」" |
+| `why.comment` | a comment in the review | "{author} commented, on revision {number}: “{text}”" | "{author}が修正版 {number} についてコメントしました:「{text}」" |
 | `why.review_more` | after the review, when it is longer than one page of this kind shows | "{count} more item of the review is on the proposal's page." / "{count} more items of the review are on the proposal's page." | "レビューのうちさらに {count} 件は提案のページにあります。" |
 | `why.sources_heading` | a change in that list: the heading of what the proposer wrote in the proposal's own *Sources* field (shown only when the field is not empty; the sources attached to the claim are on its page) | "The proposal's Sources field" | "提案の「出典」欄" |
 | `parts.attach` | the link after a paragraph in the list of parts: the form that attaches a source to it | "Attach a source" | "出典を付ける" |
@@ -1143,7 +1182,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `title.challenge` | the title of the form that adds a source that speaks against a paragraph | "Challenge a part of {page} · {wiki} · {product}" | "{page} の一部に異議を示す · {wiki} · {product}" |
 | `attach.heading_supports` | the heading of the form that attaches a source | "Attach a source to {page}" | "{page} に出典を付ける" |
 | `attach.heading_challenges` | the heading of the form that adds a source that speaks against a paragraph | "Challenge a part of {page}" | "{page} の一部に異議を示す" |
-| `attach.intro_supports` | under the heading of the form that attaches a source | "A source is what a statement rests on: a book, an article, a record, a person's account. Attaching one records this paragraph as a claim, so that others can see what it rests on. You can also change the words of the paragraph; the change and the source go in one proposal." | "出典とは、ある記述のよりどころとなるものです。本、記事、記録、人の証言などがあります。出典を付けると、この段落が主張として記録され、何をよりどころにしているかを他の人が見られるようになります。段落の文章も変更できます。変更と出典は一つの提案になります。" |
+| `attach.intro_supports` | under the heading of the form that attaches a source | "A source is what a statement rests on: a book, an article, a record, a person's account. Attaching one records this paragraph as a claim, so that others can see what it rests on. You can also change the words of the paragraph; the change and the source go in one proposal." | "出典とは、ある記述のよりどころとなるものです。本、記事、記録、人の証言などがあります。出典を付けると、この段落が主張として記録され、何をよりどころにしているかをほかの人が見られるようになります。段落の文章も変更できます。変更と出典は一つの提案になります。" |
 | `attach.intro_challenges` | under the heading of the form that adds a source that speaks against a paragraph | "A challenging source speaks against a statement, or against part of it. Adding one records this paragraph as a claim and shows what is said against it. You can also change the words of the paragraph; the change and the source go in one proposal." | "異議を示す出典は、ある記述、またはその一部に反することを述べています。追加すると、この段落が主張として記録され、何がそれに反して述べられているかが示されます。段落の文章も変更できます。変更と出典は一つの提案になります。" |
 | `attach.claim_exists` | in that form, when the paragraph is a claim already | "This paragraph is a claim already. The source is added to it." | "この段落はすでに主張として記録されています。出典はその主張に追加されます。" |
 | `attach.legend` | the legend of the group of fields that describe the source | "The source" | "出典" |
@@ -1190,13 +1229,13 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `attach.too_long` | a problem: a text of the source is too long; `{limit}` is the most characters | "A text in the source is longer than {limit} characters." | "出典の文章が {limit} 文字を超えています。" |
 | `attach.control` | a problem: a text of the source holds a character that cannot be kept | "A text in the source holds a character that cannot be kept, such as a line break." | "出典の文章に、改行など、保存できない文字が含まれています。" |
 | `attach.not_web` | a problem: a web address is not one | "A web address has to start with https or http and have no spaces in it." | "ウェブのアドレスは https または http で始め、空白を含めないでください。" |
-| `attach.unwritable` | a problem: what was made could not be read back | "The source could not be written down. Nothing was changed; try again." | "出典を書き込めませんでした。何も変更されていません。もう一度お試しください。" |
+| `attach.unwritable` | a problem: what was made could not be read back | "The source could not be written down. Nothing was changed; try again." | "出典を書き込めませんでした。何も変更していません。もう一度お試しください。" |
 | `curate.not_a_day` | a problem: a date is not written as a day | "A date has to be written year, month, day, like 2026-11-04." | "日付は 2026-11-04 のように、年、月、日の順に書いてください。" |
 | `curate.unknown_source` | a problem: the claim does not cite a source that the form names | "The claim does not cite one of the sources in the form. Open the form again." | "この主張は、フォームにある出典の一つを引用していません。フォームを開き直してください。" |
 | `curate.no_wording` | a problem: the claim is said nowhere now | "The claim is not said in any paragraph now, so there is no wording to judge a source or a status on." | "この主張はいま、どの段落にも書かれていないため、出典や状態を判断する文章がありません。" |
 | `curate.day_not_come` | a problem: a date given as the day a source was looked at has not come in any timezone (after today's date in UTC+14); `{title}` is the source's title (or the words for a source without one), `{id}` its whole id (which tells apart two sources of one title; in `<code>` on the form), `{day}` the day as written | "Source: {title} ({id}). The day {day} has not come yet in any timezone, so no one can have looked on it. Write the day it was looked at, or leave the date empty." | "出典: {title}（{id}）。{day} は、世界のどのタイムゾーンでもまだ来ていない日のため、その日に確認できた人はいません。確認した日を書くか、日付を空にしてください。" |
-| `propose.claim_held_one` | above the text of a paragraph that has sources attached | "Others rely on this paragraph: sources are attached to it. Its marker is kept for you, so just edit the words." | "この段落は他の人が頼りにしています。出典が付いています。目印はこちらで保っておくので、文章だけを編集してください。" |
-| `propose.claim_held_many` | above a text that holds paragraphs that have sources attached | "Some paragraphs here have sources attached, and others rely on them. Their markers are kept for you as long as you leave their words as they are. To reword one of them, change that part on its own." | "ここには出典が付いていて、他の人が頼りにしている段落があります。その段落の文章をそのままにしている間は、目印はこちらで保っておきます。その段落の文章を変えるときは、その部分だけを単独で変更してください。" |
+| `propose.claim_held_one` | above the text of a paragraph that has sources attached | "Others rely on this paragraph: sources are attached to it. Its marker is kept for you, so just edit the words." | "この段落はほかの人が頼りにしています。出典が付いています。目印はこちらで保っておくので、文章だけを編集してください。" |
+| `propose.claim_held_many` | above a text that holds paragraphs that have sources attached | "Some paragraphs here have sources attached, and others rely on them. Their markers are kept for you as long as you leave their words as they are. To reword one of them, change that part on its own." | "ここには出典が付いていて、ほかの人が頼りにしている段落があります。その段落の文章をそのままにしている間は、目印はこちらで保っておきます。その段落の文章を変えるときは、その部分だけを単独で変更してください。" |
 | `propose.claim_lost` | a problem: the text leaves out a paragraph that has sources attached; `{excerpt}` is how it begins | "The paragraph that begins “{excerpt}” has sources attached, and this change leaves it out. To reword it, change that part on its own. To remove it, tick the box below." | "「{excerpt}」で始まる段落には出典が付いていますが、この変更ではその段落がなくなります。文章を変えたいときは、その部分だけを単独で変更してください。削除するときは、下の欄にチェックを入れてください。" |
 | `propose.claim_drop_legend` | the legend of the box that confirms the removal of a paragraph that has sources attached | "Paragraphs you are removing" | "削除する段落" |
 | `propose.claim_drop` | the box that confirms that removal; `{excerpt}` is how the paragraph begins | "Remove “{excerpt}”. It stops being where its claim is said, and the reviewer will see that." | "「{excerpt}」を削除する。この段落は主張が書かれている場所ではなくなり、レビュアーにもそのことが示されます。" |
@@ -1211,7 +1250,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.removed_source` | a line of that list; `{source}` is its name, set apart | "Removes the source {source}." | "出典 {source} を削除します。" |
 | `know.unreadable` | a line of that list: a file is not in the form the wiki reads; `{file}` is its name, `{reason}` says which rule | "The file {file} in this proposal is not in the form the wiki reads. {reason}" | "この提案のファイル {file} は、ウィキが読める形になっていません。{reason}" |
 | `know.change_kind` | under a changed claim | "The kind of statement becomes {kind}." | "記述の種類が {kind} になります。" |
-| `know.change_lifecycle` | under a changed claim | "Where it stands in its life becomes: {lifecycle}." | "主張の扱いの段階が「{lifecycle}」になります。" |
+| `know.change_lifecycle` | under a changed claim | "Where it stands in its life becomes: {lifecycle}." | "主張の段階が「{lifecycle}」になります。" |
 | `know.change_standing` | under a changed claim: its community status changes | "Its community status changes from {from} to {to}." | "コミュニティでの扱いが「{from}」から「{to}」に変わります。" |
 | `know.change_said` | under a changed claim; `{paragraph}` is the paragraph, named by its page and an excerpt of its words (see `know.subject_paragraph`) | "It is said in one more paragraph: {paragraph}." | "もう一つの段落にも書かれることになります：{paragraph}。" |
 | `know.change_unsaid` | under a changed claim: a paragraph stops being where it is said; `{paragraph}` is the paragraph, named by its page and an excerpt of its words (see `know.subject_paragraph`) | "It is no longer said in the paragraph {paragraph}: the paragraph is removed, or the claim lets it go." | "段落 {paragraph} には書かれなくなります。段落が削除されるか、主張がその段落から外れます。" |
@@ -1229,8 +1268,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.source_change_availability` | under a changed source | "Whether it can be had becomes: {availability}." | "入手できるかどうかが「{availability}」になります。" |
 | `know.source_change_superseded` | under a changed source, and under a recorded one that says it is replaced; `{source}` is the source's name, set apart | "It is now replaced by the source {source}." | "出典 {source} に置き換えられます。" |
 | `know.is_curation` | on a proposal that changes claims and sources and no page | "This is a curation proposal: it changes claims and sources and no page." | "これはキュレーション提案です。主張と出典を変更し、ページは変更しません。" |
-| `know.not_curation` | on a proposal that sets what only a curation proposal may set | "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, or changes a source that was checked in its title, author, date, reference or the source that replaces it, which only a curation proposal may do. It cannot be accepted as it is." | "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典リンクを変更・削除するか、確認済みの出典の題名・著者・日付・参照先・置き換え先の出典を変更していますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。" |
-| `know.not_judged` | on a proposal that sets or changes a judgement (a source link's or the community status) judged on a wording the claim does not have in the result | "This proposal sets or changes a judgement on a claim (a source link's or the community status), judged on a wording that no paragraph of that claim has once the proposal is made. It cannot be accepted as it is." | "この提案は主張に対する判断（出典リンクまたはコミュニティでの扱い）を設定または変更していますが、その判断は、提案を反映した結果にその主張のどの段落にも存在しない文言に基づいています。このままでは受け入れられません。" |
+| `know.not_curation` | on a proposal that sets what only a curation proposal may set | "This proposal sets a community status, a review date or an availability, changes or removes a source link a claim already has, or changes a source that was checked in its title, author, date, reference or the source that replaces it, which only a curation proposal may do. It cannot be accepted as it is." | "この提案はコミュニティでの扱い、確認日、入手できるかどうかを設定するか、主張がすでに持つ出典との結びつきを変更・削除するか、確認済みの出典のタイトル・著者・日付・参照先・置き換え先の出典を変更していますが、これができるのはキュレーション提案だけです。このままでは受け入れられません。" |
+| `know.not_judged` | on a proposal that sets or changes a judgement (a source link's or the community status) judged on a wording the claim does not have in the result | "This proposal sets or changes a judgement on a claim (a source link's or the community status), judged on a wording that no paragraph of that claim has once the proposal is made. It cannot be accepted as it is." | "この提案は主張に対する判断（出典との結びつきまたはコミュニティでの扱い）を設定または変更していますが、その判断は、提案を反映した結果にその主張のどの段落にも存在しない文言に基づいています。このままでは受け入れられません。" |
 | `know.kind_observation` | a kind of statement, inside a sentence | "an observation" | "観察" |
 | `know.kind_interpretation` | a kind of statement, inside a sentence | "an interpretation" | "解釈" |
 | `know.kind_hypothesis` | a kind of statement, inside a sentence | "a hypothesis" | "仮説" |
@@ -1245,7 +1284,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.source_computational` | a kind of source, inside a sentence | "the result of a computation" | "計算の結果" |
 | `know.source_anecdotal` | a kind of source, inside a sentence | "a person's account" | "本人の話" |
 | `know.source_other` | a kind of source, inside a sentence | "of another kind" | "その他の種類" |
-| `know.supports` | how a source relates to a claim, inside a sentence | "supports" | "支持する" |
+| `know.supports` | how a source relates to a claim, inside a sentence | "supports" | "裏付ける" |
 | `know.challenges` | how a source relates to a claim, inside a sentence | "challenges" | "異議を示す" |
 | `know.directly` | how directly a source speaks to a claim, inside a sentence | "directly" | "直接" |
 | `know.in_part` | how directly a source speaks to a claim, inside a sentence | "in part" | "部分的に" |
@@ -1255,8 +1294,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.life_retired` | where a claim stands in its life, inside a sentence | "retired" | "役目を終えた" |
 | `know.life_unknown` | where a claim stands in its life, inside a sentence | "not said" | "未記入" |
 | `know.standing_accepted` | a claim's community status, inside a sentence | "accepted" | "受け入れられている" |
-| `know.standing_contested` | a claim's community status, inside a sentence | "contested" | "争われている" |
-| `know.standing_unresolved` | a claim's community status, inside a sentence | "unresolved" | "決着していない" |
+| `know.standing_contested` | a claim's community status, inside a sentence | "contested" | "異論がある" |
+| `know.standing_unresolved` | a claim's community status, inside a sentence | "unresolved" | "未解決" |
 | `know.standing_unknown` | a claim's community status, inside a sentence | "not decided" | "未決定" |
 | `know.available` | whether a source can be had, inside a sentence | "it can be had" | "入手できる" |
 | `know.unavailable` | whether a source can be had, inside a sentence | "it cannot be had" | "入手できない" |
@@ -1302,7 +1341,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `touch.reconfirm_done` | a note in place of the reconfirm step: an accepted proposal judged every claim of the list again | "Each of these claims was judged again on the wording it has now, by a proposal that was accepted." | "これらの主張はどれも、受け入れられた提案で、いまの文面について改めて判断されています。" |
 | `touch.reconfirm_of` | a note on a curation proposal made by the reconfirm step: the change it re-confirms; `{proposal}` links the proposal that made that change | "This proposal judges again the claims that the change made by {proposal} left judged on an earlier wording." | "この提案は、{proposal}による変更で以前の文面について判断されたままになった主張を、改めて判断します。" |
 | `invalid.knowledge_not_shown` | when a proposal's claim or source file changes something its page would not describe line by line | "A change to a claim or a source in this proposal is one this page would not describe, so nobody reviewing it could see what it does. It is not sent." | "この提案の主張または出典の変更には、このページが説明しないものがあり、確認する人が内容を見られません。送信できません。" |
-| `invalid.knowledge_unjudged` | when a proposal adds or changes a source link judged on a wording the claim does not have once the proposal is made | "A source link this proposal adds to a claim or changes is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent." | "この提案が主張に追加または変更する出典リンクは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。" |
+| `invalid.knowledge_unjudged` | when a proposal adds or changes a source link judged on a wording the claim does not have once the proposal is made | "A source link this proposal adds to a claim or changes is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent." | "この提案が主張に追加または変更する出典との結びつきは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。" |
 | `invalid.knowledge_status_unjudged` | when a proposal sets or changes a claim's community status judged on a wording the claim does not have once the proposal is made | "The community status this proposal sets on a claim is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent." | "この提案が主張に設定するコミュニティでの扱いは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。" |
 | `know.change_rejudged` | a line of a proposal: what a status or a source was judged on is now this wording; `{subject}` is the next two rows, `{words}` the wording | "What {subject} was judged on becomes this wording: “{words}”" | "{subject}を判断したときの文面が、次の文面に変わります：「{words}」" |
 | `know.change_rejudged_unseen` | the same, when no paragraph of the claim has that wording once the proposal is made | "What {subject} was judged on becomes a wording that none of the claim's paragraphs has once this proposal is made." | "{subject}を判断したときの文面が、この提案のあとには主張のどの段落にもない文面に変わります。" |
@@ -1313,14 +1352,14 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `attach.direction` | a problem: a text of the source holds a character that changes the direction of text or is not shown | "A text in the source holds a character that changes the direction of text or is not shown, which cannot be kept." | "出典の文章に、文字の向きを変える文字や、表示されない文字が含まれていて、保存できません。" |
 | `know.replaced_unreadable_claim` | a line of a proposal: a claim file the wiki has and cannot read is replaced or removed; `{id}` is its identifier | "Replaces or removes a claim file that cannot be read ({id}). What it held is not known." | "読み取れない主張ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
 | `know.replaced_unreadable_source` | the same, for a source file | "Replaces or removes a source file that cannot be read ({id}). What it held is not known." | "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
-| `know.made_lifecycle` | under a recorded claim | "Where it stands in its life: {lifecycle}." | "主張の扱いの段階：{lifecycle}。" |
+| `know.made_lifecycle` | under a recorded claim | "Where it stands in its life: {lifecycle}." | "主張の段階：{lifecycle}。" |
 | `know.made_related` | under a recorded claim; `{other}` is the other claim, named as in `know.claim_made` | "It has a relation to the claim {other}: {relation}." | "主張{other}との関係があります: {relation}。" |
 | `know.source_made_availability` | under a recorded source | "Whether it can be had: {availability}." | "入手できるかどうか：{availability}。" |
 | `know.source_where` | under a recorded source; `{form}` is how the reference is written, `{reference}` the reference | "Where it is found ({form}): {reference}." | "参照先（{form}）：{reference}。" |
 | `know.source_copy` | under a recorded source | "A copy of it is kept." | "写しが保存されています。" |
 | `know.source_change_unsuperseded` | under a changed source | "It is no longer marked as replaced." | "置き換えられたという印がなくなります。" |
 | `know.source_change_reference_cleared` | under a changed source | "It no longer says where it is found." | "参照先が書かれなくなります。" |
-| `know.source_nameless` | the name of a source that has no title, author or date in the wiki or the proposal, in a line of that list (its identifier follows it, see `know.subject_source_id`) | "A source without a title, author or date" | "題名も著者も日付もない出典" |
+| `know.source_nameless` | the name of a source that has no title, author or date in the wiki or the proposal, in a line of that list (its identifier follows it, see `know.subject_source_id`) | "A source without a title, author or date" | "タイトルも著者も日付もない出典" |
 | `know.subject_claim` | the name of a claim in a line of that list when no paragraph it is said in can be found; `{id}` is its whole identifier, in `<code>`, linked to the claim's page when the wiki has the claim | "{id}" | "{id}" |
 | `know.subject_claim_id` | the name of a claim in a line of that list: `{excerpt}` is the beginning of a paragraph it is said in, `{id}` its **whole** identifier, in `<code>`, linked to the claim's page when the wiki has the claim (identifiers are written by whoever writes the file, so a shortened form could be copied; two claims can be said in one paragraph, and two paragraphs can begin alike, so the words alone do not tell which claim a line is about) | "“{excerpt}” [claim {id}]" | "「{excerpt}」［主張 {id}］" |
 | `know.subject_source_id` | the name of a source in a line of that list: `{name}` is its name (title, author, date), set apart, `{id}` its **whole** identifier, in `<code>`, linked to the source's line on the page of the claim the line is about when there is one (two sources can have the same name, and a shortened identifier could be copied) | "{name} [source {id}]" | "{name}［出典 {id}］" |
@@ -1328,17 +1367,17 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.subject_paragraph` | the name of a paragraph in a line of that list: `{words}` is an excerpt of its words (the first 80 characters), set apart, `{page}` the title of the page it is on, as the proposal leaves it, set apart | "“{words}” on the page {page}" | "ページ {page} の「{words}」" |
 | `know.subject_paragraph_block` | the same, when another paragraph of that page begins with the same words (a claim that moves between them would read as no change); `{block}` is the marker of the block, in `<code>` | "“{words}” (the paragraph marked {block}) on the page {page}" | "ページ {page} の「{words}」（段落の印 {block}）" |
 | `know.removed_had_standing` | under a removed claim: what is lost with it; `{standing}` is the community status it had | "Its community status goes with it: {standing}." | "コミュニティでの扱いも一緒に削除されます：{standing}。" |
-| `know.removed_had_link` | under a removed claim, one line for each source it cited; `{source}` is the source's name, set apart, `{relation}` and `{bearing}` how it spoke to the claim | "Its link to the source {source} goes with it: it {relation} the claim {bearing}." | "出典 {source} とのつながりも一緒に削除されます: {relation}（{bearing}）。" |
+| `know.removed_had_link` | under a removed claim, one line for each source it cited; `{source}` is the source's name, set apart, `{relation}` and `{bearing}` how it spoke to the claim | "Its link to the source {source} goes with it: it {relation} the claim {bearing}." | "出典 {source} との結びつきも一緒に削除されます: {relation}（{bearing}）。" |
 | `know.removed_had_reviewed` | under a removed source that was marked as checked; `{day}` is the day | "The day it was last checked goes with it: {day}." | "最後に確認した日も一緒に削除されます：{day}。" |
 | `know.removed_had_availability` | under a removed source; `{availability}` is what was recorded of whether it can be had | "What is recorded of whether it can be had goes with it: {availability}." | "入手できるかどうかの記録も一緒に削除されます：{availability}。" |
 | `health.sources_name` | the name of the list of sources a person should look at again | "Sources to review" | "見直す出典" |
-| `health.sources_desc` | what that list shows | "Sources that were last reviewed long ago or never, and sources a person marked as unavailable, each with the claims that cite it. The wiki checks nothing and fetches nothing: a person looks at the source and says so in a proposal." | "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が利用できないと記した出典を、それを引用する主張とともに示します。ウィキは何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。" |
+| `health.sources_desc` | what that list shows | "Sources that were last reviewed long ago or never, and sources a person marked as unavailable, each with the claims that cite it. The wiki checks nothing and fetches nothing: a person looks at the source and says so in a proposal." | "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が入手できないと記した出典を、それを引用する主張とともに示します。ウィキは何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。" |
 | `health.col_source` | the heading of the column with a source's name | "Source" | "出典" |
 | `health.col_why` | the heading of the column that says why a source is listed | "Why it is listed" | "挙げられている理由" |
 | `health.col_claims` | the heading of the column with the claims that cite a source | "Claims that cite it" | "それを引用する主張" |
-| `health.sources_action` | in each row of that list: what would resolve it | "Look at the source, then propose the day you looked and whether it can be had." | "出典を確かめたうえで、確かめた日と、利用できるかどうかを提案してください。" |
+| `health.sources_action` | in each row of that list: what would resolve it | "Look at the source, then propose the day you looked and whether it can be had." | "出典を確かめたうえで、確かめた日と、入手できるかどうかを提案してください。" |
 | `health.none_sources` | in place of that list when there is no source to list | "No source needs a look." | "見直す必要のある出典はありません。" |
-| `health.sources_unavailable` | a reason in that list: a person who checked marked the source as unavailable | "A person who checked marked it as unavailable." | "確認した人が、利用できないと記しています。" |
+| `health.sources_unavailable` | a reason in that list: a person who checked marked the source as unavailable | "A person who checked marked it as unavailable." | "確認した人が、入手できないと記しています。" |
 | `health.sources_never` | a reason in that list: no one has recorded looking at the source | "No one has recorded looking at it." | "確認したと記録した人はまだいません。" |
 | `health.sources_last` | under a source in that list that is listed for another reason; `{day}` is the day it was last reviewed, as written | "Last reviewed on {day}." | "最後の確認は {day} です。" |
 | `health.sources_overdue` | a reason in that list; `{day}` is the day it was last reviewed, as written, `{limit}` the number of days after which a review is old | "Last reviewed on {day}, more than {limit} days ago." | "最後の確認は {day} で、{limit} 日を超えて前です。" |
@@ -1374,11 +1413,11 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `claim_thread.in_reply_to_link` | under a comment that answers another, when the comment it answers can be linked to; `{comment}` is a link to it, worded by `claim_thread.comment_label` | "In reply to {comment}." | "{comment} への返信です。" |
 | `claim_thread.comment_label` | the words of that link; `{number}` is the place of the comment in its thread | "comment {number}" | "コメント {number}" |
 | `curate.label_remove` | the label of the box in the curation form that lets a link go | "The claim no longer cites this source" | "この主張はこの出典を引用しなくなる" |
-| `curate.remove_hint` | under that box | "Ticking this removes the link between the claim and the source. The source's own record stays, and other claims keep their links to it." | "この欄にチェックを入れると、主張と出典のリンクが外れます。出典自体の記録は残り、他の主張のリンクもそのままです。" |
+| `curate.remove_hint` | under that box | "Ticking this removes the link between the claim and the source. The source's own record stays, and other claims keep their links to it." | "この欄にチェックを入れると、主張と出典との結びつきが外れます。出典自体の記録は残り、ほかの主張の結びつきもそのままです。" |
 | `curate.work_hint` | above the fields of a source in the curation form | "Who and what this source is, where it is found and which source replaces it are corrected here. A new place to find it ends the check of the old one: the day it was last checked and whether it can be had, above, stay as they are, are not carried to the new place and are refused if you change them, and the new place has no check until you give the day you checked it, below. A change of white space alone in where it is found keeps the check. A field shows a text without its line breaks, so a change of line breaks alone cannot be made here: make it through the API." | "この出典が何であるか、どこで見つかるか、どの出典に置き換えられるかは、ここで訂正します。見つかる場所を変えると、古い場所の確認は終わります。上の、最後に確認した日と入手できるかどうかは、そのままにしておく必要があり（変えると受け付けられません）、新しい場所に引き継がれず、下に新しい場所を確認した日を書くまで、新しい場所の確認はありません。見つかる場所の空白だけの変更では、確認は残ります。入力欄には改行が取り除かれて表示されるため、改行だけの変更はここではできません。API で行ってください。" |
 | `curate.label_superseded` | the label of the field for the source that replaces this one | "The source that replaces it" | "これを置き換える出典" |
 | `curate.superseded_hint` | under that field | "The identifier of another source in this wiki. Leave it empty if no source replaces it." | "このウィキにある別の出典の識別子です。置き換える出典がなければ空のままにしてください。" |
-| `curate.removed_and_changed` | a problem: a link is both changed and removed in the curation form | "A link is either changed or removed, not both. Untick the box, or leave the link as it was." | "リンクは変更するか外すかのどちらかです。両方はできません。チェックを外すか、リンクを元のままにしてください。" |
+| `curate.removed_and_changed` | a problem: a link is both changed and removed in the curation form | "A link is either changed or removed, not both. Untick the box, or leave the link as it was." | "結びつきは変更するか外すかのどちらかです。両方はできません。チェックを外すか、結びつきを元のままにしてください。" |
 | `curate.replaced_by_itself` | a problem: a source is named as replacing itself | "A source cannot be replaced by itself." | "出典を、その出典自身に置き換えることはできません。" |
 | `curate.unknown_successor` | a problem: the source that replaces another is not a source of the wiki, or is not written as an identifier | "The source that replaces this one has to be a source in this wiki, written as its identifier." | "置き換える出典は、このウィキにある出典で、識別子の形で書く必要があります。" |
 | `curate.successor_cycle` | a problem: the sources named as replacing one another come back to a source already named | "The sources that replace one another must not come back to one already named. Name a source that does not lead back to this one." | "置き換えの連なりが、すでに挙げた出典に戻ってはいけません。この出典に戻らない出典を指定してください。" |
@@ -1402,7 +1441,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `curate.check_before_review` | a problem on the curation form: the day the new reference was checked is earlier than the day the old one was last checked; `{day}` is that day; `{title}` is the source's title as the form's legend gives it and `{id}` its whole id in `<code>`, which tells apart two sources of one title | "Source: {title} ({id}). The day you checked the new reference cannot be earlier than {day}, the day the old reference was last checked." | "出典: {title}（{id}）。新しい参照先を確認した日は、古い参照先を最後に確認した日（{day}）より前にはできません。" |
 | `curate.check_no_new_reference` | a problem on the curation form: a day for a new reference is given and where the source is found is not changed; `{title}` is the source's title as the form's legend gives it and `{id}` its whole id in `<code>`, which tells apart two sources of one title | "Source: {title} ({id}). The day you checked the new reference goes with a change of where the source is found; a change of white space alone does not move the reference. Change where it is found, or leave the day and the answer empty." | "出典: {title}（{id}）。新しい参照先を確認した日は、出典の見つかる場所を変えるときのものです。空白だけの違いは、場所を変えたことになりません。場所を変えるか、日と答えを空にしてください。" |
 | `know.check_unstated` | on a proposal that moves a source to another reference and the source carries a day it was last checked or an answer on whether it can be had that the proposal does not state, with the way to state a check as above (a draft may hold one; the submission refuses it); also, under *Not signed: a claim or source file is not acceptable*, the sentence for the same refusal at acceptance | "A source in this proposal is found somewhere else than it was at the base of the proposal, and carries a day it was last checked, or whether it can be had, that this proposal does not state. A check of the new place is stated by the proposal and never taken from the old one: in a curation, with `checked` (the day and the answer for the new reference); in files written by hand, with a day that names this proposal's own id in `last_reviewed.proposal`. It cannot be accepted as it is." | "この提案にある出典は、提案の基にした時点とは別の場所で見つかることになっているのに、この提案が示していない、最後に確認した日または入手できるかどうかを持っています。新しい場所を確認したことは、古い場所のものから引き継がず、提案の中で示してください。キュレーションでは `checked`（新しい参照先の日と答え）で、手で書いたファイルでは `last_reviewed.proposal` にこの提案自身の ID を書いた日で示します。このままでは受け入れられません。" |
-| `outcome_note.knowledge_kept` | under that outcome, after the sentence of each rule the change broke, when none of them was about the form of a file | "Nothing was changed, and the proposal is still held for review." | "何も変更しておらず、提案はレビュー待ちのままです。" |
+| `outcome_note.knowledge_kept` | under that outcome, after the sentence of each rule the change broke, when none of them was about the form of a file | "Nothing was changed, and the proposal is still held for review." | "何も変更しておらず、提案はレビュー待ちで保持されたままです。" |
 | `curate.check_old_day` | a problem on the curation form: where the source is found is changed and the day it was last checked, which is for the old place, is changed in the same proposal (the move clears it, so it must stay as the base has it); `{title}` is the source's title as the form's legend gives it and `{id}` its whole id in `<code>`, which tells apart two sources of one title | "Source: {title} ({id}). Where it is found is changed, and that clears the day it was last checked, which is for the old place. Leave that day as the base of the proposal has it (put it back if you cleared or changed it), and give the day you checked the new place in the field for the new reference." | "出典: {title}（{id}）。見つかる場所を変えると、古い場所について最後に確認した日は消えます。その日は、提案の基にした時点のままにしてください（空にしたり変えたりした場合は元に戻してください）。新しい場所を確認した日は、新しい参照先の欄に書いてください。" |
 | `curate.check_old_answer` | the same for whether the source can be had, which is for the old place | "Source: {title} ({id}). Where it is found is changed, and that clears whether it can be had, which is for the old place. Leave that answer as the base of the proposal has it (put it back if you changed it), and give what you found at the new place in the field for the new reference." | "出典: {title}（{id}）。見つかる場所を変えると、古い場所について入手できるかどうかは消えます。その答えは、提案の基にした時点のままにしてください（変えた場合は元に戻してください）。新しい場所で分かったことは、新しい参照先の欄に書いてください。" |
 | `know.check_before_review` | under *Not signed: a claim or source file is not acceptable*, for a source moved to another reference whose stated check names a day earlier than the day the old reference was last checked, when a reviewer accepts a proposal that no curation form made | "A source in this proposal is found somewhere else than it was at the base of the proposal, and the day the proposal states for the check of the new place is earlier than the day the old place was last checked. It cannot be accepted as it is." | "この提案にある出典は、提案の基にした時点とは別の場所で見つかることになっていて、提案が示す新しい場所を確認した日は、古い場所を最後に確認した日より前になっています。このままでは受け入れられません。" |
