@@ -32,11 +32,11 @@ fn the_cookie_beats_the_header_and_a_value_that_names_no_language_is_ignored() {
     let tag = |pairs: &[(&str, &str)]| negotiate_from_headers(&headers(pairs)).tag();
     assert_eq!(tag(&[]), "en");
     assert_eq!(tag(&[("accept-language", "en-GB")]), "en");
-    // Japanese is a preview: a browser that asks for it is not served it, a reader who chose it is.
+    // Japanese is signed off (DR-7; M60): a browser that asks for it is served it, like any other language.
     assert_eq!(
         tag(&[("accept-language", "ja")]),
-        "en",
-        "a preview is not chosen for the reader"
+        "ja",
+        "a signed-off language is negotiated"
     );
     assert_eq!(
         tag(&[("accept-language", "en"), ("cookie", "inklkunn_lang=ja")]),
@@ -49,6 +49,11 @@ fn the_cookie_beats_the_header_and_a_value_that_names_no_language_is_ignored() {
     );
     assert_eq!(
         tag(&[("accept-language", "ja"), ("cookie", "inklkunn_lang=zz")]),
+        "ja",
+        "a cookie that names no language is ignored, and the browser's setting decides"
+    );
+    assert_eq!(
+        tag(&[("accept-language", "fr"), ("cookie", "inklkunn_lang=zz")]),
         "en"
     );
     assert_eq!(tag(&[("cookie", "inklkunn_lang=<script>")]), "en");

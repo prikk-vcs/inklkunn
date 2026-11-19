@@ -108,61 +108,76 @@ fn the_japanese_catalog_has_every_key_with_the_same_placeholders_and_no_markup()
 }
 
 #[tokio::test]
-async fn japanese_is_a_preview_until_a_sign_off_is_recorded_and_says_so_wherever_it_is_offered() {
-    assert_eq!(JA_DEF.review, Review::Preview);
+async fn japanese_is_signed_off_and_no_page_calls_it_a_preview() {
+    // The owner's sign-off of 2026-11-19 is recorded (DR-7; M60).
+    assert_eq!(
+        JA_DEF.review,
+        Review::Reviewed {
+            by: "the owner, 2026-11-19"
+        }
+    );
     assert_eq!(EN_DEF.review, Review::Source);
     let tags: Vec<&str> = languages().iter().map(|d| d.tag).collect();
     assert_eq!(tags, ["en", "ja"]);
-    // In the footer of a page in English, in Japanese, and on the language page itself.
+    // In the footer of a page in English, in Japanese, and on the language page itself: the name alone.
     let r = router();
     let in_english: &[(&str, &str)] = &[];
     let in_japanese: &[(&str, &str)] = &[("cookie", "inklkunn_lang=ja")];
-    for (uri, headers, label) in [
-        (
-            "/anywhere",
-            in_english,
-            "<span lang=\"ja\">日本語</span> (preview)",
-        ),
-        (
-            "/anywhere",
-            in_japanese,
-            "<span lang=\"ja\">日本語</span>（プレビュー版）",
-        ),
-        (
-            "/-/lang",
-            in_english,
-            "<span lang=\"ja\">日本語</span> (preview)",
-        ),
-        (
-            "/-/lang",
-            in_japanese,
-            "<span lang=\"ja\">日本語</span>（プレビュー版）",
-        ),
+    for (uri, headers) in [
+        ("/anywhere", in_english),
+        ("/anywhere", in_japanese),
+        ("/-/lang", in_english),
+        ("/-/lang", in_japanese),
     ] {
         let reply = send(&r, get(uri, headers)).await;
         assert!(
-            reply.body.contains(label),
+            reply.body.contains("<span lang=\"ja\">日本語</span>"),
             "{uri} {headers:?}: {}",
             reply.body
         );
-        assert!(
-            !reply
-                .body
-                .contains("<span lang=\"en\">English</span> (preview)"),
-            "English is not a preview"
-        );
+        for preview in [
+            "(preview)",
+            "（プレビュー版）",
+            "This translation is a preview.",
+            "この翻訳はプレビュー版です。",
+        ] {
+            assert!(
+                !reply.body.contains(preview),
+                "{uri} {headers:?}: {preview}: {}",
+                reply.body
+            );
+        }
     }
-    let page = send(&r, get("/-/lang", &[])).await;
-    assert!(
-        page.body.contains("This translation is a preview."),
-        "{}",
-        page.body
+}
+
+#[tokio::test]
+async fn the_about_page_says_what_was_reviewed_and_when_in_both_languages() {
+    // The accessibility statement is on the about page; its third sentence is the review record (M60).
+    let mut en_sentence = String::new();
+    let mut ja_sentence = String::new();
+    for def in languages() {
+        let e = def
+            .entries
+            .iter()
+            .find(|e| e.key == Key::AccessibilityLanguages.id())
+            .expect("the statement's sentence is in the catalog");
+        if def.tag == "en" {
+            en_sentence = e.other.to_owned();
+        } else {
+            ja_sentence = e.other.to_owned();
+        }
+    }
+    assert_eq!(
+        en_sentence,
+        "The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release."
     );
-    let page = send(&r, get("/-/lang", in_japanese)).await;
+    assert_eq!(
+        ja_sentence,
+        "日本語訳は、2026-11-19 にオーナーが 0.3.0 のメッセージを確認しました。以降のメッセージは、リリースごとに確認します。"
+    );
+    // The sentence names the date the record holds.
     assert!(
-        page.body.contains("この翻訳はプレビュー版です。"),
-        "{}",
-        page.body
+        matches!(JA_DEF.review, Review::Reviewed { by } if en_sentence.contains(by.trim_start_matches("the owner, ")))
     );
 }
 
@@ -186,22 +201,24 @@ async fn english_is_the_default_and_the_page_says_so() {
 }
 
 #[tokio::test]
-async fn accept_language_and_the_cookie_choose_the_language_and_a_preview_only_by_the_cookie() {
+async fn accept_language_and_the_cookie_choose_the_language_like_any_signed_off_language() {
     let r = router();
     for (accept, cookie, want) in [
         (Some("en-GB,fr;q=0.5"), None, "en"),
         (Some("fr"), None, "en"),
         (None, None, "en"),
-        // Japanese is a preview: a browser that asks for it is served English, with the choice on offer…
-        (Some("ja"), None, "en"),
-        (Some("ja-JP,en;q=0.5"), None, "en"),
-        (Some("en;q=0.4,ja;q=0.9"), None, "en"),
+        // Japanese is signed off: a browser that asks for it is served Japanese, by q-value…
+        (Some("ja"), None, "ja"),
+        (Some("ja-JP,en;q=0.5"), None, "ja"),
+        (Some("en;q=0.4,ja;q=0.9"), None, "ja"),
+        (Some("en,ja;q=0.5"), None, "en"),
         // …and a reader who chose it is served Japanese, whatever the browser asks for.
         (None, Some("inklkunn_lang=ja"), "ja"),
         (Some("en"), Some("inklkunn_lang=ja"), "ja"),
         (Some("fr"), Some("other=1; inklkunn_lang=ja; more=2"), "ja"),
         (Some("ja"), Some("inklkunn_lang=en"), "en"),
-        (Some("ja"), Some("inklkunn_lang=zz"), "en"),
+        (Some("ja"), Some("inklkunn_lang=zz"), "ja"),
+        (Some("fr"), Some("inklkunn_lang=zz"), "en"),
         (None, Some("inklkunn_lang=<script>"), "en"),
         (Some("ja"), Some("other=1; inklkunn_lang=en; more=2"), "en"),
     ] {

@@ -126,27 +126,83 @@ fn the_footer_switcher_lists_every_language_and_marks_the_pages_own() {
         en.iter()
             .map(|c| (c.tag, c.current, c.preview))
             .collect::<Vec<_>>(),
-        [("en", true, false), ("ja", false, true)]
+        [("en", true, false), ("ja", false, false)]
     );
     let ja = page_in("ja").languages();
     assert_eq!(
         ja.iter()
             .map(|c| (c.tag, c.current, c.preview))
             .collect::<Vec<_>>(),
-        [("en", false, false), ("ja", true, true)]
+        [("en", false, false), ("ja", true, false)]
     );
-    // The name of each language is its own, marked with its own `lang`; a preview says so in the page's words.
+    // The name of each language is its own, marked with its own `lang`; Japanese is signed off, so it is not
+    // labelled a preview.
     assert_eq!(
         en.first().unwrap().label.as_str(),
         "<span lang=\"en\">English</span>"
     );
     assert_eq!(
         en.get(1).unwrap().label.as_str(),
-        "<span lang=\"ja\">日本語</span> (preview)"
+        "<span lang=\"ja\">日本語</span>"
     );
     assert_eq!(
         ja.get(1).unwrap().label.as_str(),
-        "<span lang=\"ja\">日本語</span>（プレビュー版）"
+        "<span lang=\"ja\">日本語</span>"
+    );
+}
+
+/// The languages of a build that still has a preview: English, Japanese and a draft.
+fn with_a_preview() -> &'static [&'static LangDef] {
+    static LANGUAGES: OnceLock<[&'static LangDef; 3]> = OnceLock::new();
+    LANGUAGES.get_or_init(|| {
+        let draft: &'static LangDef = Box::leak(Box::new(LangDef {
+            tag: "xa",
+            endonym: "Draft",
+            dir: Dir::Ltr,
+            plural: other_only,
+            group_separator: ',',
+            review: Review::Preview,
+            entries: EN_DEF.entries,
+        }));
+        [&EN_DEF, &crate::catalog::JA_DEF, draft]
+    })
+}
+
+#[test]
+fn a_preview_language_is_labelled_in_the_switcher_and_the_language_page_says_so_beside_it_only() {
+    let choices = page_in("en").offering(with_a_preview()).languages();
+    assert_eq!(
+        choices
+            .iter()
+            .map(|c| (c.tag, c.preview))
+            .collect::<Vec<_>>(),
+        [("en", false), ("ja", false), ("xa", true)]
+    );
+    assert_eq!(
+        choices.get(2).unwrap().label.as_str(),
+        "<span lang=\"xa\">Draft</span> (preview)"
+    );
+    assert_eq!(
+        choices.get(1).unwrap().label.as_str(),
+        "<span lang=\"ja\">日本語</span>",
+        "a signed-off language beside it is not labelled"
+    );
+    let html = render_language(
+        &page_in("en").without_switcher().offering(with_a_preview()),
+        None,
+    )
+    .unwrap();
+    assert_eq!(html.matches("This translation is a preview.").count(), 1);
+    assert!(html.contains("<span lang=\"xa\">Draft</span> (preview)"));
+    // In Japanese the same label is in Japanese.
+    let html = render_language(
+        &page_in("ja").without_switcher().offering(with_a_preview()),
+        None,
+    )
+    .unwrap();
+    assert!(
+        html.contains("<span lang=\"xa\">Draft</span>（プレビュー版）"),
+        "{html}"
     );
 }
 
@@ -175,8 +231,8 @@ fn the_language_page_has_its_own_choices_and_no_footer_switcher() {
     // With nowhere to go back to, a choice stays on this page and there is no link back.
     assert!(html.contains("name=\"next\" value=\"/-/lang\""), "{html}");
     assert!(!html.contains("Go back to the page you were on"), "{html}");
-    // The note about a preview is beside the language it is about, and only there.
-    assert_eq!(html.matches("This translation is a preview.").count(), 1);
+    // No language of this build is a preview, so no note about one.
+    assert_eq!(html.matches("This translation is a preview.").count(), 0);
     assert_eq!(html.matches("In use now.").count(), 1);
 }
 

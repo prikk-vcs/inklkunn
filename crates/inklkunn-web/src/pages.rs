@@ -79,6 +79,8 @@ pub struct Page {
     /// The provider's name for a page to offer (its host), when one is configured: the sign-in page and an
     /// invitation offer *Sign in with …* only then.
     pub(crate) provider: Option<String>,
+    /// The languages the page offers: this build's, unless a test offers others.
+    offered: &'static [&'static catalog::LangDef],
 }
 
 impl Page {
@@ -95,7 +97,16 @@ impl Page {
             who: None,
             sign_in: false,
             provider: None,
+            offered: catalog::languages(),
         }
+    }
+
+    /// The same page offering other languages than this build's (a test's preview language).
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn offering(mut self, offered: &'static [&'static catalog::LangDef]) -> Page {
+        self.offered = offered;
+        self
     }
 
     /// The same page without the footer's language buttons (the language page and the refusals have their own
@@ -200,7 +211,7 @@ impl Page {
 
     /// The languages the switcher offers, English first, the page's own marked.
     pub fn languages(&self) -> Vec<Choice> {
-        catalog::languages()
+        self.offered
             .iter()
             .map(|def| {
                 let preview = def.review.is_preview();

@@ -1,9 +1,11 @@
-//! The Japanese messages: **a preview** (DR-7). The draft is the dev team's, written from the English and
-//! the glossary's Japanese terms; nothing here has been read by a fluent reviewer yet, and every page that
-//! offers Japanese says so. The style is the polite register; headings and labels are noun phrases; Japanese
-//! has no grammatical plural, so a counted message would say the same for every count. The order is the
-//! English table's. The words are the glossary's (`docs/glossary.md`, section 2 and section 4); a test holds
-//! the two equal.
+//! The Japanese messages: **signed off by the owner on 2026-11-19** (DR-7), the messages of 0.3.0; later
+//! messages are reviewed at each release, and the accessibility statement says so. The draft was the dev
+//! team's, written from the English and the glossary's Japanese terms, then corrected by the architect's
+//! final check. The style is the polite register; headings and labels are noun phrases; Japanese has no
+//! grammatical plural, so a counted message would say the same for every count. The order is the English
+//! table's. The words are the glossary's (`docs/glossary.md`, section 2 and section 4); a test holds the two
+//! equal. Japanese is selected by `Accept-Language` like any other language; the preview messages
+//! (`language.preview_choice`, `language.preview_note`) stay for a language that is still a preview.
 
 use super::{Entry, msg};
 
@@ -252,6 +254,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "about.accessibility_people",
         "支援技術を使っている方による、このサイトの確認はまだ行われていません。うまく使えないところがあれば、このサーバーの管理者にお知らせください。",
+    ),
+    msg(
+        "about.accessibility_languages",
+        "日本語訳は、2026-11-19 にオーナーが 0.3.0 のメッセージを確認しました。以降のメッセージは、リリースごとに確認します。",
     ),
     msg("title.wikis", "ウィキの一覧 · {product}"),
     msg("wikis.heading", "ウィキの一覧"),

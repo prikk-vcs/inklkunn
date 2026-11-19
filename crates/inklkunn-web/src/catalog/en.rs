@@ -220,6 +220,10 @@ pub const CATALOG: &[Entry] = &[
         "about.accessibility_people",
         "No person who uses assistive technology has tested this site yet. If something does not work for you, tell the person who runs this server.",
     ),
+    msg(
+        "about.accessibility_languages",
+        "The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release.",
+    ),
     msg("title.wikis", "Wikis · {product}"),
     msg("wikis.heading", "Wikis"),
     msg("wikis.intro", "These are the wikis you can read here."),

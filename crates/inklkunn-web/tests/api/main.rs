@@ -806,7 +806,7 @@ async fn the_code_is_the_same_in_every_language_and_the_words_are_not() {
 }
 
 #[tokio::test]
-async fn accept_language_alone_never_selects_the_preview_language_as_for_pages() {
+async fn accept_language_selects_the_signed_off_language_as_for_pages() {
     let w = handbook();
     let a = send(
         &w,
@@ -815,7 +815,7 @@ async fn accept_language_alone_never_selects_the_preview_language_as_for_pages()
         &[("accept-language", "ja")],
     )
     .await;
-    assert_eq!(a.header("content-language"), Some("en"));
+    assert_eq!(a.header("content-language"), Some("ja"));
     let b = send(
         &w,
         Method::GET,

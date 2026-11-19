@@ -9,7 +9,7 @@
 //! - [`routes`]: the route registry — the only place a route is registered — and the routers built from it.
 //! - [`origin`]: one listener, two origins, a request goes to the one its `Host` names.
 //! - [`serve`]: bind, serve, stop on a signal.
-//! - [`catalog`]: every sentence a page says, by stable key, in English and (as a preview) Japanese.
+//! - [`catalog`]: every sentence a page says, by stable key, in English and Japanese.
 //! - [`lang`]: which language a request wants, the cookie that remembers it, where a switch returns to.
 //! - [`pages`]: the layout, the language page and the notices; the extractor every page handler asks for.
 //! - [`style`]: the one stylesheet, served under a fingerprinted name.

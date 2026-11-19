@@ -147,16 +147,18 @@ pub static EN_DEF: LangDef = LangDef {
     entries: en::CATALOG,
 };
 
-/// Japanese: **a preview** (DR-7). Compiled in and offered, labelled as a preview, until the reviewers the
-/// owner names have gone through it; then `review` becomes [`Review::Reviewed`] with who and when, in one
-/// commit with the glossary and the accessibility statement.
+/// Japanese: **signed off by the owner, 2026-11-19** (DR-7; maintenance M60), the messages of 0.3.0. It is
+/// negotiated like any other language. Later messages are reviewed at each release, and the accessibility
+/// statement says so.
 pub static JA_DEF: LangDef = LangDef {
     tag: "ja",
     endonym: ja::ENDONYM,
     dir: Dir::Ltr,
     plural: plural_ja,
     group_separator: ',',
-    review: Review::Preview,
+    review: Review::Reviewed {
+        by: "the owner, 2026-11-19",
+    },
     entries: ja::CATALOG,
 };
 
@@ -420,6 +422,7 @@ keys! {
     AccessibilityHeading => "about.accessibility_heading",
     AccessibilityTools => "about.accessibility_tools",
     AccessibilityPeople => "about.accessibility_people",
+    AccessibilityLanguages => "about.accessibility_languages",
     TitleWikis => "title.wikis",
     WikisHeading => "wikis.heading",
     WikisIntro => "wikis.intro",

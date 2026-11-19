@@ -392,10 +392,10 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
 
 #[tokio::test]
 async fn an_unknown_address_is_a_page_in_the_visitors_words_with_every_header() {
-    // Japanese is a preview: it is the reader's choice (the cookie), never the browser's setting.
+    // Japanese is signed off: the browser's setting selects it, and so does the reader's choice (the cookie).
     for (header, value, lang, heading) in [
         ("accept-language", "en", "en", "<h1>Not found</h1>"),
-        ("accept-language", "ja", "en", "<h1>Not found</h1>"),
+        ("accept-language", "ja", "ja", "<h1>見つかりません</h1>"),
         (
             "cookie",
             "inklkunn_lang=ja",

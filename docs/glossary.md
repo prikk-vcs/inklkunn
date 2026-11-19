@@ -1,9 +1,9 @@
 # inklkunn — words the interface uses
 
-**Status.** Drafted by the dev team with handoff 003 T2 (RFC 003 D-6), for the architect's reading and the
-owner's. The English words of section 2 are **in force** in the catalog
-(`crates/inklkunn-web/src/catalog/en.rs`); the Japanese words are a **preview**: a draft that no fluent
-reviewer has read yet (DR-7: the owner names the reviewers). The tests
+**Status.** Drafted by the dev team with handoff 003 T2 (RFC 003 D-6). The English words of section 2 are
+**in force** in the catalog (`crates/inklkunn-web/src/catalog/en.rs`); the Japanese words are **signed off by
+the owner, 2026-11-19** (DR-7), the messages of 0.3.0, after the architect's final check; later messages are
+reviewed at each release (the accessibility statement says so). The tests
 `crates/inklkunn-web/tests/glossary.rs` and `tests/retired_words.rs` read this page: **change the words here and
 in the catalog together**, and a message the catalog has that this page does not list fails the build.
 
@@ -17,7 +17,7 @@ A message is a whole sentence with named placeholders; two sentences are two mes
 **Where the words come from.** *Reused from planeter* means the sibling project's owner-approved glossary
 already fixed the word for the same concept, and inklkunn uses it so that a person who knows one knows the
 other. *Named by the handoff* means handoff 003 fixes it. *Drafted* means the dev team proposes it and the
-architect decides. Every Japanese word is a draft until the reviewers sign off; **hard term** marks the ones
+architect decides. Every Japanese word was a draft until the owner's sign-off of 2026-11-19 (section 4); **hard term** marks the ones
 where a fluent reader's judgement matters most (a trust label, or a word with two usual translations).
 
 **Case.** Standalone labels, headings, titles and links are in sentence case ("Skip to the main content").
@@ -220,6 +220,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `about.accessibility_people` | the second sentence of the statement | "No person who uses assistive technology has tested this site yet. If something does not work for you, tell the person who runs this server." | "支援技術を使っている方による、このサイトの確認はまだ行われていません。うまく使えないところがあれば、このサーバーの管理者にお知らせください。" |
 | `title.wikis` | the title of the list of wikis | "Wikis · {product}" | "ウィキの一覧 · {product}" |
 | `wikis.heading` | the heading of the list of wikis | "Wikis" | "ウィキの一覧" |
+| `about.accessibility_languages` | the third sentence of the statement: what was reviewed, by whom and when, and when later messages are | "The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release." | "日本語訳は、2026-11-19 にオーナーが 0.3.0 のメッセージを確認しました。以降のメッセージは、リリースごとに確認します。" |
+| `title.wikis` | the title of the list of wikis | "Wikis · {product}" | "ウィキ · {product}" |
+| `wikis.heading` | the heading of the list of wikis | "Wikis" | "ウィキ" |
 | `wikis.intro` | under that heading | "These are the wikis you can read here." | "ここで読めるウィキの一覧です。" |
 | `wikis.none` | shown instead of the list when there is none | "There are no wikis you can read here yet." | "ここで読めるウィキはまだありません。" |
 | `transclusion.from` | above the text of a page included in another; `{title}` is the included page's title | "From {title}" | "{title} から" |
@@ -1528,17 +1531,25 @@ one).
   in `ja.rs`.
 
 ## 4. Japanese: what the reviewers are asked
+## 4. Japanese: the sign-off, and what the reviewers were asked
 
-The Japanese is a **draft** by the dev team: it is compiled in and checked by the tests (every key, the same
-placeholders as English, no markup, no retired term, the structural checks on every page), and it is offered
-labelled as a preview. **A preview is chosen only by the reader**, on the language page or by the switcher in
-any page's footer; a browser's `Accept-Language` never selects it, so nobody is given an unchecked translation
-without having asked for it. It becomes finished when the reviewers the owner names (DR-7) have gone through
-this page and the catalog, and the dev team has integrated their corrections in one commit with the sign-off
-recorded in `JA_DEF.review` (`catalog.rs`), this page's status line and the accessibility statement; from then
-on `Accept-Language: ja` selects it like any other language.
+**The sign-off.** The owner signed off the Japanese catalog on 2026-11-19 (DR-7): all the messages as of 0.3.0.
+The architect's final check followed, and the dev team applied its corrections in one commit with the record:
+`JA_DEF.review` is `Review::Reviewed { by: "the owner, 2026-11-19" }` (`catalog.rs`), this page's status line and
+the accessibility statement say so (`about.accessibility_languages`: *reviewed by the owner on 2026-11-19, the
+messages of 0.3.0; later messages are reviewed at each release*). **From then on `Accept-Language: ja` selects
+Japanese like any other language.** The catalog is compiled in and checked by the tests (every key, the same
+placeholders as English, no markup, no retired term, the structural checks on every page). Messages added after
+0.3.0 are written with the terms of section 1 and listed for the owner's look in each release's readiness
+report; that is not a gate, and there is no other machinery.
 
-What to look at first:
+**A preview** is what a language is before such a sign-off: it carries a label wherever it is offered
+(`language.preview_choice`, `language.preview_note`), and it is chosen only by the reader, on the language page
+or by the switcher in any page's footer; a browser's `Accept-Language` never selects it, so nobody is given an
+unchecked translation without having asked for it. No language of this build is a preview now, and a test keeps
+the rule for the next one.
+
+What the reviewers were asked to look at first:
 
 - **The hard terms** of section 1 (ja column marked *hard term*): 変更 for *change* and 提案 for *proposal* (two
   different things; the draft keeps them apart), レビュー待ちで保持中 for *held for review*, 受け入れ済み and

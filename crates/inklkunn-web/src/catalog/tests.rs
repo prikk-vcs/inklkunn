@@ -61,14 +61,24 @@ fn keys_are_unique_dotted_identifiers_and_their_variant_names_are_unique() {
 }
 
 #[test]
-fn english_is_the_source_japanese_is_a_preview_and_the_switcher_lists_both() {
+fn english_is_the_source_japanese_is_signed_off_and_the_switcher_lists_both() {
     assert_eq!(EN_DEF.review, Review::Source);
     assert!(!EN.is_preview());
-    assert_eq!(JA_DEF.review, Review::Preview);
-    assert!(Lang::from_def(&JA_DEF).is_preview());
+    // The owner's sign-off of 2026-11-19 (DR-7; M60) is recorded, so Japanese is no longer a preview.
+    assert_eq!(
+        JA_DEF.review,
+        Review::Reviewed {
+            by: "the owner, 2026-11-19"
+        }
+    );
+    assert!(!Lang::from_def(&JA_DEF).is_preview());
     assert!(
         !Review::Reviewed { by: "a, b, 2026" }.is_preview(),
         "a recorded sign-off ends the preview"
+    );
+    assert!(
+        Review::Preview.is_preview(),
+        "a language without a sign-off is a preview"
     );
     let tags: Vec<&str> = languages().iter().map(|d| d.tag).collect();
     assert_eq!(tags, ["en", "ja"], "English first");
@@ -465,25 +475,25 @@ fn accept_language_selects_a_reviewed_language_by_q_value_and_falls_back_to_engl
 }
 
 #[test]
-fn a_preview_is_chosen_by_the_reader_through_the_cookie_and_never_by_accept_language() {
+fn japanese_is_selected_by_accept_language_and_a_preview_is_chosen_only_through_the_cookie() {
     let tag = |accept: Option<&str>, cookie: Option<&str>| Lang::negotiate(accept, cookie).tag();
-    // Japanese is a preview in this build: a browser that asks for it is served English…
-    for accept in [
-        "ja",
-        "ja-JP",
-        "ja-JP,en;q=0.5",
-        "en;q=0.4,ja;q=0.9",
-        "ja;q=1.0, *;q=0.1",
+    // Japanese is signed off in this build: a browser that asks for it is served Japanese, by q-value…
+    for (accept, want) in [
+        ("ja", "ja"),
+        ("ja-JP", "ja"),
+        ("ja-JP,en;q=0.5", "ja"),
+        ("en;q=0.4,ja;q=0.9", "ja"),
+        ("ja;q=1.0, *;q=0.1", "ja"),
+        ("en,ja;q=0.5", "en"),
+        ("fr, de;q=0.5", "en"),
     ] {
-        assert_eq!(tag(Some(accept), None), "en", "{accept:?}");
+        assert_eq!(tag(Some(accept), None), want, "{accept:?}");
     }
-    // …and the reader who picks it on the language page is served Japanese, whatever the browser asks for.
+    // …the cookie is the reader's own choice and beats the browser's setting.
     assert_eq!(tag(None, Some("ja")), "ja");
     assert_eq!(tag(Some("en"), Some("ja")), "ja");
     assert_eq!(tag(Some("fr"), Some("ja-JP")), "ja");
-    // Once the sign-off is recorded the same table is negotiated like any other language.
-    let reviewed = Lang::negotiate_in(&[&EN_DEF, reviewed_japanese()], Some("ja"), None);
-    assert_eq!(reviewed.tag(), "ja");
+    assert_eq!(tag(Some("ja"), Some("en")), "en");
     // The rule is the language's review state and nothing about Japanese in particular.
     let draft = language("xa", Dir::Ltr, only_other, ',', vec![]);
     assert_eq!(

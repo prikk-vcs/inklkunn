@@ -651,10 +651,23 @@ async fn the_about_page_states_the_license_and_what_the_accessibility_tests_do_n
         a.body
             .contains("No person who uses assistive technology has tested this site yet.")
     );
-    assert!(
-        a.body.contains("The Japanese translation")
-            || a.body.contains("This translation is a preview")
-    );
+    // What was reviewed, by whom and when, and that later messages are reviewed at each release (M60); and
+    // since no language is a preview, no note about one.
+    assert!(a.body.contains(
+        "The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release."
+    ));
+    assert!(!a.body.contains("This translation is a preview"));
+    let ja = send(
+        &w,
+        Method::GET,
+        "/handbook/-/about",
+        &[("accept-language", "ja")],
+    )
+    .await;
+    assert!(ja.body.contains(
+        "日本語訳は、2026-11-19 にオーナーが 0.3.0 のメッセージを確認しました。以降のメッセージは、リリースごとに確認します。"
+    ));
+    assert!(!ja.body.contains("この翻訳はプレビュー版です。"));
 }
 
 #[tokio::test]
