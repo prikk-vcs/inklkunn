@@ -1472,6 +1472,61 @@ Japanese term is matched anywhere in the text. A legitimate exception goes in
 | adopted | 採用済み | the default view | A view is not adopted by anyone: the shipped word for the view shown when none is named is the default view (RFC 005 part 2 D-9) |
 | verified | 検証済み | signed into the history | prikk's word for the history alone: only the verification badge and the verification page say it, so a reader cannot take a claim for something that was verified (RFC 005 part 2 D-7) |
 
+### 3.2 Japanese: one rendering per meaning, and the typography
+
+The Japanese catalog was signed off by the owner on 2026-11-19 under the architect's final check (maintenance M60).
+The check settled **one rendering per meaning** (the rows of section 1 marked *Named by the architect's final
+check*), and the table below lists the renderings it replaced, so that a later message cannot bring one back.
+A term is matched anywhere in the text of a Japanese message, except where the first column says otherwise
+(`crates/inklkunn-web/tests/catalog_checks/japanese.rs` holds the list and fails the build on a message that uses
+one).
+
+| Retired in Japanese | Say instead | Why |
+|---|---|---|
+| リビジョン, 改訂 | 修正版 (the numbered noun); 修正 (the act) | One rendering for a numbered revision of a proposal; 版 alone stays a page's version |
+| 変更を求め | 修正を求める | 変更 is the recorded step; the reviewer's decision is the same act as asking for a revision |
+| レビュー担当者 | レビュアー | Beside メンテナー; 担当者 suggests an assignment |
+| 認められている, 認められています | 受け入れられている, 受け入れられています | It reads as *recognized as valid*; 受け入れ済み is the state of a proposal |
+| 争われ | 異論がある (compact label: 異論あり) | Combative; 異論がある states the epistemic fact calmly |
+| 決着していない | 未解決 | One of the four community statuses |
+| コミュニティの状態 | コミュニティでの扱い | Two fields, two names |
+| 扱いの段階 | 主張の段階 | The claim's lifecycle field |
+| 支持する | 裏付ける | A source supports a claim: 裏付ける |
+| 異議を唱え | 異議を示す | 異議を唱える makes the source a person |
+| 出典リンク | 出典との結びつき | On a wiki リンク reads as a hyperlink, and a reference is never a link |
+| 利用できるかどうか | 入手できるかどうか | The same field everywhere |
+| 題名 | タイトル | The form says タイトル |
+| 示されていません | 未記入 | One word for a field left unstated |
+| へ戻る | に戻る | One particle for *back to* |
+| 運用している人, 運用して | このサーバーの管理者; このウィキを運営している人 | The glossary's two terms for the two kinds of person |
+| 知らせてください, 伝えてください, 試してください | お知らせください; お試しください | One expression for asking the reader |
+| 最初に確認 | 初めて確認 | The first-seen field |
+| 直前の確認 | 前回の確認 | 直前 overstates how fresh the check is |
+| 鍵の変更 | 鍵の更新作業 | 変更 is the recorded step |
+| 失効時 | 廃止時 | A key is 廃止; 失効 is a token's |
+| レビュー待ちのまま | レビュー待ちで保持されたまま | The hard term of the state, in a sentence |
+| 未決の | 進行中の | 未決 is legal register |
+| 見られます | 閲覧できます | Ambiguous between passive and potential |
+| 何も変更されて | 何も変更して | One way to say nothing was changed |
+| 改善の提案, リンターからの提案 | 改善のヒント | 提案 is a proposal |
+| ぐるぐる, 輪になって | 循環 | One word for a redirect or a replacement that leads back to itself |
+| 1 度 | 1 回 | One counter for *once* |
+| さん | (nothing: a person is named without it) | When the person is unknown the value is だれか or ある方, and だれか さん is wrong |
+| ブラウザ (not ブラウザー) | ブラウザー | With the long vowel mark |
+| 他の (not その他の) | ほかの | In hiragana; その他 stays the label of a kind |
+
+**Typography** (the same test file holds each rule):
+
+- A person placeholder is never followed by さん: a person is named without it everywhere.
+- A placeholder next to Japanese text has a half-width space on each side (`主張 {claim} を記録します`), except
+  inside 「」 (`「{title}」`). Japanese punctuation carries its own space: `（{id}）` and `{first}、{second}` stay as
+  they are.
+- A colon is half-width and followed by a space (`理由: {reason}`; `: 「{text}」`), or ends the message. A
+  full-width colon is never used.
+- Full-width parentheses （） in running text.
+- A counted message is one form, written `msg(…)`: Japanese has no grammatical plural, so `plural_msg` is not used
+  in `ja.rs`.
+
 ## 4. Japanese: what the reviewers are asked
 
 The Japanese is a **draft** by the dev team: it is compiled in and checked by the tests (every key, the same

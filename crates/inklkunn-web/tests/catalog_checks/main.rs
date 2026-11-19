@@ -7,10 +7,13 @@
 //! * no template or product source file contains user-visible literal text outside `tests/literals.allow`;
 //! * `|safe` and `autoescape` are never applied to catalog output (or to anything not on the allowlist).
 //!
+//! The Japanese rules of the sign-off (no さん after a person, half-width colons, spaced placeholders, one form for a
+//! counted message, the retired renderings) are `japanese.rs`.
 //! The retired words and the glossary are `tests/retired_words.rs` and `tests/glossary.rs`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 mod allow;
+mod japanese;
 mod rust_scan;
 mod template_scan;
 
