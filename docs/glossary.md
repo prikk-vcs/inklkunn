@@ -569,14 +569,14 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `inbox.new` | a mark before an event that has not been read | "New" | "新着" |
 | `inbox.mark_all_read` | the button under the list of events | "Mark everything as read" | "すべて既読にする" |
 | `inbox.someone` | in an event, in place of the name of a person who is not known | "Someone" | "だれか" |
-| `inbox.event_reviewed` | an event; `{person}` is who reviewed, `{proposal}` the proposal (a link), `{wiki}` the wiki | "{person} reviewed your proposal {proposal} in {wiki}." | "{person}が {wiki} のあなたの提案 {proposal} をレビューしました。" |
+| `inbox.event_reviewed` | an event; `{person}` is who reviewed, `{proposal}` the proposal (a link), `{wiki}` the wiki | "{person} reviewed your proposal {proposal} in {wiki}." | "{person} が {wiki} のあなたの提案 {proposal} をレビューしました。" |
 | `inbox.event_accepted` | an event; `{proposal}` is the proposal (a link), `{wiki}` the wiki | "Your proposal {proposal} in {wiki} was accepted and signed into the history." | "{wiki} のあなたの提案 {proposal} は受け入れられ、署名されて履歴に記録されました。" |
-| `inbox.event_declined` | an event; `{person}` is who declined | "{person} declined your proposal {proposal} in {wiki}." | "{person}が {wiki} のあなたの提案 {proposal} を見送りました。" |
-| `inbox.event_needs_revision` | an event; `{person}` is who asked | "{person} asked for a revision of your proposal {proposal} in {wiki}." | "{person}が {wiki} のあなたの提案 {proposal} の修正を依頼しました。" |
-| `inbox.event_withdrawn` | an event, for the people who held the proposal; `{person}` is who took it back | "{person} withdrew the proposal {proposal} in {wiki}." | "{person}が {wiki} の提案 {proposal} を取り下げました。" |
-| `inbox.event_superseded` | an event; `{person}` is who put a later proposal in its place | "{person} replaced your proposal {proposal} in {wiki} with a later one." | "{person}が {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。" |
-| `inbox.event_replied` | an event; `{person}` is who commented | "{person} commented in the discussion of {proposal} in {wiki}." | "{person}が {wiki} の {proposal} のディスカッションにコメントしました。" |
-| `inbox.event_mentioned` | an event; `{person}` is who wrote the comment | "{person} mentioned you in the discussion of {proposal} in {wiki}." | "{person}が {wiki} の {proposal} のディスカッションであなたに言及しました。" |
+| `inbox.event_declined` | an event; `{person}` is who declined | "{person} declined your proposal {proposal} in {wiki}." | "{person} が {wiki} のあなたの提案 {proposal} を見送りました。" |
+| `inbox.event_needs_revision` | an event; `{person}` is who asked | "{person} asked for a revision of your proposal {proposal} in {wiki}." | "{person} が {wiki} のあなたの提案 {proposal} の修正を依頼しました。" |
+| `inbox.event_withdrawn` | an event, for the people who held the proposal; `{person}` is who took it back | "{person} withdrew the proposal {proposal} in {wiki}." | "{person} が {wiki} の提案 {proposal} を取り下げました。" |
+| `inbox.event_superseded` | an event; `{person}` is who put a later proposal in its place | "{person} replaced your proposal {proposal} in {wiki} with a later one." | "{person} が {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。" |
+| `inbox.event_replied` | an event; `{person}` is who commented | "{person} commented in the discussion of {proposal} in {wiki}." | "{person} が {wiki} の {proposal} のディスカッションにコメントしました。" |
+| `inbox.event_mentioned` | an event; `{person}` is who wrote the comment | "{person} mentioned you in the discussion of {proposal} in {wiki}." | "{person} が {wiki} の {proposal} のディスカッションであなたに言及しました。" |
 | `inbox.event_watched` | an event; `{proposal}` is the proposal the change came from (a link) | "A page you follow in {wiki} changed. The change came from the proposal {proposal}." | "{wiki} でフォローしているページが変更されました。変更のもとになった提案は {proposal} です。" |
 | `inbox.event_unreadable` | an event about something the reader may not read any more | "Something happened that involves you, in a wiki you can no longer read." | "あなたに関わる出来事がありましたが、そのウィキはもう読むことができません。" |
 | `inbox.account_heading` | the heading of the page that says an account is needed (the inbox, and following a page) | "An account is needed" | "アカウントが必要です" |
@@ -617,16 +617,16 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `state.superseded` | the label of a proposal that a later proposal replaced | "Superseded" | "置き換え済み" |
 | `state_note.draft` | under the label of a draft | "A draft. Only the person who started it can see it, and nobody has been asked to review it." | "下書きです。始めた本人だけが閲覧できます。まだ誰にもレビューを依頼していません。" |
 | `state_note.held` | under the label of a proposal held for review | "The wiki service holds this proposal for review. Nothing becomes part of a page until someone who is allowed to takes the proposal into the history." | "ウィキサービスはこの提案をレビュー待ちとして保持しています。権限のある人が提案を履歴に取り込むまで、ページには何も反映されません。" |
-| `state_note.needs_revision` | under the label of a proposal that needs a revision; `{author}` is its proposer | "This proposal needs a revision from {author} before it can be taken into the history." | "この提案は、履歴に取り込む前に {author}による修正が必要です。" |
+| `state_note.needs_revision` | under the label of a proposal that needs a revision; `{author}` is its proposer | "This proposal needs a revision from {author} before it can be taken into the history." | "この提案は、履歴に取り込む前に {author} による修正が必要です。" |
 | `state_note.accepted` | under the label of an accepted proposal | "Accepted: someone who is allowed to took this proposal into the history." | "受け入れ済み: 権限のある人がこの提案を履歴に取り込みました。" |
 | `state_note.declined` | under the label of a declined proposal | "Declined: someone who is allowed to decided not to take this proposal into the history." | "見送り済み: 権限のある人が、この提案を履歴に取り込まないと判断しました。" |
 | `state_note.withdrawn` | under the label of a withdrawn proposal | "Withdrawn by its proposer. It is kept here for the record." | "提案者が取り下げました。記録として残してあります。" |
 | `state_note.superseded` | under the label of a superseded proposal | "Superseded: a later proposal takes its place." | "置き換え済み: 後から出された提案がこの提案に代わります。" |
 | `proposal.superseded_by` | on a superseded proposal; `{proposal}` links to the one that replaced it | "It was replaced by {proposal}." | "{proposal} に置き換えられました。" |
 | `proposal.another` | the name of a proposal the reader may not see, in a link to it | "another proposal" | "別の提案" |
-| `proposal.reason_declined` | on a declined proposal: who declined it and why | "{person} declined this proposal. Reason: {reason}" | "{person}がこの提案を見送りました。理由: {reason}" |
-| `proposal.reason_withdrawn` | on a withdrawn proposal: who took it back and why | "{person} withdrew this proposal. Reason: {reason}" | "{person}がこの提案を取り下げました。理由: {reason}" |
-| `proposal.reason_asked` | on a proposal sent back: who asked for a revision and why | "{person} asked for a revision. Reason: {reason}" | "{person}が修正を求めました。理由: {reason}" |
+| `proposal.reason_declined` | on a declined proposal: who declined it and why | "{person} declined this proposal. Reason: {reason}" | "{person} がこの提案を見送りました。理由: {reason}" |
+| `proposal.reason_withdrawn` | on a withdrawn proposal: who took it back and why | "{person} withdrew this proposal. Reason: {reason}" | "{person} がこの提案を取り下げました。理由: {reason}" |
+| `proposal.reason_asked` | on a proposal sent back: who asked for a revision and why | "{person} asked for a revision. Reason: {reason}" | "{person} が修正を求めました。理由: {reason}" |
 | `outcome.signed` | the outcome of an acceptance that is in the history | "Signed into the history" | "署名して履歴に記録済み" |
 | `outcome.overlap` | the outcome of an acceptance that stopped because the same text was changed twice | "Stopped: changes overlap" | "停止: 変更が重なっています" |
 | `outcome.not_allowed` | the outcome of an act the visitor's role does not include; also the heading of that refusal | "Not allowed" | "許可されていません" |
@@ -817,15 +817,15 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `comment.on_part` | on a comment about a part that is not among the changes shown | "About part {number} of {title}" | "{title} の部分 {number} について" |
 | `comment.orphaned` | on a comment whose part is no longer in the proposal; it was about the text quoted | "Orphaned: the part of {title} this comment was about is no longer in the proposal. It was about this text:" | "孤立したコメント: このコメントの対象だった {title} の部分は、提案から無くなっています。対象だった文章:" |
 | `comment.on_this_part` | the link that comments on a part; `{number}` is its position | "Comment on part {number}" | "部分 {number} にコメントする" |
-| `comment.reply` | the link that replies to a comment | "Reply to {author}" | "{author}に返信する" |
+| `comment.reply` | the link that replies to a comment | "Reply to {author}" | "{author} に返信する" |
 | `comment_form.label` | the label of the comment text | "Add a comment" | "コメントを書く" |
 | `comment_form.button` | the button that sends a comment | "Comment" | "コメントする" |
 | `comment_form.about_part` | on the comment form: what the comment is about | "Your comment is about part {number} of {title}." | "このコメントは {title} の部分 {number} についてです。" |
-| `comment_form.reply_to` | on the comment form: whom it replies to | "Your comment is a reply to {author}." | "このコメントは {author}への返信です。" |
+| `comment_form.reply_to` | on the comment form: whom it replies to | "Your comment is a reply to {author}." | "このコメントは {author} への返信です。" |
 | `decisions.heading` | the heading of the reviewers' decisions | "Decisions" | "判断" |
 | `decisions.none` | when no reviewer has decided | "No reviewer has decided yet." | "まだ判断したレビュアーはいません。" |
-| `decision.approved` | a decision: approved; `{number}` is the revision it is on | "{reviewer} approved, on revision {number}." | "{reviewer}が承認しました（修正版 {number} について）。" |
-| `decision.requested` | a decision: changes requested | "{reviewer} asked for changes, on revision {number}." | "{reviewer}が修正を求めました（修正版 {number} について）。" |
+| `decision.approved` | a decision: approved; `{number}` is the revision it is on | "{reviewer} approved, on revision {number}." | "{reviewer} が承認しました（修正版 {number} について）。" |
+| `decision.requested` | a decision: changes requested | "{reviewer} asked for changes, on revision {number}." | "{reviewer} が修正を求めました（修正版 {number} について）。" |
 | `decision.older` | under a decision on an earlier revision | "A newer revision was written after this. The decision no longer counts toward accepting it." | "この後に新しい修正版が書かれました。この判断は、受け入れの条件としてはもう数えられません。" |
 | `decide.label` | the label of the note with a decision | "A note with your decision (optional)" | "判断に添えるメモ（省略可）" |
 | `decide.approve` | the button that approves the revision | "Approve this revision" | "この修正版を承認する" |
@@ -1045,7 +1045,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `claim.status_contested` | a claim's status | "This claim is contested in this view." | "このビューでは、この主張には異論があります。" |
 | `claim.status_unresolved` | a claim's status | "This claim is unresolved in this view." | "このビューでは、この主張は未解決です。" |
 | `claim.status_unknown` | a claim's status: nobody has decided | "This claim has not been decided in this view." | "このビューでは、この主張はまだ決定されていません。" |
-| `claim.decided_by` | under a status that was decided; `{proposal}` is the link to the proposal that decided it | "Decided by {proposal}." | "{proposal}によって決定されました。" |
+| `claim.decided_by` | under a status that was decided; `{proposal}` is the link to the proposal that decided it | "Decided by {proposal}." | "{proposal} によって決定されました。" |
 | `claim.decided_link` | the link to that proposal | "the proposal that decided it" | "決定した提案" |
 | `claim.decided_unlisted` | under a status that was decided, when the proposal is not among this wiki's records | "Decided by a proposal that this wiki's records do not hold." | "このウィキの記録にない提案によって決定されました。" |
 | `claim.none_heading` | the heading when an address names no claim of the wiki | "No such claim" | "そのような主張はありません" |
@@ -1062,10 +1062,10 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `views.kind_interpretation` | the kind of an alternative view: a competing understanding | "Interpretation" | "解釈" |
 | `views.kind_experimental_note` | under the kind experimental | "A working state. Its changes may be taken back into the view it was forked from, or dropped." | "作業中の状態です。その変更は、分岐元のビューに取り込まれることも、破棄されることもあります。" |
 | `views.kind_interpretation_note` | under the kind interpretation | "A competing understanding, kept beside the default view." | "競合する理解を、既定のビューと並べて保っています。" |
-| `views.forked_from` | in the list: where an alternative view was forked from; `{view}` is a view named in words | "Forked from {view}." | "{view}から分岐しました。" |
+| `views.forked_from` | in the list: where an alternative view was forked from; `{view}` is a view named in words | "Forked from {view}." | "{view} から分岐しました。" |
 | `views.no_origin` | in the list: a view the wiki has no record of making | "The wiki did not record where this view came from." | "このビューの出どころは、ウィキに記録されていません。" |
-| `views.read_link` | in the list: the link that opens a view; `{view}` is the view named in words | "Read {view}" | "{view}を読む" |
-| `views.compare_with_default` | in the list: the link that compares a view with the default view; `{view}` is the view named in words | "Compare {view} with the default view" | "{view}を既定のビューと比べる" |
+| `views.read_link` | in the list: the link that opens a view; `{view}` is the view named in words | "Read {view}" | "{view} を読む" |
+| `views.compare_with_default` | in the list: the link that compares a view with the default view; `{view}` is the view named in words | "Compare {view} with the default view" | "{view} を既定のビューと比べる" |
 | `views.omitted` | under the list when the wiki has more views than are listed; `{shown}` and `{omitted}` are numbers | "The first {shown} views are listed here; the other {omitted} are not shown." | "ここには最初の {shown} 件のビューを表示しています。残りの {omitted} 件は表示していません。" |
 | `views.only_default` | under the list of a wiki that has only its default view | "This wiki has only its default view." | "このウィキには既定のビューしかありません。" |
 | `views.create_link` | beside the list, for a person who may create views: the link to the form | "Create a view" | "ビューを作成する" |
@@ -1107,17 +1107,17 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `compare.b_label` | the label of the choice of the second view | "Second view" | "2 つ目のビュー" |
 | `compare.go` | the button that compares the two views chosen | "Compare" | "比べる" |
 | `compare.pick_two` | a note when the two views chosen are one and the same | "Choose two different views to compare." | "異なる 2 つのビューを選んでください。" |
-| `compare.pair` | the heading of a comparison; `{a}` and `{b}` are the two views named in words | "Comparing {a} and {b}" | "{a}と{b}の比較" |
+| `compare.pair` | the heading of a comparison; `{a}` and `{b}` are the two views named in words | "Comparing {a} and {b}" | "{a} と {b} の比較" |
 | `compare.same` | under that heading when nothing differs | "The two views hold the same content." | "2 つのビューの内容は同じです。" |
 | `compare.claims_heading` | the heading of the claims that differ | "Claims that differ" | "違いのある主張" |
 | `compare.claims_none` | under it when no claim differs | "No claim differs between the two views." | "2 つのビューで違いのある主張はありません。" |
-| `compare.claim_said_in` | a claim in the list, by the page it is said in; `{page}` is the page's title | "A claim said in {page}" | "{page}にある主張" |
+| `compare.claim_said_in` | a claim in the list, by the page it is said in; `{page}` is the page's title | "A claim said in {page}" | "{page} にある主張" |
 | `compare.claim_unplaced` | a claim in the list that no page says now | "A claim that no page says" | "どのページにも書かれていない主張" |
 | `compare.diff_wording` | what differs about a claim: the paragraphs it is said in read differently | "It is worded differently." | "文面が異なります。" |
-| `compare.diff_status` | what differs about a claim: its status; `{a}` and `{b}` are statuses, `{va}` and `{vb}` the views | "Its status: {a} in {va}, {b} in {vb}." | "状態: {va}では{a}、{vb}では{b}。" |
+| `compare.diff_status` | what differs about a claim: its status; `{a}` and `{b}` are statuses, `{va}` and `{vb}` the views | "Its status: {a} in {va}, {b} in {vb}." | "状態: {va} では {a}、{vb} では {b}。" |
 | `compare.diff_sources` | what differs about a claim: the sources that bear on it, or how, or what they are | "Its sources differ." | "出典が異なります。" |
-| `compare.only_in` | what differs about a claim or a page: only one view has it; `{view}` is that view named in words | "Only in {view}." | "{view}にだけあります。" |
-| `compare.unreadable_in` | what differs about a claim: a view has a file for it that cannot be read; `{view}` is that view named in words | "Its file in {view} cannot be read, so nothing is said of it there." | "{view}にあるこの主張のファイルは読めないため、そこでの状態は示せません。" |
+| `compare.only_in` | what differs about a claim or a page: only one view has it; `{view}` is that view named in words | "Only in {view}." | "{view} にだけあります。" |
+| `compare.unreadable_in` | what differs about a claim: a view has a file for it that cannot be read; `{view}` is that view named in words | "Its file in {view} cannot be read, so nothing is said of it there." | "{view} にあるこの主張のファイルは読めないため、そこでの状態は示せません。" |
 | `compare.status_accepted` | a claim's status in a comparison | "accepted" | "受け入れられている" |
 | `compare.status_contested` | a claim's status in a comparison | "contested" | "異論あり" |
 | `compare.status_unresolved` | a claim's status in a comparison | "unresolved" | "未解決" |
@@ -1126,18 +1126,18 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `compare.pages_heading` | the heading of the pages that differ | "Pages that differ" | "違いのあるページ" |
 | `compare.pages_none` | under it when no page differs | "No page differs between the two views." | "2 つのビューで違いのあるページはありません。" |
 | `compare.page_differs` | a page in the list that both views have and read differently | "The page differs." | "ページの内容が異なります。" |
-| `compare.page_link` | a page in the list: the link to how the page differs; `{page}` is its title | "How {page} differs" | "{page}の違い" |
+| `compare.page_link` | a page in the list: the link to how the page differs; `{page}` is its title | "How {page} differs" | "{page} の違い" |
 | `compare.pages_omitted` | under the list of pages when more differ than are listed; `{shown}` and `{omitted}` are numbers | "{shown} pages are listed; {omitted} more also differ and are not shown." | "{shown} 件のページを表示しています。違いのあるページがほかに {omitted} 件ありますが、表示していません。" |
 | `compare.back` | the link from a comparison to the list of views | "All views" | "ビューの一覧" |
 | `title.compare_page` | the title of the page that shows how one page differs between two views; `{page}` is its title | "{page}: how it differs · {wiki} · {product}" | "{page}: 違い · {wiki} · {product}" |
 | `compare.page_heading` | the heading of that page; `{title}` is the page's title | "{title}: how it differs between two views" | "{title}: 2 つのビューでの違い" |
-| `compare.page_range` | under that heading; `{a}` and `{b}` are the two views named in words | "Lines marked removed are in {a} only; lines marked added are in {b} only." | "「削除」の行は{a}だけに、「追加」の行は{b}だけにあります。" |
-| `compare.page_read` | on that page: the link to read the page in one view; `{page}` is its title, `{view}` the view named in words | "Read {page} in {view}" | "{view}で{page}を読む" |
+| `compare.page_range` | under that heading; `{a}` and `{b}` are the two views named in words | "Lines marked removed are in {a} only; lines marked added are in {b} only." | "「削除」の行は {a} だけに、「追加」の行は {b} だけにあります。" |
+| `compare.page_read` | on that page: the link to read the page in one view; `{page}` is its title, `{view}` the view named in words | "Read {page} in {view}" | "{view} で {page} を読む" |
 | `compare.page_back` | on that page: the link back to the comparison | "Back to the comparison" | "比較に戻る" |
 | `compare.page_absent` | on that page: the page is in neither view | "Neither view has this page." | "どちらのビューにもこのページはありません。" |
 | `claim.others_heading` | the heading of the section of a claim's page that names the views where it reads differently | "Other views" | "ほかのビュー" |
 | `claim.others_none` | under that heading when no other view reads the claim differently | "No other view reads this claim differently." | "ほかのビューで、この主張が異なって読めるものはありません。" |
-| `claim.others_compare` | in that section: the link that compares this view with another; `{view}` is the other view named in words | "Compare with {view}" | "{view}と比べる" |
+| `claim.others_compare` | in that section: the link that compares this view with another; `{view}` is the other view named in words | "Compare with {view}" | "{view} と比べる" |
 | `claim.others_limit` | in that section when the wiki has more views than are checked here; `{shown}` is a number | "Only {shown} other views are checked on this page; compare views to see the others." | "このページで調べるほかのビューは {shown} 件までです。そのほかのビューは、ビューの比較で確かめてください。" |
 | `claim.others_unchecked` | in that section when some views could not be read just now | "Some views could not be read just now, so they are not listed here." | "今は読めなかったビューがあるため、ここには載せていません。" |
 | `title.why` | the title of that page; `{page}` is the page's title, `{wiki}` the wiki's name | "Why is this here? {page} · {wiki} · {product}" | "なぜここにあるのか: {page} · {wiki} · {product}" |
@@ -1151,27 +1151,27 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `why.paragraphs_heading` | the heading of the list of the page's paragraphs | "Paragraphs" | "段落" |
 | `why.no_paragraphs` | in place of that list | "This page has no paragraphs." | "このページには段落がありません。" |
 | `why.paragraph_label` | the link to one paragraph of the list, which is also its anchor; `{n}` is its place in the page | "Paragraph {n}" | "段落 {n}" |
-| `why.written_unchanged` | under a paragraph followed through its anchor; `{change}` is the link to the change | "Written in {change}. Not changed since." | "{change}で書かれました。それ以降は変更されていません。" |
-| `why.last_changed` | under a paragraph followed through its anchor | "Last changed in {change}." | "最後に変更されたのは{change}です。" |
-| `why.first_written` | under a paragraph followed through its anchor | "First written in {change}." | "最初に書かれたのは{change}です。" |
+| `why.written_unchanged` | under a paragraph followed through its anchor; `{change}` is the link to the change | "Written in {change}. Not changed since." | "{change} で書かれました。それ以降は変更されていません。" |
+| `why.last_changed` | under a paragraph followed through its anchor | "Last changed in {change}." | "最後に変更されたのは {change} です。" |
+| `why.first_written` | under a paragraph followed through its anchor | "First written in {change}." | "最初に書かれたのは {change} です。" |
 | `why.first_before` | under a paragraph whose first writing was not reached | "First written before the oldest change read here." | "ここで読んだ最も古い変更より前に書かれました。" |
 | `why.unchanged_read` | under a paragraph that none of the changes read changed | "Not changed in the changes read here." | "ここで読んだ変更の中では、変更されていません。" |
-| `why.found_written_unchanged` | under a paragraph traced by matching the text | "Earliest wording found in {change}. No change to it was found since." | "最も古い文言が見つかったのは{change}です。それ以降の変更は見つかりませんでした。" |
-| `why.found_last` | under a paragraph traced by matching the text | "Latest change found in {change}." | "見つかった最新の変更は{change}です。" |
-| `why.found_first` | under a paragraph traced by matching the text | "Earliest wording found in {change}. No earlier wording matches it." | "最も古い文言が見つかったのは{change}です。それより前に一致する文言は見つかりませんでした。" |
+| `why.found_written_unchanged` | under a paragraph traced by matching the text | "Earliest wording found in {change}. No change to it was found since." | "最も古い文言が見つかったのは {change} です。それ以降の変更は見つかりませんでした。" |
+| `why.found_last` | under a paragraph traced by matching the text | "Latest change found in {change}." | "見つかった最新の変更は {change} です。" |
+| `why.found_first` | under a paragraph traced by matching the text | "Earliest wording found in {change}. No earlier wording matches it." | "最も古い文言が見つかったのは {change} です。それより前に一致する文言は見つかりませんでした。" |
 | `why.basis_anchor` | under a paragraph: how it was followed | "Followed through its anchor: in every change read, the one paragraph with this anchor is this paragraph." | "アンカーでたどりました。読んだすべての変更で、このアンカーを持つ段落はこの段落ただ一つです。" |
 | `why.basis_text` | under a paragraph: how it was followed, where no anchor carries it | "Traced by matching the text. Nothing carries this paragraph through every change but its words, so each earlier wording was found by comparing text. If several paragraphs were reworded at once, it may be a different paragraph." | "文面の一致でたどりました。この段落を全変更にわたって結びつけるものは文面しかないため、以前の文言は文を比べて見つけています。複数の段落が同時に書き換えられた場合は、別の段落をたどっているかもしれません。" |
 | `why.changes_heading` | the heading of the list of the changes the paragraphs name | "Changes read" | "読んだ変更" |
 | `why.changes_none` | under it when there is none | "No change to this page was read." | "このページの変更は読んでいません。" |
 | `why.change_open` | a change in that list: the link to the change's own page | "See change {number} in the history" | "履歴で変更 {number} を見る" |
-| `why.proposal` | a change in that list: the proposal its message names, linked by its summary | "Made from the proposal {proposal}." | "提案{proposal}から作られた変更です。" |
-| `why.proposal_named` | a change in that list whose message names a proposal that the acceptance records do not tie to it: the proposal, linked by its summary, as the message names it and no more | "The message of this change names the proposal {proposal}." | "この変更のメッセージは、提案{proposal}を示しています。" |
+| `why.proposal` | a change in that list: the proposal its message names, linked by its summary | "Made from the proposal {proposal}." | "提案 {proposal} から作られた変更です。" |
+| `why.proposal_named` | a change in that list whose message names a proposal that the acceptance records do not tie to it: the proposal, linked by its summary, as the message names it and no more | "The message of this change names the proposal {proposal}." | "この変更のメッセージは、提案 {proposal} を示しています。" |
 | `why.proposal_unlisted` | a change in that list whose proposal cannot be shown | "The message of this change names a proposal that is not among the records of this wiki that you may read." | "この変更のメッセージが示す提案は、あなたが読めるこのウィキの記録にありません。" |
 | `why.proposal_unconfirmed` | a change in that list whose message names a proposal that the acceptance records do not tie to it | "This wiki's records do not show that this proposal was accepted as this change, so its review is not shown here." | "この提案がこの変更として受け入れられたことは、このウィキの記録からは確認できないため、そのレビューはここに示しません。" |
 | `why.review_heading` | a change in that list: the heading of what was said about the proposal | "Review" | "レビュー" |
 | `why.review_none` | under it when there is nothing | "Nobody commented or decided on this proposal." | "この提案にコメントや決定をした人はいません。" |
-| `why.decision_words` | after a decision, when the reviewer wrote words with it | "They wrote: “{text}”" | "次のように書き添えました:「{text}」" |
-| `why.comment` | a comment in the review | "{author} commented, on revision {number}: “{text}”" | "{author}が修正版 {number} についてコメントしました:「{text}」" |
+| `why.decision_words` | after a decision, when the reviewer wrote words with it | "They wrote: “{text}”" | "次のように書き添えました: 「{text}」" |
+| `why.comment` | a comment in the review | "{author} commented, on revision {number}: “{text}”" | "{author} が修正版 {number} についてコメントしました: 「{text}」" |
 | `why.review_more` | after the review, when it is longer than one page of this kind shows | "{count} more item of the review is on the proposal's page." / "{count} more items of the review are on the proposal's page." | "レビューのうちさらに {count} 件は提案のページにあります。" |
 | `why.sources_heading` | a change in that list: the heading of what the proposer wrote in the proposal's own *Sources* field (shown only when the field is not empty; the sources attached to the claim are on its page) | "The proposal's Sources field" | "提案の「出典」欄" |
 | `parts.attach` | the link after a paragraph in the list of parts: the form that attaches a source to it | "Attach a source" | "出典を付ける" |
@@ -1240,22 +1240,22 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `propose.claim_drop_legend` | the legend of the box that confirms the removal of a paragraph that has sources attached | "Paragraphs you are removing" | "削除する段落" |
 | `propose.claim_drop` | the box that confirms that removal; `{excerpt}` is how the paragraph begins | "Remove “{excerpt}”. It stops being where its claim is said, and the reviewer will see that." | "「{excerpt}」を削除する。この段落は主張が書かれている場所ではなくなり、レビュアーにもそのことが示されます。" |
 | `know.heading` | the heading of the list of what a proposal does to claims and sources | "Claims and sources in this proposal" | "この提案での主張と出典" |
-| `know.claim_made` | a line of that list: a claim is recorded; `{claim}` is the claim, named by an excerpt of a paragraph it is said in (or its identifier when none is found), (see `know.subject_claim_id`), `{kind}` what kind of statement, `{count}` in how many places it is said, `{standing}` its community status | "Records the claim {claim} ({kind}), said in {count} place. Its community status: {standing}." / "Records the claim {claim} ({kind}), said in {count} places. Its community status: {standing}." | "主張{claim}を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い：{standing}。" |
+| `know.claim_made` | a line of that list: a claim is recorded; `{claim}` is the claim, named by an excerpt of a paragraph it is said in (or its identifier when none is found), (see `know.subject_claim_id`), `{kind}` what kind of statement, `{count}` in how many places it is said, `{standing}` its community status | "Records the claim {claim} ({kind}), said in {count} place. Its community status: {standing}." / "Records the claim {claim} ({kind}), said in {count} places. Its community status: {standing}." | "主張 {claim} を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い: {standing}。" |
 | `know.cite` | under that line, and for a claim's sources; `{source}` is the source's name, set apart | "Cites the source {source}: it {relation} the claim {bearing}, judged on the wording it has in this proposal's result." | "出典 {source} を引用します: {relation}（{bearing}）。この提案を反映した結果で主張が持つ文言で判断しています。" |
 | `know.cite_unjudged` | the same line, when the link is judged on a wording the claim does not have in the proposal's result (a draft: it cannot be sent as it is); `{source}` is the source's name, set apart | "Cites the source {source}: it {relation} the claim {bearing}, judged on a wording the claim does not have in this proposal's result." | "出典 {source} を引用します: {relation}（{bearing}）。この提案を反映した結果で主張が持たない文言で判断されています。" |
 | `know.source_recorded` | a line of that list: a source is recorded; `{source}` is its name (title, author, date), set apart, `{kind}` what kind | "Records the source {source} ({kind})." | "出典 {source} を記録します（{kind}）。" |
-| `know.claim_changed` | a line of that list: a claim that exists is changed, the changes follow; `{claim}` is the claim, named as in `know.claim_made` | "Changes the claim {claim}:" | "主張{claim}を変更します:" |
+| `know.claim_changed` | a line of that list: a claim that exists is changed, the changes follow; `{claim}` is the claim, named as in `know.claim_made` | "Changes the claim {claim}:" | "主張 {claim} を変更します:" |
 | `know.source_changed` | a line of that list: a source that exists is changed, the changes follow; `{source}` is its name as the wiki has it, set apart | "Changes the source {source}:" | "出典 {source} を変更します:" |
-| `know.removed_claim` | a line of that list; `{claim}` is the claim, named as in `know.claim_made` | "Removes the claim {claim}." | "主張{claim}を削除します。" |
+| `know.removed_claim` | a line of that list; `{claim}` is the claim, named as in `know.claim_made` | "Removes the claim {claim}." | "主張 {claim} を削除します。" |
 | `know.removed_source` | a line of that list; `{source}` is its name, set apart | "Removes the source {source}." | "出典 {source} を削除します。" |
 | `know.unreadable` | a line of that list: a file is not in the form the wiki reads; `{file}` is its name, `{reason}` says which rule | "The file {file} in this proposal is not in the form the wiki reads. {reason}" | "この提案のファイル {file} は、ウィキが読める形になっていません。{reason}" |
 | `know.change_kind` | under a changed claim | "The kind of statement becomes {kind}." | "記述の種類が {kind} になります。" |
 | `know.change_lifecycle` | under a changed claim | "Where it stands in its life becomes: {lifecycle}." | "主張の段階が「{lifecycle}」になります。" |
 | `know.change_standing` | under a changed claim: its community status changes | "Its community status changes from {from} to {to}." | "コミュニティでの扱いが「{from}」から「{to}」に変わります。" |
-| `know.change_said` | under a changed claim; `{paragraph}` is the paragraph, named by its page and an excerpt of its words (see `know.subject_paragraph`) | "It is said in one more paragraph: {paragraph}." | "もう一つの段落にも書かれることになります：{paragraph}。" |
+| `know.change_said` | under a changed claim; `{paragraph}` is the paragraph, named by its page and an excerpt of its words (see `know.subject_paragraph`) | "It is said in one more paragraph: {paragraph}." | "もう一つの段落にも書かれることになります: {paragraph}。" |
 | `know.change_unsaid` | under a changed claim: a paragraph stops being where it is said; `{paragraph}` is the paragraph, named by its page and an excerpt of its words (see `know.subject_paragraph`) | "It is no longer said in the paragraph {paragraph}: the paragraph is removed, or the claim lets it go." | "段落 {paragraph} には書かれなくなります。段落が削除されるか、主張がその段落から外れます。" |
-| `know.change_related` | under a changed claim; `{other}` is the other claim, named as in `know.claim_made`, `{relation}` says how it relates to it | "A relation to the claim {other} is added: {relation}." | "主張{other}との関係が加わります: {relation}。" |
-| `know.change_unrelated` | under a changed claim | "A relation to the claim {other} is removed: {relation}." | "主張{other}との関係がなくなります: {relation}。" |
+| `know.change_related` | under a changed claim; `{other}` is the other claim, named as in `know.claim_made`, `{relation}` says how it relates to it | "A relation to the claim {other} is added: {relation}." | "主張 {other} との関係が加わります: {relation}。" |
+| `know.change_unrelated` | under a changed claim | "A relation to the claim {other} is removed: {relation}." | "主張 {other} との関係がなくなります: {relation}。" |
 | `know.change_uncited` | under a changed claim; `{source}` is the source's name, set apart | "It no longer cites the source {source}." | "出典 {source} を引用しなくなります。" |
 | `know.change_recited` | under a changed claim: how a source it cites speaks to it changes | "The source {source}, which it cites, now {relation} it {bearing}." | "引用している出典 {source} と主張の関係が変わります: {relation}（{bearing}）。" |
 | `know.change_noted` | under a changed claim | "The note on the source {source}, which it cites, changes." | "引用している出典 {source} のメモが変わります。" |
@@ -1339,23 +1339,23 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `touch.nothing_to_judge` | a note: every claim of the list is judged on the wording it has now | "Nothing needs judging again: each of these claims is judged on the wording it has now." | "改めて判断する必要はありません。これらの主張はどれも、いまの文面について判断されています。" |
 | `touch.reconfirm_open` | a note in place of the reconfirm step: a proposal made to judge the claims again is still open (the placeholder links to it) | "Judging these claims again is already proposed: {proposal}. That proposal is still open." | "これらの主張を改めて判断する提案はすでにあります: {proposal}。その提案はまだ開いています。" |
 | `touch.reconfirm_done` | a note in place of the reconfirm step: an accepted proposal judged every claim of the list again | "Each of these claims was judged again on the wording it has now, by a proposal that was accepted." | "これらの主張はどれも、受け入れられた提案で、いまの文面について改めて判断されています。" |
-| `touch.reconfirm_of` | a note on a curation proposal made by the reconfirm step: the change it re-confirms; `{proposal}` links the proposal that made that change | "This proposal judges again the claims that the change made by {proposal} left judged on an earlier wording." | "この提案は、{proposal}による変更で以前の文面について判断されたままになった主張を、改めて判断します。" |
+| `touch.reconfirm_of` | a note on a curation proposal made by the reconfirm step: the change it re-confirms; `{proposal}` links the proposal that made that change | "This proposal judges again the claims that the change made by {proposal} left judged on an earlier wording." | "この提案は、{proposal} による変更で以前の文面について判断されたままになった主張を、改めて判断します。" |
 | `invalid.knowledge_not_shown` | when a proposal's claim or source file changes something its page would not describe line by line | "A change to a claim or a source in this proposal is one this page would not describe, so nobody reviewing it could see what it does. It is not sent." | "この提案の主張または出典の変更には、このページが説明しないものがあり、確認する人が内容を見られません。送信できません。" |
 | `invalid.knowledge_unjudged` | when a proposal adds or changes a source link judged on a wording the claim does not have once the proposal is made | "A source link this proposal adds to a claim or changes is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent." | "この提案が主張に追加または変更する出典との結びつきは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。" |
 | `invalid.knowledge_status_unjudged` | when a proposal sets or changes a claim's community status judged on a wording the claim does not have once the proposal is made | "The community status this proposal sets on a claim is judged on a wording that no paragraph of that claim has once the proposal is made. It is not sent." | "この提案が主張に設定するコミュニティでの扱いは、提案を反映した結果にその主張のどの段落にも存在しない文言で判断されています。送信できません。" |
-| `know.change_rejudged` | a line of a proposal: what a status or a source was judged on is now this wording; `{subject}` is the next two rows, `{words}` the wording | "What {subject} was judged on becomes this wording: “{words}”" | "{subject}を判断したときの文面が、次の文面に変わります：「{words}」" |
-| `know.change_rejudged_unseen` | the same, when no paragraph of the claim has that wording once the proposal is made | "What {subject} was judged on becomes a wording that none of the claim's paragraphs has once this proposal is made." | "{subject}を判断したときの文面が、この提案のあとには主張のどの段落にもない文面に変わります。" |
-| `know.change_rejudged_cleared` | the same, when it is no longer tied to a wording | "It is no longer recorded which wording {subject} was judged on." | "{subject}を判断した文面は、記録されなくなります。" |
+| `know.change_rejudged` | a line of a proposal: what a status or a source was judged on is now this wording; `{subject}` is the next two rows, `{words}` the wording | "What {subject} was judged on becomes this wording: “{words}”" | "{subject} を判断したときの文面が、次の文面に変わります: 「{words}」" |
+| `know.change_rejudged_unseen` | the same, when no paragraph of the claim has that wording once the proposal is made | "What {subject} was judged on becomes a wording that none of the claim's paragraphs has once this proposal is made." | "{subject} を判断したときの文面が、この提案のあとには主張のどの段落にもない文面に変わります。" |
+| `know.change_rejudged_cleared` | the same, when it is no longer tied to a wording | "It is no longer recorded which wording {subject} was judged on." | "{subject} を判断した文面は、記録されなくなります。" |
 | `know.rejudged_status` | the subject of those lines: the claim's status | "its community status" | "コミュニティでの扱い" |
 | `know.rejudged_source` | the subject of those lines: a source the claim cites; `{source}` is its name, set apart | "the source {source} that it cites" | "引用している出典 {source}" |
 | `know.nothing_changes` | a note on a proposal page whose claim and source files are the files the wiki already has | "The claim and source files in this proposal are the files the wiki already has: they change nothing." | "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。" |
 | `attach.direction` | a problem: a text of the source holds a character that changes the direction of text or is not shown | "A text in the source holds a character that changes the direction of text or is not shown, which cannot be kept." | "出典の文章に、文字の向きを変える文字や、表示されない文字が含まれていて、保存できません。" |
 | `know.replaced_unreadable_claim` | a line of a proposal: a claim file the wiki has and cannot read is replaced or removed; `{id}` is its identifier | "Replaces or removes a claim file that cannot be read ({id}). What it held is not known." | "読み取れない主張ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
 | `know.replaced_unreadable_source` | the same, for a source file | "Replaces or removes a source file that cannot be read ({id}). What it held is not known." | "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。" |
-| `know.made_lifecycle` | under a recorded claim | "Where it stands in its life: {lifecycle}." | "主張の段階：{lifecycle}。" |
-| `know.made_related` | under a recorded claim; `{other}` is the other claim, named as in `know.claim_made` | "It has a relation to the claim {other}: {relation}." | "主張{other}との関係があります: {relation}。" |
-| `know.source_made_availability` | under a recorded source | "Whether it can be had: {availability}." | "入手できるかどうか：{availability}。" |
-| `know.source_where` | under a recorded source; `{form}` is how the reference is written, `{reference}` the reference | "Where it is found ({form}): {reference}." | "参照先（{form}）：{reference}。" |
+| `know.made_lifecycle` | under a recorded claim | "Where it stands in its life: {lifecycle}." | "主張の段階: {lifecycle}。" |
+| `know.made_related` | under a recorded claim; `{other}` is the other claim, named as in `know.claim_made` | "It has a relation to the claim {other}: {relation}." | "主張 {other} との関係があります: {relation}。" |
+| `know.source_made_availability` | under a recorded source | "Whether it can be had: {availability}." | "入手できるかどうか: {availability}。" |
+| `know.source_where` | under a recorded source; `{form}` is how the reference is written, `{reference}` the reference | "Where it is found ({form}): {reference}." | "参照先（{form}）: {reference}。" |
 | `know.source_copy` | under a recorded source | "A copy of it is kept." | "写しが保存されています。" |
 | `know.source_change_unsuperseded` | under a changed source | "It is no longer marked as replaced." | "置き換えられたという印がなくなります。" |
 | `know.source_change_reference_cleared` | under a changed source | "It no longer says where it is found." | "参照先が書かれなくなります。" |
@@ -1366,10 +1366,10 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `know.subject_words` | the name of a paragraph in a line of that list when its page cannot be named, or the paragraph cannot be found (then `{words}` is its marker, `^` and the block's id); `{words}` is otherwise an excerpt of its words, set apart | "“{words}”" | "「{words}」" |
 | `know.subject_paragraph` | the name of a paragraph in a line of that list: `{words}` is an excerpt of its words (the first 80 characters), set apart, `{page}` the title of the page it is on, as the proposal leaves it, set apart | "“{words}” on the page {page}" | "ページ {page} の「{words}」" |
 | `know.subject_paragraph_block` | the same, when another paragraph of that page begins with the same words (a claim that moves between them would read as no change); `{block}` is the marker of the block, in `<code>` | "“{words}” (the paragraph marked {block}) on the page {page}" | "ページ {page} の「{words}」（段落の印 {block}）" |
-| `know.removed_had_standing` | under a removed claim: what is lost with it; `{standing}` is the community status it had | "Its community status goes with it: {standing}." | "コミュニティでの扱いも一緒に削除されます：{standing}。" |
+| `know.removed_had_standing` | under a removed claim: what is lost with it; `{standing}` is the community status it had | "Its community status goes with it: {standing}." | "コミュニティでの扱いも一緒に削除されます: {standing}。" |
 | `know.removed_had_link` | under a removed claim, one line for each source it cited; `{source}` is the source's name, set apart, `{relation}` and `{bearing}` how it spoke to the claim | "Its link to the source {source} goes with it: it {relation} the claim {bearing}." | "出典 {source} との結びつきも一緒に削除されます: {relation}（{bearing}）。" |
-| `know.removed_had_reviewed` | under a removed source that was marked as checked; `{day}` is the day | "The day it was last checked goes with it: {day}." | "最後に確認した日も一緒に削除されます：{day}。" |
-| `know.removed_had_availability` | under a removed source; `{availability}` is what was recorded of whether it can be had | "What is recorded of whether it can be had goes with it: {availability}." | "入手できるかどうかの記録も一緒に削除されます：{availability}。" |
+| `know.removed_had_reviewed` | under a removed source that was marked as checked; `{day}` is the day | "The day it was last checked goes with it: {day}." | "最後に確認した日も一緒に削除されます: {day}。" |
+| `know.removed_had_availability` | under a removed source; `{availability}` is what was recorded of whether it can be had | "What is recorded of whether it can be had goes with it: {availability}." | "入手できるかどうかの記録も一緒に削除されます: {availability}。" |
 | `health.sources_name` | the name of the list of sources a person should look at again | "Sources to review" | "見直す出典" |
 | `health.sources_desc` | what that list shows | "Sources that were last reviewed long ago or never, and sources a person marked as unavailable, each with the claims that cite it. The wiki checks nothing and fetches nothing: a person looks at the source and says so in a proposal." | "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が入手できないと記した出典を、それを引用する主張とともに示します。ウィキは何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。" |
 | `health.col_source` | the heading of the column with a source's name | "Source" | "出典" |
@@ -1381,7 +1381,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `health.sources_never` | a reason in that list: no one has recorded looking at the source | "No one has recorded looking at it." | "確認したと記録した人はまだいません。" |
 | `health.sources_last` | under a source in that list that is listed for another reason; `{day}` is the day it was last reviewed, as written | "Last reviewed on {day}." | "最後の確認は {day} です。" |
 | `health.sources_overdue` | a reason in that list; `{day}` is the day it was last reviewed, as written, `{limit}` the number of days after which a review is old | "Last reviewed on {day}, more than {limit} days ago." | "最後の確認は {day} で、{limit} 日を超えて前です。" |
-| `health.sources_claims` | in the cell of the claims that cite a source; `{count}` is how many | "{count} claim cites it:" / "{count} claims cite it:" | "{count} 件の主張がこれを引用しています：" |
+| `health.sources_claims` | in the cell of the claims that cite a source; `{count}` is how many | "{count} claim cites it:" / "{count} claims cite it:" | "{count} 件の主張がこれを引用しています:" |
 | `health.sources_cut` | after that sentence when more claims cite the source than are named; `{limit}` is how many are named | "The first {limit} are named." | "先頭の {limit} 件だけを挙げています。" |
 | `health.sources_no_claims` | in the cell of the claims when no claim cites the source | "No claim cites it." | "これを引用する主張はありません。" |
 | `health.sources_claim` | the name of a claim that cites a source; `{where}` is the page it is said on, `{how}` how the source bears on it | "{where} ({how})" | "{where}（{how}）" |

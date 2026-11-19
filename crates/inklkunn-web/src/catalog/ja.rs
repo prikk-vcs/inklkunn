@@ -5,7 +5,7 @@
 //! English table's. The words are the glossary's (`docs/glossary.md`, section 2 and section 4); a test holds
 //! the two equal.
 
-use super::{Entry, msg, plural_msg};
+use super::{Entry, msg};
 
 /// The language's name in itself, for the switcher.
 pub const ENDONYM: &str = "日本語";
@@ -1154,7 +1154,7 @@ pub const CATALOG: &[Entry] = &[
     msg("inbox.someone", "だれか"),
     msg(
         "inbox.event_reviewed",
-        "{person}が {wiki} のあなたの提案 {proposal} をレビューしました。",
+        "{person} が {wiki} のあなたの提案 {proposal} をレビューしました。",
     ),
     msg(
         "inbox.event_accepted",
@@ -1162,27 +1162,27 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "inbox.event_declined",
-        "{person}が {wiki} のあなたの提案 {proposal} を見送りました。",
+        "{person} が {wiki} のあなたの提案 {proposal} を見送りました。",
     ),
     msg(
         "inbox.event_needs_revision",
-        "{person}が {wiki} のあなたの提案 {proposal} の修正を依頼しました。",
+        "{person} が {wiki} のあなたの提案 {proposal} の修正を依頼しました。",
     ),
     msg(
         "inbox.event_withdrawn",
-        "{person}が {wiki} の提案 {proposal} を取り下げました。",
+        "{person} が {wiki} の提案 {proposal} を取り下げました。",
     ),
     msg(
         "inbox.event_superseded",
-        "{person}が {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。",
+        "{person} が {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。",
     ),
     msg(
         "inbox.event_replied",
-        "{person}が {wiki} の {proposal} のディスカッションにコメントしました。",
+        "{person} が {wiki} の {proposal} のディスカッションにコメントしました。",
     ),
     msg(
         "inbox.event_mentioned",
-        "{person}が {wiki} の {proposal} のディスカッションであなたに言及しました。",
+        "{person} が {wiki} の {proposal} のディスカッションであなたに言及しました。",
     ),
     msg(
         "inbox.event_watched",
@@ -1272,7 +1272,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "state_note.needs_revision",
-        "この提案は、履歴に取り込む前に {author}による修正が必要です。",
+        "この提案は、履歴に取り込む前に {author} による修正が必要です。",
     ),
     msg(
         "state_note.accepted",
@@ -1297,15 +1297,15 @@ pub const CATALOG: &[Entry] = &[
     msg("proposal.another", "別の提案"),
     msg(
         "proposal.reason_declined",
-        "{person}がこの提案を見送りました。理由: {reason}",
+        "{person} がこの提案を見送りました。理由: {reason}",
     ),
     msg(
         "proposal.reason_withdrawn",
-        "{person}がこの提案を取り下げました。理由: {reason}",
+        "{person} がこの提案を取り下げました。理由: {reason}",
     ),
     msg(
         "proposal.reason_asked",
-        "{person}が修正を求めました。理由: {reason}",
+        "{person} が修正を求めました。理由: {reason}",
     ),
     msg("outcome.signed", "署名して履歴に記録済み"),
     msg("outcome.overlap", "停止: 変更が重なっています"),
@@ -1327,9 +1327,8 @@ pub const CATALOG: &[Entry] = &[
         "outcome_note.busy",
         "別の変更を履歴に記録している最中です。何も変更していません。しばらくしてからもう一度お試しください。",
     ),
-    plural_msg(
+    msg(
         "outcome_note.busy_depth",
-        "あなたの前に {count} 件の受け入れが待っています。",
         "あなたの前に {count} 件の受け入れが待っています。",
     ),
     msg(
@@ -1690,18 +1689,13 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.part_changed", "部分 {number} が変更されます"),
     msg("changes.part_added", "部分 {number} が追加されます"),
     msg("changes.part_removed", "部分 {number} が削除されます"),
-    plural_msg(
+    msg(
         "changes.unchanged_parts",
-        "{count} 件の部分は変更されません。",
         "{count} 件の部分は変更されません。",
     ),
     msg("title.proposal", "提案: {summary} · {wiki} · {product}"),
     msg("proposal.proposed_by", "提案者: {author}、{when}。"),
-    plural_msg(
-        "proposal.pages",
-        "変更するページ: {count} 件。",
-        "変更するページ: {count} 件。",
-    ),
+    msg("proposal.pages", "変更するページ: {count} 件。"),
     msg(
         "proposal.revision",
         "{total} 件中の {number} 番目の修正版です。",
@@ -1725,7 +1719,7 @@ pub const CATALOG: &[Entry] = &[
         "孤立したコメント: このコメントの対象だった {title} の部分は、提案から無くなっています。対象だった文章:",
     ),
     msg("comment.on_this_part", "部分 {number} にコメントする"),
-    msg("comment.reply", "{author}に返信する"),
+    msg("comment.reply", "{author} に返信する"),
     msg("comment_form.label", "コメントを書く"),
     msg("comment_form.button", "コメントする"),
     msg(
@@ -1734,17 +1728,17 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "comment_form.reply_to",
-        "このコメントは {author}への返信です。",
+        "このコメントは {author} への返信です。",
     ),
     msg("decisions.heading", "判断"),
     msg("decisions.none", "まだ判断したレビュアーはいません。"),
     msg(
         "decision.approved",
-        "{reviewer}が承認しました（修正版 {number} について）。",
+        "{reviewer} が承認しました（修正版 {number} について）。",
     ),
     msg(
         "decision.requested",
-        "{reviewer}が修正を求めました（修正版 {number} について）。",
+        "{reviewer} が修正を求めました（修正版 {number} について）。",
     ),
     msg(
         "decision.older",
@@ -2244,7 +2238,7 @@ pub const CATALOG: &[Entry] = &[
         "claim.status_unknown",
         "このビューでは、この主張はまだ決定されていません。",
     ),
-    msg("claim.decided_by", "{proposal}によって決定されました。"),
+    msg("claim.decided_by", "{proposal} によって決定されました。"),
     msg("claim.decided_link", "決定した提案"),
     msg(
         "claim.decided_unlisted",
@@ -2280,13 +2274,16 @@ pub const CATALOG: &[Entry] = &[
         "views.kind_interpretation_note",
         "競合する理解を、既定のビューと並べて保っています。",
     ),
-    msg("views.forked_from", "{view}から分岐しました。"),
+    msg("views.forked_from", "{view} から分岐しました。"),
     msg(
         "views.no_origin",
         "このビューの出どころは、ウィキに記録されていません。",
     ),
-    msg("views.read_link", "{view}を読む"),
-    msg("views.compare_with_default", "{view}を既定のビューと比べる"),
+    msg("views.read_link", "{view} を読む"),
+    msg(
+        "views.compare_with_default",
+        "{view} を既定のビューと比べる",
+    ),
     msg(
         "views.omitted",
         "ここには最初の {shown} 件のビューを表示しています。残りの {omitted} 件は表示していません。",
@@ -2397,22 +2394,25 @@ pub const CATALOG: &[Entry] = &[
     msg("compare.b_label", "2 つ目のビュー"),
     msg("compare.go", "比べる"),
     msg("compare.pick_two", "異なる 2 つのビューを選んでください。"),
-    msg("compare.pair", "{a}と{b}の比較"),
+    msg("compare.pair", "{a} と {b} の比較"),
     msg("compare.same", "2 つのビューの内容は同じです。"),
     msg("compare.claims_heading", "違いのある主張"),
     msg(
         "compare.claims_none",
         "2 つのビューで違いのある主張はありません。",
     ),
-    msg("compare.claim_said_in", "{page}にある主張"),
+    msg("compare.claim_said_in", "{page} にある主張"),
     msg("compare.claim_unplaced", "どのページにも書かれていない主張"),
     msg("compare.diff_wording", "文面が異なります。"),
-    msg("compare.diff_status", "状態: {va}では{a}、{vb}では{b}。"),
+    msg(
+        "compare.diff_status",
+        "状態: {va} では {a}、{vb} では {b}。",
+    ),
     msg("compare.diff_sources", "出典が異なります。"),
-    msg("compare.only_in", "{view}にだけあります。"),
+    msg("compare.only_in", "{view} にだけあります。"),
     msg(
         "compare.unreadable_in",
-        "{view}にあるこの主張のファイルは読めないため、そこでの状態は示せません。",
+        "{view} にあるこの主張のファイルは読めないため、そこでの状態は示せません。",
     ),
     msg("compare.status_accepted", "受け入れられている"),
     msg("compare.status_contested", "異論あり"),
@@ -2428,7 +2428,7 @@ pub const CATALOG: &[Entry] = &[
         "2 つのビューで違いのあるページはありません。",
     ),
     msg("compare.page_differs", "ページの内容が異なります。"),
-    msg("compare.page_link", "{page}の違い"),
+    msg("compare.page_link", "{page} の違い"),
     msg(
         "compare.pages_omitted",
         "{shown} 件のページを表示しています。違いのあるページがほかに {omitted} 件ありますが、表示していません。",
@@ -2438,9 +2438,9 @@ pub const CATALOG: &[Entry] = &[
     msg("compare.page_heading", "{title}: 2 つのビューでの違い"),
     msg(
         "compare.page_range",
-        "「削除」の行は{a}だけに、「追加」の行は{b}だけにあります。",
+        "「削除」の行は {a} だけに、「追加」の行は {b} だけにあります。",
     ),
-    msg("compare.page_read", "{view}で{page}を読む"),
+    msg("compare.page_read", "{view} で {page} を読む"),
     msg("compare.page_back", "比較に戻る"),
     msg(
         "compare.page_absent",
@@ -2451,7 +2451,7 @@ pub const CATALOG: &[Entry] = &[
         "claim.others_none",
         "ほかのビューで、この主張が異なって読めるものはありません。",
     ),
-    msg("claim.others_compare", "{view}と比べる"),
+    msg("claim.others_compare", "{view} と比べる"),
     msg(
         "claim.others_limit",
         "このページで調べるほかのビューは {shown} 件までです。そのほかのビューは、ビューの比較で確かめてください。",
@@ -2472,9 +2472,8 @@ pub const CATALOG: &[Entry] = &[
         "{page} の各段落がどこから来たのかを、このページの履歴の範囲で示します。ここにある各段落には、それぞれリンクできます。",
     ),
     msg("why.history_link", "{page} の履歴全体"),
-    plural_msg(
+    msg(
         "why.bounded",
-        "このページの変更のうち、最新の {count} 件だけをここで読みました。それより古い変更があり、その前のことは示されません。",
         "このページの変更のうち、最新の {count} 件だけをここで読みました。それより古い変更があり、その前のことは示されません。",
     ),
     msg(
@@ -2489,9 +2488,8 @@ pub const CATALOG: &[Entry] = &[
         "why.unfollowed",
         "このページの履歴を最初までたどれませんでした。古い版を読めなかったか、このページを書いた変更が履歴に載っていません。以下は、読めた変更についてだけ言えることです。",
     ),
-    plural_msg(
+    msg(
         "why.left_out",
-        "さらに {count} 件の段落はたどっていません。1 ページでたどるのは最初の {limit} 件の段落までです。",
         "さらに {count} 件の段落はたどっていません。1 ページでたどるのは最初の {limit} 件の段落までです。",
     ),
     msg("why.paragraphs_heading", "段落"),
@@ -2499,10 +2497,10 @@ pub const CATALOG: &[Entry] = &[
     msg("why.paragraph_label", "段落 {n}"),
     msg(
         "why.written_unchanged",
-        "{change}で書かれました。それ以降は変更されていません。",
+        "{change} で書かれました。それ以降は変更されていません。",
     ),
-    msg("why.last_changed", "最後に変更されたのは{change}です。"),
-    msg("why.first_written", "最初に書かれたのは{change}です。"),
+    msg("why.last_changed", "最後に変更されたのは {change} です。"),
+    msg("why.first_written", "最初に書かれたのは {change} です。"),
     msg(
         "why.first_before",
         "ここで読んだ最も古い変更より前に書かれました。",
@@ -2513,12 +2511,12 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "why.found_written_unchanged",
-        "最も古い文言が見つかったのは{change}です。それ以降の変更は見つかりませんでした。",
+        "最も古い文言が見つかったのは {change} です。それ以降の変更は見つかりませんでした。",
     ),
-    msg("why.found_last", "見つかった最新の変更は{change}です。"),
+    msg("why.found_last", "見つかった最新の変更は {change} です。"),
     msg(
         "why.found_first",
-        "最も古い文言が見つかったのは{change}です。それより前に一致する文言は見つかりませんでした。",
+        "最も古い文言が見つかったのは {change} です。それより前に一致する文言は見つかりませんでした。",
     ),
     msg(
         "why.basis_anchor",
@@ -2531,10 +2529,10 @@ pub const CATALOG: &[Entry] = &[
     msg("why.changes_heading", "読んだ変更"),
     msg("why.changes_none", "このページの変更は読んでいません。"),
     msg("why.change_open", "履歴で変更 {number} を見る"),
-    msg("why.proposal", "提案{proposal}から作られた変更です。"),
+    msg("why.proposal", "提案 {proposal} から作られた変更です。"),
     msg(
         "why.proposal_named",
-        "この変更のメッセージは、提案{proposal}を示しています。",
+        "この変更のメッセージは、提案 {proposal} を示しています。",
     ),
     msg(
         "why.proposal_unlisted",
@@ -2549,14 +2547,13 @@ pub const CATALOG: &[Entry] = &[
         "why.review_none",
         "この提案にコメントや決定をした人はいません。",
     ),
-    msg("why.decision_words", "次のように書き添えました:「{text}」"),
+    msg("why.decision_words", "次のように書き添えました: 「{text}」"),
     msg(
         "why.comment",
-        "{author}が修正版 {number} についてコメントしました:「{text}」",
+        "{author} が修正版 {number} についてコメントしました: 「{text}」",
     ),
-    plural_msg(
+    msg(
         "why.review_more",
-        "レビューのうちさらに {count} 件は提案のページにあります。",
         "レビューのうちさらに {count} 件は提案のページにあります。",
     ),
     msg("why.sources_heading", "提案の「出典」欄"),
@@ -2708,7 +2705,7 @@ pub const CATALOG: &[Entry] = &[
     msg("know.heading", "この提案での主張と出典"),
     msg(
         "know.claim_made",
-        "主張{claim}を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い：{standing}。",
+        "主張 {claim} を記録します（{kind}）。{count} か所に書かれています。コミュニティでの扱い: {standing}。",
     ),
     msg(
         "know.cite",
@@ -2722,9 +2719,9 @@ pub const CATALOG: &[Entry] = &[
         "know.source_recorded",
         "出典 {source} を記録します（{kind}）。",
     ),
-    msg("know.claim_changed", "主張{claim}を変更します:"),
+    msg("know.claim_changed", "主張 {claim} を変更します:"),
     msg("know.source_changed", "出典 {source} を変更します:"),
-    msg("know.removed_claim", "主張{claim}を削除します。"),
+    msg("know.removed_claim", "主張 {claim} を削除します。"),
     msg("know.removed_source", "出典 {source} を削除します。"),
     msg(
         "know.unreadable",
@@ -2741,7 +2738,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.change_said",
-        "もう一つの段落にも書かれることになります：{paragraph}。",
+        "もう一つの段落にも書かれることになります: {paragraph}。",
     ),
     msg(
         "know.change_unsaid",
@@ -2749,11 +2746,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.change_related",
-        "主張{other}との関係が加わります: {relation}。",
+        "主張 {other} との関係が加わります: {relation}。",
     ),
     msg(
         "know.change_unrelated",
-        "主張{other}との関係がなくなります: {relation}。",
+        "主張 {other} との関係がなくなります: {relation}。",
     ),
     msg(
         "know.change_uncited",
@@ -2949,7 +2946,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "touch.reconfirm_of",
-        "この提案は、{proposal}による変更で以前の文面について判断されたままになった主張を、改めて判断します。",
+        "この提案は、{proposal} による変更で以前の文面について判断されたままになった主張を、改めて判断します。",
     ),
     // knowledge: the claims a change touches (handoff 005 K-T5): end
     msg(
@@ -2966,15 +2963,15 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.change_rejudged",
-        "{subject}を判断したときの文面が、次の文面に変わります：「{words}」",
+        "{subject} を判断したときの文面が、次の文面に変わります: 「{words}」",
     ),
     msg(
         "know.change_rejudged_unseen",
-        "{subject}を判断したときの文面が、この提案のあとには主張のどの段落にもない文面に変わります。",
+        "{subject} を判断したときの文面が、この提案のあとには主張のどの段落にもない文面に変わります。",
     ),
     msg(
         "know.change_rejudged_cleared",
-        "{subject}を判断した文面は、記録されなくなります。",
+        "{subject} を判断した文面は、記録されなくなります。",
     ),
     msg("know.rejudged_status", "コミュニティでの扱い"),
     msg("know.rejudged_source", "引用している出典 {source}"),
@@ -2996,16 +2993,16 @@ pub const CATALOG: &[Entry] = &[
         "know.replaced_unreadable_source",
         "読み取れない出典ファイル（{id}）を置き換えるか削除します。その内容は分かっていません。",
     ),
-    msg("know.made_lifecycle", "主張の段階：{lifecycle}。"),
+    msg("know.made_lifecycle", "主張の段階: {lifecycle}。"),
     msg(
         "know.made_related",
-        "主張{other}との関係があります: {relation}。",
+        "主張 {other} との関係があります: {relation}。",
     ),
     msg(
         "know.source_made_availability",
-        "入手できるかどうか：{availability}。",
+        "入手できるかどうか: {availability}。",
     ),
-    msg("know.source_where", "参照先（{form}）：{reference}。"),
+    msg("know.source_where", "参照先（{form}）: {reference}。"),
     msg("know.source_copy", "写しが保存されています。"),
     msg(
         "know.source_change_unsuperseded",
@@ -3029,7 +3026,7 @@ pub const CATALOG: &[Entry] = &[
     // knowledge: subjects told apart (handoff 005 corrections, third round K24): end
     msg(
         "know.removed_had_standing",
-        "コミュニティでの扱いも一緒に削除されます：{standing}。",
+        "コミュニティでの扱いも一緒に削除されます: {standing}。",
     ),
     msg(
         "know.removed_had_link",
@@ -3037,11 +3034,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.removed_had_reviewed",
-        "最後に確認した日も一緒に削除されます：{day}。",
+        "最後に確認した日も一緒に削除されます: {day}。",
     ),
     msg(
         "know.removed_had_availability",
-        "入手できるかどうかの記録も一緒に削除されます：{availability}。",
+        "入手できるかどうかの記録も一緒に削除されます: {availability}。",
     ),
     // knowledge: what leaves with a removal (handoff 005 corrections, third round K27): end
     msg("health.sources_name", "見直す出典"),
@@ -3070,10 +3067,9 @@ pub const CATALOG: &[Entry] = &[
         "health.sources_overdue",
         "最後の確認は {day} で、{limit} 日を超えて前です。",
     ),
-    plural_msg(
+    msg(
         "health.sources_claims",
-        "{count} 件の主張がこれを引用しています：",
-        "{count} 件の主張がこれを引用しています：",
+        "{count} 件の主張がこれを引用しています:",
     ),
     msg(
         "health.sources_cut",
@@ -3109,9 +3105,8 @@ pub const CATALOG: &[Entry] = &[
         "know.curate_link_of",
         "主張 {claim} の扱いや出典の変更を提案する",
     ),
-    plural_msg(
+    msg(
         "know.curate_more",
-        "ほかに {count} 件の主張にも関わります。それぞれの主張のページから、扱いや出典の変更を提案できます。",
         "ほかに {count} 件の主張にも関わります。それぞれの主張のページから、扱いや出典の変更を提案できます。",
     ),
     msg("claim_thread.heading", "この主張についての議論"),
@@ -3119,11 +3114,7 @@ pub const CATALOG: &[Entry] = &[
         "claim_thread.never_changes",
         "議論が主張を変えることはありません。主張を変えるのは、人々が受け入れた提案だけです。",
     ),
-    plural_msg(
-        "claim_thread.total",
-        "{count} 件のコメント",
-        "{count} 件のコメント",
-    ),
+    msg("claim_thread.total", "{count} 件のコメント"),
     msg(
         "claim_thread.none",
         "この主張についての議論はまだありません。",
