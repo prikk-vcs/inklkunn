@@ -2576,14 +2576,12 @@ pub const CATALOG: &[Entry] = &[
         "why.attached_too_large",
         "この変更は大きすぎるため、付けられた出典を一覧にできません。",
     ),
-    plural_msg(
+    msg(
         "why.attached_unreadable",
         "この変更で追加された出典のファイルのうち {count} 件は読み取れません。",
-        "この変更で追加された出典のファイルのうち {count} 件は読み取れません。",
     ),
-    plural_msg(
+    msg(
         "why.attached_more",
-        "この変更で付けられた出典のうちさらに {count} 件は、ここには示していません。",
         "この変更で付けられた出典のうちさらに {count} 件は、ここには示していません。",
     ),
     // Why is this here? (K-T7): end
