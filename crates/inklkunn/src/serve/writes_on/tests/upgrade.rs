@@ -246,6 +246,18 @@ fn masked(html: &str, ports: [u16; 2]) -> String {
         .replace(
             &format!("inklkunn version {}", env!("CARGO_PKG_VERSION")),
             "inklkunn version VERSION",
+        )
+        // Three differences that are this tree's later work and are named, not hidden: Japanese is no longer labelled a
+        // preview in the language switcher and on the About page (the owner signed the catalog off on 2026-11-19, M60), and the
+        // About page's accessibility statement gained the sentence saying so.
+        .replace("日本語</span> (preview)</button>", "日本語</span></button>")
+        .replace(
+            "<p>This translation is a preview. Fluent readers have not checked it yet, so some wording may be wrong.</p>\n",
+            "",
+        )
+        .replace(
+            "<p>The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release.</p>\n",
+            "",
         );
     let mut from = 0;
     while let Some(at) = out
