@@ -52,6 +52,13 @@ fn the_newest_section_has_a_lead_and_its_release_body_fits() {
     let root = workspace_root();
     let changelog = fs::read_to_string(root.join("CHANGELOG.md")).expect("CHANGELOG.md");
     let (tag, section) = newest_section(&changelog);
+    // `Unreleased` collects entries from the day after a release; its lead is written at the cycle's readiness (the plan's
+    // R-4), and the candidate's own heading is what the release workflow reads. So an `Unreleased` section with no lead
+    // line yet is a cycle in progress, not a defect: a lead, once written, is checked like any other, and a release's own
+    // section always is.
+    if tag == "Unreleased" && !section.lines().any(|l| l.starts_with(LEAD_END)) {
+        return;
+    }
     assert!(
         section.lines().any(|l| l.starts_with(LEAD_END)),
         "the `{tag}` section has no line `{LEAD_END}`: its release body would be the whole section"
