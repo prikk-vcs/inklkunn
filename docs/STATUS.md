@@ -525,9 +525,10 @@
   44418546306 is green, and **the release rehearsal is green** (run 44418434708, with the test-only prikk 0.58.0; both
   images run confined). Every exit criterion but the owner's authorization holds.
 
-## Pending on the owner
+- **2026-11-19 — the owner authorized the 0.3.0 cut** (*"Authorized."*, of `docs/releases/0.3.0-plan.md` §9). The
+  CHANGELOG heading is dated the day of the cut, 2026-11-19. The architect tags `0.3.0` and runs the release.
 
-- **Authorize the 0.3.0 cut: the candidate `128b7e1` is ready** (`docs/releases/0.3.0-plan.md` §9; target 2026-11-23; the plan itself was authorized 2026-11-18).
+## Pending on the owner
 
 - **Send the reply to prikk** (`.git-exclude/upstream/prikk/send/draft/2026-11-19-what-we-read-in-your-json-and-0-58-0.md`): it answers their JSON questions and thanks them for 0.58.0. Not urgent: nothing changes in prikk until their owner rules.
 
