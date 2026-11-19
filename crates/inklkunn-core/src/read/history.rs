@@ -819,6 +819,28 @@ impl ReadService {
         Ok((touches, true))
     }
 
+    /// The paths a block created, in the order its operations say them, from the held record or one `show`. `None`
+    /// when the block is too large to list what it did. What *Why is this here?* lists the sources a change attached
+    /// from (the same record the history page reads, so a block inspected for a page's history costs no second `show`).
+    pub(super) fn created_paths(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+    ) -> Result<Option<Vec<String>>, ReadError> {
+        if !is_block_id(block_id) {
+            return Ok(Some(Vec::new()));
+        }
+        Ok(match self.touches_of(wiki, block_id)?.0 {
+            Touches::Known(list) => Some(
+                list.iter()
+                    .filter(|t| t.kind == TouchKind::Create)
+                    .map(|t| t.path.clone())
+                    .collect(),
+            ),
+            Touches::TooLarge => None,
+        })
+    }
+
     fn target(&self, wiki: &WikiRecord, tip: &Tip, title: &str) -> Result<Target, ReadError> {
         let index = self.index_at(wiki, tip)?;
         resolve(&index, title)

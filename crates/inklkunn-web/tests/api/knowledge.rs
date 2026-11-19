@@ -217,6 +217,69 @@ async fn the_view_a_claim_is_read_in_is_named_or_it_is_no_such_view() {
 }
 
 #[tokio::test]
+async fn provenance_lists_the_source_files_each_change_created_with_their_references_as_text() {
+    let w = World::new(
+        "handbook",
+        "The Handbook",
+        &[("pages/Home.md", &home_with(SAID))],
+    );
+    w.fake.say(1, "Create the handbook");
+    w.fake
+        .show(1, shown(vec![op("create-file", &["pages/Home.md"])]));
+    let mut cited = source(1, SourceKind::Primary);
+    cited.reference = Some(inklkunn_core::knowledge::Reference {
+        form: inklkunn_core::knowledge::ReferenceForm::Citation,
+        value: "The Harbour Survey, <b>page</b> 12".to_owned(),
+    });
+    let bare = source(2, SourceKind::Secondary);
+    let paths = [
+        inklkunn_core::knowledge::source_path(&cited.id),
+        inklkunn_core::knowledge::source_path(&bare.id),
+    ];
+    put(&w, &home_with(SAID_NOW), &[], &[cited, bare]);
+    w.fake.say(2, "Reword it and cite sources");
+    w.fake.show(
+        2,
+        shown(vec![
+            op("edit-text", &["pages/Home.md"]),
+            op("create-file", &[paths[0].as_str()]),
+            op("create-file", &[paths[1].as_str()]),
+        ]),
+    );
+    let j = get(&w, "/handbook/-/api/v1/provenance/Home").await.json();
+    let attached = |number: u64| -> Value {
+        j.at("/changes")
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c.at("/number").as_u64() == Some(number))
+            .unwrap_or_else(|| panic!("no change {number} in {j}"))
+            .at("/attached_sources")
+            .clone()
+    };
+    let two = attached(2);
+    let listed = two.at("/sources").as_array().unwrap();
+    assert_eq!(listed.len(), 2, "{two}");
+    assert_eq!(
+        listed.first().unwrap().at("/id"),
+        &Value::from(source_id(1).to_string())
+    );
+    // The reference is data as written (a client that prints it must escape it), never rewritten or linked.
+    assert_eq!(
+        listed.first().unwrap().at("/reference"),
+        "The Harbour Survey, <b>page</b> 12"
+    );
+    assert_eq!(listed.get(1).unwrap().at("/reference"), &Value::Null);
+    assert_eq!(two.at("/unreadable"), 0);
+    assert_eq!(two.at("/omitted"), 0);
+    assert_eq!(two.at("/too_large"), false);
+    // The change that created the page attached none: an empty list, and nothing counted.
+    let one = attached(1);
+    assert_eq!(one.at("/sources").as_array().unwrap().len(), 0, "{one}");
+    assert_eq!(one.at("/omitted"), 0);
+}
+
+#[tokio::test]
 async fn provenance_says_for_each_paragraph_which_change_last_changed_it_and_which_wrote_it() {
     let w = reworded();
     let a = get(&w, "/handbook/-/api/v1/provenance/Home").await;

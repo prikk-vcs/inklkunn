@@ -9,6 +9,13 @@
 //! the proposal records **as the visitor may read them**. A proposal the message names and the visitor may not read
 //! is one plain sentence; a proposal that the acceptance records do not tie to the change has no review shown.
 //!
+//! **The sources a change attached are read from the change itself** (maintenance M56): the source files it created
+//! under `knowledge/sources/`, read at that change ([`inklkunn_core::read::ReadService::attached_sources`]), whether
+//! or not a proposal is named, each as its reference **in text** (never a link to the outside) with the way to the
+//! line of a claim's page that cites it (a source has no page of its own). A change that attached none says
+//! nothing. The reads are bounded: [`MAX_ATTACHED_PER_CHANGE`] files for a change and [`MAX_ATTACHED_PER_REQUEST`]
+//! for the request, the rest counted.
+//!
 //! **It never claims more than the method has.** A paragraph with an `^id` is said to be followed through its
 //! anchor; any other is said to be *traced by matching the text*, in those words, with what that means, and the
 //! sentences about when it was written are worded as what was found (*earliest wording found*), not as what
@@ -20,7 +27,9 @@
 //! the page every missing title gets. No JavaScript, and no colour, icon or number that ranks: the page is a list
 //! of sentences.
 
+use std::cell::Cell;
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
 use askama::Template;
 use axum::extract::rejection::{PathRejection, QueryRejection};
@@ -28,8 +37,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::Principal;
+use inklkunn_core::knowledge::index::KnowledgeIndex;
 use inklkunn_core::read::{
-    Basis, Chain, MAX_WHY_PARAGRAPHS, Presentation, Reach, WhyOutcome, WhyPage,
+    Attached, Basis, Chain, MAX_WHY_PARAGRAPHS, Presentation, Reach, ReadError, WhyOutcome, WhyPage,
 };
 use inklkunn_store::{AcceptanceOutcome, DecisionKind, ProposalId, ProposalRecord, WikiRecord};
 
@@ -55,6 +65,11 @@ const MAX_REVIEW_ITEMS: usize = 20;
 const MAX_SHOWN_CHARS: usize = 300;
 /// The most characters of a paragraph's beginning that name its claim link.
 const START_CHARS: usize = 40;
+/// The most source files of one change that are read to be listed; the rest are counted.
+pub(crate) const MAX_ATTACHED_PER_CHANGE: usize = 10;
+/// The most source files one request reads in all (each is one read of the repository), whatever the number of
+/// changes the page lists; a change that finds none left counts its sources instead.
+pub(crate) const MAX_ATTACHED_PER_REQUEST: usize = 40;
 
 // ------------------------------------------------------------------------------------ the view
 
@@ -91,6 +106,18 @@ struct SourcesView {
     items: Vec<String>,
 }
 
+/// One source a change attached: its reference as text, and the way to the line that cites it.
+struct AttachedItem {
+    text: String,
+    href: Option<(String, String)>,
+}
+
+struct AttachedView {
+    heading: String,
+    items: Vec<AttachedItem>,
+    notes: Vec<String>,
+}
+
 struct ChangeView {
     id: String,
     heading: String,
@@ -101,6 +128,7 @@ struct ChangeView {
     note: Option<String>,
     review: Option<ReviewView>,
     sources: Option<SourcesView>,
+    attached: Option<AttachedView>,
 }
 
 #[derive(Template)]
@@ -179,7 +207,26 @@ struct Reading<'a> {
     services: &'a Services,
     principal: &'a Principal,
     wiki: &'a WikiRecord,
+    /// The view's knowledge index, for the way from a source to a claim that cites it; `None` when it cannot be read
+    /// now (the sources are then listed without that way).
+    index: Option<Arc<KnowledgeIndex>>,
+    /// How many source files this request may still read ([`MAX_ATTACHED_PER_REQUEST`] at the start).
+    left: Cell<usize>,
     t: T,
+}
+
+/// What a change attached, reading at most what is left of the request's share (`left`, which this lowers by what
+/// was read) and [`MAX_ATTACHED_PER_CHANGE`]. The page and the API read the same way.
+pub(crate) fn attached_of(
+    services: &Services,
+    wiki: &WikiRecord,
+    block: &str,
+    left: &mut usize,
+) -> Result<Attached, ReadError> {
+    let limit = (*left).min(MAX_ATTACHED_PER_CHANGE);
+    let found = services.read.attached_sources(wiki, block, limit)?;
+    *left = left.saturating_sub(found.sources.len() + found.unreadable);
+    Ok(found)
 }
 
 /// Do the acceptance records say that this proposal was sealed as this block? A revision of it, whichever. (The API's
@@ -258,6 +305,61 @@ impl Reading<'_> {
             more: (more > 0).then(|| t.msg(Key::WhyReviewMore).n(more as u64).text()),
         })
     }
+
+    /// The source files the change created, each as its reference **in text** (never a link to the outside: what the
+    /// reference says is the author's, and it is escaped, cut and printed as it is), with the way to the line of a
+    /// claim's page that cites it. A change that attached none says nothing; one whose files could not all be listed
+    /// says how many were not, and one too large to list says that.
+    fn attached(&self, view: Option<&str>, block: &str) -> Result<Option<AttachedView>, ReadError> {
+        let t = self.t;
+        let mut left = self.left.get();
+        let found = attached_of(self.services, self.wiki, block, &mut left)?;
+        self.left.set(left);
+        let slug = self.wiki.slug.as_str();
+        let items: Vec<AttachedItem> = found
+            .sources
+            .iter()
+            .map(|source| AttachedItem {
+                text: source
+                    .reference
+                    .as_deref()
+                    .map(shortened)
+                    .filter(|text| !text.is_empty())
+                    .unwrap_or_else(|| t.get(Key::WhyAttachedNoReference)),
+                href: self
+                    .index
+                    .as_deref()
+                    .and_then(|index| index.claims_citing(&source.id).next())
+                    .map(|cited| {
+                        (
+                            paths::claim_source(slug, &cited.claim, &source.id, view),
+                            t.get(Key::WhyAttachedCited),
+                        )
+                    }),
+            })
+            .collect();
+        let mut notes = Vec::new();
+        if found.too_large {
+            notes.push(t.get(Key::WhyAttachedTooLarge));
+        }
+        if found.unreadable > 0 {
+            notes.push(
+                t.msg(Key::WhyAttachedUnreadable)
+                    .n(found.unreadable as u64)
+                    .text(),
+            );
+        }
+        if found.omitted > 0 {
+            notes.push(t.msg(Key::WhyAttachedMore).n(found.omitted as u64).text());
+        }
+        Ok(
+            (!items.is_empty() || !notes.is_empty()).then(|| AttachedView {
+                heading: t.get(Key::WhyAttachedHeading),
+                items,
+                notes,
+            }),
+        )
+    }
 }
 
 /// A change, once: its people as its message records them (what the history page says, and no more), the proposal
@@ -266,7 +368,7 @@ fn change_view(
     reading: &Reading<'_>,
     view: Option<&str>,
     info: &inklkunn_core::read::ChangeInfo,
-) -> ChangeView {
+) -> Result<ChangeView, ReadError> {
     let t = reading.t;
     let slug = reading.wiki.slug.as_str();
     let number = info.number;
@@ -285,9 +387,11 @@ fn change_view(
         note: None,
         review: None,
         sources: None,
+        // What the change itself wrote, whether or not a proposal is named: read from the change, not from a record.
+        attached: reading.attached(view, &info.block_id)?,
     };
     let Some(raw) = info.proposal.as_deref() else {
-        return out;
+        return Ok(out);
     };
     let record: Option<(ProposalId, ProposalRecord)> =
         crate::proposals::parse_id(raw).and_then(|id| {
@@ -300,7 +404,7 @@ fn change_view(
         });
     let Some((id, record)) = record else {
         out.note = Some(t.get(Key::WhyProposalUnlisted));
-        return out;
+        return Ok(out);
     };
     let label = if record.summary.is_empty() {
         t.get(Key::ProposalNoSummary)
@@ -325,18 +429,19 @@ fn change_view(
     );
     if !sealed {
         out.note = Some(t.get(Key::WhyProposalUnconfirmed));
-        return out;
+        return Ok(out);
     }
     out.review = reading.review(&id);
     // The proposal's own *Sources* field, as the proposer wrote it. A source attached to the claim is not in it (the
-    // attach form fills the claim's file instead), so an empty field says nothing here: the claim page lists those.
+    // attach form fills the claim's file instead), so an empty field says nothing here: the change's own list of
+    // the source files it created (above) is where those are.
     if !record.sources.is_empty() {
         out.sources = Some(SourcesView {
             heading: t.get(Key::WhySourcesHeading),
             items: record.sources.iter().map(|s| shortened(s)).collect(),
         });
     }
-    out
+    Ok(out)
 }
 
 // ------------------------------------------------------------------------------------ one paragraph
@@ -554,37 +659,48 @@ fn prepare(
         }
     };
 
-    // The claims said in the page's paragraphs, from the knowledge index of the same view; the page is served
-    // without the links when it cannot be read.
-    let claims = found
-        .page_id
-        .as_deref()
-        .map(
-            |id| match services.read.knowledge_index(&wiki, full.as_deref()) {
-                Ok(index) => offered(&index, id),
-                Err(e) => {
-                    (services.log)(&format!(
-                        "the claims of a page of wiki `{}` could not be read now: {e}",
-                        wiki.slug
-                    ));
-                    Vec::new()
-                }
-            },
-        )
-        .unwrap_or_default();
+    // The claims said in the page's paragraphs, and the claims that cite a source a change attached, from the
+    // knowledge index of the same view; the page is served without the links when it cannot be read.
+    let index = match services.read.knowledge_index(&wiki, full.as_deref()) {
+        Ok(index) => Some(index),
+        Err(e) => {
+            (services.log)(&format!(
+                "the claims of a page of wiki `{}` could not be read now: {e}",
+                wiki.slug
+            ));
+            None
+        }
+    };
+    let claims = match (&index, found.page_id.as_deref()) {
+        (Some(index), Some(id)) => offered(index, id),
+        _ => Vec::new(),
+    };
 
     let principal = services.identity.principal(headers);
     let reading = Reading {
         services,
         principal: &principal,
         wiki: &wiki,
+        index,
+        left: Cell::new(MAX_ATTACHED_PER_REQUEST),
         t,
     };
-    let changes = named_steps(&found)
+    let changes: Result<Vec<ChangeView>, ReadError> = named_steps(&found)
         .into_iter()
         .filter_map(|step| found.changes.get(step))
         .map(|info| change_view(&reading, view.as_deref(), info))
         .collect();
+    let changes = match changes {
+        Ok(changes) => changes,
+        Err(e) => {
+            return Loaded::Shown(crate::history::shown_for(
+                services,
+                Box::new(wiki),
+                "the sources a change attached",
+                e,
+            ));
+        }
+    };
     let mut notes = Vec::new();
     match found.reach {
         Reach::Whole => {}

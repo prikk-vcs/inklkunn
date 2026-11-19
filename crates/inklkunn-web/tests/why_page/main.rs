@@ -6,6 +6,7 @@
 //! sentence is invented.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+mod attached;
 #[path = "../common/mod.rs"]
 mod common;
 mod proposals;

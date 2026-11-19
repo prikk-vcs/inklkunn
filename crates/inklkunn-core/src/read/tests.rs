@@ -27,6 +27,7 @@ fn ttl_zero() -> ReadConfig {
     }
 }
 
+mod attached;
 mod cache;
 mod counts;
 mod failures;

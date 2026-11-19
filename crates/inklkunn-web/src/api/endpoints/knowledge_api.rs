@@ -250,18 +250,32 @@ pub(super) async fn provenance(
                 .flat_map(|p| [p.chain.first_written, p.chain.last_changed])
                 .flatten()
                 .collect();
-            let changes: Vec<Value> = named
-                .into_iter()
-                .filter_map(|step| page.changes.get(step))
-                .map(|info| {
-                    let mut change = shape::change_head(ctx.t, info);
-                    change.insert(
-                        "proposal".to_owned(),
-                        proposal_of(services, ctx, wiki, info),
-                    );
-                    Value::Object(change)
-                })
-                .collect();
+            // The source files each change created, read within one share for the whole request (as the page is).
+            let mut left = crate::knowledge::why::MAX_ATTACHED_PER_REQUEST;
+            let mut changes: Vec<Value> = Vec::new();
+            for info in named.into_iter().filter_map(|step| page.changes.get(step)) {
+                let mut change = shape::change_head(ctx.t, info);
+                change.insert(
+                    "proposal".to_owned(),
+                    proposal_of(services, ctx, wiki, info),
+                );
+                let attached =
+                    crate::knowledge::why::attached_of(services, wiki, &info.block_id, &mut left)
+                        .map_err(|e| from_read(services, wiki, e))?;
+                change.insert(
+                    "attached_sources".to_owned(),
+                    json!({
+                        "sources": attached.sources.iter().map(|s| json!({
+                            "id": s.id,
+                            "reference": s.reference.as_deref().map(shortened),
+                        })).collect::<Vec<_>>(),
+                        "unreadable": attached.unreadable,
+                        "omitted": attached.omitted,
+                        "too_large": attached.too_large,
+                    }),
+                );
+                changes.push(Value::Object(change));
+            }
             Reply::json(&json!({
                 "title": page.title,
                 "tip": tip_json(&page.tip),

@@ -353,8 +353,8 @@ nav.account form { display: inline; margin: 0; }
 .why-paragraphs, .why-changes { list-style: none; padding-inline-start: 0; }
 .why-paragraphs > li, .why-changes > li { margin-block: 1rem; padding-block-start: 0.75rem; border-block-start: 1px solid var(--line); }
 .why-label, .why-excerpt { margin-block: 0 0.25rem; }
-.why-excerpt, .why-chain li, .why-review li, .why-sources li, .why-people li { overflow-wrap: anywhere; }
-.why-chain, .why-people, .why-review, .why-sources, .why-links { margin-block: 0 0.5rem; padding-inline-start: 1.25rem; }
+.why-excerpt, .why-chain li, .why-review li, .why-sources li, .why-attached li, .why-people li { overflow-wrap: anywhere; }
+.why-chain, .why-people, .why-review, .why-sources, .why-attached, .why-links { margin-block: 0 0.5rem; padding-inline-start: 1.25rem; }
 .why-note, .why-basis { color: var(--muted); }
 
 /* What a line of a proposal prints of someone else's words is set apart where it begins and ends (handoff 005 K31): a

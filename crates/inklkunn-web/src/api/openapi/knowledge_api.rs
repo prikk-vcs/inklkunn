@@ -180,6 +180,31 @@ pub(super) fn schemas() -> Map<String, Value> {
             },
         }),
     );
+    change_properties.insert("attached_sources".to_owned(), schema_ref("AttachedSources"));
+    out.insert(
+        "AttachedSources".to_owned(),
+        object(
+            "The source files a change created under `knowledge/sources/`, read at that change: what the change wrote, not what the source says now. An empty `sources` with nothing counted means the change attached none.",
+            json!({
+                "sources": {"type": "array", "maxItems": 10, "items": schema_ref("AttachedSource"), "description": "The files that were read, in the order the change says them, at most 10 for a change and 40 for the whole request."},
+                "unreadable": {"type": "integer", "minimum": 0, "description": "How many of the files read could not be read as a source (not text, too large, a bidirectional control or another reason the format refuses). Never shown."},
+                "omitted": {"type": "integer", "minimum": 0, "description": "How many more files the change created than were read."},
+                "too_large": {"type": "boolean", "description": "The change is too large for what it created to be listed: what it attached is not known, and `sources` is empty."},
+            }),
+            &[],
+        ),
+    );
+    out.insert(
+        "AttachedSource".to_owned(),
+        object(
+            "A source file a change created.",
+            json!({
+                "id": {"type": "string", "description": "The source's id: `sources/{id}` answers for it."},
+                "reference": {"type": ["string", "null"], "description": "Where it is found, as the file wrote it, cut at 300 characters. Untrusted text: never fetched, and never to be made a link by a client that does not mean to."},
+            }),
+            &[],
+        ),
+    );
     out.insert(
         "ProvenanceChange".to_owned(),
         object(

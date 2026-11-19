@@ -2566,6 +2566,26 @@ pub const CATALOG: &[Entry] = &[
         "レビューのうちさらに {count} 件は提案のページにあります。",
     ),
     msg("why.sources_heading", "提案の「出典」欄"),
+    msg("why.attached_heading", "この変更で付けられた出典"),
+    msg("why.attached_no_reference", "参照先が書かれていない出典"),
+    msg(
+        "why.attached_cited",
+        "この出典を引用している主張のページで見る",
+    ),
+    msg(
+        "why.attached_too_large",
+        "この変更は大きすぎるため、付けられた出典を一覧にできません。",
+    ),
+    plural_msg(
+        "why.attached_unreadable",
+        "この変更で追加された出典のファイルのうち {count} 件は読み取れません。",
+        "この変更で追加された出典のファイルのうち {count} 件は読み取れません。",
+    ),
+    plural_msg(
+        "why.attached_more",
+        "この変更で付けられた出典のうちさらに {count} 件は、ここには示していません。",
+        "この変更で付けられた出典のうちさらに {count} 件は、ここには示していません。",
+    ),
     // Why is this here? (K-T7): end
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): start
     msg("parts.attach", "出典を付ける"),

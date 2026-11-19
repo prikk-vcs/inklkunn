@@ -2486,6 +2486,29 @@ pub const CATALOG: &[Entry] = &[
         "{count} more items of the review are on the proposal's page.",
     ),
     msg("why.sources_heading", "The proposal's Sources field"),
+    msg("why.attached_heading", "Sources attached in this change"),
+    msg(
+        "why.attached_no_reference",
+        "A source that gives no reference",
+    ),
+    msg(
+        "why.attached_cited",
+        "See it on the page of a claim that cites it",
+    ),
+    msg(
+        "why.attached_too_large",
+        "This change is too large for the sources it attached to be listed.",
+    ),
+    plural_msg(
+        "why.attached_unreadable",
+        "{count} source file added in this change cannot be read.",
+        "{count} source files added in this change cannot be read.",
+    ),
+    plural_msg(
+        "why.attached_more",
+        "{count} more source attached in this change is not listed here.",
+        "{count} more sources attached in this change are not listed here.",
+    ),
     // Why is this here? (K-T7): end
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): start
     msg("parts.attach", "Attach a source"),

@@ -202,7 +202,12 @@ fn holding_a_claim(slug: &str, name: &str, visibility: Visibility) -> World {
         slug,
         name,
         visibility,
-        &[("pages/Home.md", &common::home_with(said))],
+        // The paragraph is worded differently when the wiki is created, so that the change that adds the claim is the
+        // one that last changed it.
+        &[(
+            "pages/Home.md",
+            &common::home_with("The hidden bridge opened in 1949."),
+        )],
     ));
     w.fake.add_view("alt");
     let mut c = common::claim(1, inklkunn_core::knowledge::Standing::Contested, None, said);
@@ -212,17 +217,34 @@ fn holding_a_claim(slug: &str, name: &str, visibility: Visibility) -> World {
         inklkunn_core::knowledge::Bearing::Direct,
         said,
     )];
-    common::put(
-        &w,
-        &common::home_with(said),
-        &[c],
-        &[common::source(
-            1,
-            inklkunn_core::knowledge::SourceKind::Primary,
-        )],
+    let mut source = common::source(1, inklkunn_core::knowledge::SourceKind::Primary);
+    source.reference = Some(inklkunn_core::knowledge::Reference {
+        form: inklkunn_core::knowledge::ReferenceForm::Citation,
+        value: HIDDEN_REFERENCE.to_owned(),
+    });
+    common::put(&w, &common::home_with(said), &[c], &[source]);
+    // The change that wrote the claim and the source, so that *Why is this here?* and the provenance list the source
+    // the change attached (maintenance M56): its reference is the wiki's own, and a visitor who may not read the wiki
+    // is told no more of it than of the claim.
+    w.fake.say(1, "Create the wiki");
+    w.fake.show(
+        1,
+        common::shown(vec![common::op("create-file", &["pages/Home.md"])]),
+    );
+    w.fake.say(2, "Add a claim and its source");
+    let source_file = inklkunn_core::knowledge::source_path(&common::source_id(1));
+    w.fake.show(
+        2,
+        common::shown(vec![
+            common::op("edit-text", &["pages/Home.md"]),
+            common::op("create-file", &[source_file.as_str()]),
+        ]),
     );
     w
 }
+
+/// A reference only the wiki's own readers may see.
+const HIDDEN_REFERENCE: &str = "Hidden harbour ledger, folio 7";
 
 async fn ask_as(
     world: &World,
@@ -290,6 +312,14 @@ async fn a_restricted_wiki_that_holds_a_claim_answers_every_knowledge_address_as
             "{pattern}: the control page does not carry the claim: {}",
             read.body
         );
+        // The pages that list what a change attached carry the source's reference for a reader, as text.
+        if pattern.contains("/why/Home") || pattern.contains("/provenance/Home") {
+            assert!(
+                read.body.contains(HIDDEN_REFERENCE),
+                "{pattern}: the reference of the source a change attached is listed: {}",
+                read.body
+            );
+        }
         // The person the wiki is open to reads it all the same.
         let member_read = ask_as(
             &secret,
@@ -332,7 +362,9 @@ async fn a_restricted_wiki_that_holds_a_claim_answers_every_knowledge_address_as
                 for hidden in [
                     "hidden bridge",
                     "Secret Wiki",
+                    HIDDEN_REFERENCE,
                     &common::claim_id(1).to_string(),
+                    &common::source_id(1).to_string(),
                 ] {
                     assert!(
                         !real.body.contains(hidden) || pattern.contains(hidden),

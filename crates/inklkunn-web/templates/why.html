@@ -43,7 +43,12 @@
 <ul class="why-sources">
 {% for item in s.items %}<li>{{ item }}</li>
 {% endfor %}</ul>
-{% endif %}<p><a href="{{ c.open.href }}">{{ c.open.label }}</a></p>
+{% endif %}{% if let Some(a) = c.attached %}<h4>{{ a.heading }}</h4>
+{% if !a.items.is_empty() %}<ul class="why-attached">
+{% for item in a.items %}<li>{{ item.text }}{% if let Some((href, label)) = item.href %} <a href="{{ href }}">{{ label }}</a>{% endif %}</li>
+{% endfor %}</ul>
+{% endif %}{% for note in a.notes %}<p class="why-note">{{ note }}</p>
+{% endfor %}{% endif %}<p><a href="{{ c.open.href }}">{{ c.open.label }}</a></p>
 </li>
 {% endfor %}</ol>
 {% endif %}{% endblock %}

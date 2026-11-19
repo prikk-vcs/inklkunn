@@ -31,6 +31,7 @@
 //! says that it was written before the changes read; a history that could not be followed to the end is
 //! [`Reach::Unfollowed`], never guessed across.
 
+mod attached;
 mod trace;
 
 use inklkunn_markup::path::title_to_path;
@@ -40,6 +41,7 @@ use super::history::{ChangeInfo, HistoryRow, MAX_INSPECTED_PER_REQUEST, PageEven
 use super::{Lookup, PageProblem, ReadError, ReadService, Tip};
 use trace::{Fed, Tracer};
 
+pub use attached::{Attached, AttachedSource};
 pub use trace::{Basis, Chain, EXCERPT_CHARS, Paragraph};
 
 /// The most paragraphs of one page that are followed: the same figure as the history's bound on the blocks one
