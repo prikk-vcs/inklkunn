@@ -172,6 +172,119 @@ fn a_doctor_report_of_an_unknown_shape_is_refused() {
     }
 }
 
+/// A report with `line` where a finding goes, and a summary that counts the three known severities only.
+fn with_line(line: &str, counts: &str) -> String {
+    format!("doctor repository: /x\n{line}\nissue summary: {counts}\n")
+}
+
+#[test]
+fn a_finding_of_a_severity_this_reader_does_not_know_is_refused_naming_the_word() {
+    // M58: it used to be skipped, so a `critical` finding left the counts short and the report looked clean.
+    for word in [
+        "critical",
+        "fatal",
+        "notice",
+        "Error",
+        "WARNING",
+        "informational",
+    ] {
+        let text = with_line(
+            &format!("{word} [PRIKK-X]: something is wrong"),
+            "errors=0, warnings=0, info=0",
+        );
+        let said = parse_doctor_output(&text).unwrap_err();
+        assert!(
+            said.contains(&format!("`{word}`")) && said.contains("unreadable"),
+            "{word}: {said}"
+        );
+    }
+    // Beside findings it reads, and after them: the report is refused as a whole, never part-read.
+    let mixed = "doctor repository: /x\ninfo [PRIKK-A]: a\ncritical [PRIKK-DOCTOR-B2]: b\nissue summary: errors=0, warnings=0, info=1\n";
+    let said = parse_doctor_output(mixed).unwrap_err();
+    assert!(said.contains("`critical`"), "{said}");
+    // The word is shown short, whatever prikk printed.
+    let long = with_line(
+        &format!("{} [PRIKK-X]: y", "q".repeat(500)),
+        "errors=0, warnings=0, info=0",
+    );
+    let said = parse_doctor_output(&long).unwrap_err();
+    assert!(said.len() < 200, "{said}");
+}
+
+#[test]
+fn the_three_known_severities_still_parse_with_a_prikk_code() {
+    for (word, counts, expect) in [
+        ("error", "errors=1, warnings=0, info=0", Severity::Error),
+        ("warning", "errors=0, warnings=1, info=0", Severity::Warning),
+        ("info", "errors=0, warnings=0, info=1", Severity::Info),
+    ] {
+        let r = parse_doctor_output(&with_line(&format!("{word} [PRIKK-X]: m"), counts)).unwrap();
+        let d = nth(&r.diagnostics, 0);
+        assert_eq!((d.severity, d.code.as_str()), (expect, "PRIKK-X"), "{word}");
+    }
+}
+
+#[test]
+fn a_line_that_is_not_of_the_shape_of_a_finding_is_still_not_a_finding() {
+    let none = "errors=0, warnings=0, info=0";
+    for line in [
+        // no brackets, a code that is not prikk's, no `]: `, or more than one word before the bracket
+        "critical: something",
+        "critical [X]: something",
+        "critical [PRIKK-x]: lower-case code",
+        "critical [PRIKK-X] no colon",
+        "very critical [PRIKK-X]: two words",
+        // the verification part's lines, under the name of what it checked (hyphenated), as every prikk prints them
+        "ref-publication [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree",
+        "publication-trust [PRIKK-TRUST-PUBLICATION-UNTRUSTED]: block x has no trusted MAINTAINER signature",
+        "signature-envelope [PRIKK-X]: y",
+        // an explanation, and a recommendation-shaped line that is not indented
+        "way out [a seal stopped after it published]: run `prikk seal`",
+        "recommendation: critical [PRIKK-X]: y",
+        "  critical [PRIKK-X]: indented, so a continuation and not a finding",
+    ] {
+        let r = parse_doctor_output(&with_line(line, none))
+            .unwrap_or_else(|e| panic!("{line:?} must not be a finding: {e}"));
+        assert!(r.diagnostics.is_empty(), "{line:?}");
+    }
+}
+
+/// What `prikk doctor` printed, as captured: a repository with one sealed block and an empty queue (`clean`), and one
+/// whose seal was stopped after it published and before it emptied the queue (`cleanup`).
+const DOCTOR_0_55_0_CLEAN: &str = include_str!("fixtures/doctor-0.55.0-clean.txt");
+const DOCTOR_0_55_0_CLEANUP: &str = include_str!("fixtures/doctor-0.55.0-cleanup.txt");
+const DOCTOR_0_57_0_CLEAN: &str = include_str!("fixtures/doctor-0.57.0-clean.txt");
+const DOCTOR_0_57_0_CLEANUP: &str = include_str!("fixtures/doctor-0.57.0-cleanup.txt");
+const DOCTOR_0_58_0_CLEAN: &str = include_str!("fixtures/doctor-0.58.0-clean.txt");
+const DOCTOR_0_58_0_CLEANUP: &str = include_str!("fixtures/doctor-0.58.0-cleanup.txt");
+
+#[test]
+fn the_real_doctor_text_of_0_55_0_0_57_0_and_0_58_0_still_parses() {
+    for (version, clean, cleanup) in [
+        ("0.55.0", DOCTOR_0_55_0_CLEAN, DOCTOR_0_55_0_CLEANUP),
+        ("0.57.0", DOCTOR_0_57_0_CLEAN, DOCTOR_0_57_0_CLEANUP),
+        ("0.58.0", DOCTOR_0_58_0_CLEAN, DOCTOR_0_58_0_CLEANUP),
+    ] {
+        let r = parse_doctor_output(clean).unwrap_or_else(|e| panic!("{version} clean: {e}"));
+        assert_eq!((r.errors, r.warnings, r.info), (0, 0, 1), "{version}");
+        assert!(r.is_clean_for_recovery(), "{version}");
+        // The state a killed seal leaves: the verification part prints the same code as a `ref-publication` line (not a
+        // finding) and `doctor` prints it as the one error; 0.57.0 and 0.58.0 add a `way out [...]` line (not a finding).
+        let r = parse_doctor_output(cleanup).unwrap_or_else(|e| panic!("{version} cleanup: {e}"));
+        assert_eq!((r.errors, r.warnings, r.info), (1, 0, 0), "{version}");
+        assert!(r.is_only_cleanup_pending(), "{version}");
+        assert!(
+            cleanup.contains("\nref-publication [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: "),
+            "{version}: the fixture holds the verification part's line"
+        );
+        assert_eq!(
+            cleanup.contains("\nway out ["),
+            version != "0.55.0",
+            "{version}"
+        );
+    }
+}
+
 #[test]
 fn the_unlock_listing_is_read_with_its_locks_and_its_advisory_kept_but_not_used() {
     let locks = parse_unlock_output(UNLOCK_TWO).unwrap();

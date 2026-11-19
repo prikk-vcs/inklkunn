@@ -288,6 +288,24 @@ fn unreadable(what: &str) -> String {
     format!("unreadable `doctor`/`unlock` output: {what}")
 }
 
+/// The severity word of a line shaped `<word> [PRIKK-<CODE>]: <message>` when the word is none of the three this
+/// reader knows (`error`, `warning`, `info`); `None` for those and for every line of another shape.
+///
+/// A severity is **one word of letters**. The verification part of `doctor`'s text prints lines of the same shape
+/// under the *name of what it checked*, which is hyphenated (`ref-publication [PRIKK-VERIFY-…]: …`,
+/// `publication-trust [PRIKK-TRUST-…]: …`, `signature-envelope [PRIKK-…]: …`; measured on prikk 0.55.0, 0.57.0 and
+/// 0.58.0): those are not findings of the summary's three counts and stay skipped, as before.
+fn unknown_severity(line: &str) -> Option<&str> {
+    let (word, rest) = line.split_once(" [PRIKK-")?;
+    let (code, _message) = rest.split_once("]: ")?;
+    let word_ok = !word.is_empty() && word.bytes().all(|b| b.is_ascii_alphabetic());
+    let code_ok = !code.is_empty()
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'-');
+    (word_ok && code_ok && !matches!(word, "error" | "warning" | "info")).then_some(word)
+}
+
 /// Read the stdout of `prikk doctor` (no repair flag).
 pub fn parse_doctor_output(stdout: &str) -> Result<DoctorReport, String> {
     let mut lines = stdout.lines().filter(|l| !l.trim().is_empty());
@@ -337,6 +355,14 @@ pub fn parse_doctor_output(stdout: &str) -> Result<DoctorReport, String> {
                 i.ok_or_else(|| unreadable("no info count"))?,
             ));
             continue;
+        }
+        // A finding of a severity this reader does not know is never skipped: the counts it reads would be short of
+        // what prikk found (M58). The shape is `<word> [PRIKK-…]: …`; any other line is not a finding.
+        if let Some(word) = unknown_severity(line) {
+            return Err(unreadable(&format!(
+                "a finding has the severity `{}`, which is not error, warning or info",
+                word.chars().take(32).collect::<String>()
+            )));
         }
         for (prefix, severity) in [
             ("error [", Severity::Error),
