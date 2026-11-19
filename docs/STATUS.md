@@ -580,9 +580,20 @@
     C-15d – C-15f, INV-13, INV-14, RR-15: hiding is not removal).
   - **Five questions for the owner,** Q-1 – Q-5.
 
-## Pending on the owner
+- **2026-11-19 — RFC 006 accepted** (*"All your recommendations are accepted."*: Q-1 – Q-5 as recommended), four days
+  ahead of the plan.
+  - **The owner's philosophy check, made before acceptance as asked, refined three points:**
+    - grants are not exported;
+    - a tip's author and summary can be hidden, but not its content;
+    - a hidden author is omitted entry by entry.
+  - **It also added two sentences:** what a restore from the repository alone gives back, and one display for both
+    kinds of protection.
+  - **Threat model v0.4 folded in:** C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15.
+  - **The handoff:** `rfcs/handoffs/006-governance-and-moderation/governance-handoff-v1.md`, G-T1 – G-T7. G-T1 is
+    assignable after R-0.
+  - **The cut target stays 2026-12-10,** with the four days held as buffer.
 
-- **Rule on RFC 006's Q-1 – Q-5** (`rfcs/proposed/006-governance-and-moderation.md`); the 0.4.0 schedule assumes 11-23.
+## Pending on the owner
 
 - **Send the reply to prikk** (`.git-exclude/upstream/prikk/send/draft/2026-11-19-what-we-read-in-your-json-and-0-58-0.md`): it answers their JSON questions and thanks them for 0.58.0. Not urgent: nothing changes in prikk until their owner rules.
 
@@ -606,7 +617,7 @@ M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and h
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **0.3.0 released 2026-11-19.** **The dev team's order now:**
-**0.4.0's plan authorized (2026-11-19).** R-0: maintenance M56 – M59. Then the build of RFC 006, once it is ruled. The test by a person using
+**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0: maintenance M56 – M59; then G-T1 (governance handoff), then G-T2 – G-T7. The test by a person using
 assistive technology is planned before 1.0 or the first public deployment (owner, 2026-11-18).
 
 ## Issue register

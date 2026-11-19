@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
+| Version | **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15; the tests of §7 are named at 0.4.0's readiness). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -156,6 +156,14 @@ is escalated through a policy edit (A-AUTHZ, A-CONTENT).
   A proposer accepts their own proposal only where the policy allows (a wiki with fewer than three maintainers).
 - **C-3c** Policy changes are proposals under the constitutional layers (GV-1); the bootstrap roles cannot
   be removed by a policy edit; protections are authorization outcomes, not UI.
+- **C-3d** A governance file that cannot be read makes the wiki refuse every write, naming the file and the line,
+  while it still reads by its visibility (RFC 006 D-1): fail closed, with the reason shown.
+- **C-3e** Governance files are read only from the default view's tip, and refused in a proposal in any other view
+  (RFC 006 D-1).
+- **C-3f** The hatch: an admin of a wiki can always accept a change to `governance/`, with no approvals, and the
+  acceptance record names the hatch (RFC 006 D-4; INV-14).
+- **C-3g** Protections and restrictions are outcomes of `authorize()` (AZ-3), never of a template, and each refusal
+  names its cause, reason and end (RFC 006 D-7).
 
 ### T-4 — Hostile proposed content
 Attacker-controlled text that becomes a file in a repository: a title that is a path (`../`, reserved names,
@@ -270,6 +278,12 @@ discussion, strategic forks, capture of the maintainer role (register item 7; A-
 - **C-14d** The constitutional layers keep the root roles out of reach of a captured policy (GV-1); no
   opaque reputation becomes a lever for capture (GV-2).
 - **C-14e** The inclusiveness metrics expose concentration and silence (GV-9).
+- **C-14f** Moderation is a recorded, attributed and reversible act. Its log is readable by the wiki's readers and
+  never carries the hidden content, and it is never scripted through the API (RFC 006 D-8, D-12).
+- **C-14g** Appeals are bounded (one open per action per person, plus RFC 004 D-11's quotas) and are decided by
+  someone other than the person who acted (RFC 006 D-9).
+- **C-14h** A maintainer cannot restrict a maintainer or an admin; a restriction is time-limited by the platform's
+  limit and is told to the person with its reason and end (RFC 006 D-7).
 
 ### T-15 — Removal, privacy and the immutable record
 Personal data, defamation, infringing or illegal content in a sealed change; a person's right to be
@@ -282,6 +296,12 @@ forgotten (register item 14; A-CONTENT).
   procedure exists and is rehearsed before any public deployment (GV-6).
 - **C-15c** Pseudonymous participation, no published addresses, account deletion replaces the name with a
   stable pseudonym (PRV-2, PRV-3).
+- **C-15d** No surface serves hidden content (INV-13). For a revision, that is the history row, the change view and
+  any diff from or to it, the page as of the revision with its permalink and raw source, *Why is this here?*, *Compare
+  views*, and the API members for each. A tip's content cannot be hidden; its author and summary can (RFC 006 D-8).
+- **C-15e** The export carries tombstones, never hidden content (RFC 006 D-13; wiki-commons XFER-7).
+- **C-15f** Seeing hidden content through inklkunn is the `moderate` rung's alone, by an explicit act that is audited
+  (RFC 006 D-8).
 
 ### T-16 — The planeter boundary (TB-9)
 A forged identity assertion from a fake planeter; planeter's guarantees weakened by inklkunn.
@@ -427,6 +447,9 @@ ways that containment can fail or weaken:
   - Nothing the knowledge layer shows is fetched, and no reference is a link.
 - **INV-12 — Confined or refused.** prikk and `curl` run inside bubblewrap on every supported host layout. Otherwise
   the server refuses to run them, unless an operator passed the development flag and the banner says so.
+- **INV-13 — Hidden is hidden everywhere.** No inklkunn surface, page or API member serves content hidden by
+  moderation to a principal without the `moderate` rung (RFC 006 D-8; C-15d).
+- **INV-14 — A wiki cannot lock itself.** An admin of a wiki can always change its `governance/` (RFC 006 D-4; C-3f).
 
 ## 5. Residual risks and assumptions (RR-…, ASSUME-…)
 
@@ -502,6 +525,11 @@ ways that containment can fail or weaken:
 - **RR-14 — A restricted wiki's raw source is not served when the content origin has its own host** (IS-18). The
   session cookie does not cross hosts, so the raw source answers *not found* to its own members. This fails closed: a
   loss of availability, not of confidentiality. The page itself reads, and a way across is designed with RFC 006.
+- **RR-15 — Hiding is not removal** (RFC 006). Content hidden by moderation remains in the repository (prikk keeps
+  every object), in the operator's backups and `archive export`, and in any copy or clone made before the hide. Anyone
+  given the repository itself can read it, including a future read-only host (MD-5). Removal from all of those is the
+  permanent removal procedure, planned in the operations RFC and due before any public deployment (0.4.0 plan, P-1;
+  C-15b). The moderation form and SECURITY.md say so.
 - **ASSUME-1** The operator and the host are trusted; inklkunn defends against network actors and malicious
   users, not a hostile operator.
 - **ASSUME-2** prikk's offline `verify` is correct and is the arbiter of history integrity.

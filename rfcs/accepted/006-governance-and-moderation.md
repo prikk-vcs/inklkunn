@@ -1,6 +1,6 @@
 # RFC 006 — Governance and moderation: rules a wiki can read and change, and moderation that hides without erasing
 
-**Status.** **Proposed** by the architect on 2026-11-19, for the owner's rulings on the five questions at the end.
+**Status.** **Accepted by the owner 2026-11-19** (*"All your recommendations are accepted."*: Q-1 – Q-5 ruled as recommended). The owner asked the architect to check each recommendation against the owner's philosophy. That check made three refinements before acceptance: grants are not exported (D-6), a tip's author and summary can be hidden but its content cannot (D-8), and a hidden author is omitted entry by entry (D-13). It also added two sentences: what a restore from the repository alone gives back (D-6), and one display for both kinds of protection (D-7). Handoff: `../handoffs/006-governance-and-moderation/governance-handoff-v1.md`. Proposed by the architect on 2026-11-19.
 This is 0.4.0's R-1 (`docs/releases/0.4.0-plan.md`, authorized 2026-11-19 with P-1 – P-3). **Tracks.** ROADMAP M4
 (0.4.0), theme T6, risks R8 and R9. Requirements `GV-1 … GV-6`, `GV-8`, `CM-7`, `PR-12`, `KN-2`, `C-12`; AC-M4 as the plan
 amends it (P-1); external design `WEB-12`, `GATED-2`; internal design `AZ-2`, `AZ-3`, NR-6; threat model `T-3`,
@@ -115,12 +115,17 @@ Hiding is not removal. prikk keeps every object, and the RFC says where the hidd
     *reviewed by* and every moderation record show both: *accepted by Name (maintainer), under the rules as of
     `<short block id>`*, with that block's own link.
 - **D-6 — Grants stay in the service's store.**
-  - Who holds which rung is in `role_grants`, as today: audited, exported in the bundle's records, and never in the
-    repository. CM-7 lists *roles* under `governance/`, and this RFC reads that as **the rungs and their rules**, not
+  - Who holds which rung is in `role_grants`, as today: audited, never in the repository, and **not in the export**.
+    Carrying roles between wikis is an interchange question, RFC 007's. The bundle names people only as authors, as it
+    does today. CM-7 lists *roles* under `governance/`, and this RFC reads that as **the rungs and their rules**, not
     the names that hold them (question Q-1).
   - **A grant or a revocation is a recorded decision.** It names the person who acted, their rung and the policy
     block, and has an optional reason. Where the policy has a promotion text for the rung, the form shows it.
   - **Who grants:** admins, any rung; maintainers, up to `rungs.grant_up_to`.
+  - **Grants are backed up with the store, and the repository alone does not restore them.** A wiki rebuilt from its
+    repository keeps its rules but not who holds the rungs. The operator then grants again with `inklkunn account
+    grant`, as at a wiki's creation, and the operations RFC's rehearsed restore treats the store and the repository as
+    one set (DUR-1).
   - **The people page** lists the rungs, the promotion texts, and who holds each rung, to anyone who may read the
     wiki's members (members of an `internal` or `restricted` wiki; everyone, for a `public` one).
 - **D-7 — Protections and restrictions: temporary ones are moderation, standing ones are policy** (GV-4, COLL-6;
@@ -131,6 +136,9 @@ Hiding is not removal. prikk keeps every object, and the RFC says where the hidd
     store, append-only. It ends by itself; renewing it is a new action, and lifting it early is an action too.
   - **A standing protection** is the policy's `protect` list, changed only by proposal (D-4).
   - **Both are evaluated inside `authorize(_, propose | accept, page)`** (AZ-3), never in a template.
+  - **One display for both.** A page lists each protection once, with its kind, *by this wiki's rules* or
+    *temporarily, until <date>*, its reason, and what it requires. Where both apply, the stricter decides and both are
+    listed.
   - **A restriction** caps one account's rung in one wiki at `observer` (it may read, but not comment, propose or
     review). It is set by the `moderate` rung with a reason and an expiry within the platform's limit.
     - The person sees the reason and the end date on every action it refuses, and on their own account page.
@@ -145,7 +153,7 @@ Hiding is not removal. prikk keeps every object, and the RFC says where the hidd
     For an accepted proposal, the proposal's revision and the page's revision are one content, so one act hides both
     and every place it is shown. **Hiding the latest revision of an open proposal also declines it,** in the same
     recorded act and with the same reason, because a proposal nobody can read cannot be reviewed.
-  - **The tip of any view cannot be hidden.** The way is to revert or remove it first, by proposal (soft security
+  - **The content of a view's tip cannot be hidden;** its summary and its author can. For content, the way is to revert or remove it first, by proposal (soft security
     first). The moderation form says so, and offers the rollback.
   - **The tombstone** keeps the item's existence, position and identifier. It states a **reason category** (`personal
     data`, `harassment`, `unlawful`, `copyright`, `spam`, `other`), the acting rung and the date, never a name. The
@@ -158,7 +166,8 @@ Hiding is not removal. prikk keeps every object, and the RFC says where the hidd
     - *Compare views*;
     - the API members for each of these.
 
-    Search and backlinks read the tip only, which cannot be hidden.
+    Search and backlinks read only the tip's content, which cannot be hidden. A hidden author or summary of the tip is
+    replaced wherever the page names its last change.
   - **Seeing hidden content:** the `moderate` rung may open it with an explicit *show hidden content*, which is
     audited. Nobody else sees it through inklkunn (question Q-5).
   - **Logged and reversible.** Each hide and unhide is an append-only moderation record. The wiki's **moderation log**
@@ -218,8 +227,9 @@ Hiding is not removal. prikk keeps every object, and the RFC says where the hidd
 - **D-13 — The export carries tombstones, not hidden content** (XFER-7, HIST-12's interchange; question Q-2).
   - `history/<page>.jsonl` marks a hidden revision `suppressed: [content | summary | author]` with its `reason`, and
     omits what is hidden.
-  - A hidden thread comment's `body` is omitted, with the same marker, and a hidden author is not in `users.yaml`.
-  - The manifest declares this. The tip's files are unaffected, because the tip cannot be hidden.
+  - A hidden thread comment's `body` is omitted, with the same marker. An entry whose author is hidden names no author,
+    and `users.yaml` lists a person only for what is not hidden.
+  - The manifest declares this. The tip's files are unaffected, because a tip's content cannot be hidden.
 - **D-14 — The upgrade is a migration and no write.**
   - The store goes 18 → 19 (moderation records, protections, restrictions, appeals), in one transaction at the first
     start, forward only, as at 0.3.0.
@@ -257,7 +267,7 @@ Each one is shown by a named test, on a real prikk where it touches the reposito
    - Hiding an open proposal's latest revision declines it.
    - An unhide restores each exactly.
    - *Show hidden content* is audited.
-   - Hiding a tip is refused, with the rollback offered.
+   - Hiding a tip's content is refused, with the rollback offered; hiding its author or summary is not.
 9. **Appeals.** An appeal is filed, listed and decided, and an overturn reverses the action. A second open appeal on the
    same action is refused, and so is a decision by the person who acted.
 10. **Soft deletion.** A removed page answers `410` with its page, and is restored by the offered proposal. A restricted
@@ -299,7 +309,7 @@ Each one is shown by a named test, on a real prikk where it touches the reposito
   schema can add keys.
 - **Refusing a policy whose approvals cannot be met.** Refused instead: grants change after acceptance, so the check
   would be wrong a day later. The warning and the hatch cover it (D-4).
-- **Hiding the tip.** Refused: a page whose current text is hidden is not a page. Reverting first is soft security, and
+- **Hiding the tip's content.** Refused: a page whose current text is hidden is not a page. Reverting first is soft security, and
   it keeps one rule for every view.
 
 ## Threat model v0.4 additions (folded into `docs/src/inklkunn-03-threat-model.md` on acceptance)
@@ -327,7 +337,7 @@ Each one is shown by a named test, on a real prikk where it touches the reposito
   deployment.
 - **§7** gains the tests of acceptance criteria 3 – 10 and 13, by name, at readiness.
 
-## Questions for the owner (each with the architect's recommendation)
+## Questions for the owner (ruled 2026-11-19: all as recommended)
 
 - **Q-1 — Where do grants live? In the service's store** (D-6), with CM-7's *roles* read as the rungs and their
   rules. The history can never forget a name.
