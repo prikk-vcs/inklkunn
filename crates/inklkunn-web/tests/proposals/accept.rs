@@ -484,7 +484,7 @@ fn cases() -> Vec<Case> {
                 "<h1>The result is not certain</h1>",
                 "read the history before you try again",
             ],
-            japanese: &["<h1>結果を確定できません</h1>"],
+            japanese: &["<h1>結果は不明です</h1>"],
         },
         Case {
             name: "the proposal's state does not allow it",

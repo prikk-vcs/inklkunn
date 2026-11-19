@@ -84,7 +84,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "page.matched_loosely",
-        "「{title}」を探しています。タイトルが最も近いページを表示しています。",
+        "「{title}」が指定されました。タイトルが最も近いページを表示しています。",
     ),
     msg(
         "page.stale",
@@ -336,7 +336,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.invalid_title.detail",
-        "このタイトルでは、ページを指定できません。",
+        "このタイトルはページの名前にできません。",
     ),
     msg(
         "problem.invalid_title.hint",
@@ -737,7 +737,7 @@ pub const CATALOG: &[Entry] = &[
         "health.stale_desc",
         "最近の変更の中で、最後に変更された時期がいちばん古いページ。",
     ),
-    msg("health.back", "すべての一覧"),
+    msg("health.back", "ウィキの健全性の一覧すべて"),
     msg("health.col_page", "ページ"),
     msg("health.col_wanted", "未作成のタイトル"),
     msg("health.col_linked", "リンクしているページ数"),
@@ -866,7 +866,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_number",
-        "形式に数値はありません。日付や年は文字列で書いてください。",
+        "形式上、数値が入らない場所に数値があります。日付や年は文字列で書いてください。",
     ),
     msg(
         "health.rule_value",
@@ -1094,7 +1094,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.nothing_to_change.hint",
-        "提案を却下または取り下げるか、改訂してください。",
+        "提案を見送るか取り下げるか、修正してください。",
     ),
     msg(
         "problem.acceptance_in_progress.title",
@@ -1102,7 +1102,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.acceptance_in_progress.detail",
-        "このリビジョンの先の受け入れが、まだ署名を終えていません。",
+        "この修正版に対する以前の受け入れが、まだ完了していません。",
     ),
     msg(
         "problem.acceptance_in_progress.hint",
@@ -1154,7 +1154,7 @@ pub const CATALOG: &[Entry] = &[
     msg("inbox.someone", "だれか"),
     msg(
         "inbox.event_reviewed",
-        "{person} さんが {wiki} のあなたの提案 {proposal} をレビューしました。",
+        "{person}が {wiki} のあなたの提案 {proposal} をレビューしました。",
     ),
     msg(
         "inbox.event_accepted",
@@ -1162,27 +1162,27 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "inbox.event_declined",
-        "{person} さんが {wiki} のあなたの提案 {proposal} を見送りました。",
+        "{person}が {wiki} のあなたの提案 {proposal} を見送りました。",
     ),
     msg(
         "inbox.event_needs_revision",
-        "{person} さんが {wiki} のあなたの提案 {proposal} の修正を依頼しました。",
+        "{person}が {wiki} のあなたの提案 {proposal} の修正を依頼しました。",
     ),
     msg(
         "inbox.event_withdrawn",
-        "{person} さんが {wiki} の提案 {proposal} を取り下げました。",
+        "{person}が {wiki} の提案 {proposal} を取り下げました。",
     ),
     msg(
         "inbox.event_superseded",
-        "{person} さんが {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。",
+        "{person}が {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。",
     ),
     msg(
         "inbox.event_replied",
-        "{person} さんが {wiki} の {proposal} の議論にコメントしました。",
+        "{person}が {wiki} の {proposal} の議論にコメントしました。",
     ),
     msg(
         "inbox.event_mentioned",
-        "{person} さんが {wiki} の {proposal} の議論であなたに言及しました。",
+        "{person}が {wiki} の {proposal} の議論であなたに言及しました。",
     ),
     msg(
         "inbox.event_watched",
@@ -1272,7 +1272,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "state_note.needs_revision",
-        "この提案は、履歴に取り込む前に {author} さんによる修正が必要です。",
+        "この提案は、履歴に取り込む前に {author}による修正が必要です。",
     ),
     msg(
         "state_note.accepted",
@@ -1297,15 +1297,15 @@ pub const CATALOG: &[Entry] = &[
     msg("proposal.another", "別の提案"),
     msg(
         "proposal.reason_declined",
-        "{person} さんがこの提案を見送りました。理由: {reason}",
+        "{person}がこの提案を見送りました。理由: {reason}",
     ),
     msg(
         "proposal.reason_withdrawn",
-        "{person} さんがこの提案を取り下げました。理由: {reason}",
+        "{person}がこの提案を取り下げました。理由: {reason}",
     ),
     msg(
         "proposal.reason_asked",
-        "{person} さんが修正を求めました。理由: {reason}",
+        "{person}が修正を求めました。理由: {reason}",
     ),
     msg("outcome.signed", "署名して履歴に記録済み"),
     msg("outcome.overlap", "停止: 変更が重なっています"),
@@ -1373,14 +1373,14 @@ pub const CATALOG: &[Entry] = &[
     msg("outcome.in_progress", "この修正版は署名の最中です"),
     msg(
         "outcome_note.in_progress",
-        "この修正版を履歴に取り込む以前の操作が、まだ終わっていません。今回は何も行っていません。しばらく待ってから、提案をもう一度開いてください。",
+        "この修正版を履歴に取り込もうとした前回の操作が、まだ終わっていません。今回は何も行っていません。しばらく待ってから、提案をもう一度開いてください。",
     ),
     msg("outcome.nothing_to_change", "変更するものがありません"),
     msg(
         "outcome_note.nothing_to_change",
         "この提案が求める内容は、すでに履歴に入っています。何も変更していません。",
     ),
-    msg("outcome.store", "結果を確定できません"),
+    msg("outcome.store", "結果は不明です"),
     msg(
         "outcome_note.store",
         "変更を取り込む途中で、記録を利用できなくなりました。変更が履歴に入ったかどうかは分かりません。もう一度試す前に履歴を確認し、このサーバーを運用している人に伝えてください。",
@@ -1413,7 +1413,7 @@ pub const CATALOG: &[Entry] = &[
     msg("overlap.heading", "変更が重なっている箇所"),
     msg(
         "overlap.intro",
-        "ウィキの現在の文面とこの提案が、下の箇所をどちらも変更しています。何も統合していません。両方の文面を見ながら、提案を修正してください。",
+        "ウィキの現在の文面とこの提案が、下の箇所をどちらも変更しています。何も変更していません。両方の文面を見ながら、提案を修正してください。",
     ),
     msg("overlap.caption", "ウィキと提案の両方で変更された箇所"),
     msg("overlap.col_where", "場所"),
@@ -1725,7 +1725,7 @@ pub const CATALOG: &[Entry] = &[
         "孤立したコメント: このコメントの対象だった {title} の部分は、提案から無くなっています。対象だった文章:",
     ),
     msg("comment.on_this_part", "部分 {number} にコメントする"),
-    msg("comment.reply", "{author} さんに返信する"),
+    msg("comment.reply", "{author}に返信する"),
     msg("comment_form.label", "コメントを書く"),
     msg("comment_form.button", "コメントする"),
     msg(
@@ -1734,17 +1734,17 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "comment_form.reply_to",
-        "このコメントは {author} さんへの返信です。",
+        "このコメントは {author}への返信です。",
     ),
     msg("decisions.heading", "判断"),
     msg("decisions.none", "まだ判断したレビュアーはいません。"),
     msg(
         "decision.approved",
-        "{reviewer} さんが承認しました（修正 {number} について）。",
+        "{reviewer}が承認しました（修正 {number} について）。",
     ),
     msg(
         "decision.requested",
-        "{reviewer} さんが変更を求めました（修正 {number} について）。",
+        "{reviewer}が変更を求めました（修正 {number} について）。",
     ),
     msg(
         "decision.older",
@@ -1836,7 +1836,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "lint.visibility",
-        "{guideline}: ページ先頭の公開範囲が、公開・内部・制限のどれでもありません。",
+        "{guideline}: ページ先頭の公開範囲（visibility）が、public・internal・restricted のどれでもありません。",
     ),
     msg(
         "lint.secret",
@@ -1896,7 +1896,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "lint.ambiguous",
-        "{guideline}: リンクが複数のページに当てはまり、どれも近くありません。",
+        "{guideline}: リンクが複数のページに当てはまり、どれがいちばん近いかを決められません。",
     ),
     msg(
         "lint.other",
@@ -2127,7 +2127,7 @@ pub const CATALOG: &[Entry] = &[
         "landing.body",
         "サインインしています。このページが自動で切り替わらない場合は、{link}。",
     ),
-    msg("landing.continue", "続きのページへ進んでください"),
+    msg("landing.continue", "開こうとしていたページへ進んでください"),
     msg(
         "sign_in.provider_not_navigation",
         "プロバイダーでのサインインは、このサイトのサインインのページから、ご自身でアドレスを開いたときにだけ始まります。何も開始されていません。このページのボタンをお使いください。",
@@ -2552,7 +2552,7 @@ pub const CATALOG: &[Entry] = &[
     msg("why.decision_words", "次のように書き添えました:「{text}」"),
     msg(
         "why.comment",
-        "{author}さんが改訂 {number} についてコメントしました:「{text}」",
+        "{author}が改訂 {number} についてコメントしました:「{text}」",
     ),
     plural_msg(
         "why.review_more",
@@ -2686,7 +2686,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.day_not_come",
-        "出典: {title}（{id}）。{day} はどの時間帯でもまだ来ていない日のため、その日に確認した人はいません。確認した日を書くか、日付を空にしてください。",
+        "出典: {title}（{id}）。{day} は、世界のどのタイムゾーンでもまだ来ていない日のため、その日に確認できた人はいません。確認した日を書くか、日付を空にしてください。",
     ),
     msg(
         "propose.claim_held_one",
@@ -2841,8 +2841,8 @@ pub const CATALOG: &[Entry] = &[
     msg("know.rel_refines", "より詳しく述べている"),
     msg("know.rel_supersedes", "置き換える"),
     msg("know.rel_contradicts", "食い違っている"),
-    msg("know.rel_split_from", "から分かれた"),
-    msg("know.rel_merged_into", "に統合された"),
+    msg("know.rel_split_from", "この主張がそこから分かれた"),
+    msg("know.rel_merged_into", "この主張がそこに統合された"),
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): end
     // knowledge: the curation proposal (handoff 005 K-T5): start
     msg(
@@ -2931,7 +2931,10 @@ pub const CATALOG: &[Entry] = &[
         "touch.reconfirm_later",
         "この提案が受け入れられたら、ここから一度の操作で、これらの主張を改めて判断する提案ができます。",
     ),
-    msg("touch.reconfirm_summary", "改めて判断する: {summary}"),
+    msg(
+        "touch.reconfirm_summary",
+        "{summary} の後に主張を改めて判断する",
+    ),
     msg(
         "touch.nothing_to_judge",
         "改めて判断する必要はありません。これらの主張はどれも、いまの文面について判断されています。",
@@ -3274,6 +3277,6 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.check_not_come",
-        "この提案にある出典は、提案の基にした時点とは別の場所で見つかることになっていて、提案が示す新しい場所を確認した日は、どの時間帯でもまだ来ていない日になっています。このままでは受け入れられません。",
+        "この提案にある出典は、提案の基にした時点とは別の場所で見つかることになっていて、提案が示す新しい場所を確認した日は、世界のどのタイムゾーンでもまだ来ていない日になっています。このままでは受け入れられません。",
     ),
 ];

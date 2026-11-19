@@ -432,7 +432,7 @@ async fn a_success_is_a_200_page_in_the_readers_language_that_moves_the_browser_
         "{body}"
     );
     assert!(
-        body.contains("サインインしています。このページが自動で切り替わらない場合は、<a href=\"/\">続きのページへ進んでください</a>。"),
+        body.contains("サインインしています。このページが自動で切り替わらない場合は、<a href=\"/\">開こうとしていたページへ進んでください</a>。"),
         "{body}"
     );
     assert_eq!(done.header("content-language"), Some("ja"));
