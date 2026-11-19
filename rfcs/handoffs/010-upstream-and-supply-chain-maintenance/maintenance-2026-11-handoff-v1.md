@@ -449,3 +449,53 @@ for 0.3.0.** The architect runs CI and the rehearsal on the pushed tip, and brin
 points are recorded for 0.4.0 in the review result:
 - `report_outcome` and a `refusal-v1` on a non-zero exit;
 - a doctor line with an unknown severity word.
+
+## 0.4.0's R-0: four small items (2026-11-19; binding)
+
+0.4.0's plan is authorized (`docs/releases/0.4.0-plan.md`, the owner, 2026-11-19). Its P-3 runs four items recorded
+for 0.4.0, now, before RFC 006 is accepted. **None of them adds a feature.** Each is reviewed as a correction is.
+
+- **M56 — *Why is this here?* lists the sources attached in each change** (RFC 005 D-8 in full; recorded at the 0.3.0
+  readiness review).
+  - For each of a paragraph's two changes (the one that last changed it, and the one that first wrote it), list the
+    source files that change added under `knowledge/`.
+  - Each source is shown as its reference, as **text, never a link to the outside** (C-17a; threat model v0.3), with
+    a link to its own source page in inklkunn.
+  - **A change that attached none says nothing,** not *no source was given*.
+  - *The proposal's Sources field* stays as it is: that section shows the proposal's own text, and is hidden when it
+    is empty.
+  - In both languages, the same in the API's provenance member, and in OpenAPI.
+  - Tests:
+    - a change that attaches two sources lists both;
+    - a later change that touches the paragraph and attaches none lists none for itself;
+    - a reference that holds markup or a bidirectional control is shown as text, or refused as at acceptance;
+    - a restricted wiki answers as an absent wiki does (RC-5's test extended).
+- **M57 — the signer reads a `refusal-v1` on a non-zero exit as prikk's refusal.**
+  - `report_outcome` (`crates/inklkunn-signer/src/writes.rs`, used by `verify`, `worktree-status` and `status`) takes
+    any stdout that begins with `{` as the report.
+  - Check `schema_version` first: `refusal-v1` takes the refusal path, as the read driver's does (`driver.rs`), and its
+    `message` is preferred over stderr.
+  - Tests: a stand-in prints a `refusal-v1` document with exit 1 for each of the three verbs, and the answer is
+    `Refused` naming its message, never `Damaged`.
+- **M58 — a doctor line with an unknown severity is refused.**
+  - In `parse_doctor_output` (`crates/inklkunn-signer/src/recover/text.rs`), a line of the shape `<word> [PRIKK-…]: …`
+    whose word is not `error`, `warning` or `info` is now silently skipped.
+  - Make it *unreadable `doctor` output*, naming the word.
+  - Tests:
+    - `critical [PRIKK-X]: …` is refused;
+    - the three known words still parse;
+    - real doctor text from 0.55.0, 0.57.0 and 0.58.0 still parses;
+    - a line that is not of that shape is still not a finding.
+- **M59 — the joined image tag is attested.** `gh attestation verify oci://ghcr.io/prikk-vcs/inklkunn:0.3.0` answers 404
+  today, because only `0.3.0-amd64` and `0.3.0-arm64` are attested.
+  - In `release.yml`'s `manifest` job, attest the manifest list's digest after the join, with `push-to-registry`. The
+    job needs `id-token: write` and `attestations: write`.
+  - **Run it in rehearsal too,** against the throwaway package's list (`inklkunn-rehearsal:rehearsal`), as the tarball's
+    rehearsal attestation is labelled. Then the first tag run is not the step's first run. Rehearsal attestations may
+    only name the rehearsal package.
+  - `pin-check` keeps holding the shape: no step in rehearsal names the real image.
+  - `docs/RELEASING.md`'s *Verifying a release* names the plain tag beside `-amd64`.
+  - The architect's rehearsal on the result is the test.
+
+Hand back as `010-maintenance-2026-11-r0-review-request.md`, with the whole workspace's numbers on 0.55.0 first,
+shimmed off, on 0.57.0 and on 0.58.0. One CHANGELOG entry goes under `## [Unreleased]`.
