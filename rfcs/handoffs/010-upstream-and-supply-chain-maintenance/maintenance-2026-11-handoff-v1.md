@@ -499,3 +499,30 @@ for 0.4.0, now, before RFC 006 is accepted. **None of them adds a feature.** Eac
 
 Hand back as `010-maintenance-2026-11-r0-review-request.md`, with the whole workspace's numbers on 0.55.0 first,
 shimmed off, on 0.57.0 and on 0.58.0. One CHANGELOG entry goes under `## [Unreleased]`.
+
+## M60 — the Japanese catalog signed off (2026-11-19; binding, with R-0)
+
+The owner signed off the Japanese catalog (DR-7), all 1,315 messages as of 0.3.0, and asked the architect for a final
+check. That check is `.git-exclude/reviewed/ja-catalog-final-check-result.md`. **M60 applies it, and records the
+sign-off, in one commit:**
+- **The corrections:**
+  - §1 (errors);
+  - §2 (one rendering per meaning), with the new rows in `docs/glossary.md` §1 so that 0.4.0 takes them from there;
+  - §3 (typography rules);
+  - §4 (the adopted texts).
+
+  For a rule, find every place by grep, and list the keys changed in the request. **`docs/glossary.md` §2's
+  Japanese column changes with `ja.rs`**, because the test holds them equal.
+- **The sign-off record:**
+  - `JA_DEF.review` becomes `Review::Reviewed { by: "the owner, 2026-11-19" }`;
+  - `ja.rs`'s module text, the glossary's status line and §4, the accessibility statement and the about page say so,
+    with the one sentence of §6 about later messages;
+  - from then on `Accept-Language: ja` selects Japanese. Test it, and test that a preview language still never is.
+- **Tests that hold the rules:**
+  - no ` さん` after a person placeholder;
+  - no full-width colon;
+  - a placeholder next to Japanese text is spaced, except inside 「」;
+  - the §2 terms: for example, no 異議を唱え, no 争われ, no リビジョン, no 運用している人;
+  - each added to the catalog tests, with a mutation.
+
+Hand back with R-0, in `010-maintenance-2026-11-r0-review-request.md`.

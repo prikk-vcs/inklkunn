@@ -593,12 +593,26 @@
     assignable after R-0.
   - **The cut target stays 2026-12-10,** with the four days held as buffer.
 
+- **2026-11-19 — the owner sent the reply to prikk** (`send/2026-11-19-what-we-read-in-your-json-and-0-58-0.md`), and **signed off
+  the Japanese catalog** (DR-7: all 1,315 messages, as of 0.3.0), asking the architect for a final check.
+  - **How the check was made.** Every pair was extracted. The architect ran whole-catalog checks for identical English
+    rendered differently and for each recurring term, three readers each read a third of the catalog, and every finding
+    was verified against the source.
+  - **What it found.** No retired word, and every placeholder matches. There are about a dozen errors, among them
+    *だれか さん* when the actor is unknown, a timezone rendered as a time of day, and 統合 for *nothing was changed*.
+  - **One rendering per meaning:**
+    - a proposal's revision: 修正版;
+    - a claim's community status: 受け入れられている / 異論がある / 未解決 / 未決定, kept apart from the proposal states;
+    - supports / challenges: 裏付ける / 異議を示す;
+    - a source's link to a claim: 結びつき, because a reference is never a link;
+    - the glossary's two people terms everywhere.
+  - **Natural Japanese** fixes, and the typography rules.
+  - **The result and the assignment:** `.git-exclude/reviewed/ja-catalog-final-check-result.md`; maintenance M60 applies
+    it with the sign-off record. Japanese then stops being a preview, and `Accept-Language` selects it.
+
 ## Pending on the owner
 
-- **Send the reply to prikk** (`.git-exclude/upstream/prikk/send/draft/2026-11-19-what-we-read-in-your-json-and-0-58-0.md`): it answers their JSON questions and thanks them for 0.58.0. Not urgent: nothing changes in prikk until their owner rules.
-
-- **Review the Japanese catalog** (DR-7; the owner is the reviewer): 842 messages, every one listed with where it appears in
-  `docs/glossary.md`; until your sign-off Japanese stays a preview that only a reader's own choice turns on.
+- **Nothing now.** Next: the 0.4.0 cut, when the architect proposes it (target 2026-12-10).
 
 ## Pending upstream
 
@@ -617,7 +631,7 @@ M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and h
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **0.3.0 released 2026-11-19.** **The dev team's order now:**
-**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0: maintenance M56 – M59; then G-T1 (governance handoff), then G-T2 – G-T7. The test by a person using
+**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0: maintenance M56 – M60 (M60: the Japanese catalog's corrections and its sign-off); then G-T1 (governance handoff), then G-T2 – G-T7. The test by a person using
 assistive technology is planned before 1.0 or the first public deployment (owner, 2026-11-18).
 
 ## Issue register
