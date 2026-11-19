@@ -528,6 +528,20 @@
 - **2026-11-19 — the owner authorized the 0.3.0 cut** (*"Authorized."*, of `docs/releases/0.3.0-plan.md` §9). The
   CHANGELOG heading is dated the day of the cut, 2026-11-19. The architect tags `0.3.0` and runs the release.
 
+- **2026-11-19 — 0.3.0 released** (M3: claims and views), four days ahead of the target. The tag `0.3.0` is signed by the owner's
+  git configuration, on `599d4cd` (CI 44427697436 green). Release run 44429384172 is green: the gates, both binaries,
+  both images run confined, the attestations, the manifest and the GitHub release
+  (https://github.com/prikk-vcs/inklkunn/releases/tag/0.3.0). crates.io was not published: there is no
+  `CARGO_REGISTRY_TOKEN`, as before.
+  - **Verified by the architect as a reader would** (`docs/RELEASING.md`): the tag's signature; the x86_64 tarball's
+    checksum and its SLSA provenance attestation; `inklkunn --version` names 0.3.0 at `599d4cd`. The image
+    `ghcr.io/prikk-vcs/inklkunn:0.3.0` pulls anonymously (amd64 and arm64), runs as 0.3.0 with prikk 0.54.0, and
+    `0.3.0-amd64` and `0.3.0-arm64` each verify their attestation.
+  - **Recorded for 0.4.0:** the joined tag `:0.3.0` is not itself attested (as for 0.2.0), so `gh attestation verify
+    oci://…:0.3.0` answers 404. Either attest the manifest list too, or say in RELEASING.md that a reader verifies the
+    architecture's tag.
+  - **Next:** the architect drafts RFC 006 (0.4.0, M4 governance), with the items deferred to it, and brings it to the owner.
+
 ## Pending on the owner
 
 - **Send the reply to prikk** (`.git-exclude/upstream/prikk/send/draft/2026-11-19-what-we-read-in-your-json-and-0-58-0.md`): it answers their JSON questions and thanks them for 0.58.0. Not urgent: nothing changes in prikk until their owner rules.
@@ -551,9 +565,8 @@
 M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and handoff 003's T1 – T3 are built and
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
-(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **The dev team's order now:**
-nothing for 0.3.0 (M50 – M55 Approved 2026-11-19); nothing else changes on `main` before the tag, unless it fixes a defect
-in the candidate. Next: RFC 006 (0.4.0), after the cut. Next: RFC 006 (0.4.0), after the cut. The test by a person using
+(2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **0.3.0 released 2026-11-19.** **The dev team's order now:**
+nothing assigned; `main` is open again. Next: the architect's RFC 006 (0.4.0, M4 governance). Next: RFC 006 (0.4.0), after the cut. The test by a person using
 assistive technology is planned before 1.0 or the first public deployment (owner, 2026-11-18).
 
 ## Issue register
