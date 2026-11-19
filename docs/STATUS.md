@@ -562,7 +562,27 @@
   The removal tool goes to the operations RFC, keeping *before any public deployment*. **The dev team's order now:** R-0,
   maintenance M56 – M59 (maintenance handoff, *0.4.0's R-0*). The architect writes RFC 006 (R-1, target 11-21).
 
+- **2026-11-19 — RFC 006 proposed** (`rfcs/proposed/006-governance-and-moderation.md`; 0.4.0's R-1, two days ahead).
+  - **The design:**
+    - two files under `governance/` (constitution and policy) whose defaults are today's rules, so nothing changes
+      until a wiki proposes it;
+    - four layers, with an admin hatch so that no policy can lock a wiki;
+    - `authorize()`'s contract unchanged;
+    - grants in the store;
+    - temporary protections and restrictions as moderation, standing ones as policy;
+    - tombstones over one list of surfaces (INV-13), never the tip;
+    - appeals;
+    - `410` for a removed page, and retiring claims and sources;
+    - moderation web-only;
+    - the export carries tombstones;
+    - store 18 → 19, with no repository written on upgrade.
+  - **The threat model's v0.4 additions are in the RFC,** to be folded in on acceptance (C-3d – C-3g, C-14f – C-14h,
+    C-15d – C-15f, INV-13, INV-14, RR-15: hiding is not removal).
+  - **Five questions for the owner,** Q-1 – Q-5.
+
 ## Pending on the owner
+
+- **Rule on RFC 006's Q-1 – Q-5** (`rfcs/proposed/006-governance-and-moderation.md`); the 0.4.0 schedule assumes 11-23.
 
 - **Send the reply to prikk** (`.git-exclude/upstream/prikk/send/draft/2026-11-19-what-we-read-in-your-json-and-0-58-0.md`): it answers their JSON questions and thanks them for 0.58.0. Not urgent: nothing changes in prikk until their owner rules.
 
