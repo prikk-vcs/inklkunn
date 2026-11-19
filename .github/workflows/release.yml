@@ -308,6 +308,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     steps:
       - name: Log in to ghcr.io
         if: github.event_name == 'push' || inputs.mode == 'rehearsal'
@@ -322,6 +324,16 @@ jobs:
           docker buildx imagetools create -t "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}" \
             "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-amd64" "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-arm64"
           docker buildx imagetools inspect "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}"
+          docker buildx imagetools inspect "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}" --format '{{json .Manifest.Digest}}' | tr -d '"' > image-digest.txt
+          echo "digest=$(cat image-digest.txt)" >> "$GITHUB_OUTPUT"
+        id: join
+      - name: Attest the joined image tag (tag push; the subject is the manifest list's digest)
+        if: github.event_name == 'push'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ghcr.io/prikk-vcs/inklkunn
+          subject-digest: ${{ steps.join.outputs.digest }}
+          push-to-registry: true
       - name: "Join the per-architecture images (rehearsal: the throwaway package only)"
         if: inputs.mode == 'rehearsal'
         run: |
@@ -329,6 +341,16 @@ jobs:
           docker buildx imagetools create -t "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal" \
             "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-amd64" "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-arm64"
           docker buildx imagetools inspect "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal"
+          docker buildx imagetools inspect "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal" --format '{{json .Manifest.Digest}}' | tr -d '"' > image-digest.txt
+          echo "digest=$(cat image-digest.txt)" >> "$GITHUB_OUTPUT"
+        id: join_rehearsal
+      - name: "Attest the joined image (rehearsal: the throwaway package only, so the first tag run is not this step's first run)"
+        if: inputs.mode == 'rehearsal'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ghcr.io/prikk-vcs/inklkunn-rehearsal
+          subject-digest: ${{ steps.join_rehearsal.outputs.digest }}
+          push-to-registry: true
 
   release:
     needs: manifest

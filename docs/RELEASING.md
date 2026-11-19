@@ -49,7 +49,9 @@ git push origin X.Y.Z
 ```
 
 A tag whose version differs from the workspace version fails the gates job before anything is built. **The rehearsal
-does not run the attestation steps** (they need a tag push), so the first tag run is their first run: watch it. If a
+does not run the tarball's and the per-architecture images' attestation steps** (they need a tag push), so the first tag
+run is their first run: watch it. The joined image's attestation does run in the rehearsal, against the throwaway
+package's list (`inklkunn-rehearsal:rehearsal`), and only there. If a
 tag run fails before anything is published (no GitHub release, no image under the real name, no crate), the tag may
 be moved to the fixed commit, with the owner's agreement, and the move recorded in `docs/STATUS.md`. Once anything is
 published, a fix is a new patch release, never a moved tag.
@@ -111,8 +113,12 @@ git verify-tag X.Y.Z                                          # in a clone: the 
 sha256sum -c inklkunn-x86_64-unknown-linux-gnu.tar.gz.sha256
 gh attestation verify inklkunn-x86_64-unknown-linux-gnu.tar.gz --repo prikk-vcs/inklkunn
 ./inklkunn --version   # names the commit and the prikk floor it was built for
-gh attestation verify oci://ghcr.io/prikk-vcs/inklkunn:X.Y.Z-amd64 --repo prikk-vcs/inklkunn
+gh attestation verify oci://ghcr.io/prikk-vcs/inklkunn:X.Y.Z --repo prikk-vcs/inklkunn          # the joined tag (the manifest list)
+gh attestation verify oci://ghcr.io/prikk-vcs/inklkunn:X.Y.Z-amd64 --repo prikk-vcs/inklkunn    # one architecture's image
 ```
+
+The plain tag `X.Y.Z` is the manifest list that `docker pull` resolves; its digest is attested after the join, and so
+is each architecture's image. Verify the one you pull.
 
 ## If a job fails
 

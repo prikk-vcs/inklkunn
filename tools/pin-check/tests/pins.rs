@@ -797,3 +797,65 @@ fn the_rehearsal_package_is_not_mistaken_for_the_real_image() {
         "the image `ghcr.io/prikk-vcs/inklkunn:%s`"
     ));
 }
+
+/// The attest steps of a workflow that attest an image (a `subject-name`).
+fn image_attestations(y: &str) -> Vec<Step> {
+    steps(y)
+        .into_iter()
+        .filter(|s| s.text.contains("actions/attest@") && s.text.contains("subject-name:"))
+        .collect()
+}
+
+#[test]
+fn the_joined_image_tag_is_attested_in_the_tag_run_and_in_rehearsal() {
+    let y = fs::read_to_string(workspace_root().join(".github/workflows/release.yml"))
+        .unwrap_or_default();
+    let all = image_attestations(&y);
+    // The joined tag's attestation (M59): the manifest list's digest from the join step, pushed to the registry,
+    // under the tag-push guard for the real image and under the rehearsal guard for the throwaway package only.
+    let joined = |guard: &str, image: &str, id: &str| {
+        all.iter().any(|s| {
+            s.guards.iter().any(|g| g == guard)
+                && s.text
+                    .lines()
+                    .any(|l| l.trim() == format!("subject-name: {image}"))
+                && s.text.contains(&format!("steps.{id}.outputs.digest"))
+                && s.text.lines().any(|l| l.trim() == "push-to-registry: true")
+        })
+    };
+    assert!(
+        joined(PUSH_GUARD, REAL_IMAGE, "join"),
+        "the joined real tag is not attested"
+    );
+    assert!(
+        joined(REHEARSAL_GUARD, REHEARSAL_IMAGE, "join_rehearsal"),
+        "the rehearsal does not run the joined image's attestation"
+    );
+    // No attestation under the rehearsal guard names the real image (the general rule, stated for attestations).
+    for s in all
+        .iter()
+        .filter(|s| s.guards.iter().any(|g| g == REHEARSAL_GUARD))
+    {
+        assert!(
+            !names_real_image(&s.text),
+            "a rehearsal attestation names the real image"
+        );
+    }
+    // The job that does it holds the permissions an attestation needs.
+    let job = y
+        .split("\n  manifest:")
+        .nth(1)
+        .and_then(|t| t.split("\n  release:").next())
+        .unwrap_or_default();
+    for need in ["packages: write", "id-token: write", "attestations: write"] {
+        assert!(job.contains(need), "the manifest job lacks `{need}`");
+    }
+    // The planted failure: a rehearsal attestation of the real image is refused; of the throwaway package, not.
+    let bad = "jobs:\n  manifest:\n    steps:\n      - name: attest\n        if: inputs.mode == 'rehearsal'\n        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2\n        with:\n          subject-name: ghcr.io/prikk-vcs/inklkunn\n";
+    assert!(
+        !rehearsal_violations(bad).is_empty(),
+        "a rehearsal attestation of the real image must be refused"
+    );
+    let good = "jobs:\n  manifest:\n    steps:\n      - name: attest\n        if: inputs.mode == 'rehearsal'\n        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2\n        with:\n          subject-name: ghcr.io/prikk-vcs/inklkunn-rehearsal\n";
+    assert!(rehearsal_violations(good).is_empty());
+}
