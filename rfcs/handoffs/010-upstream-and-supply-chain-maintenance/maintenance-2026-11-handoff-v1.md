@@ -575,3 +575,17 @@ K19's step is `complete-view-creation`, and `complete-publication` is P15's.
 
 Hand back as `010-maintenance-2026-11-m61-corrections-review-request.md`.
 
+## M61's corrections approved; M62 (2026-11-21; beside G-T1, before readiness)
+
+C-1 and C-2 are **Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-m61-corrections-review-result.md`) and
+pushed. **M62:** widen the core integration world's acceptor to another view, then run `wiki recover` end to end on a
+real prikk for a seal killed before its ref log on `heads/other`, and for P15's state there. Assert:
+- `verify` green;
+- one new block on that view, `heads/main` unchanged;
+- the worktree as it was before the acceptance;
+- the act ended and the flag cleared;
+- a write afterwards on both views.
+
+Fix any defect it finds in M62, and close the ledger's v1.11 parenthesis. The details are in the review result. Hand
+back as `010-maintenance-2026-11-m62-review-request.md`.
+
