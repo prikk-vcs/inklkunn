@@ -589,3 +589,15 @@ real prikk for a seal killed before its ref log on `heads/other`, and for P15's 
 Fix any defect it finds in M62, and close the ledger's v1.11 parenthesis. The details are in the review result. Hand
 back as `010-maintenance-2026-11-m62-review-request.md`.
 
+## M62 reviewed: one correction (2026-11-22; binding, beside G-T1)
+
+M62 is **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-m62-review-result.md`) and pushed. The
+defect it found is IS-21 (Low; fixed).
+- **The worktree.** *The worktree as it was before the acceptance* above was wrong: an acceptance switches the worktree
+  to its own view. The invariant is *what an uninterrupted acceptance leaves*, as the tests now assert.
+- **C-1.** `restore_worktree` refuses, changing nothing, when the worktree's `reference` is not the view the step names,
+  and the refusal names both. Tests: a real-prikk signer test with a mismatched view, and the mutation of removing the
+  check. RECOVERY.md gets one sentence.
+
+Hand back as `010-maintenance-2026-11-m62-corrections-review-request.md`.
+
