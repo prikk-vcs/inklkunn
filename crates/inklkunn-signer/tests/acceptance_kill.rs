@@ -1082,10 +1082,10 @@ fn log(s: &Services, repo: &Path) -> Vec<inklkunn_prikk::HistoryBlock> {
 /// when `INKLKUNN_AK_KEEP` names a directory, the copy goes to `<that directory>/<label with no spaces>`.
 /// Is this witness error M51's: prikk's `status` and `doctor` say different things about one state (0.58.0 reads the
 /// cleanup-pending state that 0.57.0's `status` refused)? Two shapes: `status` says the queue is already sealed while
-/// `doctor` names no pending cleanup, and `status` reads an ordinary queue while `doctor` names one.
+/// `doctor` names no error at all, and `status` reads an ordinary queue while `doctor` names a pending cleanup.
 fn is_status_doctor_disagreement(why: &str) -> bool {
     why.contains("prikk status")
-        && (why.contains("while prikk doctor names no pending cleanup of a publication")
+        && (why.contains("while prikk doctor names no error at all")
             || why.contains("while prikk doctor names a pending cleanup of a publication"))
 }
 

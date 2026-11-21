@@ -243,7 +243,7 @@ complete once, as prikk's doctor recommends* (`complete-ref-publication`), then 
 the flag. Recovery plans it **only when** all of this holds, and the signer reads every part again at the step and
 refuses (changing nothing) if it does not:
 
-- `doctor` names exactly that one error, in prikk's own words, for the **wiki's default view**, and nothing else (the debris
+- `doctor` names exactly that one error, in prikk's own words, for **the act's own view** (the default view, or another view the proposal was accepted into), and nothing else (the debris
   warning and unreached-object notes do not count);
 - there is exactly one unfinished act, on that view, and the block the pointer leads to is its own: the one patch the
   block seals has the act's message and files, to the digest, and the block sits on the block the act was made on;
@@ -269,7 +269,7 @@ witness error *prikk status: …* or *prikk worktree-status: …* instead of a s
 
 - a lead for another ref, a second error, a second lead, the cleanup's error beside the lead, the lead in other words, or
   `status` reading an ordinary queue (not sealed in the block) beside it: `doctor-trouble`;
-- a lead for a view that is not the default view, or a block that is not the act's (its message, its base or its patch
+- a lead for a view that is not the act's, or a block that is not the act's (its message, its base or its patch
   differ), or the act's block elsewhere in the history: `published-block-is-not-the-act`; a lead with no unfinished act at
   all (its records are gone, say) is `doctor-trouble`: the publication is somebody else's;
 - publication-trust findings that nothing excuses beside it: `cleanup-beside-trust-findings`; an unfinished key retirement:
@@ -288,7 +288,7 @@ sound), and do not run `prikk ref complete` or `prikk seal` yourself: `ref compl
 published its block, and says so in `queue.already_sealed`. If the kill landed where `status` and `doctor` do not tell the
 same story about one repository, `inklkunn wiki recover` (the plan and the run alike) ends with a witness error that names
 both answers, in one of two forms: `prikk status: it says the queue is already sealed in block <id>, while prikk doctor
-names no pending cleanup of a publication` (and `doctor` names no error at all), or `prikk status: it reads an ordinary queue,
+names no error at all`, or `prikk status: it reads an ordinary queue,
 while prikk doctor names a pending cleanup of a publication`. The wiki stays flagged and nothing was written. (A third form,
 `it says the queue is already sealed in block <id>, but the newest block of the view is <id>`, and `the queue it lists is not the
 patches of the newest block of the view`, is the same refusal for `status` against the history.) Up to 0.57.0 `status` refused

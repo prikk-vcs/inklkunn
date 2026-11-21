@@ -79,7 +79,7 @@ pub(super) fn read(
         return Err(witness_error(
             "prikk status",
             format!(
-                "it says the queue is already sealed in block {}, while prikk doctor names no pending cleanup of a publication",
+                "it says the queue is already sealed in block {}, while prikk doctor names no error at all",
                 said.block_id
             ),
         ));

@@ -710,7 +710,6 @@ impl Recovery {
         if let Some(format) = format_marker_in(&status_read, &doctor_read) {
             return Ok(Witness {
                 wiki: wiki.id.clone(),
-                default_view: wiki.default_view.clone(),
                 flag: p.acts.recovery_flag(&wiki.id)?,
                 dead_holder: dead,
                 interrupted_recoveries: p
@@ -785,7 +784,6 @@ impl Recovery {
         let torn = status.trailing_partial_wal_bytes > 0;
         Ok(Witness {
             wiki: wiki.id.clone(),
-            default_view: wiki.default_view.clone(),
             flag: p.acts.recovery_flag(&wiki.id)?,
             dead_holder: dead,
             interrupted_recoveries: p

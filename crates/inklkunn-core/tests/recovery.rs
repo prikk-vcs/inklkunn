@@ -1245,7 +1245,7 @@ fn a_status_that_reads_the_pending_cleanup_must_agree_with_the_history_and_with_
         "say-doctor",
         "doctor repository: /x\ninfo [PRIKK-DOCTOR-VERIFY-OK]: done\nissue summary: errors=0, warnings=0, info=1\n",
     );
-    refuses("doctor names none", "names no pending cleanup");
+    refuses("doctor names none", "names no error at all");
     w.uncontrol("say-doctor");
 
     // Where it agrees, the plan is the same as where the answer was a refusal, and the run finishes it.
@@ -4957,7 +4957,7 @@ fn a_seal_lead_is_not_finished_unless_it_is_the_one_error_for_the_acts_block_and
         "say-doctor",
         "doctor repository: /x\ninfo [PRIKK-DOCTOR-VERIFY-OK]: done\nissue summary: errors=0, warnings=0, info=1\n",
     );
-    unreadable("doctor names no error", "names no pending cleanup");
+    unreadable("doctor names no error", "names no error at all");
 
     // The block the pointer leads to is not the act's: the history shows the message of another change.
     w.control("say-doctor", &lead_report(MAIN, "", 1));

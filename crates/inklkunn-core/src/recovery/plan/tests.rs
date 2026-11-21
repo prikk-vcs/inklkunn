@@ -105,7 +105,6 @@ fn flagged() -> Witness {
             since: 1,
         }),
         wiki,
-        default_view: VIEW.to_owned(),
         dead_holder: None,
         interrupted_recoveries: 0,
         acts: Vec::new(),
@@ -1180,8 +1179,7 @@ fn a_seal_lead_is_decided_the_same_whether_status_refuses_or_reads_it() {
 }
 
 #[test]
-fn a_seal_lead_is_a_stop_unless_it_is_the_one_error_for_the_default_view_and_the_block_is_the_acts()
-{
+fn a_seal_lead_is_a_stop_unless_it_is_the_one_error_for_the_acts_view_and_the_block_is_the_acts() {
     let stop_of = |w: &Witness| {
         let plan = build(w);
         assert!(
@@ -1264,15 +1262,27 @@ fn a_seal_lead_is_a_stop_unless_it_is_the_one_error_for_the_default_view_and_the
     assert_eq!(build(&w).stop, None);
     assert_eq!(nth(&names(&build(&w)), 0), &"complete-ref-publication");
 
-    // Only the wiki's default view: the same state on another view is a stop of its own word.
+    // The act's own view, whichever view that is (corrections C-2): an acceptance into a view other than the default
+    // view, killed in the same window, is finished the same way, and the step names that view.
     let mut w = seal_lead();
-    w.default_view = "heads/other".to_owned();
-    assert_eq!(
-        stop_of(&w),
-        Some(Stop::PublishedBlockIsNotTheAct),
-        "the act's view is not the default view"
-    );
-    // The lead the reader found is for the act's own view.
+    for a in &mut w.acts {
+        a.view = "heads/other".to_owned();
+    }
+    if let Some(c) = w.cleanup_pending.as_mut() {
+        c.lead = Some("heads/other".to_owned());
+        if let Some(p) = c.published.as_mut() {
+            p.view = "heads/other".to_owned();
+        }
+    }
+    w.doctor = doctor(vec![lead_error("heads/other")]);
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert!(matches!(
+        plan.steps.first(),
+        Some(Step::CompleteRefPublication { view, .. }) if view == "heads/other"
+    ));
+    // The lead the reader found is for the act's own view: the act's view not compared would plan the step for a lead
+    // that is somebody else's.
     let mut w = seal_lead();
     if let Some(c) = w.cleanup_pending.as_mut() {
         c.lead = Some("heads/other".to_owned());

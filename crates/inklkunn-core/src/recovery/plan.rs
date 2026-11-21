@@ -10,8 +10,8 @@
 //! recommendation, `seal` once more, is taken as a step, and only when the block published is the unfinished act's
 //! (P15). The one before it, a `seal` killed after it moved the ref's pointer and **before it appended the ref log**
 //! (`doctor` names `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` for the act's view and nothing else), is finished the same way
-//! with a step ahead of that one, prikk's own `ref complete` run by the signer, and only for the wiki's default view
-//! and the act's own block (maintenance M61).
+//! with a step ahead of that one, prikk's own `ref complete` run by the signer, and only for the act's own view and the
+//! act's own block (maintenance M61).
 
 use inklkunn_prikk::{RepoStatus, storage::QueuedPatch};
 use inklkunn_signer::recover::text::{
@@ -199,9 +199,6 @@ pub struct ViewActWitness {
 pub struct Witness {
     /// The wiki.
     pub wiki: WikiId,
-    /// The wiki's default view, `heads/<name>`: the one view recovery finishes the publication of a killed `seal` for
-    /// (maintenance M61).
-    pub default_view: String,
     /// The wiki's flag, if it is flagged.
     pub flag: Option<RecoveryFlag>,
     /// The record of another holder that was still there when the lease was taken (that holder died holding it).
@@ -264,7 +261,7 @@ pub enum Stop {
     SeveralQueued,
     /// A killed `seal` left a publication to finish (its cleanup, or, before that, its ref log), and the block it
     /// published is not the change of the one unfinished act (or there is no such act, or it ended, or the block was
-    /// made on another base), or the view is not the wiki's default view (maintenance M61).
+    /// made on another base; maintenance M61).
     PublishedBlockIsNotTheAct,
     /// More than one act is unfinished.
     SeveralActs,
@@ -334,7 +331,7 @@ impl Stop {
             }
             Stop::SeveralQueued => "more than one patch is queued",
             Stop::PublishedBlockIsNotTheAct => {
-                "prikk reports a publication whose cleanup a killed seal did not finish (or whose ref log it did not write), and the block it published is not the change of the one unfinished act (its message, its base or its patch differ, or no such act is unfinished), or its view is not the wiki's default view"
+                "prikk reports a publication whose cleanup a killed seal did not finish (or whose ref log it did not write), and the block it published is not the change of the one unfinished act (its message, its base or its patch differ, or no such act is unfinished)"
             }
             Stop::SeveralActs => "more than one act is unfinished",
             Stop::TipMoved => {
@@ -1388,14 +1385,10 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
         // `seal` once more, taken only when the block published is the change of the one unfinished act.
         (None, Some(c), _, a) => {
             let published = c.published.as_ref();
-            // The ref `doctor` names as interrupted is the act's own view, and the view is the wiki's default view: the
-            // one view this step finishes the publication for (M61). The reader checks the first too; the plan does
+            // The ref `doctor` names as interrupted is the act's own view: the one view this step finishes the
+            // publication for, whichever view that is (M61, corrections C-2). The reader checks it too; the plan does
             // not lean on that.
-            let lead_is_the_acts = |a: &ActWitness| {
-                c.lead
-                    .as_deref()
-                    .is_none_or(|r| r == a.view && a.view == w.default_view)
-            };
+            let lead_is_the_acts = |a: &ActWitness| c.lead.as_deref().is_none_or(|r| r == a.view);
             match a
                 .zip(published)
                 .filter(|(a, p)| is_the_act(a, p) && lead_is_the_acts(a))

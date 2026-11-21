@@ -2385,6 +2385,108 @@ impl Fixture {
 }
 
 #[test]
+fn a_seal_killed_before_its_ref_log_on_a_view_other_than_the_default_is_finished_the_same_way() {
+    // Corrections C-2: a proposal may be accepted into another view, and a `seal` killed in the same window there
+    // leaves the same state. The step is bound to the act's own view, whichever view that is.
+    let Some(f) = fixture("seal-lead-view") else {
+        return;
+    };
+    let view = f.record_view("va-alt", OTHER, MAIN);
+    f.signer
+        .create_view(&f.wiki, OTHER, MAIN, &view)
+        .expect("a view");
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    // The acceptance is into the other view: its record says so.
+    if let Some(expected) = f.ledger.pending.lock().unwrap().get_mut(p.token.as_str()) {
+        expected.view = OTHER.to_owned();
+    }
+    // Queue the change on the view, seal it, and put back what a killed seal had not yet written (as `leave_a_seal_lead`).
+    std::fs::write(f.ctl.join("fail-seal"), "").unwrap();
+    let queued = f.signer.accept(&f.wiki, OTHER, &p.token, &p.change);
+    std::fs::remove_file(f.ctl.join("fail-seal")).unwrap();
+    assert!(
+        matches!(queued, Err(AcceptError::Queued { .. })),
+        "{queued:?}"
+    );
+    let active = f.repo.join(".prikk/active/default");
+    let containers = f.repo.join(".prikk/refs/containers");
+    let mut paths: Vec<PathBuf> = ["queue.wal", "ref-name", "witness"]
+        .iter()
+        .map(|name| active.join(name))
+        .collect();
+    for entry in std::fs::read_dir(&containers).unwrap().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with("log-") && name.ends_with(".container") {
+            paths.push(entry.path());
+        }
+    }
+    let kept: Vec<(PathBuf, Vec<u8>)> = paths
+        .into_iter()
+        .map(|path| {
+            let bytes = std::fs::read(&path).unwrap();
+            (path, bytes)
+        })
+        .collect();
+    let seal = f.act(vec![RecoveryOp::SealQueued {
+        acceptance: p.token.as_str().to_owned(),
+        view: OTHER.to_owned(),
+    }]);
+    f.leased(|| f.signer.seal_queued(&f.wiki, OTHER, &seal, &p.token))
+        .expect("sealed");
+    for (path, bytes) in kept {
+        std::fs::write(path, bytes).unwrap();
+    }
+    let block = f.tip_of(OTHER).expect("the view's block");
+    assert_ne!(
+        Some(block.clone()),
+        f.tip_of(MAIN),
+        "the default view did not move"
+    );
+    assert_eq!(
+        f.witnesses.doctor(&f.wiki).unwrap().only_ref_lead(),
+        Some(OTHER),
+        "doctor names exactly the interrupted publication of the view"
+    );
+    assert!(!f.verify_ok());
+
+    let rec = f.act(vec![
+        RecoveryOp::CompleteRefPublication {
+            acceptance: p.token.as_str().to_owned(),
+            view: OTHER.to_owned(),
+        },
+        RecoveryOp::CompletePublication {
+            acceptance: p.token.as_str().to_owned(),
+            view: OTHER.to_owned(),
+        },
+    ]);
+    // Bound to the act's view: asked for the default view, the step refuses and appends nothing.
+    let wrong = f.leased(|| {
+        f.signer
+            .complete_ref_publication(&f.wiki, MAIN, &rec, &p.token)
+    });
+    assert!(wrong.is_err(), "{wrong:?}");
+    assert_eq!(
+        f.witnesses.doctor(&f.wiki).unwrap().only_ref_lead(),
+        Some(OTHER),
+        "the lead stands"
+    );
+    f.leased(|| {
+        f.signer
+            .complete_ref_publication(&f.wiki, OTHER, &rec, &p.token)
+    })
+    .expect("the publication is finished");
+    assert_eq!(f.tip_of(OTHER), Some(block.clone()), "it made no block");
+    f.leased(|| {
+        f.signer
+            .complete_publication(&f.wiki, OTHER, &rec, &p.token)
+    })
+    .expect("the cleanup is finished");
+    assert_eq!(f.tip_of(OTHER), Some(block));
+    assert_eq!(f.queue_count(), 0);
+    assert!(f.verify_ok());
+}
+
+#[test]
 fn a_seal_killed_before_its_ref_log_is_finished_with_ref_complete_and_then_the_cleanup() {
     let Some(f) = fixture("seal-lead") else {
         return;
