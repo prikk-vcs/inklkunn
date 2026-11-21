@@ -654,7 +654,7 @@ async fn the_about_page_states_the_license_and_what_the_accessibility_tests_do_n
     // What was reviewed, by whom and when, and that later messages are reviewed at each release (M60); and
     // since no language is a preview, no note about one.
     assert!(a.body.contains(
-        "The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release."
+        "The Japanese translation was reviewed by the owner of the inklkunn project on 2026-11-19 (the messages of 0.3.0); messages added later are reviewed at each release."
     ));
     assert!(!a.body.contains("This translation is a preview"));
     let ja = send(
@@ -665,7 +665,7 @@ async fn the_about_page_states_the_license_and_what_the_accessibility_tests_do_n
     )
     .await;
     assert!(ja.body.contains(
-        "日本語訳は、2026-11-19 にオーナーが 0.3.0 のメッセージを確認しました。以降のメッセージは、リリースごとに確認します。"
+        "日本語訳は、2026-11-19 に inklkunn プロジェクトのオーナーが確認しました（0.3.0 時点のメッセージ）。それ以降に追加されたメッセージは、リリースごとに確認します。"
     ));
     assert!(!ja.body.contains("この翻訳はプレビュー版です。"));
 }

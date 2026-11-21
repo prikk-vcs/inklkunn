@@ -257,7 +257,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "about.accessibility_languages",
-        "日本語訳は、2026-11-19 にオーナーが 0.3.0 のメッセージを確認しました。以降のメッセージは、リリースごとに確認します。",
+        "日本語訳は、2026-11-19 に inklkunn プロジェクトのオーナーが確認しました（0.3.0 時点のメッセージ）。それ以降に追加されたメッセージは、リリースごとに確認します。",
     ),
     msg("title.wikis", "ウィキの一覧 · {product}"),
     msg("wikis.heading", "ウィキの一覧"),
@@ -1249,11 +1249,11 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.minor_label", "軽微な変更"),
     msg(
         "changes.machine_assisted",
-        "機械の補助によるコンテンツ（受け入れた人: {person}）",
+        "自動化ツールの補助によるコンテンツ（受け入れた人: {person}）",
     ),
     msg(
         "changes.machine_assisted_only",
-        "機械の補助によるコンテンツ",
+        "自動化ツールの補助によるコンテンツ",
     ),
     // proposals (handoff 004 T3): begin
     msg("wiki.nav_proposals", "提案"),

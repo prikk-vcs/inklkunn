@@ -85,6 +85,7 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A numbered revision of a proposal | revision | 修正版 | yes | The numbered noun is 修正版 ({number} 番, 修正版 {number}); the act stays 修正 (修正を求める, 修正が必要, 修正を送信). 版 alone stays a page's version; never リビジョン or 改訂 | Named by the architect's final check (M60) |
 | A reviewer's decision to send a proposal back | ask for a revision | 修正を求める | yes | The same act as the state 修正が必要; never 変更を求める, because 変更 is the recorded step | Named by the architect's final check (M60) |
 | Whoever reads a proposal and decides on it | reviewer | レビュアー | yes | Beside メンテナー; never レビュー担当者, because 担当者 suggests an assignment | Named by the architect's final check (M60) |
+| The person who owns the inklkunn project, when the statement is about the project's own review | the owner of the inklkunn project | inklkunn プロジェクトのオーナー | yes | Said only of the project's own review (the accessibility statement's sentence about the Japanese review), never of a wiki or a server: those have このウィキを運営している人 and このサーバーの管理者, and a bare オーナー names nobody a reader knows | Named by the architect's review of R-0 (C-1) |
 | A claim's community status, in a sentence | accepted in this view | 受け入れられている | yes | The four statuses are 受け入れられている · 異論がある (compact label: 異論あり) · 未解決 · 未決定; in sentences この主張は受け入れられています / この主張には異論があります / この主張は未解決です / この主張はまだ決定されていません. Never 認められている (it reads as recognized as valid), 争われている (combative) or 決着していない; 受け入れ済み is the state of a proposal | Named by the architect's final check (M60) |
 | A community status that people disagree about | contested | 異論がある | yes | States the epistemic fact calmly; never 争われ… | Named by the architect's final check (M60) |
 | A community status nobody has settled | unresolved | 未解決 | yes | One of the four statuses above | Named by the architect's final check (M60) |
@@ -218,7 +219,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `about.accessibility_heading` | the heading of the accessibility statement, on the about page | "Accessibility statement" | "アクセシビリティに関する声明" |
 | `about.accessibility_tools` | the first sentence of the statement | "Automated tests check every kind of page on this site for one main heading, landmarks, a link that skips to the content, labels, text alternatives, language and direction, contrast in the light and dark schemes, visible keyboard focus and large enough targets." | "このサイトのすべての種類のページについて、自動テストが次の点を確認しています: メインの見出しが一つであること、ランドマーク、本文へ移動するリンク、ラベル、代替テキスト、言語と文字の方向、明るい配色と暗い配色でのコントラスト、キーボードフォーカスの表示、十分な大きさの操作対象。" |
 | `about.accessibility_people` | the second sentence of the statement | "No person who uses assistive technology has tested this site yet. If something does not work for you, tell the person who runs this server." | "支援技術を使っている方による、このサイトの確認はまだ行われていません。うまく使えないところがあれば、このサーバーの管理者にお知らせください。" |
-| `about.accessibility_languages` | the third sentence of the statement: what was reviewed, by whom and when, and when later messages are | "The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release." | "日本語訳は、2026-11-19 にオーナーが 0.3.0 のメッセージを確認しました。以降のメッセージは、リリースごとに確認します。" |
+| `about.accessibility_languages` | the third sentence of the statement: what was reviewed, by whom and when, and when later messages are | "The Japanese translation was reviewed by the owner of the inklkunn project on 2026-11-19 (the messages of 0.3.0); messages added later are reviewed at each release." | "日本語訳は、2026-11-19 に inklkunn プロジェクトのオーナーが確認しました（0.3.0 時点のメッセージ）。それ以降に追加されたメッセージは、リリースごとに確認します。" |
 | `title.wikis` | the title of the list of wikis | "Wikis · {product}" | "ウィキの一覧 · {product}" |
 | `wikis.heading` | the heading of the list of wikis | "Wikis" | "ウィキの一覧" |
 | `wikis.intro` | under that heading | "These are the wikis you can read here." | "ここで読めるウィキの一覧です。" |
@@ -602,8 +603,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `changes.active_minor_hide` | in the list of filters in use, on the recent changes | "Minor changes are hidden" | "軽微な変更は表示していません" |
 | `changes.active_minor_only` | in the list of filters in use, on the recent changes | "Only minor changes" | "軽微な変更のみ" |
 | `changes.minor_label` | a mark on a change that was proposed as minor | "Minor change" | "軽微な変更" |
-| `changes.machine_assisted` | a mark on a change that was proposed as machine-assisted; `{person}` is who accepted it and answers for it | "Machine-assisted content, accepted by {person}" | "機械の補助によるコンテンツ（受け入れた人: {person}）" |
-| `changes.machine_assisted_only` | the same mark, when nobody who accepted it is known | "Machine-assisted content" | "機械の補助によるコンテンツ" |
+| `changes.machine_assisted` | a mark on a change that was proposed as machine-assisted; `{person}` is who accepted it and answers for it | "Machine-assisted content, accepted by {person}" | "自動化ツールの補助によるコンテンツ（受け入れた人: {person}）" |
+| `changes.machine_assisted_only` | the same mark, when nobody who accepted it is known | "Machine-assisted content" | "自動化ツールの補助によるコンテンツ" |
 | `wiki.nav_proposals` | in the wiki's navigation: the link to its proposals | "Proposals" | "提案" |
 | `page.propose_change` | under a page: the link to the form that proposes a change to the page | "Propose a change" | "変更を提案する" |
 | `page.propose_part` | under a page: the link to the choice of a section or part to propose a change to | "Propose a change to a section or a part" | "セクションや一部分への変更を提案する" |
@@ -1511,6 +1512,7 @@ one).
 | 直前の確認 | 前回の確認 | 直前 overstates how fresh the check is |
 | 鍵の変更 | 鍵の更新作業 | 変更 is the recorded step |
 | 失効時 | 廃止時 | A key is 廃止; 失効 is a token's |
+| 機械 (in 機械の補助) | 自動化ツール | One rendering for the wiki service or a tool doing the work: `changes.filter_automated` says 自動化ツール, so the marks say it too |
 | レビュー待ちのまま | レビュー待ちで保持されたまま | The hard term of the state, in a sentence |
 | 未決の | 進行中の | 未決 is legal register |
 | 見られます | 閲覧できます | Ambiguous between passive and potential |
@@ -1540,8 +1542,8 @@ one).
 **The sign-off.** The owner signed off the Japanese catalog on 2026-11-19 (DR-7): all the messages as of 0.3.0.
 The architect's final check followed, and the dev team applied its corrections in one commit with the record:
 `JA_DEF.review` is `Review::Reviewed { by: "the owner, 2026-11-19" }` (`catalog.rs`), this page's status line and
-the accessibility statement say so (`about.accessibility_languages`: *reviewed by the owner on 2026-11-19, the
-messages of 0.3.0; later messages are reviewed at each release*). **From then on `Accept-Language: ja` selects
+the accessibility statement say so (`about.accessibility_languages`: *reviewed by the owner of the inklkunn project on
+2026-11-19 (the messages of 0.3.0); messages added later are reviewed at each release*). **From then on `Accept-Language: ja` selects
 Japanese like any other language.** The catalog is compiled in and checked by the tests (every key, the same
 placeholders as English, no markup, no retired term, the structural checks on every page). Messages added after
 0.3.0 are written with the terms of section 1 and listed for the owner's look in each release's readiness

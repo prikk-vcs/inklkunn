@@ -256,7 +256,7 @@ fn masked(html: &str, ports: [u16; 2]) -> String {
             "",
         )
         .replace(
-            "<p>The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release.</p>\n",
+            "<p>The Japanese translation was reviewed by the owner of the inklkunn project on 2026-11-19 (the messages of 0.3.0); messages added later are reviewed at each release.</p>\n",
             "",
         );
     let mut from = 0;

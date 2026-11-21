@@ -169,11 +169,11 @@ async fn the_about_page_says_what_was_reviewed_and_when_in_both_languages() {
     }
     assert_eq!(
         en_sentence,
-        "The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release."
+        "The Japanese translation was reviewed by the owner of the inklkunn project on 2026-11-19 (the messages of 0.3.0); messages added later are reviewed at each release."
     );
     assert_eq!(
         ja_sentence,
-        "日本語訳は、2026-11-19 にオーナーが 0.3.0 のメッセージを確認しました。以降のメッセージは、リリースごとに確認します。"
+        "日本語訳は、2026-11-19 に inklkunn プロジェクトのオーナーが確認しました（0.3.0 時点のメッセージ）。それ以降に追加されたメッセージは、リリースごとに確認します。"
     );
     // The sentence names the date the record holds.
     assert!(

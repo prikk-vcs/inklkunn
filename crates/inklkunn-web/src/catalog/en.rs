@@ -222,7 +222,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "about.accessibility_languages",
-        "The Japanese translation was reviewed by the owner on 2026-11-19, the messages of 0.3.0; later messages are reviewed at each release.",
+        "The Japanese translation was reviewed by the owner of the inklkunn project on 2026-11-19 (the messages of 0.3.0); messages added later are reviewed at each release.",
     ),
     msg("title.wikis", "Wikis · {product}"),
     msg("wikis.heading", "Wikis"),
