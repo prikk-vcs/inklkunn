@@ -225,7 +225,7 @@ says the queue is already sealed in block <id>, but the newest block of the view
 patches of the newest block of the view`, is the same refusal for `status` against the history.) Up to 0.57.0 `status` refused
 the state outright, and recovery stopped in the same way.
 
-**What it is.** Two answers of prikk's about one state that do not agree. Recovery acts on a cleanup only when `status`, `doctor`
+**What it is.** Two answers of prikk's about one state that do not agree. The state measured so far (ledger PK-49) is a `seal` killed after it published its block but before the ref log was written: `prikk status` lists the queue with `already_sealed` for the new block, while `prikk doctor` names no pending cleanup and reports `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` (way out: `prikk ref complete <view>`), and `prikk verify` exits 1 with the same finding. Up to 0.57.0 `status` refused that state and recovery stopped at `doctor-trouble`; either way nothing is written. Recovery acts on a cleanup only when `status`, `doctor`
 and the history say the same thing (the block `status` names is the newest block of the view, the queue is that block's
 patches, and `doctor` names exactly the pending cleanup), and **it does not act on two answers that disagree**: it cannot know
 which one is right.

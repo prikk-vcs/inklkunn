@@ -31,6 +31,7 @@ staying true to all three (RFC 010 D-1, D-2, D-8). The record of what each upstr
 - **Candidates for the next bundled letter:**
   - the block id in `branch list` (it saves one call per new tip; held back as not worth a letter of its own);
   - one machine-readable `verify` report that names the failing subjects and their signers (handoff 004 P14);
+  - 0.58.0's `status` says `queue.already_sealed` (route `prikk seal --allow-no-audit`) in the state where a killed `seal`'s ref pointer still leads the ref log, while `doctor` names only `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` (way out `prikk ref complete heads/main`): should `already_sealed` be null there, or carry the `ref complete` route? (ledger PK-49; measured 2026-11-21);
   - from the cleanup-pending state with a retired key (handoff 004 Q6): what prikk recommends for a pending cleanup on a repository whose trust set changed (recovery stops with `cleanup-beside-trust-findings`).
 - **prikk's letter of 2026-11-14 received** (`receive/2026-11-14-0-56-0-and-0-57-0-are-out.md`; 0.56.0 and 0.57.0 as shipped)
   and folded into the ledger (v1.6). Our reply, below, answered its two questions: the orphan is always the newest, so no
