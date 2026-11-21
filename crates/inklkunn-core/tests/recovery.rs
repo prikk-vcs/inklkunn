@@ -495,6 +495,17 @@ impl World {
     }
 
     fn propose(&self, summary: &str, files: &[(&str, Option<&str>)]) -> ProposalRecord {
+        self.propose_in(None, summary, files)
+    }
+
+    /// A proposal into `view` (`None`: the wiki's default view), made by the contributor and submitted. The acceptance
+    /// service takes the view from the proposal: nothing else names it (maintenance M62).
+    fn propose_in(
+        &self,
+        view: Option<&str>,
+        summary: &str,
+        files: &[(&str, Option<&str>)],
+    ) -> ProposalRecord {
         let edit = ProposalEdit {
             summary: summary.to_owned(),
             files: files
@@ -508,7 +519,7 @@ impl World {
         };
         let draft = self
             .proposals
-            .create(&self.contributor, &self.wiki, None, edit)
+            .create(&self.contributor, &self.wiki, view, edit)
             .unwrap_or_else(|e| panic!("create: {e}"));
         self.proposals
             .submit(&self.contributor, &self.wiki, &draft.id)
@@ -4599,7 +4610,15 @@ fn lead_report(view: &str, extra: &str, errors: u32) -> String {
 /// The locks the real kill left (measured on prikk 0.58.0): the active session's, the ref's, and the ref pointer
 /// index's and ref log's containers.
 fn plant_the_killed_seals_locks(w: &World) {
-    let hex = "c316ccb36a95a977918874d43e722a5a7d9ef74b138f3b76078f6993c14a799f";
+    plant_the_killed_seals_locks_of(
+        w,
+        "c316ccb36a95a977918874d43e722a5a7d9ef74b138f3b76078f6993c14a799f",
+    );
+}
+
+/// The same for the ref whose name has the SHA-256 `hex` (the ref's own lock is named after it: `heads/main` is
+/// `c316ccb3...`, `heads/other` is `34cae7c3...`).
+fn plant_the_killed_seals_locks_of(w: &World, hex: &str) {
     for (relative, kind) in [
         ("active/default/active.lock", "active"),
         (&format!("refs/locks/{hex}.lock"), "ref"),
@@ -5000,4 +5019,582 @@ fn a_seal_lead_is_not_finished_unless_it_is_the_one_error_for_the_acts_block_and
     assert_eq!(w.history(), blocks);
     assert_eq!((calls_of(&w, "seal"), calls_of(&w, "ref")), (seals, refs));
     assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
+}
+
+// ---- recovery on a view other than the default view, end to end (maintenance M62) ----
+
+/// The wiki's second view in these tests.
+const ALT: &str = "heads/other";
+
+/// What prikk says of the worktree: the branch it is on (the view it is a copy of) and whether it is the baseline.
+#[derive(Debug, PartialEq, Eq)]
+struct WorktreeFacts {
+    current_branch: String,
+    clean: bool,
+}
+
+impl World {
+    /// The wiki's second view, `other`, made the way a person makes one (a reviewer's `create-view` through the
+    /// acceptance service: the recorded act, the signer's second operation), forked from the default view's tip.
+    fn make_other_view(&self) {
+        self.acceptor
+            .create_view(
+                &self.maintainer,
+                &self.wiki,
+                "other",
+                None,
+                inklkunn_core::views::ViewKind::Experimental,
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+    }
+
+    fn history_in(&self, view: &str) -> Vec<inklkunn_prikk::HistoryBlock> {
+        self.storage
+            .history(&self.repo, &Point::View(view.to_owned()), None)
+            .unwrap()
+            .blocks
+    }
+
+    fn tip_in(&self, view: &str) -> String {
+        self.history_in(view).first().unwrap().block_id.clone()
+    }
+
+    fn page_in(&self, view: &str, path: &str) -> String {
+        String::from_utf8(
+            self.storage
+                .read(&self.repo, &Point::Block(self.tip_in(view)), path, 1 << 20)
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    /// The page as the worktree holds it.
+    fn worktree_page(&self, path: &str) -> String {
+        std::fs::read_to_string(self.repo.join(path)).unwrap()
+    }
+
+    /// The branch prikk says is current (`status`) and whether `worktree-status` finds the worktree the baseline; an
+    /// error where prikk refuses either (a half-published ref).
+    fn worktree_facts(&self) -> Result<WorktreeFacts, String> {
+        let status = self.storage.status(&self.repo).map_err(|e| e.to_string())?;
+        let worktree = self
+            .recovery_witnesses()
+            .worktree(&self.wiki.id)
+            .map_err(|e| e.to_string())?;
+        Ok(WorktreeFacts {
+            current_branch: status.current_branch.unwrap_or_default(),
+            clean: worktree.clean,
+        })
+    }
+}
+
+/// The ref lock's digest for `heads/other` (the SHA-256 of the ref's name).
+const ALT_REF_DIGEST: &str = "34cae7c3059a6b81ebb4137504bd18c1f487d3e71d626a715d241fb2203a4763";
+
+/// The pages as the worktree holds them, by file name (the help page is left out: it carries the wiki's own name and id).
+fn pages_of_the_worktree(w: &World) -> Vec<(String, String)> {
+    let mut pages: Vec<(String, String)> = std::fs::read_dir(w.repo.join("pages"))
+        .unwrap()
+        .filter_map(|entry| {
+            let entry = entry.unwrap();
+            (entry.file_name() != "Help.md").then(|| {
+                (
+                    entry.file_name().to_string_lossy().into_owned(),
+                    std::fs::read_to_string(entry.path()).unwrap(),
+                )
+            })
+        })
+        .collect();
+    pages.sort();
+    pages
+}
+
+/// The worktree of the wiki as an acceptance into `heads/other` that nothing interrupted leaves it, for the tests below
+/// to compare with: its facts and its pages.
+fn the_worktree_after_an_uninterrupted_acceptance_into_other(
+    tag: &str,
+    edited: &str,
+) -> Option<(WorktreeFacts, Vec<(String, String)>)> {
+    let w = World::new(tag, LeaseConfig::default())?;
+    w.make_other_view();
+    let p = w.propose_in(
+        Some(ALT),
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(edited))],
+    );
+    assert!(matches!(
+        w.accept(&p).expect("accepted"),
+        inklkunn_core::Accepted::Signed(_)
+    ));
+    Some((w.worktree_facts().unwrap(), pages_of_the_worktree(&w)))
+}
+
+/// A `seal` killed on the wiki's second view, `heads/other`, recovered end to end through `wiki recover` on a real prikk
+/// (maintenance M62). `lead`: the kill came before the ref log was appended (M61), else after the block was published
+/// and before the queue was drained (P15); `locks`: the locks the killed process left are there too. Returns `false`
+/// when prikk is not on `PATH` (the skip line was printed).
+fn a_killed_seal_on_the_other_view_is_recovered_end_to_end(
+    tag: &str,
+    lead: bool,
+    locks: bool,
+) -> bool {
+    let Some(w) = World::new(tag, LeaseConfig::default()) else {
+        return false;
+    };
+    let edited = HOME.replace("One.", "Uno.");
+    let Some((uninterrupted, uninterrupted_pages)) =
+        the_worktree_after_an_uninterrupted_acceptance_into_other(&format!("{tag}-c"), &edited)
+    else {
+        return false;
+    };
+    w.make_other_view();
+    let p = w.propose_in(
+        Some(ALT),
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&edited))],
+    );
+    let q = w.propose_in(
+        Some(ALT),
+        "Another",
+        &[(
+            "pages/Another.md",
+            Some("---\ntitle: Another\nid: pn\n---\n\na\n"),
+        )],
+    );
+    let r = w.propose(
+        "A third, into the default view",
+        &[(
+            "pages/Third.md",
+            Some("---\ntitle: Third\nid: pt\n---\n\nt\n"),
+        )],
+    );
+    let (main_before, other_before) = (w.history(), w.history_in(ALT));
+    // The worktree belongs to the default view, as the wiki was made: this is what it was before the acceptance.
+    let at_the_start = WorktreeFacts {
+        current_branch: MAIN.to_owned(),
+        clean: true,
+    };
+    assert_eq!(w.worktree_facts().unwrap(), at_the_start);
+    let pages_at_the_start = pages_of_the_worktree(&w);
+
+    // The acceptance is into `heads/other` (the proposal names it; the recorded intent carries it), and its `seal` is
+    // killed.
+    let extras: &[&str] = match (lead, locks) {
+        (true, _) => &["leads-the-log"],
+        (false, true) => &["leaves-the-lock"],
+        (false, false) => &[],
+    };
+    w.killed_seal(&p, extras);
+    if lead && locks {
+        plant_the_killed_seals_locks_of(&w, ALT_REF_DIGEST);
+    }
+    let intent = w.store.open_intents(&w.wiki.id).unwrap();
+    assert_eq!(intent.len(), 1);
+    assert_eq!(
+        nth(&intent, 0).intent.view,
+        ALT,
+        "the intent carries the view"
+    );
+    let published = w.tip_in(ALT);
+    assert_eq!(w.history_in(ALT).len(), other_before.len() + 1);
+    assert_eq!(w.history(), main_before, "the default view did not move");
+    prikk_probes::assert_status_shows_a_pending_cleanup(&w.storage, &w.repo, &published);
+    let doctor = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+    if lead {
+        assert_eq!(doctor.only_ref_lead(), Some(ALT), "{doctor:?}");
+        assert!(!w.verifies(), "the pointer leads the log");
+    } else {
+        assert!(doctor.is_only_cleanup_pending(), "{doctor:?}");
+    }
+    let (seals, refs, commits) = (
+        calls_of(&w, "seal"),
+        calls_of(&w, "ref"),
+        calls_of(&w, "commit"),
+    );
+
+    // The plan, shown: it is the lead's steps for that view, and it changes nothing.
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    let mut expected: Vec<&str> = Vec::new();
+    if locks {
+        expected.push("clear-locks");
+    }
+    if lead {
+        expected.push("complete-ref-publication");
+    }
+    expected.extend(["complete-publication", "restore-worktree", "end-sealed"]);
+    expected.extend(["verify", "reconcile", "clear-flag"]);
+    assert_eq!(step_names(&shown), expected);
+    let lines = shown.lines();
+    let mut sentences = vec![
+        "run seal --allow-no-audit once, as prikk's doctor recommends",
+        "put the worktree of heads/other back to what its tip says",
+    ];
+    if lead {
+        sentences.extend([
+            "run ref complete heads/other once, as prikk's doctor recommends, to finish the publication of block",
+            "saw: prikk doctor names the error PRIKK-VERIFY-REF-POINTER-LEADS-LOG for heads/other",
+        ]);
+    }
+    for sentence in sentences {
+        assert!(
+            lines.iter().any(|l| l.contains(sentence)),
+            "{sentence}: {lines:#?}"
+        );
+    }
+    assert!(
+        lines.iter().all(|l| !l.contains("ref complete heads/main")),
+        "{lines:#?}"
+    );
+    assert_eq!(
+        (calls_of(&w, "seal"), calls_of(&w, "ref")),
+        (seals, refs),
+        "a plan runs nothing"
+    );
+    assert_eq!(w.history_in(ALT).len(), other_before.len() + 1);
+
+    // The run.
+    let done = w.recover();
+    assert_eq!(
+        done.outcome,
+        RecoveryOutcome::Recovered,
+        "{:#?}",
+        done.lines()
+    );
+    let steps: Vec<&str> = done.done.iter().map(|d| d.step).collect();
+    assert_eq!(steps, expected);
+    // The killed seal left the worktree as its change made it, which is the new tip of the view it belongs to (the
+    // acceptance switched it there): the step finds nothing to put back.
+    let restored = done
+        .done
+        .iter()
+        .find(|d| d.step == "restore-worktree")
+        .unwrap();
+    assert_eq!(restored.detail, "0 path(s) put back");
+    if lead {
+        let said = done
+            .done
+            .iter()
+            .find(|d| d.step == "complete-ref-publication")
+            .map(|d| d.detail.clone())
+            .unwrap();
+        assert!(
+            said.contains(&published)
+                && said.contains("on heads/other")
+                && said.contains("the ref log's missing record is appended"),
+            "{said}"
+        );
+        assert_eq!(
+            calls_of(&w, "ref"),
+            refs + 2,
+            "prikk's plan and its completion"
+        );
+    } else {
+        assert_eq!(calls_of(&w, "ref"), refs, "no ref publication to finish");
+    }
+    assert_eq!(
+        calls_of(&w, "seal"),
+        seals + 1,
+        "prikk's recommendation, once"
+    );
+    assert_eq!(calls_of(&w, "commit"), commits, "recovery never commits");
+    if locks {
+        let wanted = if lead { 4 } else { 1 };
+        assert_eq!(w.unlock_calls().len(), wanted, "{:?}", w.unlock_calls());
+    }
+
+    // Exactly one new block, on `heads/other`; the default view is as it was; the queue is drained; `verify` is green.
+    assert_eq!(w.tip_in(ALT), published, "no second block");
+    assert_eq!(w.history_in(ALT).len(), other_before.len() + 1);
+    assert_eq!(
+        w.history_in(ALT).get(1..).unwrap(),
+        other_before.as_slice(),
+        "the view's earlier blocks are as they were"
+    );
+    assert_eq!(w.history(), main_before, "the default view did not move");
+    assert_eq!(w.queue_count(), 0);
+    assert!(w.verifies());
+    let after = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+    assert!(
+        after
+            .diagnostics
+            .iter()
+            .all(|d| !d.is_cleanup_pending() && !d.is_publication_lead()),
+        "{after:?}"
+    );
+    assert!(w.page_in(ALT, "pages/Home.md").contains("Uno."));
+    assert!(
+        w.page_in(MAIN, "pages/Home.md").contains("One."),
+        "the change is not in the default view"
+    );
+
+    // The worktree: the one an acceptance into `heads/other` that nothing interrupted leaves (it belongs to that view
+    // now: the acceptance switched it there), the view's tip and nothing else, and not the default view's.
+    assert_eq!(w.worktree_facts().unwrap(), uninterrupted);
+    assert_eq!(pages_of_the_worktree(&w), uninterrupted_pages);
+    assert_eq!(
+        w.worktree_page("pages/Home.md"),
+        w.page_in(ALT, "pages/Home.md")
+    );
+    assert_ne!(
+        pages_of_the_worktree(&w),
+        pages_at_the_start,
+        "it is the other view's now"
+    );
+
+    // The records agree with the history: the acceptance sealed in that block, the intent completed, the proposal
+    // accepted, the flag gone.
+    let entry = w.store.acceptances_of(&p.id, 1).unwrap().remove(0);
+    assert_eq!(entry.acceptance.view, ALT);
+    assert!(matches!(
+        entry.result.map(|r| r.outcome),
+        Some(AcceptanceOutcome::Sealed { block_id, .. }) if block_id == published
+    ));
+    assert!(w.store.open_intents(&w.wiki.id).unwrap().is_empty());
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    assert!(w.reconciled().is_clean());
+    // The recorded plan and the audit trail name the view, and the steps are in the trail in order.
+    let acts = w.store.recovery_acts(&w.wiki.id).unwrap();
+    let recorded = &acts.first().unwrap().act.plan;
+    assert!(recorded.contains("heads/other"), "{recorded}");
+    assert!(!recorded.contains("heads/main"), "{recorded}");
+    let audit = w.audit();
+    let mut from = 0;
+    for step in &steps {
+        let at = audit
+            .iter()
+            .skip(from)
+            .position(|(a, _, d)| a == "recovery-step" && d == step)
+            .map(|i| i + from)
+            .unwrap_or_else(|| panic!("{step} is audited in order: {audit:?}"));
+        from = at + 1;
+    }
+
+    // A write afterwards on both views.
+    assert!(matches!(
+        w.accept(&q).expect("the other view takes writes again"),
+        inklkunn_core::Accepted::Signed(_)
+    ));
+    assert_eq!(w.history_in(ALT).len(), other_before.len() + 2);
+    assert_eq!(w.history(), main_before, "still untouched");
+    assert!(matches!(
+        w.accept(&r).expect("the default view takes writes too"),
+        inklkunn_core::Accepted::Signed(_)
+    ));
+    assert_eq!(w.history().len(), main_before.len() + 1);
+    assert_eq!(
+        w.history_in(ALT).len(),
+        other_before.len() + 2,
+        "the other view did not move"
+    );
+    assert!(w.verifies());
+    assert!(w.reconciled().is_clean());
+    true
+}
+
+#[test]
+fn a_seal_killed_before_its_ref_log_on_another_view_is_recovered_end_to_end() {
+    // Maintenance M62. M61's state on `heads/other`: the real acceptor takes a proposal into the view, the `seal` is
+    // killed after it moved the view's pointer and before it appended the view's ref log. `wiki recover`, plan shown
+    // and then run, finishes the publication of that view, the cleanup, the worktree and the records.
+    for (tag, locks) in [("m62-lead", false), ("m62-lead-locks", true)] {
+        if !a_killed_seal_on_the_other_view_is_recovered_end_to_end(tag, true, locks) {
+            return;
+        }
+    }
+}
+
+#[test]
+fn a_seal_killed_before_it_drained_the_queue_on_another_view_is_recovered_end_to_end() {
+    // Maintenance M62. P15's state on `heads/other`: the block is published and the ref log written, the queue still
+    // holds the patch. The cleanup is finished for the act's own view, and everything after it.
+    for (tag, locks) in [("m62-p15", false), ("m62-p15-locks", true)] {
+        if !a_killed_seal_on_the_other_view_is_recovered_end_to_end(tag, false, locks) {
+            return;
+        }
+    }
+}
+
+/// A wiki whose second view, `heads/other`, has a change the default view does not (so the two views' trees differ), and
+/// whose worktree is a copy of `heads/other` (the last acceptance was into it) or of the default view (the last one was
+/// into that); then a stray file and a scribble on a page in the worktree, as a person or a crashed tool leaves them.
+/// Returns the wiki and the pages each view holds.
+fn a_wiki_with_two_different_views_and_a_dirty_worktree(
+    tag: &str,
+    worktree_on_other: bool,
+) -> Option<World> {
+    let w = World::new(tag, LeaseConfig::default())?;
+    w.make_other_view();
+    let spanish = w.propose_in(
+        Some(ALT),
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    let hola = w.propose(
+        "Greet in Spanish",
+        &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Hola.")))],
+    );
+    // The last acceptance decides which view the worktree belongs to.
+    let (first, last) = if worktree_on_other {
+        (&hola, &spanish)
+    } else {
+        (&spanish, &hola)
+    };
+    for p in [first, last] {
+        assert!(matches!(
+            w.accept(p).expect("accepted"),
+            inklkunn_core::Accepted::Signed(_)
+        ));
+    }
+    let belongs = if worktree_on_other { ALT } else { MAIN };
+    assert_eq!(
+        w.worktree_facts().unwrap(),
+        WorktreeFacts {
+            current_branch: belongs.to_owned(),
+            clean: true,
+        }
+    );
+    // The two views differ in both pages, so a baseline restored from the wrong one shows.
+    assert!(w.page_in(ALT, "pages/Home.md").contains("Uno."));
+    assert!(w.page_in(MAIN, "pages/Home.md").contains("One."));
+    assert!(w.page_in(ALT, "pages/Other.md").contains("Hello."));
+    assert!(w.page_in(MAIN, "pages/Other.md").contains("Hola."));
+    std::fs::write(w.repo.join("pages/Home.md"), "scribbled\n").unwrap();
+    std::fs::write(w.repo.join("pages/Other.md"), "scribbled too\n").unwrap();
+    std::fs::write(w.repo.join("pages/Stray.md"), "stray\n").unwrap();
+    Some(w)
+}
+
+/// An acceptance of a proposal into `view` over the dirty worktree of a wiki made by
+/// [`a_wiki_with_two_different_views_and_a_dirty_worktree`]: the signer refuses to start over unclean work, and the wiki
+/// is flagged. Then `wiki recover`, plan shown and run: `step` is what the restore step must name; the worktree must end
+/// as the copy of `belongs`, with that view's pages and not the other's.
+fn a_dirty_worktree_is_put_back_to_the_baseline_it_is_a_copy_of(
+    w: &World,
+    into: &str,
+    belongs: &str,
+) {
+    let (main_before, other_before) = (w.history(), w.history_in(ALT));
+    let into_other = into == ALT;
+    let p = w.propose_in(
+        into_other.then_some(ALT),
+        "Another page",
+        &[(
+            "pages/Another.md",
+            Some("---\ntitle: Another\nid: pn\n---\n\na\n"),
+        )],
+    );
+    let err = w.accept(&p).unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            AcceptFailure::Incomplete {
+                reason: RecoveryReason::WorktreeDirty,
+                flagged: true,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    let intent = w.store.open_intents(&w.wiki.id).unwrap();
+    assert_eq!(
+        intent
+            .iter()
+            .map(|i| i.intent.view.as_str())
+            .collect::<Vec<_>>(),
+        [into],
+        "the act is into {into}"
+    );
+
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    assert_eq!(
+        step_names(&shown),
+        [
+            "restore-worktree",
+            "end-failed",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    let sentence = format!("put the worktree of {belongs} back to what its tip says");
+    assert!(
+        shown.lines().iter().any(|l| l.contains(&sentence)),
+        "{sentence}: {:#?}",
+        shown.lines()
+    );
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    let restored = r.done.first().unwrap();
+    assert_eq!(restored.step, "restore-worktree");
+    assert!(
+        restored.detail.contains("3 path(s) put back"),
+        "{restored:?}"
+    );
+    // The recorded plan names the view the worktree belongs to, and the audit trail has the step.
+    let acts = w.store.recovery_acts(&w.wiki.id).unwrap();
+    let recorded = &acts.first().unwrap().act.plan;
+    assert!(
+        recorded.contains(&format!(
+            "\"step\":\"restore-worktree\",\"view\":\"{belongs}\""
+        )),
+        "{recorded}"
+    );
+
+    // The worktree is the baseline of the view it is a copy of: that view's pages, not the other view's.
+    assert_eq!(
+        w.worktree_facts().unwrap(),
+        WorktreeFacts {
+            current_branch: belongs.to_owned(),
+            clean: true,
+        }
+    );
+    for page in ["pages/Home.md", "pages/Other.md"] {
+        assert_eq!(w.worktree_page(page), w.page_in(belongs, page), "{page}");
+    }
+    assert!(!w.repo.join("pages/Stray.md").exists());
+    assert!(!w.repo.join("pages/Another.md").exists());
+    assert_eq!(w.history(), main_before);
+    assert_eq!(w.history_in(ALT), other_before);
+    assert!(w.verifies());
+    assert!(w.store.open_intents(&w.wiki.id).unwrap().is_empty());
+    assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+    assert_eq!(
+        w.state(&p),
+        ProposalState::HeldForReview,
+        "the proposal stays open"
+    );
+    // And the wiki takes the change, into the view it was meant for, which switches the worktree there.
+    assert!(matches!(
+        w.accept(&p).expect("accepted now"),
+        inklkunn_core::Accepted::Signed(_)
+    ));
+    let (main_after, other_after) = (w.history().len(), w.history_in(ALT).len());
+    if into_other {
+        assert_eq!(
+            (main_after, other_after),
+            (main_before.len(), other_before.len() + 1)
+        );
+    } else {
+        assert_eq!(
+            (main_after, other_after),
+            (main_before.len() + 1, other_before.len())
+        );
+    }
+    assert!(w.verifies());
+    assert!(w.reconciled().is_clean());
+}
+
+#[test]
+fn a_dirty_worktree_of_the_other_view_is_put_back_to_that_views_tip_and_not_the_default_views() {
+    // Maintenance M62, the question the plan's `restore-worktree` raises. The worktree is a copy of `heads/other` (the last
+    // acceptance was into it) and is left dirty; a proposal into `heads/other` is accepted, the signer finds the
+    // worktree unclean and the wiki is flagged. The two views differ in the pages the scribbles are on: a baseline
+    // restored from the default view would show in them.
+    let Some(w) = a_wiki_with_two_different_views_and_a_dirty_worktree("m62-restore", true) else {
+        return;
+    };
+    a_dirty_worktree_is_put_back_to_the_baseline_it_is_a_copy_of(&w, ALT, ALT);
 }
