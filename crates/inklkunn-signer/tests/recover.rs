@@ -116,6 +116,8 @@ if [ "$verb" = doctor ] && [ $# -eq 1 ] && [ -e "$CTL/say-doctor" ]; then cat "$
 if [ "$1 $2" = "ref complete" ] && [ -z "$4" ] && [ -e "$CTL/ref-complete-does-nothing" ]; then echo "$3 completed"; exit 0; fi
 if [ "$1 $2" = "ref complete" ] && [ "$4" = "--plan-only" ] && [ -e "$CTL/say-completion-plan" ]; then cat "$CTL/say-completion-plan"; exit 0; fi
 if [ "$verb" = status ] && [ $# -eq 1 ] && [ -e "$CTL/say-status-text" ]; then cat "$CTL/say-status-text"; exit 0; fi
+if [ "$verb" = status ] && [ $# -gt 1 ] && [ -e "$CTL/integrity-status-json" ]; then echo "error: integrity error: lifecycle replay: operation could not be applied to the replayed state" >&2; exit 1; fi
+if [ "$verb" = status ] && [ $# -gt 1 ] && [ -e "$CTL/fail-status-json" ]; then echo "error: precondition not met: injected failure of status" >&2; exit 1; fi
 if [ "$verb" = status ] && [ $# -gt 1 ] && [ -e "$CTL/say-status-json" ]; then cat "$CTL/say-status-json"; exit 0; fi
 if [ "$verb" = verify ] && [ $# -eq 1 ] && [ -e "$CTL/say-verify-text" ]; then cat "$CTL/say-verify-text"; exit 1; fi
 if [ "$verb" = verify ] && [ $# -gt 1 ] && [ -e "$CTL/say-verify-json" ]; then cat "$CTL/say-verify-json"; exit 1; fi
@@ -2302,4 +2304,740 @@ fn a_view_creation_is_not_completed_while_a_retirement_is_unfinished_or_the_key_
     std::fs::write(&path, good).unwrap();
     f.complete_view(&rec, DRAFT, &creation).expect("completed");
     assert!(f.verify_ok());
+}
+
+// ---- a `seal` killed after it moved the ref's pointer and before it appended the ref log (maintenance M61) ----
+
+impl Fixture {
+    /// What a `seal` killed after it moved the ref's pointer and before it appended the ref log leaves (measured with a
+    /// real kill on prikk 0.58.0, `~/.pgtmp/soak`; made on cue here): `p` is queued, then sealed, and then the three
+    /// files of the active session that the seal had emptied and the ref log's containers are put back as they were. The
+    /// block is in the history, the pointer leads the log by one transition, the patch is still queued. `doctor` names
+    /// exactly one error, `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` for the view; `status --format json` refuses up to 0.57.0
+    /// and says the queue is already sealed in the block from 0.58.0. Returns the block.
+    fn leave_a_seal_lead(&self, p: &Prepared) -> String {
+        self.queue(p);
+        let active = self.repo.join(".prikk/active/default");
+        let containers = self.repo.join(".prikk/refs/containers");
+        let mut paths: Vec<PathBuf> = ["queue.wal", "ref-name", "witness"]
+            .iter()
+            .map(|name| active.join(name))
+            .collect();
+        for entry in std::fs::read_dir(&containers).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with("log-") && name.ends_with(".container") {
+                paths.push(entry.path());
+            }
+        }
+        let kept: Vec<(PathBuf, Vec<u8>)> = paths
+            .into_iter()
+            .map(|path| {
+                let bytes = std::fs::read(&path).unwrap();
+                (path, bytes)
+            })
+            .collect();
+        let act = self.act(vec![self.seal_op(p)]);
+        self.leased(|| self.signer.seal_queued(&self.wiki, MAIN, &act, &p.token))
+            .expect("sealed");
+        for (path, bytes) in kept {
+            std::fs::write(path, bytes).unwrap();
+        }
+        let block = self.tip_of(MAIN).expect("the block");
+        prikk_probes::assert_status_json_shows_a_pending_cleanup(&self.real, &self.repo, &block);
+        assert_eq!(
+            self.witnesses.doctor(&self.wiki).unwrap().only_ref_lead(),
+            Some(MAIN),
+            "doctor names exactly the interrupted publication of the view"
+        );
+        assert!(!self.verify_ok());
+        block
+    }
+
+    fn ref_op(&self, p: &Prepared) -> RecoveryOp {
+        RecoveryOp::CompleteRefPublication {
+            acceptance: p.token.as_str().to_owned(),
+            view: MAIN.to_owned(),
+        }
+    }
+
+    fn complete_ref(&self, rec: &RecoveryToken, p: &Prepared) -> Result<(), RecoverError> {
+        self.leased(|| {
+            self.signer
+                .complete_ref_publication(&self.wiki, MAIN, rec, &p.token)
+        })
+    }
+
+    /// Nothing was done: the lead stands, the queue is as it was, no block was made.
+    fn lead_stands(&self, blocks: usize, what: &str) {
+        assert_eq!(
+            self.witnesses.doctor(&self.wiki).unwrap().only_ref_lead(),
+            Some(MAIN),
+            "{what}: the lead stands"
+        );
+        assert_eq!(self.blocks(), blocks, "{what}");
+        // (`status --format json` refuses in this state up to prikk 0.57.0; the plain text reads on every prikk.)
+        assert!(
+            self.status_text()
+                .contains("queued patches: 1 targeting heads/main"),
+            "{what}: the queue is as it was"
+        );
+    }
+}
+
+#[test]
+fn a_seal_killed_before_its_ref_log_is_finished_with_ref_complete_and_then_the_cleanup() {
+    let Some(f) = fixture("seal-lead") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    let block = f.leave_a_seal_lead(&p);
+    let blocks = f.blocks();
+    assert_eq!(
+        blocks, 2,
+        "the first block and the one the pointer leads to"
+    );
+    let rec = f.act(vec![f.ref_op(&p), f.publish_op(&p)]);
+    f.complete_ref(&rec, &p)
+        .expect("the publication is finished");
+    // It made no block; the ref log has its record now, so `doctor` names the cleanup of the queue and nothing else,
+    // which is the step that follows.
+    assert_eq!(f.blocks(), blocks);
+    assert_eq!(f.tip_of(MAIN), Some(block.clone()));
+    assert!(
+        f.witnesses
+            .doctor(&f.wiki)
+            .unwrap()
+            .is_only_cleanup_pending(),
+        "{:?}",
+        f.witnesses.doctor(&f.wiki)
+    );
+    prikk_probes::assert_status_json_shows_a_pending_cleanup(&f.real, &f.repo, &block);
+    // Once is once: with nothing interrupted, the operation refuses and appends nothing.
+    let again = f.complete_ref(&rec, &p);
+    assert!(
+        matches!(again, Err(RecoverError::DoesNotMatch(_))),
+        "{again:?}"
+    );
+    // The cleanup is P15's step, unchanged: one more seal that makes no block.
+    f.leased(|| f.signer.complete_publication(&f.wiki, MAIN, &rec, &p.token))
+        .expect("the cleanup is finished");
+    assert_eq!(f.blocks(), blocks);
+    assert_eq!(f.tip_of(MAIN), Some(block));
+    assert_eq!(f.queue_count(), 0);
+    assert!(f.verify_ok());
+    assert!(f.worktree_clean());
+    assert_eq!(
+        std::fs::read_to_string(f.repo.join("pages/Home.md")).unwrap(),
+        HOME_EDITED
+    );
+}
+
+#[test]
+fn completing_a_seals_ref_log_is_bound_to_the_lease_the_recorded_act_and_the_recorded_acceptance() {
+    let Some(f) = fixture("seal-lead-guards") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.leave_a_seal_lead(&p);
+    let blocks = f.blocks();
+    let good = f.act(vec![f.ref_op(&p)]);
+    // No lease lent: refused, whatever the record says; and a lease that is not lent to this thread is no lease.
+    assert_eq!(
+        f.signer
+            .complete_ref_publication(&f.wiki, MAIN, &good, &p.token),
+        Err(RecoverError::NoLease)
+    );
+    let lease = f.leases.try_acquire(&f.wiki).expect("free");
+    assert_eq!(
+        f.signer
+            .complete_ref_publication(&f.wiki, MAIN, &good, &p.token),
+        Err(RecoverError::NoLease)
+    );
+    let scope = lease.scope();
+    let ask = |rec: &RecoveryToken, view: &str, token: &AcceptanceToken| {
+        f.signer.complete_ref_publication(&f.wiki, view, rec, token)
+    };
+    assert_eq!(
+        ask(&RecoveryToken::new("never-recorded"), MAIN, &p.token),
+        Err(RecoverError::NotRecorded)
+    );
+    // Recorded, but it names another operation, another view, or another acceptance.
+    for (what, ops) in [
+        ("the discard only", vec![RecoveryOp::DiscardDamaged]),
+        ("the cleanup's step only", vec![f.publish_op(&p)]),
+        (
+            "the step of a view creation, with the same words",
+            vec![RecoveryOp::CompleteViewCreation {
+                creation: p.token.as_str().to_owned(),
+                view: MAIN.to_owned(),
+            }],
+        ),
+        (
+            "another view",
+            vec![RecoveryOp::CompleteRefPublication {
+                acceptance: p.token.as_str().to_owned(),
+                view: OTHER.to_owned(),
+            }],
+        ),
+        (
+            "another acceptance",
+            vec![RecoveryOp::CompleteRefPublication {
+                acceptance: "acceptance-other".to_owned(),
+                view: MAIN.to_owned(),
+            }],
+        ),
+        ("nothing", vec![]),
+    ] {
+        let rec = f.act(ops);
+        assert_eq!(
+            ask(&rec, MAIN, &p.token),
+            Err(RecoverError::NotRecorded),
+            "{what}"
+        );
+    }
+    // An act of another wiki is not this wiki's.
+    let foreign = RecoveryToken::new("foreign");
+    f.ledger.acts.lock().unwrap().insert(
+        foreign.as_str().to_owned(),
+        RecoveryFacts {
+            wiki: WikiId::new(),
+            ops: vec![f.ref_op(&p)],
+        },
+    );
+    assert_eq!(
+        ask(&foreign, MAIN, &p.token),
+        Err(RecoverError::NotRecorded)
+    );
+    // A view is `heads/<name>`.
+    assert!(matches!(
+        ask(&good, "tags/main", &p.token),
+        Err(RecoverError::Refused(_))
+    ));
+    // The acceptance: unknown to the ledger, another wiki's, or on another view than the one asked for.
+    let unknown = AcceptanceToken::new("acceptance-unknown");
+    let rec = f.act(vec![RecoveryOp::CompleteRefPublication {
+        acceptance: unknown.as_str().to_owned(),
+        view: MAIN.to_owned(),
+    }]);
+    assert_eq!(ask(&rec, MAIN, &unknown), Err(RecoverError::NotRecorded));
+    let entry = f
+        .ledger
+        .pending
+        .lock()
+        .unwrap()
+        .get(p.token.as_str())
+        .cloned()
+        .unwrap();
+    for (what, token, record) in [
+        (
+            "another wiki's",
+            "acceptance-foreign",
+            ExpectedMessage {
+                wiki: WikiId::new(),
+                ..entry.clone()
+            },
+        ),
+        (
+            "on another view",
+            "acceptance-elsewhere",
+            ExpectedMessage {
+                view: OTHER.to_owned(),
+                ..entry.clone()
+            },
+        ),
+    ] {
+        let token = AcceptanceToken::new(token);
+        f.ledger
+            .pending
+            .lock()
+            .unwrap()
+            .insert(token.as_str().to_owned(), record);
+        let rec = f.act(vec![RecoveryOp::CompleteRefPublication {
+            acceptance: token.as_str().to_owned(),
+            view: MAIN.to_owned(),
+        }]);
+        assert_eq!(
+            ask(&rec, MAIN, &token),
+            Err(RecoverError::NotRecorded),
+            "{what}"
+        );
+    }
+    drop(scope);
+    f.lead_stands(blocks, "all of the above");
+}
+
+#[test]
+fn a_seals_ref_log_is_completed_only_when_prikk_names_exactly_that_one_ref() {
+    let Some(f) = fixture("seal-lead-doctor") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.leave_a_seal_lead(&p);
+    let blocks = f.blocks();
+    let rec = f.act(vec![f.ref_op(&p)]);
+    let lead = "error [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/main`\n  recommendation: run `prikk ref complete heads/main`; doctor does not sign or append\n";
+    let report = |extra: &str, errors: u32| {
+        format!(
+            "doctor repository: /srv/r/.prikk\n{extra}{lead}issue summary: errors={}, warnings=0, info=0\n",
+            errors + 1
+        )
+    };
+    for (what, text) in [
+        (
+            "another error beside it",
+            report(
+                "error [PRIKK-DOCTOR-OBJECT-MISSING]: an object is missing\n",
+                1,
+            ),
+        ),
+        (
+            "the cleanup of a seal beside it",
+            report(
+                "error [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree\n  recommendation: run signer-backed `prikk seal --allow-no-audit` for the affected ref\n",
+                1,
+            ),
+        ),
+        (
+            "a lead for another ref only",
+            "doctor repository: /srv/r/.prikk\nerror [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/other`\n  recommendation: run `prikk ref complete heads/other`; doctor does not sign or append\nissue summary: errors=1, warnings=0, info=0\n".to_owned(),
+        ),
+        (
+            "a second lead, for another ref, beside it",
+            report(
+                "error [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/other`\n  recommendation: run `prikk ref complete heads/other`; doctor does not sign or append\n",
+                1,
+            ),
+        ),
+        (
+            "a clean report",
+            "doctor repository: /srv/r/.prikk\ninfo [PRIKK-DOCTOR-VERIFY-OK]: done\nissue summary: errors=0, warnings=0, info=1\n".to_owned(),
+        ),
+    ] {
+        f.say("say-doctor", &text);
+        let r = f.complete_ref(&rec, &p);
+        assert!(
+            matches!(&r, Err(RecoverError::DoesNotMatch(_))),
+            "{what}: {r:?}"
+        );
+        f.unsay("say-doctor");
+        f.lead_stands(blocks, what);
+    }
+    // The report as it is, and the step is taken.
+    f.complete_ref(&rec, &p).expect("completed");
+    assert!(
+        f.witnesses
+            .doctor(&f.wiki)
+            .unwrap()
+            .is_only_cleanup_pending()
+    );
+}
+
+#[test]
+fn a_seals_ref_log_is_completed_only_for_the_change_the_record_describes() {
+    let Some(f) = fixture("seal-lead-record") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.leave_a_seal_lead(&p);
+    let blocks = f.blocks();
+    let entry = f
+        .ledger
+        .pending
+        .lock()
+        .unwrap()
+        .get(p.token.as_str())
+        .cloned()
+        .unwrap();
+    let try_it = |token: &AcceptanceToken| {
+        let rec = f.act(vec![RecoveryOp::CompleteRefPublication {
+            acceptance: token.as_str().to_owned(),
+            view: MAIN.to_owned(),
+        }]);
+        f.leased(|| {
+            f.signer
+                .complete_ref_publication(&f.wiki, MAIN, &rec, token)
+        })
+    };
+    let refused = |r: Result<(), RecoverError>, what: &str| {
+        assert!(
+            matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains(what)),
+            "{what}: {r:?}"
+        );
+        f.lead_stands(blocks, what);
+    };
+    // Another change's message.
+    let other = f.prepare(
+        vec![file(
+            "pages/Home.md",
+            Some("---\ntitle: Home\n---\n\nOther.\n"),
+        )],
+        vec![],
+    );
+    refused(try_it(&other.token), "message");
+    // The published message with other files: the record's digest is not the block's.
+    let liar = AcceptanceToken::new("acceptance-liar");
+    f.ledger.pending.lock().unwrap().insert(
+        liar.as_str().to_owned(),
+        ExpectedMessage {
+            change_digest: other.change.digest(),
+            ..entry.clone()
+        },
+    );
+    refused(try_it(&liar), "files");
+    // The published message and files, but the change was made on another block than the one it sits on.
+    let elsewhere = AcceptanceToken::new("acceptance-elsewhere");
+    f.ledger.pending.lock().unwrap().insert(
+        elsewhere.as_str().to_owned(),
+        ExpectedMessage {
+            pinned_tip: BlockId::new(&"a".repeat(64)).unwrap(),
+            ..entry
+        },
+    );
+    refused(try_it(&elsewhere), "made on");
+    // And the record that is right finishes it.
+    try_it(&p.token).expect("the right record");
+    assert!(
+        f.witnesses
+            .doctor(&f.wiki)
+            .unwrap()
+            .diagnostics
+            .iter()
+            .all(|d| !d.is_publication_lead())
+    );
+}
+
+#[test]
+fn a_seals_ref_log_is_completed_only_by_prikks_own_plan_for_this_block() {
+    let Some(f) = fixture("seal-lead-plan") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    let block = f.leave_a_seal_lead(&p);
+    let blocks = f.blocks();
+    let rec = f.act(vec![f.ref_op(&p)]);
+    // The history's own fields: the state the pointer leads with, the state before it (the ref log's last record) and
+    // the block's sequence.
+    let log = f.prikk_json(&["log", "--ref", MAIN, "--limit", "2", "--format", "json"]);
+    let listed = log
+        .pointer("/blocks")
+        .and_then(serde_json::Value::as_array)
+        .unwrap();
+    let state_of = |i: usize| {
+        listed
+            .get(i)
+            .and_then(|b| b.get("ref_state_id"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap()
+            .to_owned()
+    };
+    let (leading, log_tip) = (state_of(0), state_of(1));
+    let seq = listed
+        .first()
+        .and_then(|b| b.get("update_seq"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap();
+    let plan = |ref_name: &str,
+                leading: &str,
+                target: &str,
+                kind: &str,
+                tip: &str,
+                seq: u64,
+                tail: u64| {
+        format!(
+            "ref: {ref_name}\nleading RefState: {leading}\noriginal signer: ed25519-d03c81318ad222b9\ntarget: {target} ({kind})\nlog tip: {tip}\nsequence: {seq}\ncompleting key: ed25519-d03c81318ad222b9\npartial tail to remove: {tail} byte(s)\n"
+        )
+    };
+    let none = "(none -- first publication for this ref)";
+    // Each of these is one field wrong.
+    for (what, text) in [
+        (
+            "another ref",
+            plan(OTHER, &leading, &block, "Branch", &log_tip, seq, 0),
+        ),
+        (
+            "a tag",
+            plan(MAIN, &leading, &block, "Tag", &log_tip, seq, 0),
+        ),
+        (
+            "another target block",
+            plan(MAIN, &leading, &"d".repeat(64), "Branch", &log_tip, seq, 0),
+        ),
+        (
+            "another leading state",
+            plan(MAIN, &"e".repeat(64), &block, "Branch", &log_tip, seq, 0),
+        ),
+        (
+            "another log tip",
+            plan(MAIN, &leading, &block, "Branch", &"c".repeat(64), seq, 0),
+        ),
+        (
+            "no log tip: a first publication",
+            plan(MAIN, &leading, &block, "Branch", none, seq, 0),
+        ),
+        (
+            "the log tip is the leading state itself",
+            plan(MAIN, &leading, &block, "Branch", &leading, seq, 0),
+        ),
+        (
+            "a later sequence",
+            plan(MAIN, &leading, &block, "Branch", &log_tip, seq + 1, 0),
+        ),
+        (
+            "an earlier sequence",
+            plan(MAIN, &leading, &block, "Branch", &log_tip, seq - 1, 0),
+        ),
+        (
+            "a tail to remove",
+            plan(MAIN, &leading, &block, "Branch", &log_tip, seq, 3),
+        ),
+        ("an unreadable plan", "error: something else\n".to_owned()),
+    ] {
+        f.say("say-completion-plan", &text);
+        let r = f.complete_ref(&rec, &p);
+        assert!(
+            matches!(
+                &r,
+                Err(RecoverError::DoesNotMatch(_) | RecoverError::Unavailable(_))
+            ),
+            "{what}: {r:?}"
+        );
+        f.lead_stands(blocks, what);
+    }
+    // The fields as the history has them are accepted (so each of the others was refused for its field and not for its
+    // shape), and the real call then completes.
+    f.say(
+        "say-completion-plan",
+        &plan(MAIN, &leading, &block, "Branch", &log_tip, seq, 0),
+    );
+    f.complete_ref(&rec, &p).expect("completed");
+    f.unsay("say-completion-plan");
+    assert!(
+        f.witnesses
+            .doctor(&f.wiki)
+            .unwrap()
+            .is_only_cleanup_pending()
+    );
+}
+
+#[test]
+fn a_seals_ref_log_is_completed_only_beside_a_queue_that_is_exactly_the_published_patch() {
+    let Some(f) = fixture("seal-lead-queue") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    let block = f.leave_a_seal_lead(&p);
+    let blocks = f.blocks();
+    let rec = f.act(vec![f.ref_op(&p)]);
+    let real = f.status_text();
+    let refused = |what: &str, text: String| {
+        f.say("say-status-text", &text);
+        let r = f.complete_ref(&rec, &p);
+        assert!(
+            matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("queue")),
+            "{what}: {r:?}"
+        );
+        f.unsay("say-status-text");
+        f.lead_stands(blocks, what);
+    };
+    refused(
+        "a second patch queued",
+        real.replace("queued patches: 1 targeting", "queued patches: 2 targeting")
+            .replace("active WAL records: 1", "active WAL records: 2"),
+    );
+    refused(
+        "nothing queued",
+        real.replace(
+            "queued patches: 1 targeting heads/main",
+            "queued patches: 0",
+        ),
+    );
+    refused(
+        "queued for another view",
+        real.replace("targeting heads/main", "targeting heads/other"),
+    );
+    refused(
+        "a torn byte",
+        real.replace(
+            "trailing partial WAL bytes: 0",
+            "trailing partial WAL bytes: 5",
+        ),
+    );
+    // The JSON, where it reads: it names the published patch and the block the queue is already sealed in.
+    let patch = f
+        .prikk_json(&["log", "--ref", MAIN, "--limit", "1", "--format", "json"])
+        .pointer("/blocks/0/patch_messages/0/patch_id")
+        .and_then(serde_json::Value::as_str)
+        .expect("the block holds one patch")
+        .to_owned();
+    let said = |already_sealed: serde_json::Value, patch_ids: &[&str]| {
+        serde_json::json!({
+            "schema_version": "status-report-v1",
+            "active_wal_records": 1,
+            "trailing_partial_wal_bytes": 0,
+            "current_branch": MAIN,
+            "provisional_worktree": null,
+            "interrupted_materialization": null,
+            "queue": {
+                "count": patch_ids.len(),
+                "target_ref": MAIN,
+                "target_ref_status": null,
+                "already_sealed": already_sealed,
+                "patches": patch_ids.iter().map(|id| serde_json::json!({"patch_id": id, "message": "m", "operations": []})).collect::<Vec<_>>(),
+            },
+        })
+        .to_string()
+    };
+    let sealed_in =
+        |id: &str| serde_json::json!({"block_id": id, "route": "prikk seal --allow-no-audit"});
+    let refused_json = |what: &str, text: String| {
+        f.say("say-status-json", &text);
+        let r = f.complete_ref(&rec, &p);
+        assert!(
+            matches!(&r, Err(RecoverError::DoesNotMatch(why)) if why.contains("already sealed") || why.contains("not the published one")),
+            "{what}: {r:?}"
+        );
+        f.unsay("say-status-json");
+        f.lead_stands(blocks, what);
+    };
+    refused_json("another block", said(sealed_in(&"e".repeat(64)), &[&patch]));
+    refused_json(
+        "an ordinary queue",
+        said(serde_json::Value::Null, &[&patch]),
+    );
+    refused_json("another patch", said(sealed_in(&block), &[&"f".repeat(64)]));
+    refused_json(
+        "a queue of two",
+        said(sealed_in(&block), &[&patch, &"f".repeat(64)]),
+    );
+    // `status --format json` refuses with something other than the integrity error this state makes: not read, not
+    // guessed at, and nothing is done.
+    f.say("fail-status-json", "");
+    let r = f.complete_ref(&rec, &p);
+    f.unsay("fail-status-json");
+    assert!(
+        matches!(&r, Err(RecoverError::Refused(why)) if why.contains("injected failure")),
+        "{r:?}"
+    );
+    f.lead_stands(blocks, "status refuses for another reason");
+    // The answer that agrees finishes it.
+    f.say("say-status-json", &said(sealed_in(&block), &[&patch]));
+    f.complete_ref(&rec, &p)
+        .expect("status agrees with the history");
+    f.unsay("say-status-json");
+    assert!(
+        f.witnesses
+            .doctor(&f.wiki)
+            .unwrap()
+            .is_only_cleanup_pending()
+    );
+}
+
+#[test]
+fn a_status_that_refuses_with_the_integrity_error_is_the_state_on_every_prikk() {
+    let Some(f) = fixture("seal-lead-integrity") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.leave_a_seal_lead(&p);
+    let rec = f.act(vec![f.ref_op(&p)]);
+    // The stand-in makes the refusal of prikk up to 0.57.0 for the 0.58.0 that reads the state: nothing else of
+    // `status --format json` is read, and the step is taken.
+    f.say("integrity-status-json", "");
+    f.complete_ref(&rec, &p).expect("completed");
+    f.unsay("integrity-status-json");
+    assert!(
+        f.witnesses
+            .doctor(&f.wiki)
+            .unwrap()
+            .is_only_cleanup_pending()
+    );
+}
+
+#[test]
+fn a_completion_that_left_the_seals_publication_unfinished_is_not_called_done() {
+    let Some(f) = fixture("seal-lead-nothing-done") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.leave_a_seal_lead(&p);
+    let blocks = f.blocks();
+    let rec = f.act(vec![f.ref_op(&p)]);
+    f.say("ref-complete-does-nothing", "");
+    let r = f.complete_ref(&rec, &p);
+    assert!(
+        matches!(&r, Err(RecoverError::DoesNotMatch(m)) if m.contains("still reports")),
+        "{r:?}"
+    );
+    f.unsay("ref-complete-does-nothing");
+    f.lead_stands(blocks, "nothing was done");
+    f.complete_ref(&rec, &p).expect("completed");
+}
+
+#[test]
+fn a_seals_ref_log_is_not_completed_while_the_key_record_cannot_be_read() {
+    let Some(f) = fixture("seal-lead-pause") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.leave_a_seal_lead(&p);
+    let blocks = f.blocks();
+    let rec = f.act(vec![f.ref_op(&p)]);
+    // The pause fails closed (X4): a key record that cannot be read refuses the step before the ledger is asked and
+    // before any seed is read, and with the record readable again the very same step is taken.
+    let path = f._tmp.0.join("keys").join(format!("{}.key.json", f.wiki));
+    let good = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, "this is not a key record").unwrap();
+    let r = f.complete_ref(&rec, &p);
+    assert!(
+        matches!(&r, Err(RecoverError::Unavailable(why))
+            if why.contains("cannot be told whether a change to its keys is unfinished")
+                && why.contains("nothing was written")),
+        "{r:?}"
+    );
+    f.lead_stands(blocks, "the key record cannot be read");
+    std::fs::write(&path, good).unwrap();
+    f.complete_ref(&rec, &p).expect("completed");
+}
+
+#[test]
+fn a_rotation_refuses_while_a_seals_ref_log_is_unwritten_and_names_recover() {
+    // Maintenance M61: completing the publication appends a record the maintainer key signs, so after a rotation it would
+    // be the new key's record under a pointer the old key moved: recovery first, for a kept old key and a retired one
+    // alike, and nothing changes.
+    let Some(f) = fixture("rotate-seal-lead") else {
+        return;
+    };
+    let p = f.prepare(vec![file("pages/Home.md", Some(HOME_EDITED))], vec![]);
+    f.leave_a_seal_lead(&p);
+    let before = f.signer.key_status(&f.wiki).unwrap();
+    for old_key in [
+        inklkunn_signer::OldKey::Keep,
+        inklkunn_signer::OldKey::Retire,
+    ] {
+        let r = f.signer.rotate_keys(
+            &inklkunn_signer::KeyAuthority::for_tests(),
+            &f.repo,
+            old_key,
+        );
+        let Err(inklkunn_signer::SignerError::NeedsRecovery(why)) = &r else {
+            panic!("{old_key:?}: {r:?}");
+        };
+        assert!(
+            why.contains(&format!("inklkunn wiki recover {}", f.wiki))
+                && why.contains("ref log of a block a killed seal made"),
+            "{old_key:?}: {why}"
+        );
+        assert_eq!(f.signer.key_status(&f.wiki).unwrap(), before, "{old_key:?}");
+    }
+    // Once recovery has finished the publication and the cleanup, the rotation goes ahead.
+    let rec = f.act(vec![f.ref_op(&p), f.publish_op(&p)]);
+    f.complete_ref(&rec, &p).expect("completed");
+    f.leased(|| f.signer.complete_publication(&f.wiki, MAIN, &rec, &p.token))
+        .expect("the cleanup is finished");
+    let r = f.signer.rotate_keys(
+        &inklkunn_signer::KeyAuthority::for_tests(),
+        &f.repo,
+        inklkunn_signer::OldKey::Keep,
+    );
+    assert!(r.is_ok(), "{r:?}");
 }

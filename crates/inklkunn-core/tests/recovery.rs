@@ -19,7 +19,10 @@
 //! a clear that is not `--force` for any holder (prikk 0.58.0's `--yes` for a holder it cannot judge): every clear's arguments
 //! are logged, for `World::unlock_calls`; `leads-after-branch-create`
 //! runs the real `branch create` and puts the ref log back as it was (a view's creation killed between the pointer and
-//! the log, as in `view_recovery.rs`); `list-fails-after-clear` fails
+//! the log, as in `view_recovery.rs`); `leads-the-log` (with `dies-after-publishing-seal`) puts the ref log back as it was
+//! after the real `seal` published, so that the pointer leads the log by one transition and the queue still holds the
+//! patch (a `seal` killed after it moved the pointer and before it appended the log: maintenance M61); `log-other-message`
+//! prints the real history with the summary of the acceptance's message changed; `list-fails-after-clear` fails
 //! the listing of locks once a clear has been asked for, and `relock-after-clear` (holding a path) lets the real clear
 //! work and then writes the lock back, which is a clear that did not hold; `format-marker` (holding a number) makes
 //! every verb but `--version` answer `error: unsupported format version: <number>`, exit 1 (a damaged or unknown marker).
@@ -133,6 +136,7 @@ if [ -e "$CTL/failafter-$verb" ]; then
   echo "$((c + 1))" > "$CTL/count-$verb"
   if [ "$c" -ge "$n" ]; then echo "error: precondition not met: injected failure of $verb" >&2; exit 1; fi
 fi
+if [ "$verb" = log ] && [ -e "$CTL/log-other-message" ]; then "{real}" "$@" | sed 's/Say it in Spanish/Something else entirely/'; exit 0; fi
 if [ "$verb" = seal ] && [ -e "$CTL/say-until-seal" ]; then : > "$CTL/sealed"; fi
 if [ "$verb $2" = "status --format" ] && [ -e "$CTL/say-status-json" ] && ! ( [ -e "$CTL/say-until-seal" ] && [ -e "$CTL/sealed" ] ); then cat "$CTL/say-status-json"; exit 0; fi
 if [ -e "$CTL/say-$verb" ] && ! ( [ -e "$CTL/say-until-seal" ] && [ -e "$CTL/sealed" ] ); then cat "$CTL/say-$verb"; exit 0; fi
@@ -144,9 +148,17 @@ if [ -e "$CTL/dies-after-publishing-$verb" ]; then
   A=".prikk/active/default"
   mkdir -p "$CTL/kept"
   cp "$A/queue.wal" "$A/ref-name" "$A/witness" "$CTL/kept/"
+  if [ -e "$CTL/leads-the-log" ]; then
+    # Killed after the ref's pointer moved and before the ref log was appended (maintenance M61): the log is put back.
+    mkdir -p "$CTL/kept-ref-log"
+    for f in .prikk/refs/containers/log-*.container; do cp "$f" "$CTL/kept-ref-log/"; done
+  fi
   "{real}" "$@" > /dev/null 2>&1
   cp "$CTL/kept/ref-name" "$CTL/kept/witness" "$A/"
   if [ ! -e "$CTL/leaves-only-the-metadata" ]; then cp "$CTL/kept/queue.wal" "$A/"; fi
+  if [ -e "$CTL/leads-the-log" ]; then
+    for f in "$CTL"/kept-ref-log/log-*.container; do cp "$f" .prikk/refs/containers/; done
+  fi
   if [ -e "$CTL/leaves-the-lock" ]; then
     printf 'pid=2147483000\nkind=active\nnote=PR-007 lock has no stale-lock stealing yet\n' > "$A/active.lock"
   fi
@@ -4559,4 +4571,433 @@ fn a_marker_that_is_not_a_number_flags_the_wiki_and_stops_recovery_on_prikk_0_57
         return;
     };
     a_marker_that_is_not_a_number_flags_the_wiki_and_stops_recovery(&w);
+}
+
+// ---- a `seal` killed after it moved the ref's pointer and before it appended the ref log (maintenance M61) ----
+
+/// How many times prikk was asked for `verb`, as the stand-in logged it.
+fn calls_of(w: &World, verb: &str) -> usize {
+    std::fs::read_to_string(w.ctl.join("calls.log"))
+        .unwrap_or_default()
+        .lines()
+        .filter(|v| *v == verb)
+        .count()
+}
+
+/// What `prikk worktree-status --format json` says of a clean worktree (made up, so that the plan is reached on every
+/// prikk in states where the real one refuses).
+const CLEAN_WORKTREE: &str = r#"{"schema_version":"worktree-status-report-v1","repository":"/x/.prikk","ref":"heads/main","current_branch":"heads/main","tracked_files":0,"unchanged_files":0,"clean":true,"refused_count":0,"refused_declaration_count":0,"queued_elsewhere":null,"behind_ref":null,"changes":[],"declarations":[]}"#;
+
+/// `doctor`'s words for the interrupted publication of `view`, as prikk 0.58.0 prints the error beside a stale lock (the
+/// message names the lock), and a summary of `errors` errors.
+fn lead_report(view: &str, extra: &str, errors: u32) -> String {
+    format!(
+        "doctor repository: /x\n{extra}error [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition (the lock it took is still on disk: its holder does not appear to be running: no process has the recorded pid; not proof it is safe to clear); run `prikk ref complete {view}`\n  recommendation: run `prikk ref complete {view}`; doctor does not sign or append\nissue summary: errors={errors}, warnings=0, info=0\n"
+    )
+}
+
+/// The locks the real kill left (measured on prikk 0.58.0): the active session's, the ref's, and the ref pointer
+/// index's and ref log's containers.
+fn plant_the_killed_seals_locks(w: &World) {
+    let hex = "c316ccb36a95a977918874d43e722a5a7d9ef74b138f3b76078f6993c14a799f";
+    for (relative, kind) in [
+        ("active/default/active.lock", "active"),
+        (&format!("refs/locks/{hex}.lock"), "ref"),
+        (
+            "refs/containers/pointer-index.lock",
+            "container:ref-pointer-index",
+        ),
+        ("refs/containers/log.lock", "container:ref-log"),
+    ] {
+        plant_lock(&w.repo, relative, 2_147_483_000, kind);
+    }
+}
+
+#[test]
+fn a_seal_killed_before_its_ref_log_is_finished_with_ref_complete_then_the_cleanup_and_the_act_ends()
+ {
+    // Maintenance M61. The `seal` moved the ref's pointer to its block and was killed before it appended the ref log: the
+    // block is in the history, the queue still holds its patch, `doctor` names exactly one error, the interrupted
+    // publication of the view, and `ref complete` is the way out that only the signer (the wiki's key) can take. The
+    // plan is `ref complete`, then P15's cleanup, then the records; with the locks the killed process left (cleared
+    // first) and without.
+    for (tag, locks) in [("seal-lead", false), ("seal-lead-locks", true)] {
+        let Some(w) = World::new(tag, LeaseConfig::default()) else {
+            return;
+        };
+        let p = w.propose(
+            "Say it in Spanish",
+            &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+        );
+        let q = w.propose(
+            "Another",
+            &[(
+                "pages/Another.md",
+                Some("---\ntitle: Another\nid: pn\n---\n\na\n"),
+            )],
+        );
+        let before = w.history();
+        w.killed_seal(&p, &["leads-the-log"]);
+        if locks {
+            plant_the_killed_seals_locks(&w);
+        }
+        assert_eq!(
+            w.history().len(),
+            before.len() + 1,
+            "the block is published"
+        );
+        let published = w.tip();
+        prikk_probes::assert_status_shows_a_pending_cleanup(&w.storage, &w.repo, &published);
+        let doctor = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+        assert_eq!(doctor.only_ref_lead(), Some(MAIN), "{doctor:?}");
+        assert!(!w.verifies(), "the pointer leads the log");
+        assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1);
+        let (seals, refs, commits) = (
+            calls_of(&w, "seal"),
+            calls_of(&w, "ref"),
+            calls_of(&w, "commit"),
+        );
+
+        // The plan, shown: it changes nothing, and it names the steps and what they rest on.
+        let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+        assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+        let mut expected = vec![
+            "complete-ref-publication",
+            "complete-publication",
+            "restore-worktree",
+            "end-sealed",
+        ];
+        if locks {
+            expected.insert(0, "clear-locks");
+        }
+        expected.extend(["verify", "reconcile", "clear-flag"]);
+        assert_eq!(step_names(&shown), expected);
+        let lines = shown.lines();
+        for sentence in [
+            "run ref complete heads/main once, as prikk's doctor recommends, to finish the publication of block",
+            "run seal --allow-no-audit once, as prikk's doctor recommends",
+            "saw: prikk doctor names the error PRIKK-VERIFY-REF-POINTER-LEADS-LOG for heads/main",
+        ] {
+            assert!(
+                lines.iter().any(|l| l.contains(sentence)),
+                "{sentence}: {lines:#?}"
+            );
+        }
+        assert_eq!(
+            (calls_of(&w, "seal"), calls_of(&w, "ref")),
+            (seals, refs),
+            "a plan runs nothing"
+        );
+        assert!(!w.verifies(), "a plan changes nothing");
+
+        // The run.
+        let r = w.recover();
+        assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+        let done: Vec<&str> = r.done.iter().map(|d| d.step).collect();
+        assert_eq!(done, expected);
+        let said = r
+            .done
+            .iter()
+            .find(|d| d.step == "complete-ref-publication")
+            .map(|d| d.detail.clone())
+            .unwrap();
+        assert!(
+            said.contains(&published) && said.contains("the ref log's missing record is appended"),
+            "{said}"
+        );
+        // `ref complete` runs once (after the plan the signer reads), the cleanup's `seal` once, and nothing commits.
+        assert_eq!(
+            calls_of(&w, "ref"),
+            refs + 2,
+            "prikk's plan and its completion"
+        );
+        assert_eq!(
+            calls_of(&w, "seal"),
+            seals + 1,
+            "prikk's recommendation, once"
+        );
+        assert_eq!(calls_of(&w, "commit"), commits, "recovery never commits");
+        if locks {
+            // Each lock was cleared on the lease's word, and recovery went on.
+            assert_eq!(w.unlock_calls().len(), 4, "{:?}", w.unlock_calls());
+        }
+        // No second block: the tip is the one that was published; the queue is drained; the repository verifies.
+        assert_eq!(w.history().len(), before.len() + 1);
+        assert_eq!(w.tip(), published);
+        assert_eq!(w.queue_count(), 0);
+        assert!(w.verifies());
+        let after = w.recovery_witnesses().doctor(&w.wiki.id).unwrap();
+        assert!(
+            after
+                .diagnostics
+                .iter()
+                .all(|d| !d.is_cleanup_pending() && !d.is_publication_lead()),
+            "{after:?}"
+        );
+        assert!(w.page("pages/Home.md").contains("Uno."));
+        // The records agree with the history: the acceptance sealed in that block, the intent completed, the proposal
+        // accepted, the flag gone.
+        let entry = w.store.acceptances_of(&p.id, 1).unwrap().remove(0);
+        assert!(matches!(
+            entry.result.map(|r| r.outcome),
+            Some(AcceptanceOutcome::Sealed { block_id, .. }) if block_id == published
+        ));
+        assert!(w.store.open_intents(&w.wiki.id).unwrap().is_empty());
+        assert_eq!(w.state(&p), ProposalState::Accepted);
+        assert_eq!(w.store.recovery_flag(&w.wiki.id).unwrap(), None);
+        assert!(w.reconciled().is_clean());
+        // Both steps are in the recorded plan, and in the audit trail in order, before the records were written.
+        let acts = w.store.recovery_acts(&w.wiki.id).unwrap();
+        let plan = &acts.first().unwrap().act.plan;
+        assert!(
+            plan.contains("\"step\":\"complete-ref-publication\"")
+                && plan.contains("\"step\":\"complete-publication\""),
+            "{plan}"
+        );
+        let audit = w.audit();
+        let at = |step: &str, from: usize| {
+            audit
+                .iter()
+                .skip(from)
+                .position(|(a, _, d)| a == "recovery-step" && d == step)
+                .map(|i| i + from)
+                .unwrap_or_else(|| panic!("{step} is audited: {audit:?}"))
+        };
+        let first = at("complete-ref-publication", 0);
+        let second = at("complete-publication", first + 1);
+        at("end-sealed", second + 1);
+        // The wiki takes writes again.
+        assert!(matches!(
+            w.accept(&q).expect("writes are accepted again"),
+            inklkunn_core::Accepted::Signed(_)
+        ));
+        assert_eq!(w.history().len(), before.len() + 2);
+        assert!(w.reconciled().is_clean());
+    }
+}
+
+#[test]
+fn a_seal_lead_that_status_reads_is_decided_as_where_it_refuses() {
+    // Maintenance M51 and M61: from prikk 0.58.0 `status --format json` reads the state and says the queue is already
+    // sealed in the block the pointer leads to. The answer is made up through the stand-in so that every prikk meets it:
+    // the plan and the run are the same as where `status` refuses with the integrity error.
+    let Some(w) = World::new("seal-lead-reads", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &["leads-the-log"]);
+    let blocks = w.history();
+    let tip = blocks.first().unwrap();
+    let patches: Vec<String> = tip
+        .patch_messages
+        .iter()
+        .map(|m| m.patch_id.clone())
+        .collect();
+    w.control(
+        "say-status-json",
+        &canned_status(Some(&tip.block_id), &patches),
+    );
+    w.control("say-until-seal", "");
+    let shown = w.recovery.recover(&w.wiki, RecoveryMode::PlanOnly).unwrap();
+    assert_eq!(shown.plan.stop, None, "{:#?}", shown.lines());
+    assert_eq!(
+        step_names(&shown),
+        [
+            "complete-ref-publication",
+            "complete-publication",
+            "restore-worktree",
+            "end-sealed",
+            "verify",
+            "reconcile",
+            "clear-flag"
+        ]
+    );
+    assert!(
+        shown.lines().iter().any(|l| l.contains(&format!(
+            "saw: prikk status: 1 patch(es) queued, all already sealed in block {}",
+            tip.block_id
+        ))),
+        "{:#?}",
+        shown.lines()
+    );
+    let r = w.recover();
+    assert_eq!(r.outcome, RecoveryOutcome::Recovered, "{:#?}", r.lines());
+    assert_eq!(w.history(), blocks, "no second block");
+    assert_eq!(w.state(&p), ProposalState::Accepted);
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_none());
+    w.uncontrol("say-status-json");
+    w.uncontrol("say-until-seal");
+    assert!(w.verifies());
+}
+
+#[test]
+fn a_seal_lead_is_not_finished_unless_it_is_the_one_error_for_the_acts_block_and_status_agrees() {
+    // Maintenance M61: anything else than the state is a stop (or a witness that cannot be read), in a plan and in a run:
+    // nothing is written, `ref complete` is never asked for, and the wiki stays flagged. The witnesses are made up
+    // through the stand-in, so that the same rows are met on every prikk.
+    let Some(w) = World::new("seal-lead-stops", LeaseConfig::default()) else {
+        return;
+    };
+    let p = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
+    );
+    w.killed_seal(&p, &["leads-the-log"]);
+    let blocks = w.history();
+    let tip = blocks.first().unwrap();
+    let patches: Vec<String> = tip
+        .patch_messages
+        .iter()
+        .map(|m| m.patch_id.clone())
+        .collect();
+    let (seals, refs) = (calls_of(&w, "seal"), calls_of(&w, "ref"));
+    let untouched = |what: &str| {
+        assert_eq!(w.history(), blocks, "{what}");
+        assert_eq!(
+            (calls_of(&w, "seal"), calls_of(&w, "ref")),
+            (seals, refs),
+            "{what}: neither `seal` nor `ref` was asked for"
+        );
+        assert!(
+            w.store.recovery_flag(&w.wiki.id).unwrap().is_some(),
+            "{what}: the wiki stays flagged"
+        );
+        assert_eq!(w.store.open_intents(&w.wiki.id).unwrap().len(), 1, "{what}");
+    };
+    // The plan stops with a word, in a plan and in a run.
+    let stops = |what: &str, stop: Stop| {
+        for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+            let r = w
+                .recovery
+                .recover(&w.wiki, mode)
+                .unwrap_or_else(|e| panic!("{what}: {e}"));
+            assert_eq!(r.plan.stop, Some(stop), "{what}: {:#?}", r.lines());
+            assert!(r.done.is_empty(), "{what}");
+            if mode == RecoveryMode::Run {
+                assert!(
+                    matches!(r.outcome, RecoveryOutcome::Stopped { at: None, .. }),
+                    "{what}"
+                );
+            }
+        }
+        untouched(what);
+    };
+    // The witness cannot be read, or two answers of prikk's disagree: a failure to read, in a plan and in a run.
+    let unreadable = |what: &str, said: &str| {
+        for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+            let r = w.recovery.recover(&w.wiki, mode);
+            assert!(
+                matches!(&r, Err(RecoveryError::Witness(why)) if why.contains(said)),
+                "{what}: {r:?}"
+            );
+        }
+        untouched(what);
+    };
+    // Every row is made up from the state: `status` reads (0.58.0's form) and the worktree is whole, whichever prikk.
+    w.control("say-worktree-status", CLEAN_WORKTREE);
+    let reads = canned_status(Some(&tip.block_id), &patches);
+    w.control("say-status-json", &reads);
+
+    // A lead for another ref than the act's view.
+    w.control("say-doctor", &lead_report("heads/other", "", 1));
+    stops("a lead for another ref", Stop::DoctorTrouble);
+    // A second error beside the lead, a second lead, and the cleanup's error beside it.
+    w.control(
+        "say-doctor",
+        &lead_report(
+            MAIN,
+            "error [PRIKK-DOCTOR-OBJECT-MISSING]: an object is missing\n",
+            2,
+        ),
+    );
+    stops("a second error", Stop::DoctorTrouble);
+    let other = "error [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition; run `prikk ref complete heads/other`\n  recommendation: run `prikk ref complete heads/other`; doctor does not sign or append\n";
+    w.control("say-doctor", &lead_report(MAIN, other, 2));
+    stops("a second lead", Stop::DoctorTrouble);
+    w.control(
+        "say-doctor",
+        &lead_report(
+            MAIN,
+            "error [PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING]: pointer and log agree but matching active publication state remains\n  recommendation: run signer-backed `prikk seal --allow-no-audit` for the affected ref\n",
+            2,
+        ),
+    );
+    stops("the cleanup's error beside the lead", Stop::DoctorTrouble);
+    // The lead in words that are not prikk's own.
+    w.control(
+        "say-doctor",
+        "doctor repository: /x\nerror [PRIKK-VERIFY-REF-POINTER-LEADS-LOG]: authoritative pointer leads committed ref log by one transition\n  recommendation: run `prikk ref complete heads/main`\nissue summary: errors=1, warnings=0, info=0\n",
+    );
+    stops("another wording", Stop::DoctorTrouble);
+    // The lead, and `status` reads an ordinary queue: the queue is not sealed in the block the pointer leads to.
+    w.control("say-doctor", &lead_report(MAIN, "", 1));
+    w.control("say-status-json", &canned_status(None, &patches));
+    stops("an ordinary queue beside the lead", Stop::DoctorTrouble);
+    // The lead, and `status` names another block than the history's tip, or a queue that is not the block's patches:
+    // two answers of prikk's that disagree, which is not read.
+    w.control(
+        "say-status-json",
+        &canned_status(Some(&"e".repeat(64)), &patches),
+    );
+    unreadable("status names another block", "already sealed in block");
+    w.control(
+        "say-status-json",
+        &canned_status(Some(&tip.block_id), &["f".repeat(64)]),
+    );
+    unreadable(
+        "status lists another patch",
+        "not the patches of the newest block",
+    );
+    // `status` says the queue is already sealed while `doctor` names no error at all.
+    w.control("say-status-json", &reads);
+    w.control(
+        "say-doctor",
+        "doctor repository: /x\ninfo [PRIKK-DOCTOR-VERIFY-OK]: done\nissue summary: errors=0, warnings=0, info=1\n",
+    );
+    unreadable("doctor names no error", "names no pending cleanup");
+
+    // The block the pointer leads to is not the act's: the history shows the message of another change.
+    w.control("say-doctor", &lead_report(MAIN, "", 1));
+    w.control("log-other-message", "");
+    for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+        let r = w.recovery.recover(&w.wiki, mode).unwrap();
+        assert_eq!(
+            r.plan.stop,
+            Some(Stop::PublishedBlockIsNotTheAct),
+            "{:#?}",
+            r.lines()
+        );
+        assert!(r.done.is_empty());
+    }
+    w.uncontrol("log-other-message");
+    untouched("a block that is not the act's");
+    // ... or there is no unfinished act at all (its records are gone, say): somebody else's publication.
+    let intent = w.store.open_intents(&w.wiki.id).unwrap().remove(0);
+    w.store
+        .complete_intent(&inklkunn_store::IntentCompletion {
+            intent: intent.intent.id.clone(),
+            end: IntentEnd::Abandoned,
+            at: 9,
+        })
+        .unwrap();
+    w.store
+        .finish_acceptance(&inklkunn_store::AcceptanceResult {
+            acceptance: intent.intent.acceptance.clone(),
+            outcome: AcceptanceOutcome::Failed {
+                word: "interrupted".to_owned(),
+            },
+            at: 9,
+        })
+        .unwrap();
+    for mode in [RecoveryMode::PlanOnly, RecoveryMode::Run] {
+        let r = w.recovery.recover(&w.wiki, mode).unwrap();
+        assert_eq!(r.plan.stop, Some(Stop::DoctorTrouble), "{:#?}", r.lines());
+        assert!(r.done.is_empty());
+    }
+    assert_eq!(w.history(), blocks);
+    assert_eq!((calls_of(&w, "seal"), calls_of(&w, "ref")), (seals, refs));
+    assert!(w.store.recovery_flag(&w.wiki.id).unwrap().is_some());
 }

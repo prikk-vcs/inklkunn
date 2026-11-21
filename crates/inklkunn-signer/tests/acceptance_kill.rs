@@ -94,6 +94,13 @@ fn inside_seconds() -> String {
 ///   files of the active session that it emptied (`queue.wal`, `ref-name`, `witness`) as they were, writes its id to
 ///   `blocked-halfway-<verb>-<n>` and becomes a sleep until killed: the block is published and the queue is not drained,
 ///   which is what a `seal` killed between the two leaves, made every time and not by the luck of a delay;
+/// - `unlogged-<verb>` = n (`seal` only; maintenance M61): runs the real verb to completion, then puts back the three
+///   files of the active session that it emptied **and the ref log's containers**, as they were, and leaves the four
+///   locks a killed `seal` leaves (the active session's, the ref's, the ref pointer index's and the ref log's, each
+///   recording the stand-in's own process id), writes its id to `blocked-unlogged-<verb>-<n>` and becomes a sleep until
+///   killed: the block is published and the ref's pointer moved, the ref log was not appended and the queue is not
+///   drained, which is what a `seal` killed between the pointer and the log leaves (found by the soak of 2026-11-21),
+///   made every time and not by the luck of a delay;
 /// - `inside-<verb>` = n: starts the real verb, waits [`inside_seconds`], writes its id and the verb's to
 ///   `blocked-inside-<verb>-<n>` and waits for the verb (the parent kills both as fast as it can).
 ///
@@ -122,6 +129,22 @@ if [ -e "$CTL/halfway-$verb" ] && [ "$(cat "$CTL/halfway-$verb")" = "$n" ]; then
   "$REAL" "$@"
   cp "$CTL/kept/queue.wal" "$CTL/kept/ref-name" "$CTL/kept/witness" "$A/"
   echo "$$" > "$CTL/blocked-halfway-$verb-$n"
+  exec sleep 3600
+fi
+if [ -e "$CTL/unlogged-$verb" ] && [ "$(cat "$CTL/unlogged-$verb")" = "$n" ]; then
+  A=".prikk/active/default"
+  C=".prikk/refs/containers"
+  mkdir -p "$CTL/kept" "$CTL/kept-log" ".prikk/refs/locks"
+  cp "$A/queue.wal" "$A/ref-name" "$A/witness" "$CTL/kept/"
+  for f in "$C"/log-*.container; do cp "$f" "$CTL/kept-log/"; done
+  "$REAL" "$@"
+  cp "$CTL/kept/queue.wal" "$CTL/kept/ref-name" "$CTL/kept/witness" "$A/"
+  for f in "$CTL"/kept-log/log-*.container; do cp "$f" "$C/"; done
+  for lock in "active $A/active.lock" "ref .prikk/refs/locks/c316ccb36a95a977918874d43e722a5a7d9ef74b138f3b76078f6993c14a799f.lock" "container:ref-pointer-index $C/pointer-index.lock" "container:ref-log $C/log.lock"; do
+    set -- $lock
+    printf 'pid=%s\nkind=%s\nnote=PR-007 lock has no stale-lock stealing yet\n' "$$" "$1" > "$2"
+  done
+  echo "$$" > "$CTL/blocked-unlogged-$verb-$n"
   exec sleep 3600
 fi
 if [ -e "$CTL/inside-$verb" ] && [ "$(cat "$CTL/inside-$verb")" = "$n" ]; then
@@ -413,6 +436,10 @@ enum At {
     /// The same call, held after the real `seal` ran and the queue was put back: the block is published and the queue
     /// is not drained (P15).
     Halfway(&'static str, u32),
+    /// The same call, held after the real `seal` ran, the queue was put back **and the ref log was put back**: the
+    /// block is published, the ref's pointer leads the ref log by one transition and the queue is not drained, with the
+    /// locks the killed process held (maintenance M61).
+    Unlogged(&'static str, u32),
     /// The acceptance is killed before the seal (a patch is queued); then **recovery** is killed after its
     /// `seal-queued` step sealed (the real seal ran to completion), before any record of it was written.
     RecoveryAfterSeal,
@@ -427,6 +454,7 @@ impl At {
             At::After(verb, n) => format!("prikk {verb} #{n} done"),
             At::Inside(verb, n) => format!("inside prikk {verb} #{n}"),
             At::Halfway(verb, n) => format!("prikk {verb} #{n} published, queue not drained"),
+            At::Unlogged(verb, n) => format!("prikk {verb} #{n} published, ref log not written"),
             At::RecoveryAfterSeal => "recovery, after seal-queued".to_owned(),
         }
     }
@@ -472,6 +500,19 @@ const QUEUED: &[&str] = &[
     "clear-flag",
 ];
 const SEALED: &[&str] = &["end-sealed", "verify", "reconcile", "clear-flag"];
+/// A `seal` that moved the ref's pointer and was killed before it appended the ref log (maintenance M61): the locks
+/// it held are cleared, prikk's own recommendation for a pointer that leads the log (`ref complete`, which only the
+/// signer can run), then P15's, then the rest.
+const LEAD: &[&str] = &[
+    "clear-locks",
+    "complete-ref-publication",
+    "complete-publication",
+    "restore-worktree",
+    "end-sealed",
+    "verify",
+    "reconcile",
+    "clear-flag",
+];
 /// A `seal` that published its block and did not drain the queue (P15): prikk's own recommendation, then the rest.
 const PUBLISHED: &[&str] = &[
     "complete-publication",
@@ -546,6 +587,11 @@ fn matrix() -> Vec<(Who, At, Expect)> {
             At::Halfway("seal", 0),
             fixed(PUBLISHED, true, true),
         ),
+        // The pointer moved, the ref log was not appended and the queue is not drained (what a `seal` killed between the
+        // two leaves, which the soak found: `status` says `already_sealed` on 0.58.0 and refuses on 0.57.0, `doctor`
+        // names one error, the interrupted publication of the ref): recovery runs `ref complete`, then the cleanup
+        // (maintenance M61), and recovers fully.
+        (Acceptance, At::Unlogged("seal", 0), fixed(LEAD, true, true)),
         // Sealed in prikk, none of it recorded.
         (
             Acceptance,
@@ -636,6 +682,7 @@ fn matrix() -> Vec<(Who, At, Expect)> {
         (System, At::Prikk("seal", 0), fixed(QUEUED, true, true)),
         (System, At::After("seal", 0), fixed(SEALED, true, true)),
         (System, At::Halfway("seal", 0), fixed(PUBLISHED, true, true)),
+        (System, At::Unlogged("seal", 0), fixed(LEAD, true, true)),
         (System, At::Prikk("verify", 0), fixed(SEALED, true, true)),
         (
             System,
@@ -987,12 +1034,16 @@ impl Fixture {
                 std::fs::write(self.ctl.join(format!("halfway-{verb}")), n.to_string()).unwrap();
                 (None, self.ctl.join(format!("blocked-halfway-{verb}-{n}")))
             }
+            At::Unlogged(verb, n) => {
+                std::fs::write(self.ctl.join(format!("unlogged-{verb}")), n.to_string()).unwrap();
+                (None, self.ctl.join(format!("blocked-unlogged-{verb}-{n}")))
+            }
             At::RecoveryAfterSeal => unreachable!("a recovery is killed by `kill_recovery`"),
         };
         let label = format!("{}: {}", who.label(), at.label());
         self.run_and_kill(&self.spec(who.mode(), step), &marker, &label);
         // Nothing of the kill may go on to write: the stand-in's hold is a pass-through again.
-        for verb in ["block", "after", "halfway", "inside"] {
+        for verb in ["block", "after", "halfway", "unlogged", "inside"] {
             for name in ["status", "worktree-status", "commit", "seal", "verify"] {
                 let _ = std::fs::remove_file(self.ctl.join(format!("{verb}-{name}")));
             }
@@ -1123,16 +1174,19 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
         let status_killed = s.storage.status(&f.repo);
         let queued_killed = status_killed.as_ref().map_or(0, |st| st.queue.count);
         let left = left_by_the_kill(f.base_blocks, blocks_killed.len(), queued_killed);
-        // ... and that refusal has one cause recovery answers (handoff 004, P15): a `seal` killed after it published
-        // its block and before it drained the queue, which `doctor` names (`PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`)
-        // and recovery finishes with prikk's own recommendation. Such a row goes on as any other, with every invariant
-        // asserted; the kill matrix's `inside prikk seal` rows land here about three runs in a hundred, and the
-        // `published, queue not drained` rows land here every time.
-        let cleanup_pending = status_killed.is_err()
+        // ... and that refusal has two causes recovery answers: a `seal` killed after it published its block and before
+        // it drained the queue, which `doctor` names (`PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`; handoff 004, P15) and
+        // recovery finishes with prikk's own recommendation, and one killed even before it appended the ref log, which
+        // `doctor` names as the one interrupted publication of the ref (`PRIKK-VERIFY-REF-POINTER-LEADS-LOG`) and
+        // recovery finishes with `ref complete` and then the cleanup (maintenance M61). Such a row goes on as any other,
+        // with every invariant asserted; the kill matrix's `inside prikk seal` rows land in one of them about three
+        // runs in a hundred, and the `published, queue not drained` and `published, ref log not written` rows land in
+        // them every time.
+        let publication_unfinished = status_killed.is_err()
             && s.witnesses
                 .doctor(&f.wiki.id)
-                .is_ok_and(|d| d.is_only_cleanup_pending());
-        if let (Err(e), false) = (&status_killed, cleanup_pending) {
+                .is_ok_and(|d| d.is_only_cleanup_pending() || d.only_ref_lead() == Some(MAIN));
+        if let (Err(e), false) = (&status_killed, publication_unfinished) {
             assert!(
                 timed,
                 "{label}: prikk status refuses a state no step-kill makes: {e}"
@@ -1198,11 +1252,13 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
                 recovery.recover(&f.wiki, RecoveryMode::PlanOnly).unwrap()
             }
             // prikk 0.58.0 made `status` read the state a `seal` killed after it published leaves, so a kill that lands
-            // where the queue is the tip block's patches and `doctor` does not (yet, or no longer) name exactly the cleanup
-            // (or the other way round) leaves prikk's two witnesses saying different things. Up to 0.57.0 `status` refused
-            // that state, which the branch above tolerates; this is its 0.58.0 form. Recovery fails closed on two answers
-            // that disagree (maintenance M51): in a plan and in a run, nothing is written, the wiki stays flagged, and the
-            // repository is kept for study (docs/RECOVERY.md, "prikk's status and doctor disagree").
+            // where the queue is the tip block's patches and `doctor` names no error at all (or `status` reads an ordinary
+            // queue while `doctor` names the pending cleanup) leaves prikk's two witnesses saying different things. Up to
+            // 0.57.0 `status` refused that state, which the branch above tolerates; this is its 0.58.0 form. Recovery
+            // fails closed on two answers that disagree (maintenance M51): in a plan and in a run, nothing is written, the
+            // wiki stays flagged, and the repository is kept for study (docs/RECOVERY.md, "prikk's status and doctor
+            // disagree"). The state the soak found (`doctor` names exactly the pointer leading the log, `status` says
+            // `already_sealed`) is not one of them any more: it is recovered, above (maintenance M61).
             Err(RecoveryError::Witness(why)) if timed && is_status_doctor_disagreement(&why) => {
                 let run = recovery.recover(&f.wiki, RecoveryMode::Run);
                 assert!(
@@ -1300,6 +1356,18 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
                 ),
             }
             assert!(shown.plan.stop.is_none(), "{label}: {:#?}", shown.lines());
+        }
+        // A pointer that leads the log is finished by `ref complete` and then the cleanup, in this order and nothing
+        // between (maintenance M61), whichever way the row landed there.
+        if let Some(at) = shown_steps
+            .iter()
+            .position(|n| *n == "complete-ref-publication")
+        {
+            assert_eq!(
+                shown_steps.get(at + 1),
+                Some(&"complete-publication"),
+                "{label}: {shown_steps:?}"
+            );
         }
         let earlier = usize::from(matches!(at, At::RecoveryAfterSeal));
         assert_eq!(
@@ -1555,7 +1623,7 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
         table.push((
             label,
             format!(
-                "{}{}{}",
+                "{}{}{}{}",
                 if sealed {
                     "change in the history, records completed"
                 } else {
@@ -1568,6 +1636,13 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
                 },
                 if failed_closed {
                     " [first failed closed on a torn lock file; the operator cleared it]"
+                } else {
+                    ""
+                },
+                if shown_steps.contains(&"complete-ref-publication") {
+                    " [a seal killed before its ref log: ref complete, then the cleanup]"
+                } else if shown_steps.contains(&"complete-publication") {
+                    " [a seal killed before it drained the queue: the cleanup]"
                 } else {
                     ""
                 },
