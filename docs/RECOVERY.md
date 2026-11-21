@@ -262,6 +262,13 @@ The step makes no block: the pointer already moved. **The plan is the same on ev
 what it did (*the publication of block <id> on <view> is finished: the ref log's missing record is appended (no block is
 made)*).
 
+**Which view's worktree is put back.** The `restore-worktree` step restores the baseline of the view the worktree is a
+copy of (the branch prikk calls current), never the act's view as such, and its sentence names that view. An acceptance
+switches the worktree to its own view before it writes, so after a `seal` killed on `heads/other` the worktree is that
+view's new tip and the step finds nothing to put back (a full recovery on a real prikk shows it: 0.55.0, 0.57.0 and
+0.58.0); an acceptance into one view that was refused over the unclean worktree of another puts back the worktree's own
+view, and the plan, its record and the audit trail say so.
+
 **What still stops.** Everything else is a stop or a witness that cannot be read; nothing is written and the wiki stays
 flagged. (While the publication is unfinished prikk's own `status` (up to 0.57.0) and `worktree-status` refuse with an
 integrity error; where recovery has not recognized the state it cannot read them, so the plan and the run end with the
