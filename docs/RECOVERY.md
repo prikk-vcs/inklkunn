@@ -211,24 +211,95 @@ block the ref points at (prikk's answer, ledger PK-44), and the step requires th
 published patch, so the queue is that patch and no other. **From 0.58.0**, where `status --format json` reads this state, recovery also requires that its `queue.already_sealed.block_id` is the tip block and that its queued patch ids are the tip block's, and that `doctor` names the cleanup (an `already_sealed` that is `null` while `doctor` names one, or another block, is a witness error: nothing is done and the wiki stays flagged); the decision is the same on every prikk. Any other code beside it is `doctor-trouble`; a block that is not the act's, or no unfinished act, is the
 stop `published-block-is-not-the-act`, with nothing changed. For that stop, look as under `foreign-queued-patch`
 (`prikk log` shows the newest block; `prikk verify` says whether the repository is sound) and do not run `prikk
-seal` yourself.
+seal` yourself. (When the kill came earlier still, before the ref log's record was written, `doctor` names the
+pointer leading the log instead, and recovery finishes that first: the next section.)
 
-## prikk's `status` and `doctor` disagree about a killed `seal`: recovery does not act
+## A `seal` that was stopped after it published, before it wrote the ref log: finished by recovery
+
+Not a stop, and nothing for you to do: this is what recovery does by itself, so that you know what its plan means. (Until
+inklkunn 0.4.0 it was a stop, and no operator could finish it by hand: see below.)
+
+**What you see.** `seal` publishes a block in three writes: it moves the ref's pointer to the block, appends the ref log's
+record of that move, and then empties the queue. Stopped between the first and the second (the process killed; the kill
+test's row *prikk seal published, ref log not written* makes the state every time, and the soak of 2026-11-21 met it by
+chance), the repository is left like this, and `inklkunn wiki recover <wiki> --plan` shows the plan below:
+
+- the block is in the history (`prikk log` shows it), and the patch is still in the queue;
+- `prikk doctor` reports exactly one error, `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` (*authoritative pointer leads committed
+  ref log by one transition*), whose way out is `prikk ref complete <view>`; `prikk verify` exits 1 with the same finding;
+- the locks of the dead process (the active session's, the ref's, the ref pointer index's and the ref log's) are held;
+- `prikk status --format json` refuses (`integrity error`) up to 0.57.0, and from 0.58.0 exits 0 and says
+  `queue.already_sealed` (the block); `prikk worktree-status` refuses on both.
+
+`prikk ref complete` appends the missing record **signed with the wiki's maintainer key** (ledger PK-47), which only
+inklkunn's signer holds, so there was nothing an operator could run by hand: the wiki stayed flagged until a developer
+helped. The step is prikk's own recommendation, the same one the section *A view whose creation was killed* uses, and
+the signer takes it for a `seal` under the same discipline.
+
+**What recovery does.** The plan is: clear the stale locks (on the lease record's word, as always), then *run ref
+complete once, as prikk's doctor recommends* (`complete-ref-publication`), then *run seal --allow-no-audit once*
+(`complete-publication`, the section *A `seal` that was killed after it published its block*: with the ref log written
+`doctor` names that cleanup next), then put the worktree back, record the act as sealed, `verify`, `reconcile`, and clear
+the flag. Recovery plans it **only when** all of this holds, and the signer reads every part again at the step and
+refuses (changing nothing) if it does not:
+
+- `doctor` names exactly that one error, in prikk's own words, for the **wiki's default view**, and nothing else (the debris
+  warning and unreached-object notes do not count);
+- there is exactly one unfinished act, on that view, and the block the pointer leads to is its own: the one patch the
+  block seals has the act's message and files, to the digest, and the block sits on the block the act was made on;
+- `prikk ref complete <view> --plan-only` names that ref, **that block** as its target (and the state the pointer leads
+  with), the ref log's last record as the state before that block, and the block's own sequence next, with no partial tail
+  to remove (prikk's plan is compared with the history, not taken on trust);
+- the queue is that one patch: the plain text of `status` shows one patch for the view in a log of one record with no torn
+  byte; on 0.58.0, `status --format json` also lists only that patch and says it is **already sealed in that block**; up
+  to 0.57.0 it must refuse with the integrity error, and nothing else is read from it;
+- no process of somebody else's is working in the repository, the wiki's write lease is held, and no key retirement is
+  unfinished (the step signs: it waits for `inklkunn wiki keys finish-retirement`, as sealing does);
+- afterwards the tip is the same block and `doctor` no longer names the lead.
+
+The step makes no block: the pointer already moved. **The plan is the same on every prikk**; only the line *saw: prikk status
+...* differs. The step is in the recorded plan, the audit trail names it before it is taken, and the step's sentence says
+what it did (*the publication of block <id> on <view> is finished: the ref log's missing record is appended (no block is
+made)*).
+
+**What still stops.** Everything else is a stop or a witness that cannot be read; nothing is written and the wiki stays
+flagged. (While the publication is unfinished prikk's own `status` (up to 0.57.0) and `worktree-status` refuse with an
+integrity error; where recovery has not recognized the state it cannot read them, so the plan and the run end with the
+witness error *prikk status: …* or *prikk worktree-status: …* instead of a stop with a word: the same fail-closed answer.)
+
+- a lead for another ref, a second error, a second lead, the cleanup's error beside the lead, the lead in other words, or
+  `status` reading an ordinary queue (not sealed in the block) beside it: `doctor-trouble`;
+- a lead for a view that is not the default view, or a block that is not the act's (its message, its base or its patch
+  differ), or the act's block elsewhere in the history: `published-block-is-not-the-act`; a lead with no unfinished act at
+  all (its records are gone, say) is `doctor-trouble`: the publication is somebody else's;
+- publication-trust findings that nothing excuses beside it: `cleanup-beside-trust-findings`; an unfinished key retirement:
+  `retirement-unfinished`;
+- `prikk status` naming another block than the view's newest, or a queue that is not that block's patches, or `already_sealed`
+  while `doctor` names no error at all, or an ordinary queue while `doctor` names the pending cleanup: two answers of
+  prikk's about one state that disagree (below).
+
+Look as under `foreign-queued-patch` (`prikk log` shows the newest block; `prikk verify` says whether the repository is
+sound), and do not run `prikk ref complete` or `prikk seal` yourself: `ref complete` signs with a key you do not hold and
+`seal` would sign with another.
+
+### When prikk's `status` and `doctor` disagree about a killed `seal`: recovery does not act
 
 **What you see.** From prikk 0.58.0, `prikk status --format json` reads the state a `seal` leaves when it is killed after it
-published its block (the section above), and says so in `queue.already_sealed`. If the kill landed where `status` and
-`doctor` do not tell the same story about one repository, `inklkunn wiki recover` (the plan and the run alike) ends with a
-witness error that names both answers, in one of two forms: `prikk status: it says the queue is already sealed in block
-<id>, while prikk doctor names no pending cleanup of a publication`, or `prikk status: it reads an ordinary queue, while
-prikk doctor names a pending cleanup of a publication`. The wiki stays flagged and nothing was written. (A third form, `it
-says the queue is already sealed in block <id>, but the newest block of the view is <id>`, and `the queue it lists is not the
+published its block, and says so in `queue.already_sealed`. If the kill landed where `status` and `doctor` do not tell the
+same story about one repository, `inklkunn wiki recover` (the plan and the run alike) ends with a witness error that names
+both answers, in one of two forms: `prikk status: it says the queue is already sealed in block <id>, while prikk doctor
+names no pending cleanup of a publication` (and `doctor` names no error at all), or `prikk status: it reads an ordinary queue,
+while prikk doctor names a pending cleanup of a publication`. The wiki stays flagged and nothing was written. (A third form,
+`it says the queue is already sealed in block <id>, but the newest block of the view is <id>`, and `the queue it lists is not the
 patches of the newest block of the view`, is the same refusal for `status` against the history.) Up to 0.57.0 `status` refused
 the state outright, and recovery stopped in the same way.
 
-**What it is.** Two answers of prikk's about one state that do not agree. The state measured so far (ledger PK-49) is a `seal` killed after it published its block but before the ref log was written: `prikk status` lists the queue with `already_sealed` for the new block, while `prikk doctor` names no pending cleanup and reports `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` (way out: `prikk ref complete <view>`), and `prikk verify` exits 1 with the same finding. Up to 0.57.0 `status` refused that state and recovery stopped at `doctor-trouble`; either way nothing is written. Recovery acts on a cleanup only when `status`, `doctor`
-and the history say the same thing (the block `status` names is the newest block of the view, the queue is that block's
-patches, and `doctor` names exactly the pending cleanup), and **it does not act on two answers that disagree**: it cannot know
-which one is right.
+**What it is.** Two answers of prikk's about one state that do not agree. (`already_sealed` beside the one error
+`PRIKK-VERIFY-REF-POINTER-LEADS-LOG` is **not** such a state any more: that is the state above, and recovery finishes it.
+Before 0.4.0 recovery stopped there, on both versions; ledger PK-49.) Recovery acts on a cleanup or a publication only when
+`status`, `doctor` and the history say the same thing (the block `status` names is the newest block of the view, the queue
+is that block's patches, and `doctor` names exactly the one error), and **it does not act on two answers that disagree**: it
+cannot know which one is right.
 
 **What to run first.** Both are read-only, and run them in the repository's directory:
 
@@ -239,9 +310,10 @@ prikk verify
 
 Then run `inklkunn wiki recover <wiki> --plan` again: the answers are read afresh each time, and a state that was only
 caught half way through a write may read the same everywhere by now. If `doctor` names exactly the one error
-`PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`, the plan is the one of the section above. If the answers still disagree, do not run
-`prikk seal` or `prikk uncommit` yourself, keep the repository as it is, and report the output of `prikk status --format json`,
-`prikk doctor` and `prikk verify` to the project: it is a question for prikk, and the project records it in the upstream ledger.
+`PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING` or exactly `PRIKK-VERIFY-REF-POINTER-LEADS-LOG`, the plan is the one of the sections
+above. If the answers still disagree, do not run `prikk seal` or `prikk uncommit` yourself, keep the repository as it is, and
+report the output of `prikk status --format json`, `prikk doctor` and `prikk verify` to the project: it is a question for
+prikk, and the project records it in the upstream ledger.
 
 ## A key retirement that was begun and not finished: `retirement-unfinished`
 
