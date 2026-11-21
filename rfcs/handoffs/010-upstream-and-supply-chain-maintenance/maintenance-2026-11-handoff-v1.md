@@ -601,3 +601,9 @@ defect it found is IS-21 (Low; fixed).
 
 Hand back as `010-maintenance-2026-11-m62-corrections-review-request.md`.
 
+## M62's correction approved (2026-11-22)
+
+C-1 is **Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-m62-corrections-review-result.md`) and pushed. M50 –
+M62 are done. Still owed at 0.4.0's readiness (R-5): the longer kill-matrix soak, with every failing log kept. PK-49's
+question goes into the next prikk letter.
+
