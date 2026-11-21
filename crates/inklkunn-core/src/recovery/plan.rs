@@ -1303,7 +1303,15 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
                 .collect(),
         });
     }
-    let view = plan.view.clone();
+    // The worktree is a copy of the branch it is on, which is not always the act's view: an acceptance into one view
+    // finds the worktree of another one unclean and stops (M62). `restore_worktree` puts the worktree back to the
+    // baseline it is a copy of, so the step names that branch, as prikk says it; where prikk's `status` could not be
+    // read the branch stands in the act's view (`unread_status`), and the act had switched the worktree there.
+    let view = w
+        .status
+        .current_branch
+        .clone()
+        .or_else(|| plan.view.clone());
     let restore = |steps: &mut Vec<Step>| {
         if w.worktree.is_none_or(|s| !s.clean)
             && let Some(view) = &view

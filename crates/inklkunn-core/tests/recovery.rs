@@ -5598,3 +5598,27 @@ fn a_dirty_worktree_of_the_other_view_is_put_back_to_that_views_tip_and_not_the_
     };
     a_dirty_worktree_is_put_back_to_the_baseline_it_is_a_copy_of(&w, ALT, ALT);
 }
+
+#[test]
+fn a_dirty_worktree_of_the_default_view_is_put_back_to_its_own_tip_when_the_act_is_into_the_other_view()
+ {
+    // Maintenance M62, the converse and the defect it found: the worktree is a copy of the default view, the act is into
+    // `heads/other`. The signer puts back the baseline the worktree is a copy of (the default view's), and the plan, its
+    // record and the audit trail used to name the act's view, `heads/other`, which was not the one restored.
+    let Some(w) = a_wiki_with_two_different_views_and_a_dirty_worktree("m62-restore-main", false)
+    else {
+        return;
+    };
+    a_dirty_worktree_is_put_back_to_the_baseline_it_is_a_copy_of(&w, ALT, MAIN);
+}
+
+#[test]
+fn a_dirty_worktree_of_the_other_view_is_put_back_to_its_own_tip_when_the_act_is_into_the_default_view()
+ {
+    // Maintenance M62, the same the other way round.
+    let Some(w) = a_wiki_with_two_different_views_and_a_dirty_worktree("m62-restore-alt", true)
+    else {
+        return;
+    };
+    a_dirty_worktree_is_put_back_to_the_baseline_it_is_a_copy_of(&w, MAIN, ALT);
+}

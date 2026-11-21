@@ -438,6 +438,40 @@ fn an_act_with_nothing_queued_is_abandoned_when_not_in_the_history_and_recorded_
 }
 
 #[test]
+fn the_worktree_step_names_the_branch_the_worktree_is_on_which_is_not_always_the_acts_view() {
+    // Maintenance M62. An acceptance into `heads/other` found the worktree of `heads/main` unclean and stopped; the
+    // worktree is a copy of `heads/main`, and putting it back restores that baseline, so the step names it.
+    let dirty = Some(WorktreeState {
+        clean: false,
+        changes: 1,
+        declarations: 0,
+    });
+    let mut w = flagged();
+    let mut other = act(Chain::NotSealed);
+    other.view = "heads/other".to_owned();
+    w.acts = vec![other];
+    w.worktree = dirty;
+    let plan = build(&w);
+    assert_eq!(plan.view.as_deref(), Some("heads/other"), "the act's view");
+    assert!(matches!(
+        plan.steps.first(),
+        Some(Step::RestoreWorktree { view }) if view == VIEW
+    ));
+    // Where prikk's `status` was not read, its branch stands in the act's view (`unread_status`): the step names that.
+    w.status.current_branch = Some("heads/other".to_owned());
+    assert!(matches!(
+        build(&w).steps.first(),
+        Some(Step::RestoreWorktree { view }) if view == "heads/other"
+    ));
+    // No branch at all: the act's view.
+    w.status.current_branch = None;
+    assert!(matches!(
+        build(&w).steps.first(),
+        Some(Step::RestoreWorktree { view }) if view == "heads/other"
+    ));
+}
+
+#[test]
 fn stale_locks_are_cleared_first_on_the_lease_record_and_prikks_liveness_words_change_nothing() {
     for liveness in [
         "appears running -- do not clear",
