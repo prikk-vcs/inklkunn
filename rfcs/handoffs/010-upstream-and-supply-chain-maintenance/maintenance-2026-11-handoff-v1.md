@@ -526,3 +526,19 @@ sign-off, in one commit:**
   - each added to the catalog tests, with a mutation.
 
 Hand back with R-0, in `010-maintenance-2026-11-r0-review-request.md`.
+
+## R-0 and M60 reviewed: three corrections (2026-11-21; binding)
+
+M56 – M60 are **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-r0-review-result.md`), and
+pushed. Every decision request is answered there. The corrections are one small round, and G-T1 may start beside it:
+- **C-3, first, pushed alone when approved.** The kill matrix's *inside* rows tolerate 0.58.0's form of the state that
+  0.57.0's `status` refused: prikk's `status` and `doctor` disagree, recovery fails closed, nothing is written, the
+  wiki stays flagged, and the repository is kept for study.
+  - Then soak the *inside prikk seal* rows on 0.58.0 until one lands there, and put that repository's `status`,
+    `doctor` and `verify` output in the request.
+  - Add a RECOVERY.md paragraph for the state.
+- **C-1.** The accessibility sentence names *the owner of the inklkunn project* (inklkunn プロジェクトのオーナー), with a
+  glossary row, in both languages as the result gives them.
+- **C-2.** 機械 → 自動化ツール in `changes.machine_assisted*`, and 機械 joins the retired renderings.
+
+Hand back as `010-maintenance-2026-11-r0-corrections-review-request.md`.
