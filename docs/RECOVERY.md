@@ -213,6 +213,36 @@ stop `published-block-is-not-the-act`, with nothing changed. For that stop, look
 (`prikk log` shows the newest block; `prikk verify` says whether the repository is sound) and do not run `prikk
 seal` yourself.
 
+## prikk's `status` and `doctor` disagree about a killed `seal`: recovery does not act
+
+**What you see.** From prikk 0.58.0, `prikk status --format json` reads the state a `seal` leaves when it is killed after it
+published its block (the section above), and says so in `queue.already_sealed`. If the kill landed where `status` and
+`doctor` do not tell the same story about one repository, `inklkunn wiki recover` (the plan and the run alike) ends with a
+witness error that names both answers, in one of two forms: `prikk status: it says the queue is already sealed in block
+<id>, while prikk doctor names no pending cleanup of a publication`, or `prikk status: it reads an ordinary queue, while
+prikk doctor names a pending cleanup of a publication`. The wiki stays flagged and nothing was written. (A third form, `it
+says the queue is already sealed in block <id>, but the newest block of the view is <id>`, and `the queue it lists is not the
+patches of the newest block of the view`, is the same refusal for `status` against the history.) Up to 0.57.0 `status` refused
+the state outright, and recovery stopped in the same way.
+
+**What it is.** Two answers of prikk's about one state that do not agree. Recovery acts on a cleanup only when `status`, `doctor`
+and the history say the same thing (the block `status` names is the newest block of the view, the queue is that block's
+patches, and `doctor` names exactly the pending cleanup), and **it does not act on two answers that disagree**: it cannot know
+which one is right.
+
+**What to run first.** Both are read-only, and run them in the repository's directory:
+
+```sh
+prikk doctor
+prikk verify
+```
+
+Then run `inklkunn wiki recover <wiki> --plan` again: the answers are read afresh each time, and a state that was only
+caught half way through a write may read the same everywhere by now. If `doctor` names exactly the one error
+`PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`, the plan is the one of the section above. If the answers still disagree, do not run
+`prikk seal` or `prikk uncommit` yourself, keep the repository as it is, and report the output of `prikk status --format json`,
+`prikk doctor` and `prikk verify` to the project: it is a question for prikk, and the project records it in the upstream ledger.
+
 ## A key retirement that was begun and not finished: `retirement-unfinished`
 
 **What you see.** The plan says `STOP (retirement-unfinished)` and names the key and the commands, when a patch waits to

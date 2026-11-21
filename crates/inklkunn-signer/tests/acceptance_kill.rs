@@ -1029,6 +1029,15 @@ fn log(s: &Services, repo: &Path) -> Vec<inklkunn_prikk::HistoryBlock> {
 
 /// Keep a copy of a repository a kill left in a state recovery stops at or fails closed on, to study it afterwards:
 /// when `INKLKUNN_AK_KEEP` names a directory, the copy goes to `<that directory>/<label with no spaces>`.
+/// Is this witness error M51's: prikk's `status` and `doctor` say different things about one state (0.58.0 reads the
+/// cleanup-pending state that 0.57.0's `status` refused)? Two shapes: `status` says the queue is already sealed while
+/// `doctor` names no pending cleanup, and `status` reads an ordinary queue while `doctor` names one.
+fn is_status_doctor_disagreement(why: &str) -> bool {
+    why.contains("prikk status")
+        && (why.contains("while prikk doctor names no pending cleanup of a publication")
+            || why.contains("while prikk doctor names a pending cleanup of a publication"))
+}
+
 fn keep_for_study(repo: &Path, label: &str) {
     let Some(dir) = std::env::var_os("INKLKUNN_AK_KEEP") else {
         return;
@@ -1187,6 +1196,37 @@ fn a_sigkill_at_each_step_of_an_acceptance_is_recovered_with_nothing_lost_or_mad
                     "{label}: the torn lock is an empty file ({why})"
                 );
                 recovery.recover(&f.wiki, RecoveryMode::PlanOnly).unwrap()
+            }
+            // prikk 0.58.0 made `status` read the state a `seal` killed after it published leaves, so a kill that lands
+            // where the queue is the tip block's patches and `doctor` does not (yet, or no longer) name exactly the cleanup
+            // (or the other way round) leaves prikk's two witnesses saying different things. Up to 0.57.0 `status` refused
+            // that state, which the branch above tolerates; this is its 0.58.0 form. Recovery fails closed on two answers
+            // that disagree (maintenance M51): in a plan and in a run, nothing is written, the wiki stays flagged, and the
+            // repository is kept for study (docs/RECOVERY.md, "prikk's status and doctor disagree").
+            Err(RecoveryError::Witness(why)) if timed && is_status_doctor_disagreement(&why) => {
+                let run = recovery.recover(&f.wiki, RecoveryMode::Run);
+                assert!(
+                    matches!(&run, Err(RecoveryError::Witness(_))),
+                    "{label}: a run must fail closed too: {run:?}"
+                );
+                assert_eq!(
+                    log(&s, &f.repo),
+                    blocks_killed,
+                    "{label}: nothing was written"
+                );
+                assert!(
+                    !recovery.needs_recovery(&f.wiki.id).unwrap().is_empty(),
+                    "{label}: the wiki stays flagged"
+                );
+                keep_for_study(&f.repo, &label);
+                table.push((
+                    label,
+                    format!(
+                        "no outcome: prikk's status and doctor disagree (0.58.0: {why}); recovery fails closed, nothing changed, a person decides"
+                    ),
+                    String::new(),
+                ));
+                continue;
             }
             Err(e) => panic!("{label}: {e}"),
         };
