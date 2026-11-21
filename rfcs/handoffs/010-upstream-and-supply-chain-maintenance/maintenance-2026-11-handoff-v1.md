@@ -542,3 +542,19 @@ pushed. Every decision request is answered there. The corrections are one small 
 - **C-2.** 機械 → 自動化ツール in `changes.machine_assisted*`, and 機械 joins the retired renderings.
 
 Hand back as `010-maintenance-2026-11-r0-corrections-review-request.md`.
+
+## R-0's corrections approved; M61 (2026-11-21; binding, before 0.4.0's candidate)
+
+C-1 – C-3 are **Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-r0-corrections-review-result.md`). C-3 is
+pushed alone first, then the rest. The soak found a deterministic state that recovery stops on today, on both prikk
+versions, and that no operator can finish by hand: a `seal` killed after it published, before the ref log was written.
+`doctor` names one `POINTER-LEADS-LOG` whose way out, `ref complete`, signs with the wiki's key. **M61, beside G-T1:**
+- recovery plans K19's `complete-publication` for **the default view** when the leading block is the interrupted act's
+  own block, under K19's witnesses (and on 0.58.0, `already_sealed` names that block);
+- then the cleanup, as today;
+- everything else stays a stop, and M51's witness error keeps only the true contradictions;
+- the kill matrix's rows in that state recover fully, with a deterministic row added;
+- RECOVERY.md and PK-49 follow.
+
+The details and the tests are in the review result. Hand back as `010-maintenance-2026-11-m61-review-request.md`. A
+longer kill-matrix soak with every failing log kept is part of 0.4.0's readiness (R-5), after M61.
