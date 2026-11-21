@@ -558,3 +558,20 @@ versions, and that no operator can finish by hand: a `seal` killed after it publ
 
 The details and the tests are in the review result. Hand back as `010-maintenance-2026-11-m61-review-request.md`. A
 longer kill-matrix soak with every failing log kept is part of 0.4.0's readiness (R-5), after M61.
+
+## M61 reviewed: two corrections (2026-11-21; binding, beside G-T1)
+
+M61 is **Conditionally Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-m61-review-result.md`) and pushed.
+The step's name `complete-ref-publication` is accepted. *K19's `complete-publication`* above was the architect's slip:
+K19's step is `complete-view-creation`, and `complete-publication` is P15's.
+- **C-1.** The no-error-at-all witness error reads *… while prikk doctor names no error at all*, in `recovery/cleanup.rs`,
+  C-3's helper and RECOVERY.md.
+- **C-2.** The act's own view, not only *the default view*: the line above was too narrow, because a proposal may be
+  accepted into another view.
+  - Drop the default-view condition. The lead must still be the act's view.
+  - Remove the clause from the stop's sentence and from RECOVERY.md.
+  - Tests: a full recovery for an acceptance into a non-default view on a real prikk; the stop for a lead on another
+    view; the mutation *the act's view not compared*.
+
+Hand back as `010-maintenance-2026-11-m61-corrections-review-request.md`.
+
