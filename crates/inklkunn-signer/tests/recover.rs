@@ -1068,6 +1068,47 @@ fn a_dirty_worktree_is_put_back_to_the_tip_and_a_queued_patch_is_never_touched()
 }
 
 #[test]
+fn a_restore_that_names_a_view_other_than_the_worktrees_is_refused_and_changes_nothing() {
+    // M62 C-1: the audit trail records the view the step names, so the signer puts back only the worktree of that view.
+    let Some(f) = fixture("restore-other-view") else {
+        return;
+    };
+    let view = f.record_view("va-restore", OTHER, MAIN);
+    f.signer
+        .create_view(&f.wiki, OTHER, MAIN, &view)
+        .expect("a view");
+    // The worktree is still a copy of the default view, and dirty.
+    std::fs::write(f.repo.join("pages/Home.md"), "scribbled\n").unwrap();
+    std::fs::write(f.repo.join("pages/Plain.md"), "plain\n").unwrap();
+    assert!(!f.worktree_clean());
+    let named_other = f.act(vec![RecoveryOp::RestoreWorktree {
+        view: OTHER.to_owned(),
+    }]);
+    let r = f.leased(|| f.signer.restore_worktree(&f.wiki, OTHER, &named_other));
+    match &r {
+        Err(RecoverError::DoesNotMatch(m)) => {
+            assert!(m.contains(MAIN) && m.contains(OTHER), "both are named: {m}");
+        }
+        other => panic!("refused: {other:?}"),
+    }
+    assert_eq!(
+        std::fs::read_to_string(f.repo.join("pages/Home.md")).unwrap(),
+        "scribbled\n",
+        "nothing was put back"
+    );
+    assert!(f.repo.join("pages/Plain.md").is_file() && !f.worktree_clean());
+    // Named for its own view, the same worktree is put back.
+    let named_main = f.act(vec![RecoveryOp::RestoreWorktree {
+        view: MAIN.to_owned(),
+    }]);
+    let n = f
+        .leased(|| f.signer.restore_worktree(&f.wiki, MAIN, &named_main))
+        .expect("restored");
+    assert!(n >= 2, "{n}");
+    assert!(f.worktree_clean() && !f.repo.join("pages/Plain.md").exists());
+}
+
+#[test]
 fn an_empty_lock_file_is_unreadable_to_recovery_and_the_runbooks_step_clears_exactly_that_file() {
     // Handoff 004, P15 / ruling 1: an empty lock file (a process killed the instant prikk created it) stays
     // fail-closed, and the operator's way out is in docs/RECOVERY.md. The commands there are run as written.

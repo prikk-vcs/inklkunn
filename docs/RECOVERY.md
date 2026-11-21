@@ -267,7 +267,8 @@ copy of (the branch prikk calls current), never the act's view as such, and its 
 switches the worktree to its own view before it writes, so after a `seal` killed on `heads/other` the worktree is that
 view's new tip and the step finds nothing to put back (a full recovery on a real prikk shows it: 0.55.0, 0.57.0 and
 0.58.0); an acceptance into one view that was refused over the unclean worktree of another puts back the worktree's own
-view, and the plan, its record and the audit trail say so.
+view, and the plan, its record and the audit trail say so. The signer refuses a step that names another view than the
+worktree's, changing nothing, so the record cannot say one view while another is restored.
 
 **What still stops.** Everything else is a stop or a witness that cannot be read; nothing is written and the wiki stays
 flagged. (While the publication is unfinished prikk's own `status` (up to 0.57.0) and `worktree-status` refuse with an

@@ -761,6 +761,13 @@ impl Recover for Signer {
         let Some(reference) = first.reference.clone().filter(|r| is_view_ref(r)) else {
             return mismatch("the worktree is not a copy of a view");
         };
+        // The step names what it restores: the record (the plan, the audit trail) says `view`, so a worktree that is a
+        // copy of another view is refused, with nothing changed, rather than put back under the wrong name.
+        if reference != view {
+            return Err(RecoverError::DoesNotMatch(format!(
+                "the worktree is a copy of {reference}, not of {view}, the view the step names"
+            )));
+        }
         let mut restored = 0_usize;
         // 1. Declared renames go back (a move back cancels the declaration: ledger PK-29).
         for d in &first.declarations {
