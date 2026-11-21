@@ -710,6 +710,7 @@ impl Recovery {
         if let Some(format) = format_marker_in(&status_read, &doctor_read) {
             return Ok(Witness {
                 wiki: wiki.id.clone(),
+                default_view: wiki.default_view.clone(),
                 flag: p.acts.recovery_flag(&wiki.id)?,
                 dead_holder: dead,
                 interrupted_recoveries: p
@@ -784,6 +785,7 @@ impl Recovery {
         let torn = status.trailing_partial_wal_bytes > 0;
         Ok(Witness {
             wiki: wiki.id.clone(),
+            default_view: wiki.default_view.clone(),
             flag: p.acts.recovery_flag(&wiki.id)?,
             dead_holder: dead,
             interrupted_recoveries: p
@@ -1270,6 +1272,23 @@ impl Recovery {
                     .complete_publication(&wiki.id, view, token, &AcceptanceToken::new(act.token()))
                     .map_err(|e| e.to_string())?;
                 Ok(format!("the cleanup of block {block_id} is finished"))
+            }
+            Step::CompleteRefPublication {
+                act,
+                view,
+                block_id,
+            } => {
+                p.signer
+                    .complete_ref_publication(
+                        &wiki.id,
+                        view,
+                        token,
+                        &AcceptanceToken::new(act.token()),
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(format!(
+                    "the publication of block {block_id} on {view} is finished: the ref log's missing record is appended (no block is made)"
+                ))
             }
             Step::CompleteViewCreation {
                 act,

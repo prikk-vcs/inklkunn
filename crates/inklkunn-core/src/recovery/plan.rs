@@ -8,7 +8,10 @@
 //! and refuses over anything else): it is a stop, and a person decides. A publication a killed `seal` left unfinished
 //! (`doctor` names `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING` and nothing else) is the one state where prikk's own
 //! recommendation, `seal` once more, is taken as a step, and only when the block published is the unfinished act's
-//! (P15).
+//! (P15). The one before it, a `seal` killed after it moved the ref's pointer and **before it appended the ref log**
+//! (`doctor` names `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` for the act's view and nothing else), is finished the same way
+//! with a step ahead of that one, prikk's own `ref complete` run by the signer, and only for the wiki's default view
+//! and the act's own block (maintenance M61).
 
 use inklkunn_prikk::{RepoStatus, storage::QueuedPatch};
 use inklkunn_signer::recover::text::{
@@ -152,6 +155,12 @@ pub struct CleanupPending {
     pub already_sealed: Option<String>,
     /// The newest block of the one unfinished act's view; `None` when there is not exactly one unfinished act.
     pub published: Option<Published>,
+    /// The ref `doctor` names as the one interrupted publication, when this is the state of a `seal` killed **before it
+    /// appended the ref log** (maintenance M61): `doctor` then names exactly one error, `PRIKK-VERIFY-REF-POINTER-LEADS-
+    /// LOG`, for the ref of the one unfinished act's view, and not yet the cleanup (the pointer moved, the log did not,
+    /// the queue still holds the block's patch). The plan finishes the publication first (`ref complete`) and the
+    /// cleanup after it. `None` is the state of P15 proper: `doctor` names the pending cleanup.
+    pub lead: Option<String>,
 }
 
 /// What prikk shows of the view an unfinished creation was making (handoff 005 K4). The listing includes closed
@@ -190,6 +199,9 @@ pub struct ViewActWitness {
 pub struct Witness {
     /// The wiki.
     pub wiki: WikiId,
+    /// The wiki's default view, `heads/<name>`: the one view recovery finishes the publication of a killed `seal` for
+    /// (maintenance M61).
+    pub default_view: String,
     /// The wiki's flag, if it is flagged.
     pub flag: Option<RecoveryFlag>,
     /// The record of another holder that was still there when the lease was taken (that holder died holding it).
@@ -250,8 +262,9 @@ pub enum Stop {
     QueuedPatchIsNotTheAct,
     /// More than one patch is queued.
     SeveralQueued,
-    /// A killed `seal` left a publication to finish, and the block it published is not the change of the one
-    /// unfinished act (or there is no such act, or it ended, or the block was made on another base).
+    /// A killed `seal` left a publication to finish (its cleanup, or, before that, its ref log), and the block it
+    /// published is not the change of the one unfinished act (or there is no such act, or it ended, or the block was
+    /// made on another base), or the view is not the wiki's default view (maintenance M61).
     PublishedBlockIsNotTheAct,
     /// More than one act is unfinished.
     SeveralActs,
@@ -321,7 +334,7 @@ impl Stop {
             }
             Stop::SeveralQueued => "more than one patch is queued",
             Stop::PublishedBlockIsNotTheAct => {
-                "prikk reports a publication whose cleanup a killed seal did not finish, and the block it published is not the change of the one unfinished act (its message, its base or its patch differ, or no such act is unfinished)"
+                "prikk reports a publication whose cleanup a killed seal did not finish (or whose ref log it did not write), and the block it published is not the change of the one unfinished act (its message, its base or its patch differ, or no such act is unfinished), or its view is not the wiki's default view"
             }
             Stop::SeveralActs => "more than one act is unfinished",
             Stop::TipMoved => {
@@ -388,6 +401,18 @@ pub enum Step {
         /// The view.
         view: String,
         /// The block that was published.
+        block_id: String,
+    },
+    /// Finish the interrupted publication of `block_id`, which is the change of `act`: `prikk ref complete <view>` once,
+    /// as prikk's own `doctor` recommends for a pointer that leads its log (maintenance M61), because the `seal` that
+    /// made the block was killed after it moved the pointer and before it appended the ref log. It makes no block; the
+    /// cleanup of the queue follows it ([`Step::CompletePublication`]).
+    CompleteRefPublication {
+        /// The act.
+        act: ActRef,
+        /// The view.
+        view: String,
+        /// The block the pointer leads to.
         block_id: String,
     },
     /// Finish the interrupted publication of `view`, the view the creation `act` was making at `block_id`:
@@ -459,6 +484,7 @@ impl Step {
             Step::ClearLocks { .. } => "clear-locks",
             Step::SealQueued { .. } => "seal-queued",
             Step::CompletePublication { .. } => "complete-publication",
+            Step::CompleteRefPublication { .. } => "complete-ref-publication",
             Step::CompleteViewCreation { .. } => "complete-view-creation",
             Step::EndViewCreated { .. } => "end-view-created",
             Step::EndViewFailed { .. } => "end-view-failed",
@@ -499,6 +525,13 @@ impl Step {
                 act, block_id, ..
             } => format!(
                 "run seal --allow-no-audit once, as prikk's doctor recommends, to finish the cleanup of block {block_id}, which is the change of {} {}; no block is made. Before it, the signer checks the queue's content as well as its size: prikk's verify reports this state only when the queue holds exactly the patches of the tip block (PK-44), and the tip block must hold exactly the one published patch",
+                act.kind(),
+                act.token()
+            ),
+            Step::CompleteRefPublication {
+                act, view, block_id,
+            } => format!(
+                "run ref complete {view} once, as prikk's doctor recommends, to finish the publication of block {block_id}, which is the change of {} {}: the seal that made it stopped after it moved the pointer and before it appended the ref log, and the queue still holds the block's patch (the cleanup follows). No block is made. Before it, the signer checks prikk's own plan for it: this ref, this block as its target, the ref log's last record the state before that block, and that block's own sequence next",
                 act.kind(),
                 act.token()
             ),
@@ -590,6 +623,12 @@ impl Plan {
                         view: view.clone(),
                     })
                 }
+                Step::CompleteRefPublication { act, view, .. } => {
+                    Some(RecoveryOp::CompleteRefPublication {
+                        acceptance: act.token(),
+                        view: view.clone(),
+                    })
+                }
                 Step::CompleteViewCreation { act, view, .. } => {
                     Some(RecoveryOp::CompleteViewCreation {
                         creation: act.to_string(),
@@ -632,6 +671,13 @@ impl Plan {
                     block_id,
                 } => json!({
                     "step": "complete-publication", "acceptance": act.token(), "view": view, "block": block_id,
+                }),
+                Step::CompleteRefPublication {
+                    act,
+                    view,
+                    block_id,
+                } => json!({
+                    "step": "complete-ref-publication", "acceptance": act.token(), "view": view, "block": block_id,
                 }),
                 Step::CompleteViewCreation {
                     act,
@@ -730,6 +776,10 @@ pub fn facts_of(wiki: &WikiId, plan: &str) -> Option<RecoveryFacts> {
                 view: text(s, "view")?,
             }),
             "complete-publication" => ops.push(RecoveryOp::CompletePublication {
+                acceptance: text(s, "acceptance")?,
+                view: text(s, "view")?,
+            }),
+            "complete-ref-publication" => ops.push(RecoveryOp::CompleteRefPublication {
                 acceptance: text(s, "acceptance")?,
                 view: text(s, "view")?,
             }),
@@ -1090,11 +1140,17 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
             w.status.current_branch.as_deref().unwrap_or("(none)")
         )
     });
-    if w.cleanup_pending.is_some() {
-        wit.push(
+    match w.cleanup_pending.as_ref() {
+        Some(CleanupPending {
+            lead: Some(lead), ..
+        }) => wit.push(format!(
+            "prikk doctor names the error PRIKK-VERIFY-REF-POINTER-LEADS-LOG for {lead}: a seal moved the pointer to its block and stopped before it appended the ref log, and the queue still holds the block's patch"
+        )),
+        Some(_) => wit.push(
             "prikk doctor names the error PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING: a seal published its block and did not drain the queue"
                 .to_owned(),
-        );
+        ),
+        None => {}
     }
     wit.push(format!(
         "prikk doctor: {} error(s), {} warning(s){}",
@@ -1191,11 +1247,18 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
     // The one error a pending cleanup stands for is that row's own business (P15); anything beside it is trouble.
     // The one error an unfinished view creation stands for is the interrupted publication of that view's own ref (K4);
     // a lead for any other ref, or a second one, is trouble.
-    let mut cleanup_error = usize::from(w.cleanup_pending.is_some());
+    // The one error a `seal` killed before it appended the ref log stands for is the interrupted publication of the ref
+    // of the act's view, in prikk's words (M61): `cleanup_pending.lead`, and no cleanup error yet.
+    let mut seal_lead = w.cleanup_pending.as_ref().and_then(|c| c.lead.as_deref());
+    let mut cleanup_error =
+        usize::from(w.cleanup_pending.as_ref().is_some_and(|c| c.lead.is_none()));
     let mut view_lead = usize::from(!w.view_acts.is_empty());
     if w.doctor.others().iter().any(|d| {
         if d.is_cleanup_pending() && cleanup_error > 0 {
             cleanup_error -= 1;
+            false
+        } else if seal_lead.is_some() && d.lead_ref() == seal_lead {
+            seal_lead = None;
             false
         } else if view_lead > 0
             && d.lead_ref()
@@ -1325,8 +1388,33 @@ fn build_plan(w: &Witness, discard: &DiscardInput, unused: &mut Option<String>) 
         // `seal` once more, taken only when the block published is the change of the one unfinished act.
         (None, Some(c), _, a) => {
             let published = c.published.as_ref();
-            match a.zip(published).filter(|(a, p)| is_the_act(a, p)) {
+            // The ref `doctor` names as interrupted is the act's own view, and the view is the wiki's default view: the
+            // one view this step finishes the publication for (M61). The reader checks the first too; the plan does
+            // not lean on that.
+            let lead_is_the_acts = |a: &ActWitness| {
+                c.lead
+                    .as_deref()
+                    .is_none_or(|r| r == a.view && a.view == w.default_view)
+            };
+            match a
+                .zip(published)
+                .filter(|(a, p)| is_the_act(a, p) && lead_is_the_acts(a))
+            {
                 Some((a, p)) => {
+                    if c.lead.is_some() {
+                        // Finishing the publication signs a record with the maintainer key, and nothing new is signed
+                        // while a key retirement is unfinished (W1): as for a queued patch, the plan says so first.
+                        if let Some(unfinished) = &w.retirement_unfinished {
+                            plan.notes.push(unfinished.clone());
+                            stop(&mut plan, Stop::RetirementUnfinished);
+                            return plan;
+                        }
+                        steps.push(Step::CompleteRefPublication {
+                            act: a.act.clone(),
+                            view: a.view.clone(),
+                            block_id: p.block_id.clone(),
+                        });
+                    }
                     steps.push(Step::CompletePublication {
                         act: a.act.clone(),
                         view: a.view.clone(),

@@ -1,9 +1,10 @@
 //! `Recover`: the signer's recovery operations, and the read-only witnesses recovery plans from (RFC 004 D-7; internal
 //! design CON-4, WR-8; handoff 004 T5; threat model C-1b, INV-7).
 //!
-//! **Recovery is bound to a recorded act, as an acceptance is.** [`Recover`] has six operations: `seal` alone (complete
+//! **Recovery is bound to a recorded act, as an acceptance is.** [`Recover`] has seven operations: `seal` alone (complete
 //! a queued patch), `seal` once more to finish the cleanup of a publication a killed `seal` left (prikk's own
-//! recommendation; handoff 004, P15), `ref complete` to finish the publication of a view a killed `branch create` left
+//! recommendation; handoff 004, P15), `ref complete` to finish the publication of a block a `seal` made and was killed
+//! before it appended the ref log (prikk's own recommendation; maintenance M61), `ref complete` to finish the publication of a view a killed `branch create` left
 //! (prikk's own recommendation for that; handoff 005 K4), `doctor --discard-damaged-commits`, `unlock --lock <path>` for the locks an
 //! acceptance leaves, and putting a worktree back to its baseline. None takes a seed, a key directory or a prikk argument. Each is given a
 //! [`RecoveryToken`], an id, and nothing else; the signer reads the record the id names itself, through its
@@ -73,6 +74,17 @@ pub enum RecoveryOp {
     /// system act) `acceptance` and was killed before it drained the queue (`doctor`: exactly
     /// `PRIKK-VERIFY-REF-ACTIVE-CLEANUP-PENDING`, whose recommendation this is). No block is made.
     CompletePublication {
+        /// The acceptance or system act, as the token names it.
+        acceptance: String,
+        /// The view (`heads/<name>`).
+        view: String,
+    },
+    /// Run `prikk ref complete <view>` once, because a `seal` for `view` published the block that is the change of the
+    /// acceptance (or system act) `acceptance` — it moved the ref's pointer — and was killed before it appended the ref
+    /// log (`doctor`: exactly `PRIKK-VERIFY-REF-POINTER-LEADS-LOG`, whose recommendation this is; maintenance M61). It
+    /// appends the one signed record the interrupted publication lacked; no block is made. The cleanup of the queue is
+    /// the step [`RecoveryOp::CompletePublication`], which comes after it.
+    CompleteRefPublication {
         /// The acceptance or system act, as the token names it.
         acceptance: String,
         /// The view (`heads/<name>`).
@@ -239,6 +251,31 @@ pub trait Recover: Send + Sync {
         let _ = (wiki, view, act, acceptance);
         Err(RecoverError::Unavailable(
             "this signer cannot complete a publication".to_owned(),
+        ))
+    }
+
+    /// Finish the publication of a block a killed `seal` made (maintenance M61): the process died after prikk moved the
+    /// ref's pointer to the block that is the change the pending acceptance (or system act) `acceptance` describes and
+    /// before it appended the ref log, so `verify` fails and every other publication refuses. prikk's own recommendation
+    /// is `prikk ref complete <view>` (RFC 165 R4), which signs with the maintainer key and so is the signer's to run.
+    /// Refuses unless, all of it read again here: `doctor` names exactly that one lead for exactly that ref; the record
+    /// is the wiki's, pending, on this view, and no key retirement is unfinished; the tip of `view` is one block holding
+    /// one patch whose message, base and files are the record's; prikk's own `--plan-only` names that ref, that block as
+    /// its target, the leading ref state of that block, the ref log's last record (the state before that block) and the
+    /// block's own sequence, and no partial tail; the queue is exactly that one patch (the text of `status`, and where
+    /// `status --format json` reads, the patch and the block it says the queue is already sealed in; where it refuses it
+    /// must refuse with an integrity error, as up to prikk 0.57.0). Runs `ref complete` once, and refuses to call it
+    /// done unless `doctor` no longer names the lead and the tip is the same block. **The default is unable.**
+    fn complete_ref_publication(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        act: &RecoveryToken,
+        acceptance: &AcceptanceToken,
+    ) -> Result<(), RecoverError> {
+        let _ = (wiki, view, act, acceptance);
+        Err(RecoverError::Unavailable(
+            "this signer cannot complete the publication of a block".to_owned(),
         ))
     }
 

@@ -105,6 +105,7 @@ fn flagged() -> Witness {
             since: 1,
         }),
         wiki,
+        default_view: VIEW.to_owned(),
         dead_holder: None,
         interrupted_recoveries: 0,
         acts: Vec::new(),
@@ -648,6 +649,7 @@ fn cleanup_pending() -> Witness {
         status_refused: true,
         already_sealed: None,
         published: Some(published_block()),
+        lead: None,
     });
     w
 }
@@ -1009,6 +1011,387 @@ fn a_pending_cleanup_is_a_stop_unless_doctor_names_exactly_that_code_and_the_blo
     assert_eq!(stop_of(&w), Some(Stop::ForeignProcess));
 }
 
+// ---- a `seal` killed after it moved the pointer and before it appended the ref log (maintenance M61) ----
+
+/// A wiki where `doctor` names exactly one error, the pointer of the act's view leading its log, and the one
+/// unfinished act's change is the block the pointer leads to; `status` refuses (prikk up to 0.57.0).
+fn seal_lead() -> Witness {
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![lead_error(VIEW)]);
+    if let Some(c) = w.cleanup_pending.as_mut() {
+        c.lead = Some(VIEW.to_owned());
+    }
+    w
+}
+
+const LEAD_STEPS: [&str; 7] = [
+    "complete-ref-publication",
+    "complete-publication",
+    "restore-worktree",
+    "end-sealed",
+    "verify",
+    "reconcile",
+    "clear-flag",
+];
+
+#[test]
+fn a_seal_stopped_before_its_ref_log_is_finished_with_ref_complete_and_then_the_cleanup() {
+    let w = seal_lead();
+    let a = nth(&w.acts, 0).clone();
+    let plan = build(&w);
+    assert_eq!(plan.stop, None, "{:#?}", plan.lines());
+    assert_eq!(names(&plan), LEAD_STEPS);
+    assert!(matches!(
+        plan.steps.first(),
+        Some(Step::CompleteRefPublication { act, view, block_id })
+            if *act == a.act && view == VIEW && *block_id == PUBLISHED.repeat(64)
+    ));
+    assert!(matches!(
+        plan.steps.get(1),
+        Some(Step::CompletePublication { act, view, block_id })
+            if *act == a.act && view == VIEW && *block_id == PUBLISHED.repeat(64)
+    ));
+    // The signer is bound to exactly these, in this order, and the sentences say what each does and why.
+    assert_eq!(
+        plan.ops(),
+        vec![
+            RecoveryOp::CompleteRefPublication {
+                acceptance: a.act.token(),
+                view: VIEW.to_owned()
+            },
+            RecoveryOp::CompletePublication {
+                acceptance: a.act.token(),
+                view: VIEW.to_owned()
+            },
+            RecoveryOp::RestoreWorktree {
+                view: VIEW.to_owned()
+            }
+        ]
+    );
+    let lines = plan.lines();
+    for expected in [
+        "step 1: run ref complete heads/main once, as prikk's doctor recommends, to finish the publication of block",
+        "the seal that made it stopped after it moved the pointer and before it appended the ref log",
+        "step 2: run seal --allow-no-audit once, as prikk's doctor recommends",
+        "saw: prikk status refuses (an integrity error)",
+        "saw: prikk doctor names the error PRIKK-VERIFY-REF-POINTER-LEADS-LOG for heads/main",
+    ] {
+        assert!(
+            lines.iter().any(|l| l.contains(expected)),
+            "{expected}: {lines:#?}"
+        );
+    }
+    assert!(
+        !lines.iter().any(|l| l.contains("ACTIVE-CLEANUP-PENDING")),
+        "{lines:#?}"
+    );
+    // Recorded as a plan, and read back as what the signer may do, and only that.
+    let facts = facts_of(&plan.wiki, &plan.to_json()).expect("a plan of this version");
+    assert_eq!(facts.ops, plan.ops());
+    assert!(facts.allows(&RecoveryOp::CompleteRefPublication {
+        acceptance: a.act.token(),
+        view: VIEW.to_owned()
+    }));
+    assert!(!facts.allows(&RecoveryOp::CompleteRefPublication {
+        acceptance: AcceptanceId::new().to_string(),
+        view: VIEW.to_owned()
+    }));
+    assert!(
+        !facts.allows(&RecoveryOp::CompleteViewCreation {
+            creation: a.act.token(),
+            view: VIEW.to_owned()
+        }),
+        "the view-creation step is another operation"
+    );
+    assert!(
+        plan.to_json()
+            .contains("\"step\":\"complete-ref-publication\"")
+    );
+    // A plan of the cleanup alone does not allow the ref step.
+    let cleanup = build(&cleanup_pending());
+    let cleanup_facts = facts_of(&cleanup.wiki, &cleanup.to_json()).unwrap();
+    assert!(!cleanup_facts.allows(&RecoveryOp::CompleteRefPublication {
+        acceptance: a.act.token(),
+        view: VIEW.to_owned()
+    }));
+    // Stale locks the killed `seal` left (its active lock, the ref's, the containers') are cleared first; the same for a
+    // system act's change; a worktree that could be compared and is the baseline is not put back.
+    let mut with_locks = seal_lead();
+    with_locks.locks = vec![
+        lock("active", 408_657, "does not appear to be running"),
+        lock("ref", 408_657, "does not appear to be running"),
+        lock(
+            "container:ref-log",
+            408_657,
+            "does not appear to be running",
+        ),
+        lock(
+            "container:ref-pointer-index",
+            408_657,
+            "does not appear to be running",
+        ),
+    ];
+    assert_eq!(
+        names(&build(&with_locks))
+            .iter()
+            .take(3)
+            .collect::<Vec<_>>(),
+        [
+            &"clear-locks",
+            &"complete-ref-publication",
+            &"complete-publication"
+        ]
+    );
+    let mut sys = published_act();
+    sys.act = ActRef::System(SystemActId::new());
+    sys.proposal = None;
+    sys.proposal_state = None;
+    sys.intent_open = false;
+    let mut w = seal_lead();
+    w.acts = vec![sys];
+    assert_eq!(names(&build(&w)), LEAD_STEPS);
+    let mut w = seal_lead();
+    w.worktree = Some(WorktreeState {
+        clean: true,
+        changes: 0,
+        declarations: 0,
+    });
+    assert!(!names(&build(&w)).contains(&"restore-worktree"));
+}
+
+#[test]
+fn a_seal_lead_is_decided_the_same_whether_status_refuses_or_reads_it() {
+    // prikk up to 0.57.0 refuses `status --format json` in this state, 0.58.0 reads it and says the queue is already
+    // sealed in the block the pointer leads to: the steps and the operations are the same, only what is seen differs.
+    let base = seal_lead();
+    let refused = build(&base);
+    let read = build(&read_instead_of_refused(&base, vec![patch(MESSAGE)]));
+    assert_eq!(read.stop, None, "{:#?}", read.lines());
+    assert_eq!(names(&read), LEAD_STEPS);
+    assert_eq!(read.ops(), refused.ops());
+    assert!(
+        read.lines().iter().any(|l| l.contains(&format!(
+            "saw: prikk status: 1 patch(es) queued, all already sealed in block {}",
+            PUBLISHED.repeat(64)
+        ))),
+        "{:#?}",
+        read.lines()
+    );
+}
+
+#[test]
+fn a_seal_lead_is_a_stop_unless_it_is_the_one_error_for_the_default_view_and_the_block_is_the_acts()
+{
+    let stop_of = |w: &Witness| {
+        let plan = build(w);
+        assert!(
+            plan.steps.is_empty() && plan.ops().is_empty(),
+            "a stop takes no step: {:?}",
+            names(&plan)
+        );
+        plan.stop
+    };
+    // A lead for another ref than the one the reader found the act on, a second error, a second lead, a lead in
+    // another wording, a warning of the same code, or the lead with no witness that says it is the state.
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![lead_error("heads/other")]);
+    assert_eq!(
+        stop_of(&w),
+        Some(Stop::DoctorTrouble),
+        "a lead for another ref"
+    );
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![
+        lead_error(VIEW),
+        diag(Severity::Error, "PRIKK-DOCTOR-OBJECT-MISSING", None),
+    ]);
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble), "a second error");
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![lead_error(VIEW), lead_error("heads/other")]);
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble), "a second lead");
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![lead_error(VIEW), lead_error(VIEW)]);
+    assert_eq!(
+        stop_of(&w),
+        Some(Stop::DoctorTrouble),
+        "the same lead twice"
+    );
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![lead_error(VIEW), cleanup_error()]);
+    assert_eq!(
+        stop_of(&w),
+        Some(Stop::DoctorTrouble),
+        "the cleanup error beside the lead is not the state of a lead alone"
+    );
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![Diagnostic {
+        message: "authoritative pointer leads committed ref log by one transition".to_owned(),
+        recommendation: Some("run `prikk ref complete heads/main`".to_owned()),
+        ..lead_error(VIEW)
+    }]);
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble), "another wording");
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![Diagnostic {
+        severity: Severity::Warning,
+        ..lead_error(VIEW)
+    }]);
+    assert_eq!(
+        stop_of(&w),
+        Some(Stop::DoctorTrouble),
+        "a warning of the code"
+    );
+    let mut w = seal_lead();
+    w.cleanup_pending = None;
+    assert_eq!(
+        stop_of(&w),
+        Some(Stop::DoctorTrouble),
+        "no witness that says it"
+    );
+    // The lead with the cleanup the state of P15 has not been reached: P15's witness beside a lead is trouble.
+    let mut w = cleanup_pending();
+    w.doctor = doctor(vec![cleanup_error(), lead_error(VIEW)]);
+    assert_eq!(stop_of(&w), Some(Stop::DoctorTrouble));
+    // Unreached-object notes and the debris warning beside the lead do not block.
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![
+        lead_error(VIEW),
+        diag(
+            Severity::Warning,
+            UNREACHED_OBJECT_CODE,
+            Some("the bytes stay; no command removes them yet"),
+        ),
+    ]);
+    assert_eq!(build(&w).stop, None);
+    assert_eq!(nth(&names(&build(&w)), 0), &"complete-ref-publication");
+
+    // Only the wiki's default view: the same state on another view is a stop of its own word.
+    let mut w = seal_lead();
+    w.default_view = "heads/other".to_owned();
+    assert_eq!(
+        stop_of(&w),
+        Some(Stop::PublishedBlockIsNotTheAct),
+        "the act's view is not the default view"
+    );
+    // The lead the reader found is for the act's own view.
+    let mut w = seal_lead();
+    if let Some(c) = w.cleanup_pending.as_mut() {
+        c.lead = Some("heads/other".to_owned());
+    }
+    w.doctor = doctor(vec![lead_error("heads/other")]);
+    assert_eq!(stop_of(&w), Some(Stop::PublishedBlockIsNotTheAct));
+
+    // The block the pointer leads to must be the act's: each mark, one at a time (the same marks as P15's).
+    type Spoil = Box<dyn Fn(&mut Witness)>;
+    let wrong: Vec<(&str, Spoil)> = vec![
+        (
+            "another message",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.message_digests = vec![message_digest("Something else\n\nKind: proposal\n")];
+                }
+            }),
+        ),
+        (
+            "two patches",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.message_digests = vec![message_digest(MESSAGE), message_digest(MESSAGE)];
+                }
+            }),
+        ),
+        (
+            "another base",
+            Box::new(|w: &mut Witness| {
+                if let Some(p) = w
+                    .cleanup_pending
+                    .as_mut()
+                    .and_then(|c| c.published.as_mut())
+                {
+                    p.parent = Some("d".repeat(64));
+                }
+            }),
+        ),
+        (
+            "the history found the act's message in another block",
+            Box::new(|w: &mut Witness| {
+                if let Some(a) = w.acts.first_mut() {
+                    a.chain = Chain::Sealed {
+                        block_id: "e".repeat(64),
+                        patch_id: "a".repeat(64),
+                    };
+                }
+            }),
+        ),
+        (
+            "the history did not find it",
+            Box::new(|w: &mut Witness| {
+                if let Some(a) = w.acts.first_mut() {
+                    a.chain = Chain::NotSealed;
+                }
+            }),
+        ),
+        (
+            "the act ended",
+            Box::new(|w: &mut Witness| {
+                if let Some(a) = w.acts.first_mut() {
+                    a.ended = Ended::Failed;
+                }
+            }),
+        ),
+        (
+            "no block was read",
+            Box::new(|w: &mut Witness| {
+                if let Some(c) = w.cleanup_pending.as_mut() {
+                    c.published = None;
+                }
+            }),
+        ),
+        (
+            "no act at all",
+            Box::new(|w: &mut Witness| {
+                w.acts.clear();
+                if let Some(c) = w.cleanup_pending.as_mut() {
+                    c.published = None;
+                }
+            }),
+        ),
+    ];
+    for (what, mutate) in wrong {
+        let mut w = seal_lead();
+        mutate(&mut w);
+        assert_eq!(stop_of(&w), Some(Stop::PublishedBlockIsNotTheAct), "{what}");
+    }
+    // More than one unfinished act, and a process of somebody else's, stop as they stop every step.
+    let mut w = seal_lead();
+    w.acts = vec![published_act(), published_act()];
+    assert_eq!(stop_of(&w), Some(Stop::SeveralActs));
+    let mut w = seal_lead();
+    w.foreign = vec![Foreign {
+        pid: 4_242,
+        tool: "prikk".to_owned(),
+    }];
+    assert_eq!(stop_of(&w), Some(Stop::ForeignProcess));
+    // Finishing the publication signs: not while a key retirement is unfinished (W1), and the stop says which command.
+    let mut w = seal_lead();
+    w.retirement_unfinished = Some(UNFINISHED.to_owned());
+    let plan = build(&w);
+    assert_eq!(plan.stop, Some(Stop::RetirementUnfinished));
+    assert!(plan.steps.is_empty());
+    assert!(plan.notes.iter().any(|n| n.contains("finish-retirement")));
+    // Publication-trust findings that nothing excused stop it with the word of P15's row.
+    let mut w = seal_lead();
+    w.doctor = doctor(vec![lead_error(VIEW), untrusted_block()]);
+    assert_eq!(stop_of(&w), Some(Stop::CleanupBesideTrustFindings));
+}
+
 // ---- a key retirement that was begun and not finished (handoff 004, Q1)
 
 fn untrusted_block() -> Diagnostic {
@@ -1346,6 +1729,7 @@ fn a_view_creation_in_any_other_state_is_a_stop_with_its_own_word_and_nothing_is
                 status_refused: true,
                 already_sealed: None,
                 published: None,
+                lead: None,
             });
             w
         }),

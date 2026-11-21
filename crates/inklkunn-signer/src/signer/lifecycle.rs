@@ -138,7 +138,7 @@ impl Signer {
         }
         if doctor.diagnostics.iter().any(|d| d.is_publication_lead()) {
             return Err(SignerError::NeedsRecovery(format!(
-                "a view's creation that was interrupted is unfinished, and a rotation records where the old key stopped; run `inklkunn wiki recover {wiki}` first, then rotate again"
+                "a publication that was interrupted (a view's creation, or the ref log of a block a killed seal made) is unfinished, and a rotation records where the old key stopped; run `inklkunn wiki recover {wiki}` first, then rotate again"
             )));
         }
         let generation = before.generation.saturating_add(1);

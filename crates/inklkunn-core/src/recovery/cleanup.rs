@@ -1,4 +1,10 @@
-//! The witness for a publication a killed `seal` left unfinished (handoff 004, P15).
+//! The witness for a publication a killed `seal` left unfinished (handoff 004, P15; maintenance M61).
+//!
+//! Two states are read here. A `seal` killed after it moved the ref's pointer and before it appended the ref log leaves
+//! `doctor` naming exactly one error, `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` for the act's view, with the block in the history
+//! and the patch still queued ([`CleanupPending::lead`]); the plan finishes that publication (`ref complete`) and then the
+//! cleanup. A `seal` killed after the log and before the queue was drained leaves `doctor` naming the pending cleanup
+//! (the rest of this text). Anything else is not read as either: the plan stops on it.
 //!
 //! A `seal` publishes its block and then drains the queue. Killed between the two, it leaves the block in the history
 //! **and** the patch in the queue. Up to prikk 0.57.0 `prikk status --format json` refuses with an integrity error (it
@@ -16,7 +22,7 @@
 use std::path::Path;
 
 use inklkunn_prikk::{Point, RepoStatus, Storage, StorageError, schema, storage::Queue};
-use inklkunn_signer::recover::text::DoctorReport;
+use inklkunn_signer::recover::text::{DoctorReport, Severity};
 
 use super::plan::{ActWitness, CleanupPending, Published};
 use super::{RecoveryError, witness_error};
@@ -35,10 +41,11 @@ fn is_integrity_refusal(status: &Result<RepoStatus, StorageError>) -> Option<boo
     }
 }
 
-/// Read the state, when it is the state: `doctor` names one pending cleanup, and `status` is readable or refuses with
-/// an integrity error. The newest block of the view of the one unfinished act is read from the history. (That
-/// `doctor` names **nothing else** is the plan's to judge, as a stop with a name; a `status` that refuses with no
-/// pending cleanup to explain it is a witness that cannot be read.)
+/// Read the state, when it is the state: `doctor` names one pending cleanup (or, for a `seal` killed before it appended
+/// the ref log, exactly one interrupted publication of the ref of the one unfinished act's view: maintenance M61), and
+/// `status` is readable or refuses with an integrity error. The newest block of the view of the one unfinished act is
+/// read from the history. (That `doctor` names **nothing else** is the plan's to judge, as a stop with a name; a
+/// `status` that refuses with no pending cleanup to explain it is a witness that cannot be read.)
 pub(super) fn read(
     storage: &dyn Storage,
     repo: &Path,
@@ -51,9 +58,21 @@ pub(super) fn read(
         .iter()
         .filter(|d| d.is_cleanup_pending())
         .count();
-    // prikk 0.58.0 says the queue is already sealed while `doctor` names no pending cleanup: two answers of prikk's
-    // that disagree (maintenance M51), and nothing is concluded from either.
-    if named == 0
+    // A `seal` killed after it moved the ref's pointer and before it appended the ref log (M61): `doctor` names exactly
+    // one thing, prikk's own `PRIKK-VERIFY-REF-POINTER-LEADS-LOG` for the ref of the one unfinished act's view. Any
+    // other lead (another ref, a second error, another wording) is not this state, and the plan stops on it.
+    let lead = match acts {
+        [act] if named == 0 => doctor.only_ref_lead().filter(|r| *r == act.view),
+        _ => None,
+    };
+    // prikk 0.58.0 says the queue is already sealed while `doctor` names no error at all: two answers of prikk's that
+    // disagree (maintenance M51), and nothing is concluded from either. (Beside a pending cleanup or an interrupted
+    // publication that a `seal` left it is the state, not a contradiction; beside any other error it is that error's
+    // business, which the plan stops on.)
+    if !doctor
+        .diagnostics
+        .iter()
+        .any(|d| d.severity == Severity::Error)
         && let Ok(read) = status
         && let Some(said) = &read.queue.already_sealed
     {
@@ -65,12 +84,20 @@ pub(super) fn read(
             ),
         ));
     }
-    if named != 1 {
+    if named != 1 && lead.is_none() {
         return Ok(None);
     }
     let Some(status_refused) = is_integrity_refusal(status) else {
         return Ok(None);
     };
+    // An interrupted publication beside a `status` that reads an ordinary queue is not a state recovery acts on: the
+    // queue is not sealed in the block the pointer leads to. The plan stops on the lead.
+    if lead.is_some()
+        && let Ok(read) = status
+        && read.queue.already_sealed.is_none()
+    {
+        return Ok(None);
+    }
     let mut tip_patches: Vec<String> = Vec::new();
     let published = match acts {
         [act] => {
@@ -156,6 +183,7 @@ pub(super) fn read(
         status_refused,
         already_sealed,
         published,
+        lead: lead.map(str::to_owned),
     }))
 }
 

@@ -4,17 +4,19 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use inklkunn_prikk::storage::{Operation, QueuedPatch};
+use inklkunn_prikk::storage::{HistoryBlock, Operation, PatchMessage, QueuedPatch};
 use inklkunn_store::WikiId;
 
 use super::{Signer, is_view_ref};
-use crate::accept::{AcceptanceToken, ChangeDigest, PreparedChange, PreparedFile, ViewCreationAct};
+use crate::accept::{
+    AcceptanceToken, ChangeDigest, ExpectedMessage, PreparedChange, PreparedFile, ViewCreationAct,
+};
 use crate::locks::{self, WriteGuard};
 use crate::message::Message;
 use crate::recover::text::{ACCEPTANCE_LOCK_KINDS, Discarded};
 use crate::recover::{Recover, RecoverError, RecoveryOp, RecoveryToken, RetirementExcuse};
 use crate::worktree::{self, Applied};
-use crate::writes::parse_status_text;
+use crate::writes::{SignerError, parse_status_text};
 
 /// The most bytes of one file recovery reads back out of the history to restore a worktree, and out of a worktree to
 /// check a queued patch's files: the bound of one acceptance.
@@ -53,6 +55,73 @@ impl Signer {
             return Err(RecoverError::NotRecorded);
         }
         Ok(held)
+    }
+}
+
+impl Signer {
+    /// The newest block of `view` is the change the record `expected` describes: it holds exactly one patch, whose
+    /// message is the record's, and its parent is the block the change was made on, for every acceptance (Q7, W8).
+    /// Returns the block and its one patch.
+    fn published_is_the_acts(
+        &self,
+        repo: &Path,
+        view: &str,
+        expected: &ExpectedMessage,
+    ) -> Result<(HistoryBlock, PatchMessage), RecoverError> {
+        let w = &self.writes;
+        let Some(tip) = w.tip(repo, view)? else {
+            return mismatch("the view has no block");
+        };
+        let [published] = tip.patch_messages.as_slice() else {
+            return mismatch("the newest block of the view does not hold exactly one patch");
+        };
+        let published = published.clone();
+        let message = Message::parse(&published.message).map_err(|_| {
+            RecoverError::DoesNotMatch(
+                "the published patch's message is not a patch message".to_owned(),
+            )
+        })?;
+        if !expected.matches(&message) {
+            return mismatch("the published patch's message is not the one the record describes");
+        }
+        let pinned = &expected.pinned_tip;
+        let blocks = w.view_blocks(repo, view, 2)?;
+        if blocks.get(1).map(|(block, _)| block.as_str()) != Some(pinned.as_str()) {
+            return mismatch(
+                "the published block was not made on the block the change was made on",
+            );
+        }
+        Ok((tip, published))
+    }
+
+    /// The files of the newest block `tip`, read from the block (the worktree cannot be asked while a publication is
+    /// unfinished), are the ones that were accepted. Returns their size, for the call that follows.
+    fn published_files_are_the_acts(
+        &self,
+        repo: &Path,
+        view: &str,
+        tip: &HistoryBlock,
+        published: &PatchMessage,
+        expected: &ExpectedMessage,
+    ) -> Result<u64, RecoverError> {
+        let w = &self.writes;
+        let change = w.change(repo, &tip.block_id)?;
+        let [patch] = change.patches.as_slice() else {
+            return mismatch("the newest block of the view does not hold exactly one patch");
+        };
+        if patch.patch_id != published.patch_id {
+            return mismatch("the newest block's patch is not the one its message belongs to");
+        }
+        let at_the_tip = |rel: &str| {
+            w.cat(repo, view, rel, MAX_FILE_BYTES)
+                .map_err(RecoverError::from)
+        };
+        let Some(change_bytes) =
+            change_matches(&patch.operations, &at_the_tip, &expected.change_digest)?
+        else {
+            return mismatch("the published block's files are not the ones that were accepted");
+        };
+        Ok(change_bytes)
     }
 }
 
@@ -311,28 +380,7 @@ impl Recover for Signer {
             );
         }
         // 2. The block published is the change the record describes: the one patch, its message, its base.
-        let Some(tip) = w.tip(&repo, view)? else {
-            return mismatch("the view has no block");
-        };
-        let [published] = tip.patch_messages.as_slice() else {
-            return mismatch("the newest block of the view does not hold exactly one patch");
-        };
-        let message = Message::parse(&published.message).map_err(|_| {
-            RecoverError::DoesNotMatch(
-                "the published patch's message is not a patch message".to_owned(),
-            )
-        })?;
-        if !expected.matches(&message) {
-            return mismatch("the published patch's message is not the one the record describes");
-        }
-        // ... and its parent is the block the change was made on, for every acceptance (Q7, W8).
-        let pinned = &expected.pinned_tip;
-        let blocks = w.view_blocks(&repo, view, 2)?;
-        if blocks.get(1).map(|(block, _)| block.as_str()) != Some(pinned.as_str()) {
-            return mismatch(
-                "the published block was not made on the block the change was made on",
-            );
-        }
+        let (tip, published) = self.published_is_the_acts(&repo, view, &expected)?;
         // Nothing else is queued (Q2). `status --format json` refuses in this state up to prikk 0.57.0, but the plain
         // text of `status` reads on every prikk, and states the queue's size: exactly one patch, on this view, in a log with one record and no torn
         // byte. The queue's **content** is checked as well, by what prikk reports and what was read above: `verify`
@@ -381,22 +429,8 @@ impl Recover for Signer {
             }
         }
         // Its files are the ones that were accepted, read from the block (the worktree cannot be asked yet).
-        let change = w.change(&repo, &tip.block_id)?;
-        let [patch] = change.patches.as_slice() else {
-            return mismatch("the newest block of the view does not hold exactly one patch");
-        };
-        if patch.patch_id != published.patch_id {
-            return mismatch("the newest block's patch is not the one its message belongs to");
-        }
-        let at_the_tip = |rel: &str| {
-            w.cat(&repo, view, rel, MAX_FILE_BYTES)
-                .map_err(RecoverError::from)
-        };
-        let Some(change_bytes) =
-            change_matches(&patch.operations, &at_the_tip, &expected.change_digest)?
-        else {
-            return mismatch("the published block's files are not the ones that were accepted");
-        };
+        let change_bytes =
+            self.published_files_are_the_acts(&repo, view, &tip, &published, &expected)?;
         // 3. `seal` once more: the ref is published, so it makes no block and drains what the kill left.
         let seeds = self.seeds(wiki);
         let sealed = w.seal(&repo, &seeds, view, change_bytes);
@@ -415,6 +449,143 @@ impl Recover for Signer {
             .any(|d| d.is_cleanup_pending())
         {
             return mismatch("prikk still reports the cleanup as pending after the seal");
+        }
+        Ok(())
+    }
+
+    fn complete_ref_publication(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        act: &RecoveryToken,
+        acceptance: &AcceptanceToken,
+    ) -> Result<(), RecoverError> {
+        if !is_view_ref(view) {
+            return Err(RecoverError::Refused("a view is `heads/<name>`".to_owned()));
+        }
+        let op = RecoveryOp::CompleteRefPublication {
+            acceptance: acceptance.as_str().to_owned(),
+            view: view.to_owned(),
+        };
+        let _held = self.recovering(wiki, act, &op)?;
+        // Completing appends a record signed by the maintainer key: while a key retirement is unfinished nothing new is
+        // signed (W1), as nothing new is sealed.
+        match self.seal_pause(wiki) {
+            Ok(None) => {}
+            Ok(Some(sentence)) => return Err(RecoverError::RetirementUnfinished(sentence)),
+            Err(why) => return Err(RecoverError::Unavailable(why)),
+        }
+        // The record the change was accepted under: pending, the wiki's, on this view.
+        let expected = self
+            .ledger
+            .pending(acceptance)
+            .map_err(|e| RecoverError::Unavailable(e.to_string()))?
+            .ok_or(RecoverError::NotRecorded)?;
+        if expected.wiki != *wiki || expected.view != view {
+            return Err(RecoverError::NotRecorded);
+        }
+        let repo = self.root.repo_dir(wiki);
+        let w = &self.writes;
+        // 1. prikk says exactly this: one interrupted publication, of this ref, and nothing else. (No retirement's
+        //    record excuses anything here: with a pointer ahead of its log `verify` fails by the ref publication as
+        //    well, so a finding of publication trust beside it is "something else".)
+        if w.doctor(&repo)?.only_ref_lead() != Some(view) {
+            return mismatch(
+                "prikk's doctor does not report exactly one interrupted publication, and it is not this view's",
+            );
+        }
+        // 2. The block the pointer leads to is the change the record describes: the one patch, its message, its base.
+        let (tip, published) = self.published_is_the_acts(&repo, view, &expected)?;
+        // 3. prikk's own plan: this ref, this block as its target and as the state the pointer leads with, the ref log's
+        //    last record the state before it, and this block's own sequence next (so one transition, which is the
+        //    block's own), with nothing to remove first.
+        let seeds = self.seeds(wiki);
+        let plan = match (w.ref_complete_plan(&repo, &seeds, view), seeds.left_over()) {
+            (Ok(plan), false) => plan,
+            (Ok(_), true) => return Err(RecoverError::SeedsNotRemoved),
+            (Err(e), false) => return Err(e.into()),
+            (Err(e), true) => return Err(note_leftover(e.into())),
+        };
+        if plan.ref_name != view
+            || plan.kind != "Branch"
+            || plan.target != tip.block_id
+            || plan.leading_ref_state != tip.ref_state_id
+            || tip.previous_ref_state_id.is_none()
+            || plan.log_tip != tip.previous_ref_state_id
+            || plan.sequence != tip.update_seq
+            || plan.partial_tail_bytes != 0
+        {
+            return mismatch(
+                "prikk's plan is not the one transition that publishes the block the change was made in, onto the ref log's last record",
+            );
+        }
+        // 4. The queue is that patch and no other: the text of `status` reads on every prikk, and states the queue's size;
+        //    where the JSON reads (0.58.0) it names the patch and the block the queue is already sealed in, and where it
+        //    refuses it refuses with the integrity error this state makes (up to 0.57.0), and nothing else is read from it.
+        let queue = parse_status_text(&w.status_text(&repo)?).map_err(|why| {
+            RecoverError::Unavailable(format!("the queue could not be read: {why}"))
+        })?;
+        if queue.queued != 1
+            || queue.target.as_deref() != Some(view)
+            || queue.wal_records != 1
+            || queue.torn_bytes != 0
+        {
+            return mismatch(
+                "the repository's queue is not exactly the one patch that was published (more is queued, or the log is torn)",
+            );
+        }
+        match w.status_full(&repo) {
+            Ok(status) => {
+                if status.trailing_partial_wal_bytes != 0
+                    || status.provisional_worktree.is_some()
+                    || status.interrupted_materialization.is_some()
+                    || status.queue.count != 1
+                    || status
+                        .queue
+                        .patches
+                        .iter()
+                        .any(|q| q.patch_id != published.patch_id)
+                {
+                    return mismatch(
+                        "the repository has a torn log, an interrupted state or a queued patch that is not the published one",
+                    );
+                }
+                if status
+                    .queue
+                    .already_sealed
+                    .as_ref()
+                    .is_none_or(|sealed| sealed.block_id != tip.block_id)
+                {
+                    return mismatch(
+                        "prikk's status does not say that the queue is already sealed in the block that was published",
+                    );
+                }
+            }
+            Err(SignerError::Refused(why)) if why.starts_with("integrity error") => {}
+            Err(e) => return Err(e.into()),
+        }
+        // 5. Its files are the ones that were accepted, read from the block.
+        self.published_files_are_the_acts(&repo, view, &tip, &published, &expected)?;
+        // 6. `ref complete`, once.
+        let seeds = self.seeds(wiki);
+        let done = w.ref_complete(&repo, &seeds, view);
+        match (done, seeds.left_over()) {
+            (Ok(()), false) => {}
+            (Ok(()), true) => return Err(RecoverError::SeedsNotRemoved),
+            (Err(e), false) => return Err(e.into()),
+            (Err(e), true) => return Err(note_leftover(e.into())),
+        }
+        // 7. It did what was meant and nothing more: the same tip, and `doctor` no longer names the lead (it names the
+        //    cleanup of the queue now, which is the step that follows).
+        if w.tip(&repo, view)?.map(|b| b.block_id) != Some(tip.block_id.clone()) {
+            return mismatch("the view's tip is not the published block after the step");
+        }
+        if w.doctor(&repo)?
+            .diagnostics
+            .iter()
+            .any(|d| d.is_publication_lead())
+        {
+            return mismatch("prikk still reports an interrupted publication after the step");
         }
         Ok(())
     }
