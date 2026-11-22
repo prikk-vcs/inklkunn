@@ -725,12 +725,11 @@ impl ProposalService {
             Ok(())
         } else {
             // A write refused because the wiki's governance cannot be read says so, to whoever may read the wiki.
-            Err(
-                match self.authorizer.write_refusal(principal, resource.wiki()) {
-                    Some(fault) if action != Action::Read => ProposalError::RulesUnreadable(fault),
-                    _ => ProposalError::NotAllowed,
-                },
-            )
+            // (A read is never refused by the rules, so it is never asked about them.)
+            let refusal = (action != Action::Read)
+                .then(|| self.authorizer.write_refusal(principal, resource.wiki()))
+                .flatten();
+            Err(refusal.map_or(ProposalError::NotAllowed, ProposalError::RulesUnreadable))
         }
     }
 
