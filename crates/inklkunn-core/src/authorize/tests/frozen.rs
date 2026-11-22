@@ -273,3 +273,35 @@ fn the_pure_rule_with_no_governance_is_0_3_0s_for_every_snapshot() {
         }
     }
 }
+
+/// The same table, with the rules read by the real loader from a real (in-memory) repository that has no `governance/`:
+/// the whole path a decision takes in service, the read service's snapshot included.
+#[test]
+fn criterion_1_holds_through_the_loader_over_a_repository_with_no_governance() {
+    use crate::read::testing::{Fake, TempDir};
+    use crate::read::{ReadConfig, ReadService};
+
+    let table = table();
+    let dir = TempDir::new("frozen");
+    let fake = Arc::new(Fake::new(&[(
+        "pages/Home.md",
+        "---\ntitle: Home\n---\n\nHi.\n",
+    )]));
+    fake.derive_changes();
+    let reads = Arc::new(
+        ReadService::new(
+            fake.clone(),
+            table.store.clone(),
+            table.store.clone(),
+            inklkunn_store::RootLayout::new(dir.0.join("root")),
+            ReadConfig::default(),
+            None,
+        )
+        .with_governance_snapshots(table.store.clone()),
+    );
+    let source = StoreAuthz::new(table.store.clone(), table.store.clone()).with_rules(reads);
+    let audit = Arc::new(MemoryAudit::new());
+    let authorizer = Authorizer::new(Arc::new(source), audit).with_clock(super::clock);
+    let compared = every_decision_is_0_3_0s(&authorizer, &table);
+    assert_eq!(compared, 4 * (2 + 7 * 5) * 10 * 6);
+}

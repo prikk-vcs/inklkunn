@@ -14,6 +14,11 @@
 //! page id when the tip still has the page at a path the proposal touches, and otherwise the proposal's page
 //! is an edit of something the tip removed, which the merge reports as an overlap (a person decides). That is
 //! the conservative reading, and it never loses an edit.
+//!
+//! **A governance file is never merged** (RFC 006 D-4). The two files are the rules of the wiki, a small text where one
+//! changed line can be the whole meaning, and what the reviewers read and approved is what is accepted: when the tip's text
+//! of a governance file the revision writes is not the base's, the revision overlaps with the tip, both texts are kept on the
+//! proposal and its proposer revises against the rules as they are now.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -23,6 +28,7 @@ use inklkunn_prikk::{Point, Storage, StorageError};
 use inklkunn_signer::PreparedFile;
 use inklkunn_store::{CommentRecord, OverlapText, RevisionContent};
 
+use crate::governance::GovernanceFile;
 use crate::merge::{MergeOutcome, Overlap, PageText, Place, merge};
 use crate::proposal::MAX_PAGE_BYTES;
 
@@ -190,6 +196,20 @@ pub(crate) fn prepare(
                 ours.remove(&f.path);
             }
         }
+    }
+
+    if let Some(path) = touched
+        .iter()
+        .filter(|p| GovernanceFile::of_path(p).is_some())
+        .find(|p| base.get(*p) != tip.get(*p))
+    {
+        return Ok(Prepared::Overlaps(vec![OverlapText {
+            page: path.clone(),
+            place: "governance file".to_owned(),
+            base: base.get(path).cloned(),
+            theirs: tip.get(path).cloned(),
+            ours: ours.get(path).cloned(),
+        }]));
     }
 
     let merged = match merge(&texts(&base), &texts(&tip), &texts(&ours)) {

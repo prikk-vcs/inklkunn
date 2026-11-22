@@ -35,8 +35,16 @@ pub struct AcceptanceRecord {
     pub acceptor: AccountId,
     /// The role the acceptor held, shown with the acceptance (PR-12).
     pub acceptor_role: Role,
-    /// The policy version the decision was made under (PR-12).
+    /// The policy version the decision was made under (PR-12): `bootstrap-1` for a wiki with no governance files (0.3.0's
+    /// fixed ladder), `governance-1` for one whose rules are read from `governance/` (schema version 1 of the two files).
     pub policy_version: String,
+    /// The block that last changed a governance file when the acceptance was decided: **the rules it was decided under**
+    /// (RFC 006 D-5; criterion 12). `None` for a wiki with no governance files, and for an acceptance of 0.3.0.
+    pub policy_block: Option<String>,
+    /// The acceptance used **the hatch** (RFC 006 D-4): an admin accepted a change to `governance/` with no approvals,
+    /// whatever the policy and the constitution say. The record names it so that nobody reads an approval-free acceptance
+    /// as the rules' own.
+    pub hatch: bool,
     /// Who proposed (kept so the day's accepted bytes per proposer are one query).
     pub proposer: AccountId,
     /// The digest of the merged content, as the acceptance token carries it.

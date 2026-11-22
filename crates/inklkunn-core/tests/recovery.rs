@@ -3032,6 +3032,8 @@ fn an_acceptance_that_stopped_before_commit_is_abandoned_and_a_dirty_worktree_is
         &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Hola.")))],
     );
     let rec = inklkunn_store::AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         id: inklkunn_store::AcceptanceId::new(),
         proposal: q.id.clone(),
         revision: 1,
@@ -3714,6 +3716,8 @@ fn an_acceptance_with_no_end_blocks_the_next_act_even_when_its_intent_was_never_
         &[("pages/Other.md", Some(&OTHER.replace("Hello.", "Hola.")))],
     );
     let rec = inklkunn_store::AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         id: inklkunn_store::AcceptanceId::new(),
         proposal: p.id.clone(),
         revision: 1,
@@ -3751,6 +3755,8 @@ fn a_retry_of_a_sealed_acceptance_settles_a_proposal_still_held_for_review() {
         &[("pages/Home.md", Some(&HOME.replace("One.", "Uno.")))],
     );
     let rec = inklkunn_store::AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         id: inklkunn_store::AcceptanceId::new(),
         proposal: p.id.clone(),
         revision: 1,

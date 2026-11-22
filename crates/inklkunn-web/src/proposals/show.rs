@@ -807,6 +807,17 @@ pub(crate) fn draw(
         Ok(found) => notes.extend(found),
         Err(error) => return refused(page, ctx, &error, Vec::new()),
     }
+    // RFC 006 D-4: the rules of this wiki ask for more approvals than the people who could give them. Computed now, from the
+    // rules and the grants as they are; a warning the page cannot compute is not a reason for the page to fail.
+    if record.state == ProposalState::HeldForReview
+        && let Ok(Some(warning)) = ctx.services.proposals.approvals_warning(&ctx.wiki, record)
+    {
+        notes.push(
+            t.msg(Key::ProposalApprovalsUnreachable)
+                .n(u64::from(warning.needed))
+                .html(),
+        );
+    }
     if let Some(rich) = superseded {
         notes.push(rich);
     }

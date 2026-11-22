@@ -17,6 +17,8 @@ const HOUR: i64 = 3600;
 fn sealed_change(e: &Env, n: usize) -> AcceptanceId {
     let proposal = e.held(&e.maintainer, "Accepted", &format!("pages/c{n}.md"));
     let a = AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         id: AcceptanceId::new(),
         proposal: proposal.id,
         revision: 1,
@@ -189,6 +191,8 @@ fn a_refused_press_leaves_nothing_behind_and_the_next_press_works() {
             let a = AcceptanceId::new();
             e.store
                 .begin_acceptance(&AcceptanceRecord {
+                    policy_block: None,
+                    hatch: false,
                     id: a.clone(),
                     proposal: p.id,
                     revision: 1,

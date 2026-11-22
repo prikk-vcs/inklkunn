@@ -3297,4 +3297,119 @@ pub const CATALOG: &[Entry] = &[
         "know.check_not_come",
         "この提案にある出典は、提案の基にした時点とは別の場所で見つかることになっていて、提案が示す新しい場所を確認した日は、世界のどのタイムゾーンでもまだ来ていない日になっています。このままでは受け入れられません。",
     ),
+    msg(
+        "outcome.governance_invalid",
+        "署名されませんでした: このウィキのルールの変更を受け付けられません",
+    ),
+    msg(
+        "outcome_note.governance_invalid",
+        "何も変更しておらず、提案はレビュー待ちで保持されたままです。ファイルを直してから、もう一度受け入れてください。",
+    ),
+    msg("governance.fault_line", "{file} の {line} 行目: {rule}"),
+    msg("governance.fault_file", "{file}: {rule}"),
+    msg("governance.rule_not_text", "ファイルが文章ではありません。"),
+    msg(
+        "governance.rule_too_long",
+        "ファイルが、ウィキのルールとして許される長さを超えています。",
+    ),
+    msg(
+        "governance.rule_wrong_shape",
+        "ファイルが、ウィキのルールの書き方になっていないか、値がその項目に合った種類ではありません。",
+    ),
+    msg(
+        "governance.rule_unknown_key",
+        "ウィキのルールにはない項目が書かれています。",
+    ),
+    msg(
+        "governance.rule_repeated_key",
+        "同じ項目が 2 回書かれています。",
+    ),
+    msg(
+        "governance.rule_unknown_value",
+        "値が、その項目で使える言葉のどれでもありません。",
+    ),
+    msg(
+        "governance.rule_out_of_range",
+        "数がその項目で使える範囲の外にあります。",
+    ),
+    msg(
+        "governance.rule_bounds",
+        "一覧または文章が、ウィキのルールで許される長さを超えています。",
+    ),
+    msg(
+        "governance.rule_forbidden_character",
+        "ファイルに、制御文字、文字の向きを変える記号、または行の区切り文字があります。ウィキのルールでは使えません。",
+    ),
+    msg(
+        "governance.rule_missing_key",
+        "ウィキのルールに必要な項目がないか、文章が空です。",
+    ),
+    msg(
+        "governance.rule_duplicate",
+        "同じページ、または同じタイトルとその下にあるページが、2 回保護されています。",
+    ),
+    msg(
+        "governance.rule_ordering_propose_above_review",
+        "役割の順序が崩れています。提案できる役割が、レビューできる役割より上になっています。",
+    ),
+    msg(
+        "governance.rule_ordering_review_above_accept",
+        "役割の順序が崩れています。レビューできる役割が、受け入れられる役割より上になっています。",
+    ),
+    msg(
+        "governance.rule_ordering_moderate_below_reviewer",
+        "役割の順序が崩れています。モデレーションを行える役割が、レビュアーより下になっています。",
+    ),
+    msg(
+        "governance.rule_platform_limit_entry_max",
+        "サインインしているすべてのアカウントが持つ役割が、このサーバーの管理者が許す上限を超えています。",
+    ),
+    msg(
+        "governance.rule_platform_limit_limit_days",
+        "期間が、このサーバーの管理者が許す最長の期間を超えています。",
+    ),
+    msg(
+        "governance.rule_outside_default_view",
+        "ウィキのルールを変更できるのは既定のビューだけで、この提案はほかのビューにあります。",
+    ),
+    msg(
+        "governance.rule_unknown_file",
+        "governance/ にあるのは constitution.yaml と policy.yaml の 2 つのファイルだけで、この変更は別のファイルについてです。",
+    ),
+    msg(
+        "outcome.governance_rung",
+        "署名されませんでした: このウィキのルールの変更には、より上の役割が必要です",
+    ),
+    msg(
+        "outcome_note.governance_rung_maintainer",
+        "このウィキのルールでは、ルールの変更を受け入れられるのは、このウィキのメンテナーまたは管理者です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+    ),
+    msg(
+        "outcome_note.governance_rung_admin",
+        "このウィキのルールでは、ルールの変更を受け入れられるのは、このウィキの管理者です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+    ),
+    msg(
+        "outcome.approvals_missing",
+        "署名されませんでした: 承認がまだ足りません",
+    ),
+    msg(
+        "outcome_note.approvals_missing",
+        "このウィキのルールでは、提案者以外でレビューできる人からの、最新の修正版への承認が {count} 件必要です。現在は {have} 件です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+    ),
+    msg(
+        "outcome.rules_unreadable",
+        "変更できませんでした: このウィキのルールを読めません",
+    ),
+    msg(
+        "outcome_note.rules_unreadable",
+        "ルールが直るまで、このウィキでは何も変更できません。読むことはできます。このウィキの管理者は、ルールだけを直す変更を提案して、受け入れることができます。",
+    ),
+    msg(
+        "invalid.governance_path",
+        "governance/ の下に書けるのは constitution.yaml と policy.yaml だけで、名前を変えることもできません。",
+    ),
+    msg(
+        "proposal.approvals_unreachable",
+        "このウィキのルールでは、提案者以外の人からの承認が {count} 件必要ですが、承認できる人がまだ足りません。レビューできる役割を持つ人が増えるまで、どの提案も受け入れられません。",
+    ),
 ];

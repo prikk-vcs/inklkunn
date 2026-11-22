@@ -53,6 +53,7 @@ use inklkunn_store::{
 };
 
 use crate::authorize::Principal;
+use crate::governance::{Fault as GovernanceFault, ReadFault};
 use crate::knowledge::check::Refusal as KnowledgeRefusal;
 use crate::lease::{Busy, BusyWhy, Lease, LeaseError, Purpose, WikiLeases};
 use crate::notify::Notifier;
@@ -61,6 +62,7 @@ use crate::read::ReadService;
 use crate::reconcile::Finding;
 
 mod claims;
+mod governance;
 mod ledger;
 mod prepare;
 pub(crate) mod shared;
@@ -76,14 +78,18 @@ pub use views::{ViewCreated, ViewFailure};
 use prepare::{PrepareError, Prepared};
 use shared::{Blocked, TipError};
 
-/// The policy the decision was made under (PR-12): the bootstrap's fixed role ladder, until RFC 006 makes the
-/// policy data and gives it versions.
+/// The policy the decision was made under (PR-12) for a wiki **with no governance files**: the bootstrap's fixed role
+/// ladder, which is the default policy ([`crate::governance::defaults`]).
 pub const POLICY_VERSION: &str = "bootstrap-1";
 
-/// How many maintainers a wiki may have for one of them to accept their own proposal (RFC 004 D-3: the
-/// bootstrap lets a maintainer of a wiki with fewer than three maintainers, so a one-person wiki is not
-/// deadlocked; RFC 006 makes it data).
-pub const SELF_ACCEPTANCE_BELOW: usize = 3;
+/// The policy the decision was made under for a wiki whose rules are read from `governance/` (schema version 1 of the two
+/// files); the block that set them is the acceptance record's `policy_block`.
+pub const GOVERNED_POLICY_VERSION: &str = "governance-1";
+
+/// How many maintainers a wiki may have for one of them to accept their own proposal (RFC 004 D-3: the bootstrap lets a
+/// maintainer of a wiki with fewer than three maintainers, so a one-person wiki is not deadlocked): **the default of
+/// `acceptance.self: small-wiki`**, written once, in [`crate::governance::defaults`] (RFC 006 makes it data).
+pub use crate::governance::defaults::SELF_ACCEPTANCE_BELOW;
 
 /// The fixed words of an acceptance's outcome (RFC 004 D-12). They are keys: the glossary gives each its text
 /// in each language, and a failed acceptance's record keeps the key, never prikk's text.
@@ -118,6 +124,15 @@ pub mod words {
     /// until the person who runs the wiki finishes it (handoff 004, W1). Nothing was committed; the proposal stays
     /// open.
     pub const RETIREMENT_UNFINISHED: &str = "retirement-unfinished";
+    /// A change to `governance/` is not sound (RFC 006 D-4): refused before the signer is asked; the files and rules are in
+    /// the refusal. Nothing was committed and the proposal stays open.
+    pub const GOVERNANCE_INVALID: &str = "governance-invalid";
+    /// The rules of this wiki need a higher rung to accept a change to `governance/` (RFC 006 D-1).
+    pub const GOVERNANCE_RUNG: &str = "governance-rung";
+    /// The rules of this wiki ask for more approvals than the revision has (RFC 006 D-2, D-4).
+    pub const APPROVALS_MISSING: &str = "approvals-missing";
+    /// A governance file of this wiki cannot be read, so every write refuses until it is repaired (RFC 006 D-1).
+    pub const RULES_UNREADABLE: &str = "rules-unreadable";
 }
 
 /// What a proposal's change is recorded as: the message's `Kind`. A rollback is a proposal that was created as
@@ -298,6 +313,28 @@ pub enum AcceptFailure {
     /// (RFC 005 part 2 D-5): each is named with the rule it breaks and never with what it said. Refused **before the
     /// signer was asked**; nothing in prikk changed and the proposal stays open.
     KnowledgeInvalid(Vec<KnowledgeRefusal>),
+    /// A change to `governance/` is not sound (RFC 006 D-4): a file of the wrong shape, a key or a value the schema does not
+    /// know, the ordering rule broken, a platform limit exceeded, a governance file in a view that is not the default one, or
+    /// a path under `governance/` that is neither of the two files. **Each is named with the file, the rule and where it can
+    /// be said the line, and never with what the file said**, and refused before the signer was asked: nothing in prikk
+    /// changed and the proposal stays open.
+    GovernanceInvalid(Vec<GovernanceFault>),
+    /// The constitution of this wiki asks a higher rung than the acceptor's for a change to `governance/` (RFC 006 D-1). The
+    /// rung is named. Nothing was done.
+    GovernanceRung(Role),
+    /// The rules of this wiki ask for more approvals, from people other than the proposer, on the proposal's latest revision
+    /// (RFC 006 D-2, D-4): `needed` of them, and `have` is how many it has now, counting only people who still hold the
+    /// review rung. Nothing was done.
+    ApprovalsMissing {
+        /// What the rules ask for.
+        needed: u8,
+        /// What the latest revision has.
+        have: usize,
+    },
+    /// A governance file of this wiki cannot be read, so **every write refuses** until it is repaired (RFC 006 D-1, threat
+    /// model C-3d), and this change is not the repair: the refusal names the file and the line. Only whoever may read the wiki
+    /// is told. Nothing was done.
+    RulesUnreadable(ReadFault),
     /// Failed **before `commit`**: nothing in prikk changed, the acceptance is recorded as failed with `word`,
     /// and the proposal stays open.
     Failed {
@@ -342,6 +379,10 @@ impl AcceptFailure {
             AcceptFailure::Overlap { .. } => words::OVERLAP,
             AcceptFailure::NothingToChange => words::NOTHING_TO_CHANGE,
             AcceptFailure::KnowledgeInvalid(_) => words::KNOWLEDGE_INVALID,
+            AcceptFailure::GovernanceInvalid(_) => words::GOVERNANCE_INVALID,
+            AcceptFailure::GovernanceRung(_) => words::GOVERNANCE_RUNG,
+            AcceptFailure::ApprovalsMissing { .. } => words::APPROVALS_MISSING,
+            AcceptFailure::RulesUnreadable(_) => words::RULES_UNREADABLE,
             AcceptFailure::Failed { word, .. } => word,
             AcceptFailure::Proposal(_)
             | AcceptFailure::InProgress { .. }
@@ -388,6 +429,29 @@ impl std::fmt::Display for AcceptFailure {
                 }
                 Ok(())
             }
+            AcceptFailure::GovernanceInvalid(faults) => {
+                write!(
+                    f,
+                    "refused: {} governance file(s) are not sound",
+                    faults.len()
+                )?;
+                for fault in faults {
+                    write!(f, "; {fault}")?;
+                }
+                Ok(())
+            }
+            AcceptFailure::GovernanceRung(rung) => write!(
+                f,
+                "refused: a change to the rules of this wiki needs the {} rung",
+                rung.as_str()
+            ),
+            AcceptFailure::ApprovalsMissing { needed, have } => write!(
+                f,
+                "refused: the rules of this wiki ask for {needed} approval(s) of the latest revision, and it has {have}"
+            ),
+            AcceptFailure::RulesUnreadable(fault) => {
+                write!(f, "refused: the rules of this wiki cannot be read: {fault}")
+            }
             AcceptFailure::Failed {
                 word,
                 detail,
@@ -421,6 +485,7 @@ impl From<ProposalError> for AcceptFailure {
     fn from(e: ProposalError) -> Self {
         match e {
             ProposalError::NotAllowed => AcceptFailure::NotAllowed,
+            ProposalError::RulesUnreadable(fault) => AcceptFailure::RulesUnreadable(fault),
             ProposalError::NotFound => AcceptFailure::NotFound,
             ProposalError::Quota(q) => AcceptFailure::Refused(q),
             ProposalError::Store(e) => AcceptFailure::Store(e),
@@ -647,7 +712,10 @@ impl ProposalAcceptor {
             return Ok(done);
         }
         self.check_revision(principal, wiki, &proposal, revision)?;
-        self.check_self_acceptance(wiki, &proposal, &acceptor)?;
+        // The rung, the approvals and the proposer's own acceptance, judged by the rules of the wiki, from what the revision
+        // writes (an early refusal; the one that counts is made again under the lease, from what is about to be signed).
+        let touched = self.revision_paths(principal, wiki, id, revision)?;
+        self.judge(principal, wiki, &proposal, &acceptor, &touched)?;
 
         // 1. The lease.
         let lease = self
@@ -762,29 +830,34 @@ impl ProposalAcceptor {
         Ok(())
     }
 
-    /// A maintainer accepts their own proposal only in a wiki with fewer than [`SELF_ACCEPTANCE_BELOW`]
-    /// maintainers (RFC 004 D-3, the bootstrap policy).
-    fn check_self_acceptance(
+    /// The paths the revision writes, removes or renames to or from, as the acceptance judges who may accept it before it has
+    /// read the tip.
+    fn revision_paths(
         &self,
+        principal: &Principal,
         wiki: &WikiRecord,
-        proposal: &ProposalRecord,
-        acceptor: &AccountId,
-    ) -> Result<(), AcceptFailure> {
-        if proposal.author != *acceptor {
-            return Ok(());
-        }
-        let maintainers = self
+        id: &ProposalId,
+        revision: u32,
+    ) -> Result<Vec<String>, AcceptFailure> {
+        let content = self
             .parts
-            .roles
-            .grants_in(&wiki.id)?
+            .proposals
+            .revisions(principal, wiki, id)?
+            .into_iter()
+            .find(|r| r.seq == revision)
+            .ok_or(AcceptFailure::NotFound)?
+            .content;
+        Ok(content
+            .files
             .iter()
-            .filter(|g| g.role >= Role::Maintainer)
-            .count();
-        if maintainers < SELF_ACCEPTANCE_BELOW {
-            Ok(())
-        } else {
-            Err(AcceptFailure::NotAllowed)
-        }
+            .map(|f| f.path.clone())
+            .chain(
+                content
+                    .renames
+                    .iter()
+                    .flat_map(|r| [r.from.clone(), r.to.clone()]),
+            )
+            .collect())
     }
 
     /// Set the wiki's flag; `true` when it was recorded (now or before).
@@ -975,6 +1048,17 @@ impl ProposalAcceptor {
             proposal: id.as_str(),
             now: (self.clock)(),
         });
+        // RFC 006 D-4: the governance files the change writes are judged before the signer is asked (and before the knowledge
+        // files, which a change to `governance/` has none of); then who may accept what is about to be signed, by the rules in
+        // force *now*, which the lease has kept from changing under it.
+        self.check_governance(wiki, &proposal, &files, &renames)?;
+        let judged = self.judge(
+            principal,
+            wiki,
+            &proposal,
+            acceptor,
+            &governance::touched_paths(&files, &renames),
+        )?;
         self.check_knowledge(wiki, &repo, &tip, &files, &renames, stating)?;
         self.observe(AcceptStep::Prepared);
         // CM-5: the blocks the proposal's comments are about carry their ids into the history.
@@ -995,11 +1079,6 @@ impl ProposalAcceptor {
             .check_accepted_bytes(&wiki.id, &proposal.author, bytes)?;
 
         // 4. The records, before the signer is asked.
-        let role = self
-            .parts
-            .roles
-            .role(acceptor, &wiki.id)?
-            .ok_or(AcceptFailure::NotAllowed)?;
         let kind = match self.parts.proposals.rollback_of(principal, wiki, id)? {
             Some(_) => ChangeKind::Rollback,
             None => ChangeKind::Proposal,
@@ -1033,8 +1112,15 @@ impl ProposalAcceptor {
             wiki: wiki.id.clone(),
             view: proposal.view.clone(),
             acceptor: acceptor.clone(),
-            acceptor_role: role,
-            policy_version: POLICY_VERSION.to_owned(),
+            acceptor_role: judged.rung,
+            policy_version: if judged.policy_block.is_some() {
+                GOVERNED_POLICY_VERSION
+            } else {
+                POLICY_VERSION
+            }
+            .to_owned(),
+            policy_block: judged.policy_block.clone(),
+            hatch: judged.hatch,
             proposer: proposal.author.clone(),
             digest: change.digest().to_hex(),
             bytes,

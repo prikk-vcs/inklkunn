@@ -29,6 +29,8 @@ fn out(claim: &str, how: ClaimHow) -> ClaimOutcome {
 
 fn acceptance(p: &ProposalRecord, acceptor: &AccountId, at: i64) -> AcceptanceRecord {
     AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         id: AcceptanceId::new(),
         proposal: p.id.clone(),
         revision: 1,
@@ -87,6 +89,8 @@ fn decision(
     at: i64,
 ) -> DecisionRecord {
     DecisionRecord {
+        reviewer_rung: None,
+        policy_block: None,
         id: DecisionId::new(),
         proposal: p.id.clone(),
         revision: 1,

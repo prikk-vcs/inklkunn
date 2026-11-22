@@ -192,6 +192,30 @@ fn entry_lets_an_account_without_a_grant_do_what_the_rung_allows_in_a_public_or_
 }
 
 #[test]
+fn entry_does_not_raise_a_member_of_a_restricted_wiki() {
+    // A restricted wiki's members are the accounts the operator granted a rung (RFC 006 D-3): `entry` is for the others.
+    let w = wikis();
+    let member = account();
+    let mut f = facts(&w, &[]);
+    f.roles
+        .insert((member.clone(), w.restricted.clone()), Role::Observer);
+    f.roles
+        .insert((member.clone(), w.internal.clone()), Role::Observer);
+    let (a, _, _) = over(Governed::new(f, rules_with("entry: contributor\n")));
+    let p = session(&member);
+    assert!(
+        !a.authorize(&p, Action::Propose, &on(&w.restricted))
+            .is_allowed(),
+        "an observer of a restricted wiki stays one"
+    );
+    assert!(
+        a.authorize(&p, Action::Propose, &on(&w.internal))
+            .is_allowed(),
+        "and the same account in an internal wiki is raised"
+    );
+}
+
+#[test]
 fn a_grant_above_entry_stays_and_entry_above_the_grant_raises_it() {
     let w = wikis();
     let (observer, maintainer) = (account(), account());

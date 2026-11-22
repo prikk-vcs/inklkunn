@@ -372,35 +372,42 @@ impl Rig {
         let signer_leases = inklkunn_signer::WriteLeases::new(layout.clone());
         let leases = WikiLeases::new(signer_leases, store.clone(), "test-process", lease);
         let audit = Arc::new(MemoryAudit::new());
+        // The rules of the wiki are read from the repository's default view, as in service (RFC 006 D-5).
+        let reads = Arc::new(
+            ReadService::new(
+                fake.clone(),
+                store.clone(),
+                store.clone(),
+                layout.clone(),
+                ReadConfig::default(),
+                None,
+            )
+            .with_governance_snapshots(store.clone()),
+        );
         let authorizer = Authorizer::new(
-            Arc::new(StoreAuthz::new(store.clone(), store.clone())),
+            Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(reads.clone())),
             audit.clone(),
         );
-        let proposals = Arc::new(ProposalService::new(
-            store.clone(),
-            store.clone(),
-            store.clone(),
-            authorizer,
-            Arc::new(FakeBase(fake.clone())),
-            quotas,
-        ));
+        let proposals = Arc::new(
+            ProposalService::new(
+                store.clone(),
+                store.clone(),
+                store.clone(),
+                authorizer,
+                Arc::new(FakeBase(fake.clone())),
+                quotas,
+            )
+            .with_roles(store.clone()),
+        );
         let notifier = Arc::new(Notifier::new(
             store.clone(),
             store.clone(),
             store.clone(),
             store.clone(),
             Authorizer::new(
-                Arc::new(StoreAuthz::new(store.clone(), store.clone())),
+                Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(reads.clone())),
                 audit.clone(),
             ),
-        ));
-        let reads = Arc::new(ReadService::new(
-            fake.clone(),
-            store.clone(),
-            store.clone(),
-            layout.clone(),
-            ReadConfig::default(),
-            None,
         ));
         let ledger = Arc::new(StoreLedger::new(store.clone(), store.clone()));
         let double = Double::new(ledger.clone());

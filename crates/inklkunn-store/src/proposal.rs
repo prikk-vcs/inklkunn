@@ -22,6 +22,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
+use crate::access::Role;
 use crate::record::{AcceptanceId, AccountId, CommentId, DecisionId, ProposalId, WikiId};
 use crate::review::{ClaimOutcome, ClaimReview};
 
@@ -441,6 +442,14 @@ pub struct DecisionRecord {
     pub kind: DecisionKind,
     /// What the reviewer said with it (may be empty).
     pub body: String,
+    /// The rung the reviewer held **when they decided**, under the rules named by [`DecisionRecord::policy_block`]
+    /// (RFC 006 D-5; acceptance criterion 12: *reviewed by Name (reviewer), under the rules as of `<block>`*). `None` for a
+    /// decision made before 0.4.0 recorded it (the migration leaves it so; nothing is guessed).
+    pub reviewer_rung: Option<Role>,
+    /// The block that last changed a governance file when the reviewer decided: the rules the rung was held under. `None`
+    /// is the defaults (a wiki with no governance files) **and** a decision made before 0.4.0, which is told apart by
+    /// [`DecisionRecord::reviewer_rung`] being `None` as well.
+    pub policy_block: Option<String>,
     /// Unix seconds.
     pub created_at: i64,
 }

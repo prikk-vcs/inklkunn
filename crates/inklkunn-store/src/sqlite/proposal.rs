@@ -7,6 +7,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::{SqliteStore, backend};
+use crate::access::Role;
 use crate::proposal::{
     Anchor, CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalFilter,
     ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
@@ -139,7 +140,12 @@ fn row_to_decision(row: &Row<'_>) -> rusqlite::Result<DecisionRecord> {
     let proposal: String = row.get(1)?;
     let reviewer: String = row.get(3)?;
     let kind: String = row.get(4)?;
+    let rung: Option<String> = row.get(7)?;
     Ok(DecisionRecord {
+        reviewer_rung: rung
+            .map(|r| Role::parse(&r).ok_or_else(|| invalid("reviewer_rung")))
+            .transpose()?,
+        policy_block: row.get(8)?,
         id: DecisionId::parse(&id).ok_or_else(|| invalid("id"))?,
         proposal: ProposalId::parse(&proposal).ok_or_else(|| invalid("proposal_id"))?,
         revision: row.get(2)?,
@@ -337,8 +343,9 @@ impl SqliteStore {
             }
             tx.execute(
                 "INSERT INTO proposal_decisions (id, seq, proposal_id, revision, reviewer, kind, body, \
-                 created_at) VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM proposal_decisions), \
-                 ?2, ?3, ?4, ?5, ?6, ?7)",
+                 created_at, reviewer_rung, policy_block) \
+                 VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM proposal_decisions), \
+                 ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     decision.id.as_str(),
                     decision.proposal.as_str(),
@@ -346,7 +353,9 @@ impl SqliteStore {
                     decision.reviewer.as_str(),
                     decision.kind.as_str(),
                     decision.body,
-                    decision.created_at
+                    decision.created_at,
+                    decision.reviewer_rung.map(Role::as_str),
+                    decision.policy_block
                 ],
             )
             .map_err(write_refusal)?;
@@ -814,7 +823,7 @@ impl ProposalStore for SqliteStore {
         self.with(|conn| {
             let mut stmt = conn
                 .prepare(
-                    "SELECT d.id, d.proposal_id, d.revision, d.reviewer, d.kind, d.body, d.created_at \
+                    "SELECT d.id, d.proposal_id, d.revision, d.reviewer, d.kind, d.body, d.created_at, d.reviewer_rung, d.policy_block \
                      FROM proposal_decisions d JOIN proposals p ON p.id = d.proposal_id \
                      WHERE d.proposal_id = ?1 AND (p.submitted_at IS NOT NULL OR p.author = ?2) \
                      ORDER BY d.seq",
@@ -835,7 +844,7 @@ impl ProposalStore for SqliteStore {
         self.with(|conn| {
             let mut stmt = conn
                 .prepare(
-                    "SELECT d.id, d.proposal_id, d.revision, d.reviewer, d.kind, d.body, d.created_at \
+                    "SELECT d.id, d.proposal_id, d.revision, d.reviewer, d.kind, d.body, d.created_at, d.reviewer_rung, d.policy_block \
                      FROM proposal_decisions d JOIN proposals p ON p.id = d.proposal_id \
                      WHERE p.wiki_id = ?1 AND p.submitted_at IS NOT NULL ORDER BY d.seq",
                 )

@@ -454,3 +454,90 @@ fn every_refusal_has_one_stable_name_and_a_sentence() {
         assert!(r.sentence().is_ascii());
     }
 }
+
+// ------------------------------------------------------------------- the closed set of paths, and the names read back
+
+#[test]
+fn every_refusal_is_in_the_list_and_a_stored_name_reads_back_as_the_refusal_it_was() {
+    // Written as an exhaustive match, so that a refusal added without a place in the list does not compile.
+    fn listed(r: Refusal) -> bool {
+        match r {
+            Refusal::NotText
+            | Refusal::TooLong
+            | Refusal::WrongShape
+            | Refusal::UnknownKey
+            | Refusal::RepeatedKey
+            | Refusal::UnknownValue
+            | Refusal::OutOfRange
+            | Refusal::Bounds
+            | Refusal::ForbiddenCharacter
+            | Refusal::Missing
+            | Refusal::Duplicate
+            | Refusal::Ordering(OrderingPair::ProposeAboveReview)
+            | Refusal::Ordering(OrderingPair::ReviewAboveAccept)
+            | Refusal::Ordering(OrderingPair::ModerateBelowReviewer)
+            | Refusal::PlatformLimit(Limit::EntryMax)
+            | Refusal::PlatformLimit(Limit::LimitDays)
+            | Refusal::OutsideDefaultView
+            | Refusal::UnknownFile => Refusal::ALL.contains(&r),
+        }
+    }
+    for r in Refusal::ALL {
+        assert!(listed(r), "{}", r.name());
+        assert_eq!(Refusal::from_name(r.name()), Some(r));
+    }
+    let names: std::collections::BTreeSet<&str> = Refusal::ALL.iter().map(|r| r.name()).collect();
+    assert_eq!(names.len(), Refusal::ALL.len(), "one name for one refusal");
+    assert_eq!(Refusal::from_name("official"), None);
+    assert_eq!(Refusal::from_name(""), None);
+}
+
+#[test]
+fn a_read_fault_kept_by_a_snapshot_says_the_same_sentence_without_the_field() {
+    let kept = ReadFault::from_stored(GovernanceFile::Policy, Some(4), Refusal::UnknownKey);
+    assert_eq!(
+        kept.to_string(),
+        "governance/policy.yaml, line 4: the file has a key the rules of a wiki do not have"
+    );
+    let whole = ReadFault::from_stored(GovernanceFile::Constitution, None, Refusal::TooLong);
+    assert_eq!(
+        whole.to_string(),
+        "governance/constitution.yaml: the file is longer than a governance file may be"
+    );
+    assert_eq!(
+        (kept.file(), kept.line(), kept.refusal()),
+        (GovernanceFile::Policy, Some(4), Refusal::UnknownKey)
+    );
+}
+
+#[test]
+fn only_the_two_files_are_a_path_under_governance_and_anything_else_is_refused_by_name() {
+    for path in ["governance/policy.yaml", "governance/constitution.yaml"] {
+        assert_eq!(refuse_unknown_files([path]), Ok(()), "{path}");
+    }
+    for path in [
+        "governance/other.yaml",
+        "governance/policy.yml",
+        "governance/Policy.yaml",
+        "governance/sub/policy.yaml",
+        "governance/",
+        "Governance/policy.yaml",
+        "./governance/policy.yaml",
+        "governance",
+    ] {
+        let fault = refuse_unknown_files(["pages/A.md", path]).unwrap_err();
+        assert_eq!(fault.refusal, Refusal::UnknownFile, "{path}");
+        assert_eq!(fault.name(), "unknown-file");
+        assert_eq!(fault.file, None);
+        assert_eq!(fault.path(), "governance/");
+    }
+    // Not a path under it at all.
+    for path in [
+        "pages/governance/policy.yaml",
+        "governancey/x",
+        "pages/A.md",
+        "",
+    ] {
+        assert_eq!(refuse_unknown_files([path]), Ok(()), "{path:?}");
+    }
+}

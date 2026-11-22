@@ -17,7 +17,7 @@ use crate::{Result, StoreError};
 
 const ACCEPTANCE_COLUMNS: &str = "a.id, a.proposal_id, a.revision, a.wiki_id, a.view, a.acceptor, \
      a.acceptor_role, a.policy_version, a.proposer, a.digest, a.bytes, a.created_at, \
-     r.outcome, r.block_id, r.patch_id, r.word, r.at";
+     r.outcome, r.block_id, r.patch_id, r.word, r.at, a.policy_block, a.hatch";
 
 fn row_to_entry(row: &Row<'_>) -> rusqlite::Result<AcceptanceEntry> {
     let id: String = row.get(0)?;
@@ -56,6 +56,8 @@ fn row_to_entry(row: &Row<'_>) -> rusqlite::Result<AcceptanceEntry> {
             acceptor: AccountId::parse(&acceptor).ok_or_else(|| invalid("acceptor"))?,
             acceptor_role: Role::parse(&role).ok_or_else(|| invalid("acceptor_role"))?,
             policy_version: row.get(7)?,
+            policy_block: row.get(17)?,
+            hatch: row.get::<_, i64>(18)? != 0,
             proposer: AccountId::parse(&proposer).ok_or_else(|| invalid("proposer"))?,
             digest: row.get(9)?,
             bytes: u64::try_from(bytes).map_err(|_| invalid("bytes"))?,
@@ -173,9 +175,9 @@ impl AcceptanceStore for SqliteStore {
             }
             tx.execute(
                 "INSERT INTO acceptances (id, seq, proposal_id, revision, wiki_id, view, acceptor, \
-                 acceptor_role, policy_version, proposer, digest, bytes, created_at) \
+                 acceptor_role, policy_version, proposer, digest, bytes, created_at, policy_block, hatch) \
                  VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM acceptances), ?2, ?3, ?4, ?5, ?6, \
-                 ?7, ?8, ?9, ?10, ?11, ?12)",
+                 ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     a.id.as_str(),
                     a.proposal.as_str(),
@@ -188,7 +190,9 @@ impl AcceptanceStore for SqliteStore {
                     a.proposer.as_str(),
                     a.digest,
                     i64::try_from(a.bytes).unwrap_or(i64::MAX),
-                    a.created_at
+                    a.created_at,
+                    a.policy_block,
+                    i64::from(a.hatch)
                 ],
             )
             .map_err(write_refusal)?;

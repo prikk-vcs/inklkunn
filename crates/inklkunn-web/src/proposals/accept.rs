@@ -18,14 +18,15 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
 use inklkunn_core::acceptance::{Reconciled, words as accept_words};
+use inklkunn_core::governance::{Fault, ReadFault};
 use inklkunn_core::knowledge::check::Refusal;
 use inklkunn_core::proposal::{ProposalError, QuotaRefusal};
 use inklkunn_core::{AcceptFailure, Accepted, Action};
-use inklkunn_store::{ProposalId, WikiRecord};
+use inklkunn_store::{ProposalId, Role, WikiRecord};
 
 use super::{
-    Ctx, Stop, fields, fields_of, from_this_site, needs_account, notice_page, parse_id, paths,
-    refused, serve, words,
+    Ctx, Stop, fields, fields_of, from_this_site, governance, needs_account, notice_page, parse_id,
+    paths, refused, serve, words,
 };
 use crate::catalog::{Key, T};
 use crate::csrf::Decided;
@@ -71,6 +72,10 @@ pub enum Unchanged {
     /// Each file is named with the rule it breaks (and never with what it said): the page says each rule's own sentence
     /// (K78).
     KnowledgeInvalid(Vec<Refusal>),
+    /// A governance file the proposal writes is not acceptable, or the proposal touches `governance/` where it may not
+    /// (RFC 006 D-4): refused before the signer was asked. Each fault names the file, the rule and where it can be said the
+    /// line, and never what the file said; the page says each rule's own sentence.
+    GovernanceInvalid(Vec<Fault>),
     /// The signer was busy.
     Busy,
     /// A change to the wiki's keys (a key retirement) was begun and is not finished: the signer seals nothing new until
@@ -103,6 +108,17 @@ pub enum AcceptOutcome {
     NeedsRecovery,
     /// *Refused: the named limit.*
     Refused(QuotaRefusal),
+    /// The rules of this wiki ask a higher role than the acceptor's to accept a change to them (RFC 006 D-1).
+    GovernanceRung(Role),
+    /// The rules of this wiki ask for more approvals than the latest revision has (RFC 006 D-2, D-4).
+    ApprovalsMissing {
+        /// What the rules ask for.
+        needed: u8,
+        /// What the latest revision has.
+        have: usize,
+    },
+    /// A governance file of this wiki cannot be read, so every write is refused until it is repaired (RFC 006 D-1).
+    RulesUnreadable(ReadFault),
     /// Nothing was changed, and the fixed word says why.
     Unchanged(Unchanged),
     /// An earlier acceptance of this revision has not finished.
@@ -188,6 +204,22 @@ pub(crate) fn outcome_of(
                 "an acceptance was refused before signing: {failure}"
             ));
             AcceptOutcome::Unchanged(Unchanged::KnowledgeInvalid(refusals.clone()))
+        }
+        Err(ref failure @ AcceptFailure::GovernanceInvalid(ref faults)) => {
+            log(&format!(
+                "an acceptance was refused before signing: {failure}"
+            ));
+            AcceptOutcome::Unchanged(Unchanged::GovernanceInvalid(faults.clone()))
+        }
+        Err(AcceptFailure::GovernanceRung(rung)) => AcceptOutcome::GovernanceRung(rung),
+        Err(AcceptFailure::ApprovalsMissing { needed, have }) => {
+            AcceptOutcome::ApprovalsMissing { needed, have }
+        }
+        Err(ref failure @ AcceptFailure::RulesUnreadable(ref fault)) => {
+            log(&format!(
+                "an acceptance was refused, the rules of the wiki cannot be read: {failure}"
+            ));
+            AcceptOutcome::RulesUnreadable(fault.clone())
         }
         Err(AcceptFailure::Failed {
             acceptance,
@@ -282,6 +314,26 @@ pub fn render_accept_outcome(
             StatusCode::UNPROCESSABLE_ENTITY,
             Key::OutcomeKnowledgeInvalid,
             knowledge_paragraphs(t, refusals),
+        ),
+        AcceptOutcome::Unchanged(Unchanged::GovernanceInvalid(faults)) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Key::OutcomeGovernanceInvalid,
+            governance::invalid_paragraphs(t, faults),
+        ),
+        AcceptOutcome::GovernanceRung(rung) => (
+            StatusCode::FORBIDDEN,
+            Key::OutcomeGovernanceRung,
+            vec![governance::rung_note(t, *rung)],
+        ),
+        AcceptOutcome::ApprovalsMissing { needed, have } => (
+            StatusCode::CONFLICT,
+            Key::OutcomeApprovalsMissing,
+            vec![governance::approvals_note(t, *needed, *have)],
+        ),
+        AcceptOutcome::RulesUnreadable(fault) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Key::OutcomeRulesUnreadable,
+            governance::unreadable_paragraphs(t, fault),
         ),
         AcceptOutcome::Unchanged(Unchanged::TooLarge) => (
             StatusCode::PAYLOAD_TOO_LARGE,

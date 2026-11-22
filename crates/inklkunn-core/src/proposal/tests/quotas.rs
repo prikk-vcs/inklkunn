@@ -409,6 +409,8 @@ fn revisions_per_proposal_refuse_the_one_past_the_limit_and_do_not_reset() {
 fn accepted(e: &Env, bytes: u64, at: i64, failed: bool) {
     let proposal = e.held(&e.author, "Accepted", &format!("pages/q{at}.md"));
     let a = AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         id: AcceptanceId::new(),
         proposal: proposal.id,
         revision: 1,

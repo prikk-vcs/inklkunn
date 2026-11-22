@@ -190,3 +190,221 @@ fn a_refused_acceptance_says_each_rules_own_sentence_and_the_file_note_only_for_
         }
     }
 }
+
+// ------------------------------------------------------------------------------ the rules of the wiki (RFC 006)
+
+mod governance_pages {
+    use inklkunn_core::governance::{
+        Fault, GovernanceFile, Limit, OrderingPair, ReadFault, Refusal,
+    };
+    use inklkunn_store::Role;
+
+    use super::*;
+    use crate::proposals::governance;
+
+    fn both() -> [T; 2] {
+        [T::new(EN), T::new(Lang::from_def(&JA_DEF))]
+    }
+
+    #[test]
+    fn every_rule_a_governance_file_can_break_has_its_own_sentence_in_both_languages() {
+        for t in both() {
+            let sentences: Vec<String> = Refusal::ALL
+                .iter()
+                .map(|r| t.get(governance::rule_key(*r)))
+                .collect();
+            for (rule, said) in Refusal::ALL.iter().zip(&sentences) {
+                assert!(
+                    !said.is_empty() && !said.contains("{"),
+                    "{}: {said}",
+                    rule.name()
+                );
+                assert!(!said.to_lowercase().contains("official"), "{said}");
+            }
+            let distinct: std::collections::BTreeSet<&String> = sentences.iter().collect();
+            assert_eq!(distinct.len(), sentences.len(), "no two rules say the same");
+        }
+    }
+
+    #[test]
+    fn a_fault_names_the_file_and_the_line_in_each_language_and_never_what_the_file_said() {
+        let at = Fault {
+            line: Some(7),
+            ..Fault::at(GovernanceFile::Policy, Refusal::UnknownKey, "rungs")
+        };
+        let whole = Fault::whole(GovernanceFile::Constitution, Refusal::TooLong);
+        let en = T::new(EN);
+        assert_eq!(
+            governance::fault_text(en, &at),
+            format!(
+                "governance/policy.yaml, line 7: {}",
+                en.get(Key::GovernanceRuleUnknownKey)
+            )
+        );
+        assert_eq!(
+            governance::fault_text(en, &whole),
+            format!(
+                "governance/constitution.yaml: {}",
+                en.get(Key::GovernanceRuleTooLong)
+            )
+        );
+        let ja = T::new(Lang::from_def(&JA_DEF));
+        assert_eq!(
+            governance::fault_text(ja, &at),
+            format!(
+                "governance/policy.yaml の 7 行目: {}",
+                ja.get(Key::GovernanceRuleUnknownKey)
+            )
+        );
+        // The same file and rule said twice is said once; the page then says that nothing was changed.
+        for t in both() {
+            let paragraphs =
+                governance::invalid_paragraphs(t, &[at.clone(), at.clone(), whole.clone()]);
+            assert_eq!(paragraphs.len(), 3, "{paragraphs:?}");
+            assert_eq!(
+                paragraphs.last(),
+                Some(&t.get(Key::OutcomeNoteGovernanceInvalid))
+            );
+        }
+        // A file outside the two, a platform limit and the ordering rule are each said in their own sentence.
+        let en = T::new(EN);
+        for (rule, key) in [
+            (Refusal::UnknownFile, Key::GovernanceRuleUnknownFile),
+            (
+                Refusal::OutsideDefaultView,
+                Key::GovernanceRuleOutsideDefaultView,
+            ),
+            (
+                Refusal::PlatformLimit(Limit::EntryMax),
+                Key::GovernanceRulePlatformLimitEntryMax,
+            ),
+            (
+                Refusal::Ordering(OrderingPair::ReviewAboveAccept),
+                Key::GovernanceRuleOrderingReviewAboveAccept,
+            ),
+        ] {
+            assert_eq!(governance::rule_key(rule), key);
+            assert!(
+                governance::fault_text(en, &Fault::whole(GovernanceFile::Policy, rule))
+                    .contains(&en.get(key))
+            );
+        }
+    }
+
+    #[test]
+    fn an_acceptance_refused_by_the_rules_of_the_wiki_is_a_page_of_its_own_each_and_the_log_keeps_the_cause()
+     {
+        let logged = Mutex::new(Vec::new());
+        let log = |line: &str| logged.lock().unwrap().push(line.to_owned());
+        let fault = Fault {
+            line: Some(3),
+            ..Fault::at(GovernanceFile::Policy, Refusal::WrongShape, "rungs")
+        };
+        let invalid = outcome_of(
+            Err(AcceptFailure::GovernanceInvalid(vec![fault.clone()])),
+            &log,
+        );
+        assert_eq!(
+            invalid,
+            AcceptOutcome::Unchanged(Unchanged::GovernanceInvalid(vec![fault]))
+        );
+        assert_eq!(
+            outcome_of(Err(AcceptFailure::GovernanceRung(Role::Admin)), &log),
+            AcceptOutcome::GovernanceRung(Role::Admin)
+        );
+        assert_eq!(
+            outcome_of(
+                Err(AcceptFailure::ApprovalsMissing { needed: 3, have: 1 }),
+                &log
+            ),
+            AcceptOutcome::ApprovalsMissing { needed: 3, have: 1 }
+        );
+        let unreadable =
+            ReadFault::from_stored(GovernanceFile::Policy, Some(4), Refusal::UnknownKey);
+        assert_eq!(
+            outcome_of(
+                Err(AcceptFailure::RulesUnreadable(unreadable.clone())),
+                &log
+            ),
+            AcceptOutcome::RulesUnreadable(unreadable)
+        );
+        let lines = logged.lock().unwrap();
+        assert_eq!(lines.len(), 2, "the two that are the operator's: {lines:?}");
+        assert!(
+            lines.iter().all(|l| l.contains("governance/policy.yaml")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn the_notes_say_which_role_and_how_many_approvals_and_the_unreadable_page_says_the_file_and_the_way_out()
+     {
+        for t in both() {
+            assert_eq!(
+                governance::rung_note(t, Role::Admin),
+                t.get(Key::OutcomeNoteGovernanceRungAdmin)
+            );
+            for rung in [Role::Maintainer, Role::Reviewer] {
+                assert_eq!(
+                    governance::rung_note(t, rung),
+                    t.get(Key::OutcomeNoteGovernanceRungMaintainer)
+                );
+            }
+            assert_ne!(
+                t.get(Key::OutcomeNoteGovernanceRungAdmin),
+                t.get(Key::OutcomeNoteGovernanceRungMaintainer)
+            );
+            let fault =
+                ReadFault::from_stored(GovernanceFile::Constitution, Some(2), Refusal::WrongShape);
+            let page = governance::unreadable_paragraphs(t, &fault);
+            assert!(
+                page.first()
+                    .unwrap()
+                    .contains("governance/constitution.yaml")
+            );
+            assert_eq!(page.last(), Some(&t.get(Key::OutcomeNoteRulesUnreadable)));
+        }
+        // The count is said in the number the rules ask for, in English as one and as many.
+        let en = T::new(EN);
+        let one = governance::approvals_note(en, 1, 0);
+        let many = governance::approvals_note(en, 3, 1);
+        assert!(
+            one.contains("1 approval of the latest revision from someone"),
+            "{one}"
+        );
+        assert!(
+            many.contains("3 approvals of the latest revision from people"),
+            "{many}"
+        );
+        assert!(many.contains("it has 1."), "{many}");
+        let ja = governance::approvals_note(T::new(Lang::from_def(&JA_DEF)), 3, 1);
+        assert!(ja.contains("3 件") && ja.contains("1 件"), "{ja}");
+    }
+
+    #[test]
+    fn the_approvals_warning_says_that_no_proposal_can_be_accepted_until_more_people_hold_the_role()
+    {
+        let en = T::new(EN);
+        let one = en.msg(Key::ProposalApprovalsUnreachable).n(1).text();
+        let many = en.msg(Key::ProposalApprovalsUnreachable).n(4).text();
+        assert!(
+            one.contains("1 approval from someone other than the proposer"),
+            "{one}"
+        );
+        assert!(
+            many.contains("4 approvals from people other than the proposer"),
+            "{many}"
+        );
+        for said in [&one, &many] {
+            assert!(said.contains(
+                "No proposal can be accepted until more people hold the role that reviews"
+            ));
+            assert!(!said.to_lowercase().contains("official"));
+        }
+        let ja = T::new(Lang::from_def(&JA_DEF))
+            .msg(Key::ProposalApprovalsUnreachable)
+            .n(4)
+            .text();
+        assert!(ja.contains("4 件"), "{ja}");
+    }
+}

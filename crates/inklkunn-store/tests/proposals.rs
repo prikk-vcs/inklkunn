@@ -18,6 +18,8 @@ type Result<T> = std::result::Result<T, StoreError>;
 
 fn decision(p: &ProposalId, rev: u32, who: &inklkunn_store::AccountId, at: i64) -> DecisionRecord {
     DecisionRecord {
+        reviewer_rung: None,
+        policy_block: None,
         id: DecisionId::new(),
         proposal: p.clone(),
         revision: rev,
@@ -289,6 +291,8 @@ fn the_suite(store: &(impl ProposalStore + WikiStore + AccountStore)) {
     for again in [
         decision(&p.id, 1, &reviewer, 241),
         DecisionRecord {
+            reviewer_rung: None,
+            policy_block: None,
             id: d1.id.clone(),
             reviewer: stranger.clone(),
             ..d1.clone()
@@ -341,6 +345,8 @@ fn the_suite(store: &(impl ProposalStore + WikiStore + AccountStore)) {
         "a decision on a revision that is no longer the latest is refused"
     );
     let d2 = DecisionRecord {
+        reviewer_rung: None,
+        policy_block: None,
         kind: DecisionKind::RequestChanges,
         ..decision(&p.id, 2, &reviewer, 252)
     };
@@ -617,6 +623,8 @@ fn a_refused_write_changes_nothing_on_either_store() {
         );
         // A second decision by the same reviewer on the same revision.
         let again = DecisionRecord {
+            reviewer_rung: None,
+            policy_block: None,
             kind: DecisionKind::RequestChanges,
             body: "changed my mind".into(),
             ..decision(&p.id, 1, &r, 4)

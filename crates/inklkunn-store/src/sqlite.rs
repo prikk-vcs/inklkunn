@@ -962,6 +962,17 @@ BEGIN SELECT RAISE(ABORT, 'a reply is in the thread of the comment it answers');
 /// table: it is an event of the audit trail (version 3), which already is append-only, one line, never content, and
 /// names the principal, the action and the tombstone it opened.
 const V19: &str = "
+-- The two records of a decision that name **the rung it was made at and the rules it was made under** (RFC 006 D-5;
+-- acceptance criterion 12). Added here, in the one migration of this release, so that no later version has to: a column of a
+-- row written before this migration is NULL (a decision of 0.3.0 says no rung and no block, and is shown as one that
+-- recorded none), and a row's own columns never change (the triggers above refuse an UPDATE).
+ALTER TABLE proposal_decisions ADD COLUMN reviewer_rung TEXT
+    CHECK (reviewer_rung IS NULL OR reviewer_rung IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin'));
+ALTER TABLE proposal_decisions ADD COLUMN policy_block TEXT
+    CHECK (policy_block IS NULL OR (length(policy_block) BETWEEN 1 AND 128 AND policy_block NOT GLOB '*[^0-9a-f]*'));
+ALTER TABLE acceptances ADD COLUMN policy_block TEXT
+    CHECK (policy_block IS NULL OR (length(policy_block) BETWEEN 1 AND 128 AND policy_block NOT GLOB '*[^0-9a-f]*'));
+ALTER TABLE acceptances ADD COLUMN hatch INTEGER NOT NULL DEFAULT 0 CHECK (hatch IN (0, 1));
 CREATE TABLE IF NOT EXISTS appeals (
     id              TEXT PRIMARY KEY,
     seq             INTEGER NOT NULL,

@@ -1014,6 +1014,8 @@ fn an_intent_whose_message_is_not_the_one_its_digest_was_made_from_is_refused_by
         &[("pages/Q.md", Some("---\ntitle: Q\n---\n\nq\n"))],
     );
     let acceptance = AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         id: AcceptanceId::new(),
         proposal: q.id.clone(),
         revision: 1,
@@ -1029,6 +1031,8 @@ fn an_intent_whose_message_is_not_the_one_its_digest_was_made_from_is_refused_by
     };
     let (acceptor_id, _) = rig.person("R", Some(Role::Maintainer));
     let acceptance = AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         acceptor: acceptor_id,
         ..acceptance
     };
@@ -1178,3 +1182,5 @@ fn a_rollback_proposal_is_signed_as_a_rollback_with_the_undone_block_as_its_base
     assert_eq!(message.base().map(|b| b.as_str().to_owned()), Some(undone));
     assert_eq!(call.pending.unwrap().kind, Kind::Rollback);
 }
+
+mod governance;

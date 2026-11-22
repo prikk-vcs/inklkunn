@@ -1151,6 +1151,8 @@ pub fn accept_by_hand(
     let id = AcceptanceId::new();
     w.store
         .begin_acceptance(&AcceptanceRecord {
+            policy_block: None,
+            hatch: false,
             id: id.clone(),
             proposal: proposal.clone(),
             revision: 1,

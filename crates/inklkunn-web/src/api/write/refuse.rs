@@ -7,6 +7,7 @@
 //! caller may not see (a draft is its author's alone).
 
 use inklkunn_core::acceptance::AcceptFailure;
+use inklkunn_core::governance::{Fault, ReadFault};
 use inklkunn_core::proposal::{Invalid, ProposalError, QuotaRefusal, Reset};
 use serde_json::json;
 
@@ -49,6 +50,7 @@ pub(crate) const fn invalid_word(why: Invalid) -> &'static str {
         Invalid::KnowledgeUnjudged => "knowledge-unjudged",
         Invalid::KnowledgeStatusUnjudged => "knowledge-status-unjudged",
         Invalid::KnowledgeCheckUnstated => "knowledge-check-unstated",
+        Invalid::GovernancePath => "governance-path",
     }
 }
 
@@ -106,6 +108,10 @@ impl Request {
     pub(crate) fn refusal(&self, error: ProposalError) -> Problem {
         match error {
             ProposalError::NotAllowed => Problem::new(Code::Forbidden),
+            ProposalError::RulesUnreadable(fault) => rules_unreadable_problem(&fault).said(
+                "explanation",
+                crate::proposals::governance::read_fault_text(self.t, &fault),
+            ),
             ProposalError::NotFound => Problem::new(Code::NotFound),
             ProposalError::NotInThisState { state, .. }
             | ProposalError::SupersederNotEligible { state } => {
@@ -209,6 +215,33 @@ pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> 
             .member("overlaps", json!(overlaps))
             .said("overlaps", overlaps),
         AcceptFailure::NothingToChange => Problem::new(Code::NothingToChange),
+        // Refused before the signer was asked (RFC 006 D-4): what the caller needs to correct the file is the file's fixed
+        // name, the rule's stable name, the schema's field and the line, **never what the file said**.
+        AcceptFailure::GovernanceInvalid(faults) => {
+            log(&format!(
+                "an acceptance was refused before signing: {} governance file(s): {}",
+                faults.len(),
+                faults
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ));
+            governance_problem(&faults)
+        }
+        AcceptFailure::GovernanceRung(rung) => Problem::new(Code::Forbidden)
+            .named("reason", "governance-rung")
+            .named("needs", rung.as_str()),
+        AcceptFailure::ApprovalsMissing { needed, have } => Problem::new(Code::Forbidden)
+            .named("reason", "approvals-missing")
+            .member("needed", json!(needed))
+            .member("have", json!(have)),
+        AcceptFailure::RulesUnreadable(fault) => {
+            log(&format!(
+                "an acceptance was refused, the rules of the wiki cannot be read: {fault}"
+            ));
+            rules_unreadable_problem(&fault)
+        }
         // Refused before the signer was asked (RFC 005 part 2 D-5): the files and rules are the operator's, in the
         // log; the caller is told the word, as for any acceptance that did not put its change in the history.
         AcceptFailure::KnowledgeInvalid(refusals) => {
@@ -262,6 +295,35 @@ pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> 
         // Told by the caller that holds the service's own words; here, the plain fact.
         AcceptFailure::Proposal(_) | AcceptFailure::Refused(_) => Problem::new(Code::Failed),
     }
+}
+
+/// `422 unacceptable`, `governance-invalid`: each refusal as the file's fixed name, the rule's stable name, the schema's field
+/// and the line (where it can be said), **never what the file said**.
+fn governance_problem(faults: &[Fault]) -> Problem {
+    let refusals: Vec<_> = faults
+        .iter()
+        .map(|f| {
+            json!({
+                "file": f.path(),
+                "rule": f.name(),
+                "field": f.field,
+                "line": f.line,
+            })
+        })
+        .collect();
+    Problem::new(Code::Unacceptable)
+        .named("reason", "governance-invalid")
+        .member("refusals", json!(refusals))
+}
+
+/// `403 forbidden`, `rules-unreadable`: every write of the wiki is refused until its governance file is repaired; the file,
+/// the rule and the line say which.
+fn rules_unreadable_problem(fault: &ReadFault) -> Problem {
+    Problem::new(Code::Forbidden)
+        .named("reason", "rules-unreadable")
+        .named("file", fault.file().path())
+        .named("rule", fault.refusal().name())
+        .member("line", json!(fault.line()))
 }
 
 /// How long a caller is told to wait for a wiki that needs recovery: recovery is the operator's, and minutes.

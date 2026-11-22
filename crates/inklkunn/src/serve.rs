@@ -188,6 +188,8 @@ fn prepare_probing(
             QuotaConfig::default(),
         )
         .with_notifier(notifier)
+        // The people who could give the approvals the rules ask for, for the warning on a proposal's page (RFC 006 D-4).
+        .with_roles(store.clone())
         // A claim's own discussion (RFC 005 part 2 D-11) is kept in the same store, under the same limits.
         .with_claim_threads(store.clone(), read.clone()),
     );

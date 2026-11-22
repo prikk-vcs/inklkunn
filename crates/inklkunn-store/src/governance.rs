@@ -59,7 +59,7 @@ pub fn is_block_id(text: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-fn check_block(block: Option<&str>) -> Result<()> {
+pub(crate) fn check_block(block: Option<&str>) -> Result<()> {
     match block {
         Some(b) if !is_block_id(b) => {
             refuse("a policy block is a block id in lower-case hexadecimal")

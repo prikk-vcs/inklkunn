@@ -53,7 +53,7 @@ fn every_file_and_both_ends_of_a_rename_must_be_a_page_inside_pages() {
     on_both(|e| {
         e.bases.put_page("pages/A.md", "x\n");
         for path in [
-            "governance/rules.md",
+            "attachments/rules.md",
             "pages.md",
             "pagesx/A.md",
             "pages/A.txt",
@@ -75,12 +75,12 @@ fn every_file_and_both_ends_of_a_rename_must_be_a_page_inside_pages() {
                 "a file at {path}"
             );
         }
-        // Both ends of a rename: the target outside pages/, and a governance file moved into pages/.
+        // Both ends of a rename: the target outside pages/, and a file from outside pages/ moved into it.
         assert_eq!(
             create(
                 e,
                 &e.author,
-                proposal(vec![], vec![rename("pages/A.md", "governance/A.md")])
+                proposal(vec![], vec![rename("pages/A.md", "attachments/A.md")])
             ),
             invalid(Invalid::PathOutsidePages),
             "a page moved out"
@@ -91,11 +91,11 @@ fn every_file_and_both_ends_of_a_rename_must_be_a_page_inside_pages() {
                 &e.author,
                 proposal(
                     vec![],
-                    vec![rename("governance/rules.md", "pages/Rules.md")]
+                    vec![rename("attachments/rules.md", "pages/Rules.md")]
                 )
             ),
             invalid(Invalid::PathOutsidePages),
-            "a governance file moved in"
+            "a file from outside pages/ moved in"
         );
         // A good one passes.
         assert_eq!(
@@ -279,7 +279,7 @@ fn the_path_rules_hold_on_every_way_a_proposal_is_written_and_sent() {
                     &me.principal,
                     &e.wiki,
                     &draft.id,
-                    proposal(vec![change("governance/x.md", Some("x\n"))], vec![]),
+                    proposal(vec![change("attachments/x.md", Some("x\n"))], vec![]),
                 )
                 .map(|_| ()),
             invalid(Invalid::PathOutsidePages)
@@ -352,7 +352,7 @@ fn a_rollback_plan_is_judged_like_any_other_edit() {
             Ok(_) => panic!("a rollback plan that breaks the path rules was taken"),
         };
         assert_eq!(
-            refused(vec![change("governance/rules.md", Some("x\n"))]),
+            refused(vec![change("attachments/rules.md", Some("x\n"))]),
             ProposalError::Invalid(Invalid::PathOutsidePages)
         );
         assert_eq!(
@@ -938,4 +938,57 @@ mod wording {
             );
         });
     }
+}
+
+// ------------------------------------------------------------------------------------------- RFC 006: governance/
+
+#[test]
+fn governance_is_a_closed_set_of_two_files_and_anything_else_under_it_is_refused_by_name() {
+    on_both(|e| {
+        e.bases.put_page("pages/A.md", "x\n");
+        // The two files are ordinary proposals (their text is judged when the proposal is accepted).
+        for path in ["governance/policy.yaml", "governance/constitution.yaml"] {
+            assert_eq!(
+                create(
+                    e,
+                    &e.author,
+                    proposal(vec![change(path, Some("entry: none\n"))], vec![])
+                ),
+                Ok(()),
+                "a proposal that writes {path}"
+            );
+        }
+        // Nothing else under `governance/` is: not a third file, not a page, not another case, not a deeper path.
+        for path in [
+            "governance/rules.md",
+            "governance/other.yaml",
+            "governance/policy.yml",
+            "governance/Policy.yaml",
+            "governance/sub/policy.yaml",
+            "Governance/policy.yaml",
+            "./governance/policy.yaml",
+        ] {
+            assert_eq!(
+                create(
+                    e,
+                    &e.author,
+                    proposal(vec![change(path, Some("x\n"))], vec![])
+                ),
+                invalid(Invalid::GovernancePath),
+                "a file at {path}"
+            );
+        }
+        // A governance file is not renamed, and nothing is renamed into `governance/`.
+        for (from, to) in [
+            ("pages/A.md", "governance/A.md"),
+            ("governance/policy.yaml", "pages/Policy.md"),
+            ("governance/policy.yaml", "governance/constitution.yaml"),
+        ] {
+            assert_eq!(
+                create(e, &e.author, proposal(vec![], vec![rename(from, to)])),
+                invalid(Invalid::GovernancePath),
+                "{from} to {to}"
+            );
+        }
+    });
 }

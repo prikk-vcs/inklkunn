@@ -10,6 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use inklkunn_core::Action;
+use inklkunn_core::governance::{GovernanceFile, is_governance_path};
 use inklkunn_core::knowledge::compose::{page_id_of, without_expressions};
 use inklkunn_core::knowledge::marker::words_with_id;
 use inklkunn_core::knowledge::onpage::{claim_blocks, claims_at};
@@ -190,7 +191,13 @@ pub(super) fn prepare(
         };
         let (path, old) = match &file.path {
             Some(path) => {
-                if !is_inside_pages(path) {
+                if is_governance_path(path) {
+                    // The rules of the wiki are two files, and nothing else under `governance/` is a file the API writes
+                    // (RFC 006 D-1, D-12: a policy change goes through the same propose API, as the governance file it is).
+                    if GovernanceFile::of_path(path).is_none() {
+                        return Err(req.unacceptable(Invalid::GovernancePath));
+                    }
+                } else if !is_inside_pages(path) {
                     return Err(
                         req.unacceptable_with("path-outside-pages", t.get(Key::InvalidIncomplete))
                     );
@@ -209,7 +216,13 @@ pub(super) fn prepare(
                 (path, None)
             }
         };
-        if let Some(new) = &file.text {
+        // A governance file is not a page: it has no information block, so no key of one is owned (its text is judged when
+        // the proposal is accepted).
+        if let Some(new) = file
+            .text
+            .as_ref()
+            .filter(|_| GovernanceFile::of_path(&path).is_none())
+        {
             let judged = check_owned_keys(&Markup, old.as_deref(), new, || {
                 req.services
                     .authorizer

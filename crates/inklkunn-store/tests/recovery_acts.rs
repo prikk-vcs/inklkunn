@@ -130,6 +130,8 @@ fn acceptance(
     at: i64,
 ) -> AcceptanceRecord {
     AcceptanceRecord {
+        policy_block: None,
+        hatch: false,
         id: AcceptanceId::new(),
         proposal: p.id.clone(),
         revision: 1,

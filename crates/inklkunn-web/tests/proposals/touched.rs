@@ -350,6 +350,8 @@ fn accept_recording(
     let acceptance = AcceptanceId::new();
     s.w.store
         .begin_acceptance(&AcceptanceRecord {
+            policy_block: None,
+            hatch: false,
             id: acceptance.clone(),
             proposal: id.clone(),
             revision,

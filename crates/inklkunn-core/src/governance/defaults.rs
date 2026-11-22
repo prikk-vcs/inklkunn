@@ -47,9 +47,9 @@ pub const SELF_ACCEPTANCE: SelfAcceptance = SelfAcceptance::SmallWiki;
 /// The number of maintainers below which a maintainer may accept their own proposal under `acceptance.self:
 /// small-wiki`: three, as in 0.3.0.
 ///
-/// **This is the same number as `acceptance::SELF_ACCEPTANCE_BELOW`, restated**, because acceptance's file is not
-/// this module's to edit; a test holds the two equal. The one to keep when acceptance reads the policy is this one:
-/// `acceptance.rs` should re-export it, so that the number is written once.
+/// **Written once, here**: `acceptance::SELF_ACCEPTANCE_BELOW` is this constant re-exported, and the acceptance judges a
+/// maintainer's own proposal by [`SelfAcceptance::allows`](super::SelfAcceptance::allows) over it (a test holds the number
+/// against a frozen copy of 0.3.0's).
 pub const SELF_ACCEPTANCE_BELOW: usize = 3;
 
 /// `knowledge.review_after`: no value of the wiki's own; the operator's `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS` is

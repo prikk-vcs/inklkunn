@@ -3239,4 +3239,118 @@ pub const CATALOG: &[Entry] = &[
         "know.check_not_come",
         "A source in this proposal is found somewhere else than it was at the base of the proposal, and the day the proposal states for the check of the new place has not come yet in any timezone. It cannot be accepted as it is.",
     ),
+    msg(
+        "outcome.governance_invalid",
+        "Not signed: a change to the rules of this wiki is not acceptable",
+    ),
+    msg(
+        "outcome_note.governance_invalid",
+        "Nothing was changed, and the proposal is still held for review. Correct the file and accept again.",
+    ),
+    msg("governance.fault_line", "{file}, line {line}: {rule}"),
+    msg("governance.fault_file", "{file}: {rule}"),
+    msg("governance.rule_not_text", "The file is not text."),
+    msg(
+        "governance.rule_too_long",
+        "The file is longer than the rules of a wiki may be.",
+    ),
+    msg(
+        "governance.rule_wrong_shape",
+        "The file is not in the form the rules of a wiki are written in, or a value is not of the kind its key needs.",
+    ),
+    msg(
+        "governance.rule_unknown_key",
+        "The file has a key that the rules of a wiki do not have.",
+    ),
+    msg("governance.rule_repeated_key", "A key is written twice."),
+    msg(
+        "governance.rule_unknown_value",
+        "A value is not one of the words its key allows.",
+    ),
+    msg(
+        "governance.rule_out_of_range",
+        "A number is outside the range its key allows.",
+    ),
+    msg(
+        "governance.rule_bounds",
+        "A list or a text is longer than the rules of a wiki allow.",
+    ),
+    msg(
+        "governance.rule_forbidden_character",
+        "The file has a control character, a direction mark or a line separator, which the rules of a wiki do not allow.",
+    ),
+    msg(
+        "governance.rule_missing_key",
+        "A key the rules of a wiki need is missing, or a text is empty.",
+    ),
+    msg(
+        "governance.rule_duplicate",
+        "The same page, or the same title with the pages below it, is protected twice.",
+    ),
+    msg(
+        "governance.rule_ordering_propose_above_review",
+        "The order of the roles is broken: the role that may propose is above the role that may review.",
+    ),
+    msg(
+        "governance.rule_ordering_review_above_accept",
+        "The order of the roles is broken: the role that may review is above the role that may accept.",
+    ),
+    msg(
+        "governance.rule_ordering_moderate_below_reviewer",
+        "The order of the roles is broken: the role that may moderate is below reviewer.",
+    ),
+    msg(
+        "governance.rule_platform_limit_entry_max",
+        "The role every signed-in account holds is above the highest the person who runs this server allows.",
+    ),
+    msg(
+        "governance.rule_platform_limit_limit_days",
+        "A period is longer than the longest the person who runs this server allows.",
+    ),
+    msg(
+        "governance.rule_outside_default_view",
+        "The rules of a wiki are changed in the default view only, and this proposal is in another view.",
+    ),
+    msg(
+        "governance.rule_unknown_file",
+        "Under governance/ there are exactly two files, constitution.yaml and policy.yaml, and this change is to another.",
+    ),
+    msg(
+        "outcome.governance_rung",
+        "Not signed: this change to the rules of this wiki needs a higher role",
+    ),
+    msg(
+        "outcome_note.governance_rung_maintainer",
+        "The rules of this wiki say that a change to them is accepted by a maintainer or an admin of the wiki. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
+        "outcome_note.governance_rung_admin",
+        "The rules of this wiki say that a change to them is accepted by an admin of the wiki. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
+        "outcome.approvals_missing",
+        "Not signed: it needs more approvals",
+    ),
+    plural_msg(
+        "outcome_note.approvals_missing",
+        "The rules of this wiki ask for {count} approval of the latest revision from someone other than the proposer who can review, and it has {have}. Nothing was changed, and the proposal is still held for review.",
+        "The rules of this wiki ask for {count} approvals of the latest revision from people other than the proposer who can review, and it has {have}. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
+        "outcome.rules_unreadable",
+        "Not changed: the rules of this wiki cannot be read",
+    ),
+    msg(
+        "outcome_note.rules_unreadable",
+        "Nothing in this wiki can be changed until the rules are repaired. It can still be read. An admin of the wiki can propose a change that repairs only the rules, and accept it.",
+    ),
+    msg(
+        "invalid.governance_path",
+        "Under governance/ a proposal may write constitution.yaml and policy.yaml and nothing else, and cannot rename them.",
+    ),
+    plural_msg(
+        "proposal.approvals_unreachable",
+        "The rules of this wiki ask for {count} approval from someone other than the proposer, and not enough people can give it yet. No proposal can be accepted until more people hold the role that reviews.",
+        "The rules of this wiki ask for {count} approvals from people other than the proposer, and not enough people can give them yet. No proposal can be accepted until more people hold the role that reviews.",
+    ),
 ];

@@ -135,6 +135,7 @@ pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
             .text(),
         Invalid::PathCollides => t.get(Key::InvalidPathCollides),
         Invalid::FrontUnreadable => t.get(Key::ProposeFrontUnreadable),
+        Invalid::GovernancePath => t.get(Key::InvalidGovernancePath),
         Invalid::BadPath
         | Invalid::PathOutsidePages
         | Invalid::PathNotCanonical
@@ -191,6 +192,11 @@ pub(crate) fn refusal(t: T, error: &ProposalError) -> Option<Refusal> {
             StatusCode::FORBIDDEN,
             Key::OutcomeNotAllowed,
             vec![t.get(Key::RefusedNotAllowedBody)],
+        ),
+        ProposalError::RulesUnreadable(fault) => page(
+            StatusCode::SERVICE_UNAVAILABLE,
+            Key::OutcomeRulesUnreadable,
+            super::governance::unreadable_paragraphs(t, fault),
         ),
         ProposalError::NotInThisState { state, .. } => page(
             StatusCode::CONFLICT,

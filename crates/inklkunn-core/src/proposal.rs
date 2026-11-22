@@ -27,10 +27,13 @@ use inklkunn_store::{
     AcceptanceStore, AccountId, AccountStore, Anchor, Base, CommentId, CommentRecord, DecisionId,
     DecisionKind, DecisionRecord, FileChange, ProposalChange, ProposalFilter, ProposalId,
     ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition, Rename,
-    RevisionContent, RevisionRecord, Role, StoreError, WikiRecord,
+    RevisionContent, RevisionRecord, Role, RoleStore, StoreError, Visibility, WikiRecord,
 };
 
-use crate::authorize::{Action, Authorizer, Principal, Resource};
+use crate::authorize::{Action, Authorizer, Principal, Resource, Standing};
+use crate::governance::{
+    ApprovalsWarning, GovernanceFile, ReadFault, Rules, approvals_warning, is_governance_path,
+};
 use crate::notify::Notifier;
 use crate::read::{ReadError, ReadService};
 
@@ -240,6 +243,11 @@ pub enum Invalid {
     RenameToSelf,
     /// A page or either end of a rename is not a `.md` file inside `pages/` (P4).
     PathOutsidePages,
+    /// A path is under `governance/` and is not one of the two files of the rules of a wiki (RFC 006 D-1): the set of paths
+    /// under it is closed, exactly `governance/constitution.yaml` and `governance/policy.yaml`, and a governance file is
+    /// never renamed. (A proposal that writes one of the two is an ordinary proposal; its text is judged when it is
+    /// accepted.)
+    GovernancePath,
     /// A page that is not at the base has a path other than the one its title gives (P4).
     PathNotCanonical,
     /// A new path collides, on a case-insensitive file system, with a page that stays or with another new path;
@@ -293,6 +301,10 @@ pub enum ProposalError {
     /// *Not allowed*: the principal may not do this, or is not the person it is for (only the proposer
     /// withdraws).
     NotAllowed,
+    /// A governance file of this wiki cannot be read, so **every write refuses** until it is repaired (RFC 006 D-1, threat
+    /// model C-3d): the refusal names the file and the line. Said only to someone who may read the wiki; anyone else is
+    /// told *not allowed*, as they are about a wiki they may not see.
+    RulesUnreadable(ReadFault),
     /// There is no such proposal in the wiki, or the principal may not see it (a draft is its author's alone).
     NotFound,
     /// The act is not one the proposal's state allows ([`machine::TRANSITIONS`]).
@@ -340,6 +352,9 @@ impl std::fmt::Display for ProposalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ProposalError::NotAllowed => write!(f, "not allowed"),
+            ProposalError::RulesUnreadable(fault) => {
+                write!(f, "the rules of this wiki cannot be read: {fault}")
+            }
             ProposalError::NotFound => write!(f, "no such proposal"),
             ProposalError::NotInThisState { op, state } => {
                 write!(f, "`{op}` is not possible while the proposal is {state}")
@@ -530,9 +545,14 @@ fn validate(
         if !path_ok(&f.path) {
             return Err(Invalid::BadPath);
         }
-        // A file is a page, or a knowledge file in the place the knowledge layer reads (`knowledge/claims/…` and
-        // `knowledge/sources/…`; its name and content are judged at acceptance, K-T2). Nothing else.
-        if !files::is_page_path(&f.path) && crate::knowledge::family_of(&f.path).is_none() {
+        // A file is a page, a knowledge file in the place the knowledge layer reads (`knowledge/claims/…` and
+        // `knowledge/sources/…`; its name and content are judged at acceptance, K-T2), or one of the two governance files
+        // (its text is judged at acceptance, RFC 006 D-4). Nothing else; and nothing else under `governance/`, by name.
+        if is_governance_path(&f.path) {
+            if GovernanceFile::of_path(&f.path).is_none() {
+                return Err(Invalid::GovernancePath);
+            }
+        } else if !files::is_page_path(&f.path) && crate::knowledge::family_of(&f.path).is_none() {
             return Err(Invalid::PathOutsidePages);
         }
         if !seen.insert(f.path.as_str()) {
@@ -547,6 +567,9 @@ fn validate(
     for r in &content.renames {
         if !path_ok(&r.from) || !path_ok(&r.to) {
             return Err(Invalid::BadPath);
+        }
+        if is_governance_path(&r.from) || is_governance_path(&r.to) {
+            return Err(Invalid::GovernancePath);
         }
         if !files::is_page_path(&r.from) || !files::is_page_path(&r.to) {
             return Err(Invalid::PathOutsidePages);
@@ -608,6 +631,9 @@ pub struct ProposalService {
     notifier: Option<Arc<Notifier>>,
     /// A claim's own thread (RFC 005 part 2 D-11), when the service keeps them.
     claim_threads: Option<claim_thread::Threads>,
+    /// Who holds which role in a wiki, to count the people who could give the approvals its rules ask for (RFC 006 D-4's
+    /// warning), when the service is given them.
+    roles: Option<Arc<dyn RoleStore>>,
 }
 
 impl std::fmt::Debug for ProposalService {
@@ -637,6 +663,7 @@ impl ProposalService {
             admission: Mutex::new(()),
             notifier: None,
             claim_threads: None,
+            roles: None,
         }
     }
 
@@ -697,8 +724,84 @@ impl ProposalService {
         {
             Ok(())
         } else {
-            Err(ProposalError::NotAllowed)
+            // A write refused because the wiki's governance cannot be read says so, to whoever may read the wiki.
+            Err(
+                match self.authorizer.write_refusal(principal, resource.wiki()) {
+                    Some(fault) if action != Action::Read => ProposalError::RulesUnreadable(fault),
+                    _ => ProposalError::NotAllowed,
+                },
+            )
         }
+    }
+
+    /// The same, counting **who could give the approvals the wiki's rules ask for** from `roles` (RFC 006 D-4): what
+    /// [`ProposalService::approvals_warning`] reads. Without them the warning is never given.
+    #[must_use]
+    pub fn with_roles(mut self, roles: Arc<dyn RoleStore>) -> Self {
+        self.roles = Some(roles);
+        self
+    }
+
+    /// **The approvals warning** (RFC 006 D-4), computed on read and kept nowhere: the rules of this wiki ask for more
+    /// approvals than the people who could give them for this proposal (they hold the review role or above under the rules in
+    /// force and are not its proposer), so that no proposal can be accepted until more people hold the role. A warning, never
+    /// a refusal: grants change, and the hatch (an admin's acceptance of a change to the rules) is always there.
+    ///
+    /// `None` when the rules ask for none, when enough people could give them, and when **every signed-in account holds the
+    /// review role** through `entry` (a wiki that is not restricted, whose `entry` role is at or above the review role): there
+    /// is no count to compare. A wiki whose rules cannot be read has the default rules, which ask for none.
+    pub fn approvals_warning(
+        &self,
+        wiki: &WikiRecord,
+        proposal: &ProposalRecord,
+    ) -> Result<Option<ApprovalsWarning>> {
+        let Some(roles) = &self.roles else {
+            return Ok(None);
+        };
+        let rules = self.rules(wiki)?;
+        let policy = rules.policy();
+        if policy.acceptance().approvals() == 0 {
+            return Ok(None);
+        }
+        let review = policy.rungs().review();
+        let everyone = wiki.visibility != Visibility::Restricted
+            && policy.entry().rung().is_some_and(|rung| rung >= review);
+        if everyone {
+            return Ok(None);
+        }
+        let holders = roles
+            .grants_in(&wiki.id)?
+            .iter()
+            .filter(|g| g.role >= review && g.account != proposal.author)
+            .count();
+        Ok(approvals_warning(policy, holders))
+    }
+
+    /// The rules in force for the wiki: those of its default view's tip (RFC 006 D-5), for the acceptance, which judges who
+    /// may accept by them.
+    pub(crate) fn rules(&self, wiki: &WikiRecord) -> Result<Arc<Rules>> {
+        self.authorizer
+            .rules(&wiki.id)
+            .map_err(|e| ProposalError::BaseUnavailable(e.to_string()))
+    }
+
+    /// The rung `principal` holds in the wiki now and the block of the rules it holds it under.
+    pub(crate) fn standing(&self, principal: &Principal, wiki: &WikiRecord) -> Result<Standing> {
+        self.authorizer
+            .standing(principal, &wiki.id)
+            .map_err(|e| ProposalError::BaseUnavailable(e.to_string()))
+    }
+
+    /// Does this account hold the review rung on the proposal **now**, under the rules now in force? What an approval needs
+    /// for it to count when the proposal is accepted (RFC 006 D-4): a person who has since lost the rung does not approve.
+    pub(crate) fn holds_review(
+        &self,
+        account: &AccountId,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+    ) -> bool {
+        self.authorizer
+            .account_may(account, Action::Review, &Self::proposal_resource(wiki, id))
     }
 
     fn proposal_resource(wiki: &WikiRecord, id: &ProposalId) -> Resource {
@@ -1086,11 +1189,17 @@ impl ProposalService {
         id: &ProposalId,
     ) -> Result<ProposalRecord> {
         let author = account_of(principal)?;
-        self.allow(
+        match self.allow(
             principal,
             Action::Propose,
             &Self::proposal_resource(wiki, id),
-        )?;
+        ) {
+            Ok(()) => {}
+            // A wiki whose governance cannot be read refuses every write but an admin's repair of the two governance
+            // files (RFC 006 D-1): the draft's own paths, asked below, decide whether this is one.
+            Err(ProposalError::RulesUnreadable(_)) => {}
+            Err(other) => return Err(other),
+        }
         let p = self.load(wiki, id, Some(author))?;
         if p.author != *author {
             return Err(ProposalError::NotAllowed);
@@ -1295,7 +1404,11 @@ impl ProposalService {
         if revision != latest {
             return Err(ProposalError::StaleRevision { latest });
         }
+        // The rung the reviewer holds and the rules it holds it under, as they are at this moment (criterion 12).
+        let standing = self.standing(principal, wiki)?;
         let decision = DecisionRecord {
+            reviewer_rung: standing.rung,
+            policy_block: standing.policy_block,
             id: DecisionId::new(),
             proposal: id.clone(),
             revision,

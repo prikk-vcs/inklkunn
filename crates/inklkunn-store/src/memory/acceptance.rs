@@ -52,6 +52,7 @@ impl MemoryStore {
 
 impl AcceptanceStore for MemoryStore {
     fn begin_acceptance(&self, acceptance: &AcceptanceRecord) -> Result<AcceptanceBegin> {
+        crate::governance::check_block(acceptance.policy_block.as_deref())?;
         if !self.wiki_exists(&acceptance.wiki)
             || !self.proposal_exists(&acceptance.proposal)
             || !self.revision_exists(&acceptance.proposal, acceptance.revision)

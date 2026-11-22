@@ -84,6 +84,8 @@ fn fixture(e: &Env) -> Fixture {
     // service cannot write one now): old records are still read, and still are no review.
     e.store
         .add_decision(&inklkunn_store::DecisionRecord {
+            reviewer_rung: None,
+            policy_block: None,
             id: inklkunn_store::DecisionId::new(),
             proposal: p3.clone(),
             revision: 1,
@@ -398,6 +400,8 @@ fn accepted_with(
     let id = AcceptanceId::new();
     e.store
         .begin_acceptance(&AcceptanceRecord {
+            policy_block: None,
+            hatch: false,
             id: id.clone(),
             proposal: p.clone(),
             revision: 1,
@@ -487,6 +491,8 @@ fn the_figures_count_what_reviewers_did_with_the_default_from_the_review_record_
             let id = AcceptanceId::new();
             e.store
                 .begin_acceptance(&AcceptanceRecord {
+                    policy_block: None,
+                    hatch: false,
                     id: id.clone(),
                     proposal: p5.clone(),
                     revision: 1,

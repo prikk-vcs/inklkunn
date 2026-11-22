@@ -143,6 +143,7 @@ impl MemoryStore {
 impl MemoryStore {
     /// Add a decision and the claims it touches, together (the SQLite store's one transaction).
     fn add_decision_with(&self, decision: &DecisionRecord, claims: &[String]) -> Result<()> {
+        crate::governance::check_block(decision.policy_block.as_deref())?;
         crate::review::check_claims(claims.iter().map(String::as_str))?;
         if !claims.is_empty() && decision.kind != DecisionKind::RequestChanges {
             return Err(StoreError::Backend(

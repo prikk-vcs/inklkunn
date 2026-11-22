@@ -9,12 +9,13 @@ use std::time::Duration;
 
 use axum::http::StatusCode;
 use inklkunn_core::acceptance::{Reconciled, words};
+use inklkunn_core::governance::{Fault, GovernanceFile, ReadFault, Refusal as GovernanceRefusal};
 use inklkunn_core::lease::{Busy, BusyWhy};
 use inklkunn_core::proposal::{ProposalEdit, ProposalError, QuotaLimit, QuotaRefusal, Reset};
 use inklkunn_core::{AcceptFailure, Accepted, IdentityAuthority, Principal, Signed};
 use inklkunn_store::{
     AcceptanceId, AccountId, ActStore, FileChange, OverlapRecord, OverlapText, ProposalId,
-    ProposalState, RecoveryFlag, RecoveryReason, StoreError, WikiRecord,
+    ProposalState, RecoveryFlag, RecoveryReason, Role, StoreError, WikiRecord,
 };
 use inklkunn_web::{Acceptor, Services};
 
@@ -402,6 +403,77 @@ fn cases() -> Vec<Case> {
             status: StatusCode::SERVICE_UNAVAILABLE,
             english: &["<h1>This revision is being signed</h1>"],
             japanese: &["<h1>この修正版は署名の最中です</h1>"],
+        },
+        Case {
+            name: "the rules of the wiki: a governance file is not acceptable",
+            answer: || {
+                Err(AcceptFailure::GovernanceInvalid(vec![Fault {
+                    line: Some(4),
+                    ..Fault::at(
+                        GovernanceFile::Policy,
+                        GovernanceRefusal::UnknownKey,
+                        "rungs",
+                    )
+                }]))
+            },
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            english: &[
+                "<h1>Not signed: a change to the rules of this wiki is not acceptable</h1>",
+                "governance/policy.yaml, line 4: The file has a key that the rules of a wiki do not have.",
+                "Nothing was changed, and the proposal is still held for review.",
+            ],
+            japanese: &[
+                "<h1>署名されませんでした: このウィキのルールの変更を受け付けられません</h1>",
+                "governance/policy.yaml の 4 行目: ウィキのルールにはない項目が書かれています。",
+                "何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+            ],
+        },
+        Case {
+            name: "the rules of the wiki: the constitution asks a higher role",
+            answer: || Err(AcceptFailure::GovernanceRung(Role::Admin)),
+            status: StatusCode::FORBIDDEN,
+            english: &[
+                "<h1>Not signed: this change to the rules of this wiki needs a higher role</h1>",
+                "a change to them is accepted by an admin of the wiki",
+            ],
+            japanese: &[
+                "<h1>署名されませんでした: このウィキのルールの変更には、より上の役割が必要です</h1>",
+                "ルールの変更を受け入れられるのは、このウィキの管理者です",
+            ],
+        },
+        Case {
+            name: "the rules of the wiki: more approvals are asked for",
+            answer: || Err(AcceptFailure::ApprovalsMissing { needed: 2, have: 1 }),
+            status: StatusCode::CONFLICT,
+            english: &[
+                "<h1>Not signed: it needs more approvals</h1>",
+                "ask for 2 approvals of the latest revision from people other than the proposer who can review, and it has 1.",
+            ],
+            japanese: &[
+                "<h1>署名されませんでした: 承認がまだ足りません</h1>",
+                "最新の修正版への承認が 2 件必要です。現在は 1 件です。",
+            ],
+        },
+        Case {
+            name: "the rules of the wiki cannot be read",
+            answer: || {
+                Err(AcceptFailure::RulesUnreadable(ReadFault::from_stored(
+                    GovernanceFile::Constitution,
+                    Some(2),
+                    GovernanceRefusal::WrongShape,
+                )))
+            },
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            english: &[
+                "<h1>Not changed: the rules of this wiki cannot be read</h1>",
+                "governance/constitution.yaml, line 2: The file is not in the form the rules of a wiki are written in",
+                "Nothing in this wiki can be changed until the rules are repaired. It can still be read.",
+            ],
+            japanese: &[
+                "<h1>変更できませんでした: このウィキのルールを読めません</h1>",
+                "governance/constitution.yaml の 2 行目: ファイルが、ウィキのルールの書き方になっていない",
+                "ルールが直るまで、このウィキでは何も変更できません。読むことはできます。",
+            ],
         },
         Case {
             name: "nothing to change",

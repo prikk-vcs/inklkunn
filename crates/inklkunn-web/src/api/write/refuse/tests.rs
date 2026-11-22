@@ -106,6 +106,7 @@ fn every_reason_a_proposal_can_be_unacceptable_has_a_distinct_stable_word() {
         CommentNul,
         BadAnchor,
         SupersedeSelf,
+        GovernancePath,
     ];
     let words: std::collections::BTreeSet<&str> = all.iter().map(|w| invalid_word(*w)).collect();
     assert_eq!(words.len(), all.len());
@@ -122,6 +123,25 @@ fn failure_problem(failure: AcceptFailure) -> (Problem, Vec<String>) {
     let logged = RefCell::new(Vec::new());
     let problem = acceptance_problem(failure, &|line| logged.borrow_mut().push(line.to_owned()));
     (problem, logged.into_inner())
+}
+
+fn governance_fault() -> inklkunn_core::governance::Fault {
+    inklkunn_core::governance::Fault {
+        line: Some(4),
+        ..inklkunn_core::governance::Fault::at(
+            inklkunn_core::governance::GovernanceFile::Policy,
+            inklkunn_core::governance::Refusal::UnknownKey,
+            "rungs",
+        )
+    }
+}
+
+fn unreadable_rules() -> inklkunn_core::governance::ReadFault {
+    inklkunn_core::governance::ReadFault::from_stored(
+        inklkunn_core::governance::GovernanceFile::Constitution,
+        Some(2),
+        inklkunn_core::governance::Refusal::WrongShape,
+    )
 }
 
 fn knowledge_refusal() -> inklkunn_core::knowledge::check::Refusal {
@@ -191,6 +211,26 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
             Code::AcceptanceFailed,
             None,
         ),
+        (
+            AcceptFailure::GovernanceInvalid(vec![governance_fault()]),
+            Code::Unacceptable,
+            None,
+        ),
+        (
+            AcceptFailure::GovernanceRung(inklkunn_store::Role::Admin),
+            Code::Forbidden,
+            None,
+        ),
+        (
+            AcceptFailure::ApprovalsMissing { needed: 2, have: 1 },
+            Code::Forbidden,
+            None,
+        ),
+        (
+            AcceptFailure::RulesUnreadable(unreadable_rules()),
+            Code::Forbidden,
+            None,
+        ),
     ];
     for (failure, code, wait) in cases {
         let shown = failure.to_string();
@@ -234,6 +274,40 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
         "{logged:?}"
     );
     assert!(!body(&refused).to_string().contains("stray"));
+    // The rules of the wiki: what a program needs to correct the file or understand the refusal, as names and numbers.
+    let (invalid, logged) =
+        failure_problem(AcceptFailure::GovernanceInvalid(vec![governance_fault()]));
+    assert_eq!(at(&body(&invalid), "reason"), "governance-invalid");
+    let invalid_body = body(&invalid);
+    let refusals = at(&invalid_body, "refusals");
+    let first = refusals.as_array().and_then(|a| a.first()).unwrap();
+    assert_eq!(first["file"], "governance/policy.yaml");
+    assert_eq!(first["rule"], "unknown-key");
+    assert_eq!(first["field"], "rungs");
+    assert_eq!(first["line"], 4);
+    assert_eq!(logged.len(), 1);
+    assert!(
+        logged
+            .first()
+            .unwrap()
+            .contains("governance/policy.yaml, line 4")
+    );
+    let (rung, _) = failure_problem(AcceptFailure::GovernanceRung(inklkunn_store::Role::Admin));
+    assert_eq!(at(&body(&rung), "reason"), "governance-rung");
+    assert_eq!(at(&body(&rung), "needs"), "admin");
+    let (approvals, _) = failure_problem(AcceptFailure::ApprovalsMissing { needed: 2, have: 1 });
+    assert_eq!(at(&body(&approvals), "reason"), "approvals-missing");
+    assert_eq!(at(&body(&approvals), "needed"), 2);
+    assert_eq!(at(&body(&approvals), "have"), 1);
+    let (unreadable, logged) = failure_problem(AcceptFailure::RulesUnreadable(unreadable_rules()));
+    assert_eq!(at(&body(&unreadable), "reason"), "rules-unreadable");
+    assert_eq!(
+        at(&body(&unreadable), "file"),
+        "governance/constitution.yaml"
+    );
+    assert_eq!(at(&body(&unreadable), "rule"), "wrong-shape");
+    assert_eq!(at(&body(&unreadable), "line"), 2);
+    assert_eq!(logged.len(), 1);
     let (failed, logged) = failure_problem(AcceptFailure::Failed {
         acceptance: AcceptanceId::new(),
         word: "memory-limit",
