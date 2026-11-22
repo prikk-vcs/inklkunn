@@ -6,7 +6,7 @@
 //! server and its own pages (a maintainer and a contributor, who sign in), the contributor proposes two changes, the
 //! maintainer accepts one (an accepted change, signed by its key store) and leaves the other open. The server is
 //! stopped and the store's schema read: 15. **Then this tree's server opens that same directory**, as `serve` does
-//! (the binary's `prepare`, in this process, as U6 does): the store migrates 15 to 18, the wiki serves what 0.2.0
+//! (the binary's `prepare`, in this process, as U6 does): the store migrates 15 to 19, the wiki serves what 0.2.0
 //! wrote, both accounts sign in with the passwords chosen in 0.2.0, the signer opens over the 0.2.0 key store, and
 //! the open proposal is accepted into the history.
 //!
@@ -21,6 +21,9 @@
 //! **0.3.0 on the migrated store** (RC-4): the last steps use the layer the migration (versions 16 - 18) made room
 //! for, over data 0.2.0 wrote: a source is attached to a paragraph by proposal, accepted, shown on the claim page, and
 //! a comment is written in its thread (version 18's table). A store whose migration lacked a table fails there.
+//!
+//! The same from **0.3.0** (store schema 18 to 19, RFC 006 D-14, acceptance criterion 14) is `upgrade_0_3_0.rs`, which
+//! reuses this file's harness: the one place that starts a release binary as a process.
 //!
 //! Needs prikk and the 0.2.0 binary. Without prikk the test prints `skipping: prikk not on PATH` (counted by
 //! `EXPECTED_SKIPS`); with prikk and without the binary it prints `skipping: inklkunn 0.2.0 not found`, a line the
@@ -38,11 +41,15 @@ use super::*;
 /// says, so that no other binary that calls itself 0.2.0 (this tree's own, before its version moves) is taken for it.
 const OLD_COMMIT: &str = "c6c7939c9d9c4ec4eb0982923a767c961c5e7053";
 
-/// The first `inklkunn` on `PATH` that is the 0.2.0 release. With none it prints the line CI fails on.
-fn old_binary() -> Option<PathBuf> {
-    let wanted = format!("inklkunn 0.2.0 (commit {OLD_COMMIT};");
+/// The commit the 0.3.0 release was built from (its `build-info.txt`; the release asset's checksum is the one `ci.yml` and
+/// `release.yml` record).
+pub(super) const COMMIT_0_3_0: &str = "599d4cdc9a4889a332505875307468f6d50fd90d";
+
+/// The first `inklkunn` on `PATH` whose `--version` says it is release `version` built from `commit`, if there is one.
+fn find_release(version: &str, commit: &str) -> Option<PathBuf> {
+    let wanted = format!("inklkunn {version} (commit {commit};");
     let path = std::env::var_os("PATH").unwrap_or_default();
-    let found = std::env::split_paths(&path)
+    std::env::split_paths(&path)
         .map(|d| d.join("inklkunn"))
         .filter(|c| c.is_file())
         .find(|c| {
@@ -52,16 +59,29 @@ fn old_binary() -> Option<PathBuf> {
                 .stderr(Stdio::null())
                 .output()
                 .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).starts_with(&wanted))
-        });
-    let Some(found) = found else {
+        })
+}
+
+/// The first `inklkunn` on `PATH` that is the 0.2.0 release. With none it prints the line CI fails on.
+fn old_binary() -> Option<PathBuf> {
+    let Some(found) = find_release("0.2.0", OLD_COMMIT) else {
         println!("skipping: inklkunn 0.2.0 not found");
         return None;
     };
     Some(found)
 }
 
-/// The old binary, run as the operator runs it; (status, stdout, stderr).
-fn old_cli(bin: &Path, world: &World, args: &[&str]) -> (i32, String, String) {
+/// The first `inklkunn` on `PATH` that is the 0.3.0 release. With none it prints the line CI fails on.
+pub(super) fn binary_0_3_0() -> Option<PathBuf> {
+    let Some(found) = find_release("0.3.0", COMMIT_0_3_0) else {
+        println!("skipping: inklkunn 0.3.0 not found");
+        return None;
+    };
+    Some(found)
+}
+
+/// An earlier release's binary, run as the operator runs it; (status, stdout, stderr).
+pub(super) fn old_cli(bin: &Path, world: &World, args: &[&str]) -> (i32, String, String) {
     let out = Command::new(bin)
         .arg("--dev-unconfined")
         .args(args)
@@ -77,16 +97,16 @@ fn old_cli(bin: &Path, world: &World, args: &[&str]) -> (i32, String, String) {
     )
 }
 
-/// The 0.2.0 server, a process of its own, its output in a file.
-struct OldServer {
+/// An earlier release's server (0.2.0, 0.3.0), a process of its own, its output in a file.
+pub(super) struct OldServer {
     child: Option<Child>,
-    port: u16,
-    content_port: u16,
-    log: PathBuf,
+    pub(super) port: u16,
+    pub(super) content_port: u16,
+    pub(super) log: PathBuf,
 }
 
 impl OldServer {
-    fn start(bin: &Path, world: &World) -> OldServer {
+    pub(super) fn start(bin: &Path, world: &World) -> OldServer {
         let (port, content_port) = (free_port(), free_port());
         let log = world.tmp.0.join("old-serve.log");
         let out = File::create(&log).unwrap();
@@ -106,10 +126,10 @@ impl OldServer {
             .stderr(out)
             .spawn()
             .unwrap();
-        until("the 0.2.0 server to listen", || {
+        until("the old release's server to listen", || {
             if let Some(status) = child.try_wait().unwrap() {
                 panic!(
-                    "the 0.2.0 server stopped ({status}):\n{}",
+                    "the old release's server stopped ({status}):\n{}",
                     std::fs::read_to_string(&log).unwrap_or_default()
                 );
             }
@@ -123,24 +143,24 @@ impl OldServer {
         }
     }
 
-    fn browser(&self) -> Browser {
+    pub(super) fn browser(&self) -> Browser {
         Browser::new(self.port)
     }
 
     /// Stop it as an operator does (SIGTERM, to the process this test started) and wait for it to end well; what it
     /// printed.
-    fn stop(mut self) -> String {
+    pub(super) fn stop(mut self) -> String {
         let mut child = self.child.take().unwrap();
         let pid = rustix::process::Pid::from_child(&child);
         rustix::process::kill_process(pid, rustix::process::Signal::TERM).unwrap();
-        until("the 0.2.0 server to stop", || {
+        until("the old release's server to stop", || {
             child.try_wait().unwrap().is_some()
         });
         let log = std::fs::read_to_string(&self.log).unwrap();
         let status = child.wait().unwrap();
         assert!(
             status.success(),
-            "the 0.2.0 server ended with {status}:\n{log}"
+            "the old release's server ended with {status}:\n{log}"
         );
         log
     }
@@ -155,8 +175,13 @@ impl Drop for OldServer {
     }
 }
 
-/// An account made by the 0.2.0 invitation page (the link the 0.2.0 operator command printed), then signed in.
-fn redeem(server: &OldServer, link: &str, login: &'static str, name: &'static str) -> Person {
+/// An account made by the earlier release's invitation page (the link its operator command printed), then signed in.
+pub(super) fn redeem(
+    server: &OldServer,
+    link: &str,
+    login: &'static str,
+    name: &'static str,
+) -> Person {
     let password = password_for(login);
     let mut opener = server.browser();
     let page = opener.get(link);
@@ -178,7 +203,7 @@ fn redeem(server: &OldServer, link: &str, login: &'static str, name: &'static st
 }
 
 /// The invitation link the operator command printed (`/-/invite/<secret>`).
-fn old_invite(bin: &Path, world: &World, role: Role) -> String {
+pub(super) fn old_invite(bin: &Path, world: &World, role: Role) -> String {
     let (status, out, err) = old_cli(
         bin,
         world,
@@ -201,7 +226,7 @@ fn old_invite(bin: &Path, world: &World, role: Role) -> String {
 
 /// The pages of D-7: a page of the wiki (the one every wiki has, changed once), what lists and shows the history
 /// beside it, the sections a wiki always has, and a page of the instance. Anonymous: what any reader is shown.
-fn pages_to_compare(block: &str) -> Vec<String> {
+pub(super) fn pages_to_compare(block: &str) -> Vec<String> {
     vec![
         "/handbook".to_owned(),
         HELP.to_owned(),
@@ -221,7 +246,7 @@ fn pages_to_compare(block: &str) -> Vec<String> {
 }
 
 /// What a reader was shown at each path: the status, the body and the `Location` (a redirect's, else none).
-fn capture(
+pub(super) fn capture(
     mut reader: Browser,
     paths: &[String],
 ) -> BTreeMap<String, (u16, String, Option<String>)> {
@@ -238,7 +263,7 @@ fn capture(
 /// A page as it is compared: the two servers' ports, the stylesheet's name (a hash of its content) and the footer's
 /// version masked. The footer says `inklkunn version X.Y.Z`, which differs between the two binaries by definition once this
 /// tree is a later release than the one that made the directory; only that version is masked, not the line.
-fn masked(html: &str, ports: [u16; 2]) -> String {
+pub(super) fn masked(html: &str, ports: [u16; 2]) -> String {
     let mut out = html
         .replace(&format!("localhost:{}", ports[0]), "localhost:PORT")
         .replace(&format!("localhost:{}", ports[1]), "localhost:CONTENT-PORT")
@@ -343,7 +368,7 @@ fn undo_what_0_3_0_adds(path: &str, html: &str) -> (String, bool) {
 }
 
 /// The first line at which two texts differ, with a few lines around it, for a failure to say where.
-fn first_difference(old: &str, new: &str) -> String {
+pub(super) fn first_difference(old: &str, new: &str) -> String {
     let (o, n): (Vec<&str>, Vec<&str>) = (old.lines().collect(), new.lines().collect());
     let at = (0..o.len().max(n.len()))
         .find(|i| o.get(*i) != n.get(*i))
@@ -357,14 +382,14 @@ fn first_difference(old: &str, new: &str) -> String {
 }
 
 /// The stylesheet's path in a page.
-fn stylesheet_of(html: &str) -> String {
+pub(super) fn stylesheet_of(html: &str) -> String {
     let (_, after) = html.split_once("href=\"/-/assets/site-").unwrap();
     let (name, _) = after.split_once('"').unwrap();
     format!("/-/assets/site-{name}")
 }
 
 /// The schema version a store file records.
-fn schema_of(store: &Path) -> i64 {
+pub(super) fn schema_of(store: &Path) -> i64 {
     let db =
         rusqlite::Connection::open_with_flags(store, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .unwrap();
@@ -377,7 +402,7 @@ fn schema_of(store: &Path) -> i64 {
 }
 
 /// Wait for the check after a seal to be recorded, so that stopping the server does not interrupt it.
-fn settled(reader: &mut Browser, since: i64) {
+pub(super) fn settled(reader: &mut Browser, since: i64) {
     until("the check after the change", || {
         let page = reader.get("/handbook/-/verification");
         page.body
@@ -385,6 +410,40 @@ fn settled(reader: &mut Browser, since: i64) {
             .and_then(|(_, after)| after.split_once('.'))
             .is_some_and(|(at, _)| at >= utc_minutes(since).as_str())
     });
+}
+
+/// A deployment that has no wiki yet, with the settings an operator keeps in both halves of an upgrade (the earlier release
+/// makes the data directory under them, this tree opens it): the `data` directory, the operator's secret, the seed directory.
+/// Its store and wiki are a placeholder's until the directory is opened by this tree.
+pub(super) fn bare_world(prikk: &Path, tag: &str) -> World {
+    let tmp = dir(&std::env::temp_dir(), tag);
+    let shm = dir(Path::new("/dev/shm"), tag);
+    let data_dir = tmp.0.join("data");
+    let secret_file = tmp.0.join("operator.secret");
+    std::fs::write(&secret_file, SECRET).unwrap();
+    std::fs::set_permissions(&secret_file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let settings = Settings {
+        key_dir: data_dir.join("keys"),
+        data_dir,
+        secret_file,
+        seed_dir: shm.0.clone(),
+        prikk: prikk.as_os_str().to_owned(),
+        dev_unconfined: true,
+    };
+    let placeholder = SqliteStore::open_in_memory().unwrap();
+    let wiki = placeholder
+        .create(inklkunn_store::NewWiki::new(
+            Slug::new("placeholder").unwrap(),
+            inklkunn_store::DisplayName::new("Placeholder").unwrap(),
+        ))
+        .unwrap();
+    World {
+        tmp,
+        _shm: shm,
+        store: Arc::new(placeholder),
+        wiki,
+        settings,
+    }
 }
 
 #[test]
@@ -397,35 +456,7 @@ fn a_directory_made_by_the_0_2_0_binary_is_opened_migrated_and_used_by_this_tree
     };
 
     // ---- the directory, as the operator of 0.2.0 makes it: the settings are the same in both halves
-    let tmp = dir(&std::env::temp_dir(), "upgrade");
-    let shm = dir(Path::new("/dev/shm"), "upgrade");
-    let data_dir = tmp.0.join("data");
-    let secret_file = tmp.0.join("operator.secret");
-    std::fs::write(&secret_file, SECRET).unwrap();
-    std::fs::set_permissions(&secret_file, std::fs::Permissions::from_mode(0o600)).unwrap();
-    let settings = Settings {
-        key_dir: data_dir.join("keys"),
-        data_dir,
-        secret_file,
-        seed_dir: shm.0.clone(),
-        prikk: prikk.into_os_string(),
-        dev_unconfined: true,
-    };
-    let placeholder = SqliteStore::open_in_memory().unwrap();
-    let wiki = placeholder
-        .create(inklkunn_store::NewWiki::new(
-            Slug::new("placeholder").unwrap(),
-            inklkunn_store::DisplayName::new("Placeholder").unwrap(),
-        ))
-        .unwrap();
-    // (The store and the wiki of this value are the placeholder's until the directory is opened by this tree.)
-    let mut world = World {
-        tmp,
-        _shm: shm,
-        store: Arc::new(placeholder),
-        wiki,
-        settings,
-    };
+    let mut world = bare_world(&prikk, "upgrade");
 
     // ---- 0.2.0 makes the wiki, the two invitations, the accounts, the accepted change and the open proposal
     let (status, created, err) = old_cli(
@@ -517,7 +548,7 @@ fn a_directory_made_by_the_0_2_0_binary_is_opened_migrated_and_used_by_this_tree
     );
     assert_eq!(
         schema_of(&world.settings.store_path()),
-        18,
+        19,
         "the store migrated from 15 to this tree's schema"
     );
     world.store = Arc::new(SqliteStore::open(&world.settings.store_path()).unwrap());

@@ -58,7 +58,7 @@ pub(super) const SURVEY: Cited = Cited {
     note: "chapter 2",
 };
 
-const FIELD_NOTES: Cited = Cited {
+pub(super) const FIELD_NOTES: Cited = Cited {
     kind: "observational",
     title: "Field notes on red links",
     author: "S. Example",
@@ -220,7 +220,7 @@ fn reword(
 }
 
 /// The curation form of `claim` in `view`, changed by `edit`, sent for review; the id of the proposal.
-fn curate(
+pub(super) fn curate(
     person: &mut Person,
     claim: &str,
     view: Option<&str>,

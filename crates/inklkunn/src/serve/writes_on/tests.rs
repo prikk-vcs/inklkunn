@@ -1394,3 +1394,4 @@ mod api;
 
 mod knowledge;
 mod upgrade;
+mod upgrade_0_3_0;

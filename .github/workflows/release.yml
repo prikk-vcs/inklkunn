@@ -40,15 +40,17 @@ env:
   # answer on the first prikk on PATH), and print a guarded skip line when there is none; the gates fail on it.
   PRIKK_TEST_VERSION: "0.58.0"
   PRIKK_TEST_SHA256_X86_64: "0462b9a590d0b945bb6266ce09983055768cb564415837bdb8ed462b5aa10dfe"
-  # The release the upgrade test starts from (0.3.0 readiness, R-3; held by floor-check): the 0.2.0 release binary of
-  # this project, a pinned release asset like the test-only prikk. The upgrade test has it make a data directory (a
-  # wiki, two accounts, a key store, an accepted change, an open proposal) and opens that directory with this tree's
-  # server. It is on PATH for that test only (the test looks for `inklkunn` there, and for the 0.2.0 release by its
-  # commit), and prints `skipping: inklkunn 0.2.0 not found` when there is none; the with-prikk run fails on that
-  # line. The checksum is the one GitHub's release records for the asset and the release's own `.sha256` file says
-  # (measured 2026-11-18).
-  UPGRADE_FROM_VERSION: "0.2.0"
-  UPGRADE_FROM_SHA256_X86_64: "e29814e026390ee8b46b744f862977efca53e5ec025af7ef8e11255b043bff86"
+  # The releases the upgrade tests start from (0.3.0 readiness R-3; 0.4.0 G-T1; held by floor-check): the 0.2.0 and the
+  # 0.3.0 release binaries of this project, pinned release assets like the test-only prikk, the version spelled in each
+  # variable's name. Each upgrade test has its binary make a data directory (a wiki, accounts, a key store, accepted
+  # changes, an open proposal; 0.3.0's also a claim, a source, a curation, a thread comment and a view) and opens that
+  # directory with this tree's server: 0.2.0's migrates store schema 15 to this tree's, 0.3.0's 18 to 19. Each binary is
+  # on PATH in a directory of its own, for those tests only (a test looks for `inklkunn` there, and for its release by the
+  # commit it was built from), and prints `skipping: inklkunn <version> not found` when there is none; the with-prikk run
+  # fails on that line. The checksums are the ones GitHub's releases record for the assets and the releases' own `.sha256`
+  # files say (0.2.0's measured 2026-11-18; 0.3.0's is the digest GitHub records for its asset, built from commit 599d4cd).
+  UPGRADE_FROM_0_2_0_SHA256_X86_64: "e29814e026390ee8b46b744f862977efca53e5ec025af7ef8e11255b043bff86"
+  UPGRADE_FROM_0_3_0_SHA256_X86_64: "b6f6726c2d2fd21c6b420dedab5b7ffb301afcf2f50946a5aed221c2feb84acb"
   EXPECTED_SKIPS: "341"
   RUST_TOOLCHAIN: "1.99.1"
 
@@ -86,16 +88,26 @@ jobs:
           mkdir -p "$HOME/.local/prikk-test/bin" && tar -xzf "prikk-test-${T}.tar.gz" -C "$HOME/.local/prikk-test/bin" prikk
           test "$("$HOME/.local/prikk-test/bin/prikk" --version)" = "prikk ${PRIKK_TEST_VERSION}"
           echo "$HOME/.local/prikk-test/bin" >> "$GITHUB_PATH"
-      - name: Install the release the upgrade test starts from (checksum recorded in this file)
+      - name: Install the 0.2.0 release the upgrade test starts from (checksum recorded in this file)
         run: |
           set -euo pipefail
           T=x86_64-unknown-linux-gnu
-          curl -fsSL -o "inklkunn-old-${T}.tar.gz" "https://github.com/prikk-vcs/inklkunn/releases/download/${UPGRADE_FROM_VERSION}/inklkunn-${T}.tar.gz"
-          echo "${UPGRADE_FROM_SHA256_X86_64}  inklkunn-old-${T}.tar.gz" | sha256sum -c -
-          mkdir -p "$HOME/.local/inklkunn-old/bin" && tar -xzf "inklkunn-old-${T}.tar.gz" -C "$HOME/.local/inklkunn-old/bin" inklkunn
-          V="$("$HOME/.local/inklkunn-old/bin/inklkunn" --version)"
-          test "${V#inklkunn ${UPGRADE_FROM_VERSION} (commit }" != "$V" || { echo "the asset is not inklkunn ${UPGRADE_FROM_VERSION}: $V" >&2; exit 1; }
-          echo "$HOME/.local/inklkunn-old/bin" >> "$GITHUB_PATH"
+          curl -fsSL -o "inklkunn-0.2.0-${T}.tar.gz" "https://github.com/prikk-vcs/inklkunn/releases/download/0.2.0/inklkunn-${T}.tar.gz"
+          echo "${UPGRADE_FROM_0_2_0_SHA256_X86_64}  inklkunn-0.2.0-${T}.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/inklkunn-0.2.0/bin" && tar -xzf "inklkunn-0.2.0-${T}.tar.gz" -C "$HOME/.local/inklkunn-0.2.0/bin" inklkunn
+          V="$("$HOME/.local/inklkunn-0.2.0/bin/inklkunn" --version)"
+          test "${V#inklkunn 0.2.0 (commit }" != "$V" || { echo "the asset is not inklkunn 0.2.0: $V" >&2; exit 1; }
+          echo "$HOME/.local/inklkunn-0.2.0/bin" >> "$GITHUB_PATH"
+      - name: Install the 0.3.0 release the upgrade test starts from (checksum recorded in this file)
+        run: |
+          set -euo pipefail
+          T=x86_64-unknown-linux-gnu
+          curl -fsSL -o "inklkunn-0.3.0-${T}.tar.gz" "https://github.com/prikk-vcs/inklkunn/releases/download/0.3.0/inklkunn-${T}.tar.gz"
+          echo "${UPGRADE_FROM_0_3_0_SHA256_X86_64}  inklkunn-0.3.0-${T}.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/inklkunn-0.3.0/bin" && tar -xzf "inklkunn-0.3.0-${T}.tar.gz" -C "$HOME/.local/inklkunn-0.3.0/bin" inklkunn
+          V="$("$HOME/.local/inklkunn-0.3.0/bin/inklkunn" --version)"
+          test "${V#inklkunn 0.3.0 (commit }" != "$V" || { echo "the asset is not inklkunn 0.3.0: $V" >&2; exit 1; }
+          echo "$HOME/.local/inklkunn-0.3.0/bin" >> "$GITHUB_PATH"
       - name: Install prikk at the floor (checksum recorded in this file) and the sandbox tools
         run: |
           set -euo pipefail
@@ -127,8 +139,8 @@ jobs:
           # host properties and not guarded): the test-only prikk and the floor are installed above, prikk is always on PATH here
           # (so `prikk not on PATH` can only be a silent skip), and bubblewrap works (installed and lifted above, and the
           # sandboxes take the host's own root layout, IS-19), so a confined test runs too.
-          if grep -n -E 'skipping(: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0|PID namespaces unavailable|prikk not on PATH|bubblewrap cannot confine|bwrap or curl not available|inklkunn 0\.2\.0 not found)| the confined policy)' with-prikk.log; then
-            echo "a test skipped that must run here: the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it), the release the upgrade test starts from (${UPGRADE_FROM_VERSION}), prikk itself, the PID-namespace test and bubblewrap are all installed or lifted above (a bubblewrap line carries bubblewrap's own reason)" >&2
+          if grep -n -E 'skipping(: (prikk 0\.57\.0 or newer not found|no prikk older than 0\.57\.0|PID namespaces unavailable|prikk not on PATH|bubblewrap cannot confine|bwrap or curl not available|inklkunn 0\.2\.0 not found|inklkunn 0\.3\.0 not found)| the confined policy)' with-prikk.log; then
+            echo "a test skipped that must run here: the test-only prikk ${PRIKK_TEST_VERSION} (or the floor beside it), the releases the upgrade tests start from (0.2.0 and 0.3.0), prikk itself, the PID-namespace test and bubblewrap are all installed or lifted above (a bubblewrap line carries bubblewrap's own reason)" >&2
             exit 1
           fi
           cargo deny check

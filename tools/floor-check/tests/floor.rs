@@ -100,7 +100,7 @@ fn the_test_only_prikk_is_one_value_in_both_workflows_and_is_never_a_floor() {
 
 #[test]
 fn the_test_only_prikk_shape_rules_catch_planted_failures() {
-    let ok = "env:\n  PRIKK_TEST_VERSION: \"0.58.0\"\n  PRIKK_TEST_SHA256_X86_64: \"0462b9a590d0b945bb6266ce09983055768cb564415837bdb8ed462b5aa10dfe\"\nsteps:\n  curl \"releases/download/${PRIKK_TEST_VERSION}/prikk\"\n  echo \"${PRIKK_TEST_SHA256_X86_64}  x\" | sha256sum -c -\n  curl \"releases/download/${PRIKK_VERSION}/prikk\"\n  cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee with-prikk.log\n  if grep -n -E 'skipping(: (prikk 0\\.57\\.0 or newer not found|no prikk older than 0\\.57\\.0|PID namespaces unavailable|prikk not on PATH|bubblewrap cannot confine|bwrap or curl not available|inklkunn 0\\.2\\.0 not found)| the confined policy)' with-prikk.log; then\n    echo \"skipped\" >&2\n    exit 1\n  fi\n  SYSTEM_PATH=\"$(echo \"$PATH\" | grep -v -x -e \"$HOME/.local/bin\" -e \"$HOME/.local/prikk-test/bin\")\"\n  cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee shimmed.log\n";
+    let ok = "env:\n  PRIKK_TEST_VERSION: \"0.58.0\"\n  PRIKK_TEST_SHA256_X86_64: \"0462b9a590d0b945bb6266ce09983055768cb564415837bdb8ed462b5aa10dfe\"\nsteps:\n  curl \"releases/download/${PRIKK_TEST_VERSION}/prikk\"\n  echo \"${PRIKK_TEST_SHA256_X86_64}  x\" | sha256sum -c -\n  curl \"releases/download/${PRIKK_VERSION}/prikk\"\n  cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee with-prikk.log\n  if grep -n -E 'skipping(: (prikk 0\\.57\\.0 or newer not found|no prikk older than 0\\.57\\.0|PID namespaces unavailable|prikk not on PATH|bubblewrap cannot confine|bwrap or curl not available|inklkunn 0\\.2\\.0 not found|inklkunn 0\\.3\\.0 not found)| the confined policy)' with-prikk.log; then\n    echo \"skipped\" >&2\n    exit 1\n  fi\n  SYSTEM_PATH=\"$(echo \"$PATH\" | grep -v -x -e \"$HOME/.local/bin\" -e \"$HOME/.local/prikk-test/bin\")\"\n  cargo test --workspace --locked --no-fail-fast -- --nocapture 2>&1 | tee shimmed.log\n";
     assert!(test_prikk_shape_violations(ok).is_empty());
     assert_eq!(
         test_prikk(ok),
@@ -192,81 +192,192 @@ fn the_test_only_prikk_shape_rules_catch_planted_failures() {
 }
 
 #[test]
-fn the_release_the_upgrade_test_starts_from_is_one_pinned_asset_in_both_workflows() {
+fn the_releases_the_upgrade_tests_start_from_are_pinned_assets_held_equal_in_both_workflows() {
     let root = workspace_root();
     let read = |p: &str| fs::read_to_string(root.join(p)).unwrap_or_default();
     let ci = read(".github/workflows/ci.yml");
     let release = read(".github/workflows/release.yml");
-    let (ci_version, ci_sum) = upgrade_from(&ci).expect("ci.yml records the upgrade-from release");
-    let (release_version, release_sum) =
-        upgrade_from(&release).expect("release.yml records the upgrade-from release");
+    let recorded = upgrade_from(&ci);
     assert_eq!(
-        ci_version, release_version,
-        "the upgrade-from version differs"
+        recorded,
+        upgrade_from(&release),
+        "the upgrade-from releases or their checksums differ between ci.yml and release.yml"
     );
-    assert_eq!(ci_sum, release_sum, "the upgrade-from checksum differs");
-    // The test looks for the 0.2.0 release (by the commit it was built from); the workflow installs that one.
-    assert_eq!(ci_version, "0.2.0");
-    // It is an inklkunn release: not a prikk, and not recorded as one's checksum anywhere.
+    // The tests look for the 0.2.0 and the 0.3.0 releases (each by the commit it was built from); the workflows install
+    // those two, in this order, and no other.
+    let versions: Vec<&str> = recorded.iter().map(|(v, _)| v.as_str()).collect();
+    assert_eq!(versions, ["0.2.0", "0.3.0"]);
+    // The 0.3.0 asset is the one the release recorded (GitHub's digest of `inklkunn-x86_64-unknown-linux-gnu.tar.gz`).
+    assert_eq!(
+        recorded.get(1).map(|(_, sum)| sum.as_str()),
+        Some("b6f6726c2d2fd21c6b420dedab5b7ffb301afcf2f50946a5aed221c2feb84acb")
+    );
+    // They are inklkunn releases: not a prikk, not recorded as one's checksum anywhere, and not each other's.
+    let sums: Vec<&str> = recorded.iter().map(|(_, s)| s.as_str()).collect();
+    assert_ne!(sums.first(), sums.get(1), "two releases, one checksum");
     for (name, yaml) in [("ci.yml", &ci), ("release.yml", &release)] {
-        assert!(
-            !recorded_checksums(yaml).values().any(|s| *s == ci_sum),
-            "{name}: the upgrade-from checksum is recorded as a prikk's"
-        );
-        assert!(
-            test_prikk(yaml).is_some_and(|(_, s)| s != ci_sum),
-            "{name}: the upgrade-from checksum is the test-only prikk's"
-        );
+        for sum in &sums {
+            assert!(
+                !recorded_checksums(yaml).values().any(|s| s == sum),
+                "{name}: an upgrade-from checksum is recorded as a prikk's"
+            );
+            assert!(
+                test_prikk(yaml).is_some_and(|(_, s)| s != *sum),
+                "{name}: an upgrade-from checksum is the test-only prikk's"
+            );
+        }
         let v = upgrade_from_shape_violations(yaml);
         assert!(v.is_empty(), "{name}: {v:#?}");
     }
-    // The image carries neither.
-    assert!(!read("Dockerfile").contains(&ci_sum));
+    // The image carries none of them.
+    for sum in &sums {
+        assert!(!read("Dockerfile").contains(sum));
+    }
 }
+
+/// A workflow's relevant lines for the releases `versions`, as the real ones are shaped.
+fn upgrade_workflow(versions: &[(&str, &str)]) -> String {
+    let mut out = String::from("env:\n");
+    for (version, sum) in versions {
+        out.push_str(&format!(
+            "  {}: \"{sum}\"\n",
+            upgrade_from_variable(version)
+        ));
+    }
+    out.push_str("steps:\n");
+    for (version, _) in versions {
+        let variable = upgrade_from_variable(version);
+        out.push_str(&format!(
+            "  curl -fsSL -o \"old.tar.gz\" \"https://github.com/prikk-vcs/inklkunn/releases/download/{version}/inklkunn-${{T}}.tar.gz\"\n\
+             \x20 echo \"${{{variable}}}  old.tar.gz\" | sha256sum -c -\n\
+             \x20 mkdir -p \"$HOME/.local/inklkunn-{version}/bin\" && tar -xzf \"old.tar.gz\" -C \"$HOME/.local/inklkunn-{version}/bin\" inklkunn\n\
+             \x20 test \"${{V#inklkunn {version} (commit }}\" != \"$V\" || {{ echo \"the asset is not inklkunn {version}: $V\" >&2; exit 1; }}\n\
+             \x20 echo \"$HOME/.local/inklkunn-{version}/bin\" >> \"$GITHUB_PATH\"\n"
+        ));
+    }
+    let skips: Vec<String> = versions
+        .iter()
+        .map(|(v, _)| format!("inklkunn {} not found", v.replace('.', "\\.")))
+        .collect();
+    out.push_str(&format!(
+        "  if grep -n -E 'skipping(: ({}))' with-prikk.log; then\n",
+        skips.join("|")
+    ));
+    out
+}
+
+const SUM_A: &str = "e29814e026390ee8b46b744f862977efca53e5ec025af7ef8e11255b043bff86";
+const SUM_B: &str = "b6f6726c2d2fd21c6b420dedab5b7ffb301afcf2f50946a5aed221c2feb84acb";
 
 #[test]
 fn the_upgrade_from_shape_rules_catch_planted_failures() {
-    let ok = "env:\n  UPGRADE_FROM_VERSION: \"0.2.0\"\n  UPGRADE_FROM_SHA256_X86_64: \"e29814e026390ee8b46b744f862977efca53e5ec025af7ef8e11255b043bff86\"\nsteps:\n  curl -fsSL -o \"old.tar.gz\" \"https://github.com/prikk-vcs/inklkunn/releases/download/${UPGRADE_FROM_VERSION}/inklkunn-${T}.tar.gz\"\n  echo \"${UPGRADE_FROM_SHA256_X86_64}  old.tar.gz\" | sha256sum -c -\n  tar -xzf \"old.tar.gz\" -C \"$HOME/.local/inklkunn-old/bin\" inklkunn\n  echo \"$HOME/.local/inklkunn-old/bin\" >> \"$GITHUB_PATH\"\n";
-    assert!(upgrade_from_shape_violations(ok).is_empty());
+    let ok = upgrade_workflow(&[("0.2.0", SUM_A), ("0.3.0", SUM_B)]);
+    assert!(upgrade_from_shape_violations(&ok).is_empty());
     assert_eq!(
-        upgrade_from(ok),
-        Some((
-            "0.2.0".into(),
-            "e29814e026390ee8b46b744f862977efca53e5ec025af7ef8e11255b043bff86".into()
-        ))
+        upgrade_from(&ok),
+        [
+            ("0.2.0".to_owned(), SUM_A.to_owned()),
+            ("0.3.0".to_owned(), SUM_B.to_owned())
+        ]
     );
-    let broken = |from: &str, to: &str| ok.replacen(from, to, 1);
+    // A later release is held to the same rules without a rule being written for it.
+    let three = upgrade_workflow(&[("0.2.0", SUM_A), ("0.3.0", SUM_B), ("0.4.0", SUM_A)]);
+    assert!(upgrade_from_shape_violations(&three).is_empty());
+    // The name carries the version, exactly: the old single pair, a name that is not a version and a part that is not a
+    // number are not releases.
+    assert!(
+        upgrade_from(
+            "  UPGRADE_FROM_VERSION: \"0.2.0\"\n  UPGRADE_FROM_SHA256_X86_64: \"abc\"\n  UPGRADE_FROM_0_3_SHA256_X86_64: \"abc\"\n  UPGRADE_FROM_0_x_1_SHA256_X86_64: \"abc\"\n"
+        )
+        .is_empty()
+    );
+    let broken = |from: &str, to: &str| {
+        assert!(ok.contains(from), "{from}");
+        ok.replacen(from, to, 1)
+    };
+    // Each is planted against the later release (the second one recorded), then the rules are run on the whole.
+    let second = "0.3.0";
     for (what, yaml) in [
         (
-            "not recorded",
-            broken("UPGRADE_FROM_VERSION: \"0.2.0\"", ""),
+            "no release recorded",
+            ok.replace("UPGRADE_FROM_", "SOMETHING_ELSE_"),
         ),
         (
             "a checksum that is not a checksum",
-            broken("e29814e026390ee8", "zzzzzzzzzzzzzzzz"),
+            broken("b6f6726c2d2fd21c", "zzzzzzzzzzzzzzzz"),
         ),
+        ("a checksum of the wrong length", broken(SUM_B, &SUM_B[1..])),
         (
             "not downloaded from this project's release",
-            broken("prikk-vcs/inklkunn/releases", "someone/else/releases"),
-        ),
-        ("not checked", broken("sha256sum -c -", "cat")),
-        (
-            "checked against another value",
-            broken("${UPGRADE_FROM_SHA256_X86_64}  old", "${SOMETHING}  old"),
-        ),
-        (
-            "checked after it is unpacked",
             broken(
-                "  echo \"${UPGRADE_FROM_SHA256_X86_64}  old.tar.gz\" | sha256sum -c -\n  tar -xzf \"old.tar.gz\" -C \"$HOME/.local/inklkunn-old/bin\" inklkunn\n",
-                "  tar -xzf \"old.tar.gz\" -C \"$HOME/.local/inklkunn-old/bin\" inklkunn\n  echo \"${UPGRADE_FROM_SHA256_X86_64}  old.tar.gz\" | sha256sum -c -\n",
+                "prikk-vcs/inklkunn/releases/download/0.3.0",
+                "someone/else/releases/download/0.3.0",
             ),
         ),
-        ("not on PATH", broken(">> \"$GITHUB_PATH\"", "> /dev/null")),
+        (
+            "downloaded from another release than the one it is checked as",
+            broken(
+                "prikk-vcs/inklkunn/releases/download/0.3.0",
+                "prikk-vcs/inklkunn/releases/download/0.3.1",
+            ),
+        ),
+        (
+            "not checked",
+            ok.replacen(
+                "${UPGRADE_FROM_0_3_0_SHA256_X86_64}  old.tar.gz\" | sha256sum -c -",
+                "${UPGRADE_FROM_0_3_0_SHA256_X86_64}  old.tar.gz\" | cat",
+                1,
+            ),
+        ),
+        (
+            "checked against another release's checksum",
+            broken(
+                "${UPGRADE_FROM_0_3_0_SHA256_X86_64}  old",
+                "${UPGRADE_FROM_0_2_0_SHA256_X86_64}  old",
+            ),
+        ),
+        (
+            "checked against another value",
+            broken(
+                "${UPGRADE_FROM_0_3_0_SHA256_X86_64}  old",
+                "${SOMETHING}  old",
+            ),
+        ),
+        ("checked after it is unpacked", {
+            let check =
+                "  echo \"${UPGRADE_FROM_0_3_0_SHA256_X86_64}  old.tar.gz\" | sha256sum -c -\n";
+            let unpack = "  mkdir -p \"$HOME/.local/inklkunn-0.3.0/bin\" && tar -xzf \"old.tar.gz\" -C \"$HOME/.local/inklkunn-0.3.0/bin\" inklkunn\n";
+            broken(&format!("{check}{unpack}"), &format!("{unpack}{check}"))
+        }),
+        (
+            "not checked to be that release",
+            broken("inklkunn 0.3.0 (commit }", "inklkunn 0.2.0 (commit }"),
+        ),
+        (
+            "not on PATH",
+            broken(">> \"$GITHUB_PATH\"\n  if grep", "> /dev/null\n  if grep"),
+        ),
+        (
+            "on PATH in another release's directory",
+            broken(
+                "\"$HOME/.local/inklkunn-0.3.0/bin\" >> \"$GITHUB_PATH\"",
+                "\"$HOME/.local/inklkunn-0.2.0/bin\" >> \"$GITHUB_PATH\"",
+            ),
+        ),
+        (
+            "the with-prikk run does not fail on the skip line",
+            broken("|inklkunn 0\\.3\\.0 not found", ""),
+        ),
     ] {
-        assert!(
-            !upgrade_from_shape_violations(&yaml).is_empty(),
-            "{what}: no violation reported"
-        );
+        let violations = upgrade_from_shape_violations(&yaml);
+        assert!(!violations.is_empty(), "{what}: no violation reported");
+        // A violation names the release it is about when it is one release's.
+        if what != "no release recorded" {
+            assert!(
+                violations.iter().any(|v| v.contains(second)),
+                "{what}: {violations:?}"
+            );
+        }
     }
 }
 
