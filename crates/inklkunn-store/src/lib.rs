@@ -14,6 +14,8 @@
 //!   DM-7): keyed by prikk's ids, never authoritative, with no field for a verification result.
 //! - [`proposal`]: proposals, revisions, comments, decisions and the log of every transition (RFC 004 D-1,
 //!   D-3), with drafts visible to their author only.
+//! - [`governance`]: grant decisions, restrictions, temporary protections, tombstones and appeals, and the derived
+//!   governance snapshot (RFC 006 D-5 - D-9; store schema 19).
 //! - [`claim_thread`]: a claim's own discussion, append-only, with the proposal comments' rules (RFC 005 part 2 D-11).
 //! - [`review`]: what reviewers did with the default that a reworded claim keeps its claim (RFC 005 part 1 D-1 d).
 //! - [`acceptance`]: acceptances, intents and the lease holder (RFC 004 D-4, D-7), written once and never
@@ -32,6 +34,7 @@ pub mod acts;
 pub mod audit;
 pub mod claim_thread;
 pub mod derived;
+pub mod governance;
 pub mod identity;
 pub mod inbox;
 pub mod invitation;
@@ -64,6 +67,13 @@ pub use derived::{
     KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow, PageKey, SearchDoc, SearchHit,
     SearchKind,
 };
+pub use governance::{
+    Actor, AppealDecision, AppealOutcome, AppealRecord, AppealState, AppealedAction, AppealedKind,
+    Decided, GovernanceFault, GovernanceSnapshot, GovernanceSnapshotStore, GovernanceStore,
+    GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenParts, MeasureEvent, ProtectionEvent,
+    ProtectionKind, ProtectionRequirement, ReasonCategory, RestrictionEvent, Reversal,
+    TombstoneAct, TombstoneEvent, hidden_parts,
+};
 pub use identity::{
     Account, AccountStore, CredentialStore, ExternalIdentity, ExternalIdentityError,
     LocalCredential, LoginName, LoginNameError, SessionRecord, SessionStore, TokenRecord,
@@ -78,10 +88,11 @@ pub use proposal::{
     Quote, Rename, RevisionContent, RevisionFlags, RevisionRecord,
 };
 pub use record::{
-    AcceptanceId, AccountId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,
-    DisplayNameError, InboxEventId, IntentId, InvitationId, NewWiki, NewWikiError, NotRun,
-    PrikkVersion, ProposalId, RecoveryActId, Slug, SlugError, SystemActId, TokenId, Verification,
-    VerificationState, ViewActId, Visibility, WikiId, WikiRecord,
+    AcceptanceId, AccountId, AppealId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,
+    DisplayNameError, GrantDecisionId, InboxEventId, IntentId, InvitationId, NewWiki, NewWikiError,
+    NotRun, PrikkVersion, ProposalId, ProtectionEventId, RecoveryActId, RestrictionEventId, Slug,
+    SlugError, SystemActId, TokenId, TombstoneEventId, Verification, VerificationState, ViewActId,
+    Visibility, WikiId, WikiRecord,
 };
 pub use review::{ClaimHow, ClaimOutcome, ClaimReview};
 pub use root::RootLayout;

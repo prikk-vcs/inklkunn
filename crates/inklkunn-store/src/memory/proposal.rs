@@ -63,6 +63,15 @@ impl MemoryStore {
             .unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// The wiki of the proposal whose transition is at position `seq` in the proposal log (from 1, in the order written, as
+    /// `proposal_transitions.seq` counts them), if there is one.
+    pub(super) fn transition_wiki(&self, seq: i64) -> Option<WikiId> {
+        let p = self.proposals_lock();
+        let index = usize::try_from(seq).ok()?.checked_sub(1)?;
+        let proposal = &p.transitions.get(index)?.proposal;
+        p.find(proposal).map(|p| p.wiki.clone())
+    }
+
     pub(super) fn wiki_exists(&self, wiki: &WikiId) -> bool {
         self.records
             .lock()

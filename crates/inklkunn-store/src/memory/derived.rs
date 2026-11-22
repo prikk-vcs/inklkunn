@@ -7,6 +7,7 @@ use crate::Result;
 use crate::derived::{
     DerivedPage, DerivedStore, IndexEntry, KnowledgeRows, PageKey, SearchDoc, SearchHit,
 };
+use crate::governance::{GovernanceSnapshot, GovernanceSnapshotStore};
 use crate::record::WikiId;
 
 use super::MemoryStore;
@@ -24,6 +25,8 @@ pub(super) struct Derived {
     searches: HashMap<(WikiId, String), Vec<SearchDoc>>,
     /// `(wiki, tip)` → the complete knowledge index.
     knowledge: HashMap<(WikiId, String), KnowledgeRows>,
+    /// `(wiki, tip)` → the governance snapshot.
+    governance: HashMap<(WikiId, String), GovernanceSnapshot>,
     /// `(wiki, block)` → when the block was first seen. Kept when the cache is cleared.
     seen: HashMap<(WikiId, String), i64>,
 }
@@ -82,26 +85,38 @@ impl DerivedStore for MemoryStore {
     fn retain_tips(&self, wiki: &WikiId, keep: &[String]) -> Result<u64> {
         let mut d = self.derived();
         let keeps = |tip: &String| keep.contains(tip);
-        let count =
-            |d: &Derived| d.pages.len() + d.indexes.len() + d.searches.len() + d.knowledge.len();
+        let count = |d: &Derived| {
+            d.pages.len()
+                + d.indexes.len()
+                + d.searches.len()
+                + d.knowledge.len()
+                + d.governance.len()
+        };
         let before = count(&d);
         d.pages.retain(|(w, tip, ..), _| w != wiki || keeps(tip));
         d.indexes.retain(|(w, tip), _| w != wiki || keeps(tip));
         d.searches.retain(|(w, tip), _| w != wiki || keeps(tip));
         d.knowledge.retain(|(w, tip), _| w != wiki || keeps(tip));
+        d.governance.retain(|(w, tip), _| w != wiki || keeps(tip));
         let removed = before - count(&d);
         Ok(u64::try_from(removed).unwrap_or(u64::MAX))
     }
 
     fn clear(&self, wiki: &WikiId) -> Result<u64> {
         let mut d = self.derived();
-        let count =
-            |d: &Derived| d.pages.len() + d.indexes.len() + d.searches.len() + d.knowledge.len();
+        let count = |d: &Derived| {
+            d.pages.len()
+                + d.indexes.len()
+                + d.searches.len()
+                + d.knowledge.len()
+                + d.governance.len()
+        };
         let before = count(&d);
         d.pages.retain(|(w, ..), _| w != wiki);
         d.indexes.retain(|(w, _), _| w != wiki);
         d.searches.retain(|(w, _), _| w != wiki);
         d.knowledge.retain(|(w, _), _| w != wiki);
+        d.governance.retain(|(w, _), _| w != wiki);
         let removed = before - count(&d);
         Ok(u64::try_from(removed).unwrap_or(u64::MAX))
     }
@@ -170,5 +185,29 @@ impl DerivedStore for MemoryStore {
             .iter()
             .map(|b| *d.seen.entry((wiki.clone(), b.clone())).or_insert(now))
             .collect())
+    }
+}
+
+impl GovernanceSnapshotStore for MemoryStore {
+    fn governance_snapshot(&self, wiki: &WikiId, tip: &str) -> Result<Option<GovernanceSnapshot>> {
+        Ok(self
+            .derived()
+            .governance
+            .get(&(wiki.clone(), tip.to_owned()))
+            .cloned())
+    }
+
+    fn put_governance_snapshot(
+        &self,
+        wiki: &WikiId,
+        tip: &str,
+        snapshot: &GovernanceSnapshot,
+        _built_at: i64,
+    ) -> Result<()> {
+        snapshot.validate()?;
+        self.derived()
+            .governance
+            .insert((wiki.clone(), tip.to_owned()), snapshot.clone());
+        Ok(())
     }
 }

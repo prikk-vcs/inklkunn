@@ -4,6 +4,7 @@ mod acceptance;
 mod acts;
 mod claim_thread;
 mod derived;
+mod governance;
 mod identity;
 mod inbox;
 mod proposal;
@@ -29,6 +30,7 @@ pub struct MemoryStore {
     acts: Mutex<acts::Acts>,
     inbox: Mutex<inbox::Inbox>,
     claim_threads: Mutex<claim_thread::ClaimThreads>,
+    governance: Mutex<governance::Governance>,
 }
 
 impl MemoryStore {

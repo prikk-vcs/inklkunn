@@ -239,6 +239,31 @@ uuid_id! {
     TokenId
 }
 
+uuid_id! {
+    /// The opaque id of a grant decision (RFC 006 D-6): the record of one grant or revocation of a rung.
+    GrantDecisionId
+}
+
+uuid_id! {
+    /// The opaque id of one event of a restriction (RFC 006 D-7): its setting, renewal, lifting or reversal.
+    RestrictionEventId
+}
+
+uuid_id! {
+    /// The opaque id of one event of a temporary protection (RFC 006 D-7): its setting, renewal, lifting or reversal.
+    ProtectionEventId
+}
+
+uuid_id! {
+    /// The opaque id of one moderation record of a tombstone (RFC 006 D-8): a hide or an unhide.
+    TombstoneEventId
+}
+
+uuid_id! {
+    /// The opaque id of an appeal (RFC 006 D-9).
+    AppealId
+}
+
 /// Why a slug was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlugError {

@@ -1,4 +1,4 @@
-//! The SQLite derived cache (schema versions 5 and 7). A row that cannot be decoded is a **miss**: the cache is
+//! The SQLite derived cache (schema versions 5, 7, 13 and 19). A row that cannot be decoded is a **miss**: the cache is
 //! derived, so a damaged row is derived again rather than reported as a failure or guessed at.
 
 use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
@@ -236,6 +236,7 @@ impl DerivedStore for SqliteStore {
                 "SELECT tip FROM title_index_tips WHERE wiki_id = ?1",
                 "SELECT tip FROM search_tips WHERE wiki_id = ?1",
                 "SELECT tip FROM knowledge_tips WHERE wiki_id = ?1",
+                "SELECT tip FROM governance_derived WHERE wiki_id = ?1",
             ] {
                 let mut stmt = tx.prepare(sql).map_err(backend)?;
                 let tips = stmt
@@ -281,8 +282,17 @@ impl DerivedStore for SqliteStore {
                 .map_err(backend)?;
             let searches = delete_search(&tx, wiki, None)?;
             let knowledge = delete_knowledge(&tx, wiki, None)?;
+            let governance = tx
+                .execute(
+                    "DELETE FROM governance_derived WHERE wiki_id = ?1",
+                    params![wiki.as_str()],
+                )
+                .map_err(backend)?;
             tx.commit().map_err(backend)?;
-            Ok(u64::try_from(pages + indexes + searches + knowledge).unwrap_or(u64::MAX))
+            Ok(
+                u64::try_from(pages + indexes + searches + knowledge + governance)
+                    .unwrap_or(u64::MAX),
+            )
         })
     }
 
@@ -630,7 +640,13 @@ fn delete_tip(tx: &rusqlite::Transaction<'_>, wiki: &WikiId, tip: &str) -> Resul
         .map_err(backend)?;
     let searches = delete_search(tx, wiki, Some(tip))?;
     let knowledge = delete_knowledge(tx, wiki, Some(tip))?;
-    Ok(u64::try_from(pages + indexes + searches + knowledge).unwrap_or(u64::MAX))
+    let governance = tx
+        .execute(
+            "DELETE FROM governance_derived WHERE wiki_id = ?1 AND tip = ?2",
+            params![wiki.as_str(), tip],
+        )
+        .map_err(backend)?;
+    Ok(u64::try_from(pages + indexes + searches + knowledge + governance).unwrap_or(u64::MAX))
 }
 
 /// The tables of the knowledge index (all but the tips row).

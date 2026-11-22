@@ -17,6 +17,7 @@ mod acceptance;
 mod acts;
 mod claim_thread;
 mod derived;
+mod governance;
 mod identity;
 mod inbox;
 mod invitation;
@@ -38,7 +39,7 @@ use crate::record::{
 use crate::{Result, StoreError, WikiStore};
 
 /// The schema version this build writes and reads: the last of [`MIGRATIONS`].
-pub const SCHEMA_VERSION: i64 = 18;
+pub const SCHEMA_VERSION: i64 = 19;
 
 /// Version 1: M0's schema, the wiki records.
 const V1: &str = "
@@ -916,6 +917,288 @@ WHEN NEW.parent IS NOT NULL AND NOT EXISTS (SELECT 1 FROM claim_comments
 BEGIN SELECT RAISE(ABORT, 'a reply is in the thread of the comment it answers'); END;
 ";
 
+/// Version 19 (RFC 006 D-6 - D-10, D-14; handoff 006 G-T1): **every table the governance and moderation tasks (G-T2 - G-T5)
+/// need, in one migration**, so that none of them adds another. Additive: six tables, their indexes and their triggers,
+/// nothing that exists is touched, **and nothing is written to any repository on upgrade** (D-14).
+///
+/// Five tables are **authoritative** (never derived, backed up with the store; CM-7, D-6): `grant_decisions`,
+/// `restrictions`, `protections`, `tombstones` and `appeals`. They are written once, in the database itself (version 3's
+/// device: a trigger aborts any `UPDATE`, any `DELETE` and any `INSERT` over a key already taken, counting every unique
+/// key). The one exception is an appeal, which is **decided once**: an open appeal is updated to *upheld* or *overturned*
+/// and nothing else about it ever changes. `role_grants` stays the current state, and a grant decision is its record.
+///
+/// - **Shared words.** A rung is one of the six roles. `policy_block` is the block that set the rules in force when the act
+///   was done (`NULL`: the wiki had no governance files, so the defaults), in lower-case hex. Every free text is bounded in
+///   **bytes** (a reason or a note 4 KiB, as a proposal's reasons; an appeal 16 KiB, as a comment) and every account is a
+///   foreign key. **A measure** (a restriction, a temporary protection) is a chain of events: `set`, then `renewed` any
+///   number of times, then at most one `lifted` (early, by a person) or `reversed` (by the overturn of an appeal). Each
+///   event after the first names the one it follows (`of_event`), and an event is followed by at most one (a partial unique
+///   index), so a chain is a line, and *active* is the end of it that has not been followed and has not run out. Expiry is
+///   a time (`expires_at`), never a row written later: nothing has to run for a measure to end.
+/// - **`grant_decisions`:** who acted (`NULL` with no rung: the operator, from the command line), their rung, the rules,
+///   the person, the rung before and after (`NULL` is no grant, so a revocation is a decision whose `rung_after` is `NULL`;
+///   a decision that changes nothing is refused), an optional reason, and the appeal whose overturn it is.
+/// - **`restrictions`:** one account's rung in one wiki capped at `observer`, with a reason and an end. The person and the
+///   one who acts are never the same.
+/// - **`protections`:** a *temporary* protection of a page or a namespace (`kind` and `target`), requiring review or a
+///   rung. A standing protection is the policy's, in the repository, and not here.
+/// - **`tombstones`:** a hide or an unhide of an item (`item_kind` of four, `item_id`, and `item_ref` for what an id does
+///   not name alone: a proposal's revision number, a page's path) and of its parts (content, summary, author, as three
+///   flags), with a reason category of six (a closed set), an optional note for the `moderate` rung, the account the item
+///   is about, and, for a hide that declined an open proposal, the decline's own record (`proposal_transitions.seq`). An
+///   unhide follows a hide, names the same item and parts, and restores exactly. **The hidden text is not here**: the
+///   store holds the fact of a hiding, never the content.
+/// - **`appeals`:** the action appealed (`action_kind` of five and its id: a record's id, or for a decline the
+///   transition's number), who took it (so that the database itself refuses a decision by that person, and by the
+///   appellant), the appellant's text, and how it stands: open, upheld or overturned, with the decision's time, person and
+///   reason, and for an overturn the id of the record that reversed the action (of the appealed kind). **One open appeal
+///   per action per person** is a partial unique index (and a trigger, for a replacing insert, which a unique index alone
+///   would let through); the quotas of RFC 004 D-11 count appeals by time and by appellant, as they count proposals. A
+///   reversal that names an appeal must name an **open** appeal of its own kind in its own wiki.
+///
+/// The sixth table is **derived** and dropped and rebuilt with the rest of the derived store (INV-5, CM-7):
+/// `governance_derived`, one row per wiki and tip: the block that last set the rules, the two files as they were read
+/// (normalized, bounded) and the fault that makes a wiki refuse writes (file, line, rule). **Show hidden content** has no
+/// table: it is an event of the audit trail (version 3), which already is append-only, one line, never content, and
+/// names the principal, the action and the tombstone it opened.
+const V19: &str = "
+CREATE TABLE IF NOT EXISTS appeals (
+    id              TEXT PRIMARY KEY,
+    seq             INTEGER NOT NULL,
+    wiki_id         TEXT NOT NULL REFERENCES wikis(id),
+    at              INTEGER NOT NULL,
+    action_kind     TEXT NOT NULL CHECK (action_kind IN ('decline', 'tombstone', 'restriction', 'protection', 'grant')),
+    action_id       TEXT NOT NULL CHECK (length(action_id) BETWEEN 1 AND 36 AND action_id NOT GLOB '*[^0-9a-f-]*'),
+    action_actor    TEXT REFERENCES accounts(id),
+    appellant       TEXT NOT NULL REFERENCES accounts(id),
+    text            TEXT NOT NULL CHECK (length(CAST(text AS BLOB)) BETWEEN 1 AND 16384),
+    status          TEXT NOT NULL CHECK (status IN ('open', 'upheld', 'overturned')),
+    decided_at      INTEGER,
+    decided_by      TEXT REFERENCES accounts(id),
+    decision_reason TEXT CHECK (decision_reason IS NULL OR length(CAST(decision_reason AS BLOB)) BETWEEN 1 AND 4096),
+    overturn_id     TEXT CHECK (overturn_id IS NULL OR (length(overturn_id) BETWEEN 1 AND 36 AND overturn_id NOT GLOB '*[^0-9a-f-]*')),
+    CHECK ((status = 'open' AND decided_at IS NULL AND decided_by IS NULL AND decision_reason IS NULL AND overturn_id IS NULL)
+        OR (status = 'upheld' AND decided_at IS NOT NULL AND decided_by IS NOT NULL AND decision_reason IS NOT NULL AND overturn_id IS NULL)
+        OR (status = 'overturned' AND decided_at IS NOT NULL AND decided_by IS NOT NULL AND decision_reason IS NOT NULL AND overturn_id IS NOT NULL)),
+    CHECK (decided_at IS NULL OR decided_at >= at),
+    CHECK (decided_by IS NULL OR decided_by <> appellant),
+    CHECK (decided_by IS NULL OR action_actor IS NULL OR decided_by <> action_actor)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS appeals_one_open ON appeals(wiki_id, action_kind, action_id, appellant) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS appeals_wiki ON appeals(wiki_id, status, seq);
+CREATE INDEX IF NOT EXISTS appeals_appellant ON appeals(wiki_id, appellant, at);
+CREATE INDEX IF NOT EXISTS appeals_action ON appeals(wiki_id, action_kind, action_id);
+CREATE TRIGGER IF NOT EXISTS appeals_no_delete BEFORE DELETE ON appeals
+BEGIN SELECT RAISE(ABORT, 'appeals are append-only'); END;
+-- Decided once: an open appeal becomes upheld or overturned, and no other column of any appeal ever changes.
+CREATE TRIGGER IF NOT EXISTS appeals_decided_once BEFORE UPDATE ON appeals
+WHEN NOT (OLD.status = 'open' AND NEW.status IN ('upheld', 'overturned')
+          AND NEW.id = OLD.id AND NEW.seq = OLD.seq AND NEW.wiki_id = OLD.wiki_id AND NEW.at = OLD.at
+          AND NEW.action_kind = OLD.action_kind AND NEW.action_id = OLD.action_id
+          AND NEW.action_actor IS OLD.action_actor AND NEW.appellant = OLD.appellant AND NEW.text = OLD.text)
+BEGIN SELECT RAISE(ABORT, 'appeals are append-only: an open appeal is decided once and nothing else about it changes'); END;
+-- Two unique keys: the id, and one open appeal per action per person. A replacing insert on either would remove the row
+-- it collides with without firing the delete trigger.
+CREATE TRIGGER IF NOT EXISTS appeals_no_replace BEFORE INSERT ON appeals
+WHEN EXISTS (SELECT 1 FROM appeals WHERE id = NEW.id)
+  OR (NEW.status = 'open' AND EXISTS (SELECT 1 FROM appeals WHERE status = 'open' AND wiki_id = NEW.wiki_id
+        AND action_kind = NEW.action_kind AND action_id = NEW.action_id AND appellant = NEW.appellant))
+BEGIN SELECT RAISE(ABORT, 'appeals are append-only: one open appeal per action per person'); END;
+CREATE TRIGGER IF NOT EXISTS appeals_filed_open BEFORE INSERT ON appeals
+WHEN NEW.status <> 'open'
+BEGIN SELECT RAISE(ABORT, 'appeals are append-only: an appeal is filed open'); END;
+-- An overturn names the record that reversed the action: of the appealed kind, in the wiki, naming this appeal.
+CREATE TRIGGER IF NOT EXISTS appeals_overturn_recorded BEFORE UPDATE ON appeals
+WHEN NEW.status = 'overturned' AND NOT (
+       (NEW.action_kind = 'grant' AND EXISTS (SELECT 1 FROM grant_decisions WHERE id = NEW.overturn_id AND wiki_id = NEW.wiki_id AND appeal_id = NEW.id))
+    OR (NEW.action_kind = 'restriction' AND EXISTS (SELECT 1 FROM restrictions WHERE id = NEW.overturn_id AND wiki_id = NEW.wiki_id AND appeal_id = NEW.id))
+    OR (NEW.action_kind = 'protection' AND EXISTS (SELECT 1 FROM protections WHERE id = NEW.overturn_id AND wiki_id = NEW.wiki_id AND appeal_id = NEW.id))
+    OR (NEW.action_kind = 'tombstone' AND EXISTS (SELECT 1 FROM tombstones WHERE id = NEW.overturn_id AND wiki_id = NEW.wiki_id AND appeal_id = NEW.id))
+    OR (NEW.action_kind = 'decline' AND EXISTS (SELECT 1 FROM proposal_transitions t JOIN proposals p ON p.id = t.proposal_id
+                                                WHERE CAST(t.seq AS TEXT) = NEW.overturn_id AND p.wiki_id = NEW.wiki_id)))
+BEGIN SELECT RAISE(ABORT, 'appeals are append-only: an overturn names the record that reversed the action'); END;
+
+CREATE TABLE IF NOT EXISTS grant_decisions (
+    id           TEXT PRIMARY KEY,
+    seq          INTEGER NOT NULL,
+    wiki_id      TEXT NOT NULL REFERENCES wikis(id),
+    at           INTEGER NOT NULL,
+    actor        TEXT REFERENCES accounts(id),
+    actor_rung   TEXT CHECK (actor_rung IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    policy_block TEXT CHECK (policy_block IS NULL OR (length(policy_block) BETWEEN 1 AND 128 AND policy_block NOT GLOB '*[^0-9a-f]*')),
+    target       TEXT NOT NULL REFERENCES accounts(id),
+    rung_before  TEXT CHECK (rung_before IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    rung_after   TEXT CHECK (rung_after IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    reason       TEXT CHECK (reason IS NULL OR length(CAST(reason AS BLOB)) BETWEEN 1 AND 4096),
+    appeal_id    TEXT REFERENCES appeals(id),
+    CHECK ((actor IS NULL) = (actor_rung IS NULL)),
+    CHECK (rung_before IS NOT rung_after)
+);
+CREATE INDEX IF NOT EXISTS grant_decisions_wiki ON grant_decisions(wiki_id, seq);
+CREATE INDEX IF NOT EXISTS grant_decisions_target ON grant_decisions(wiki_id, target, seq);
+CREATE TRIGGER IF NOT EXISTS grant_decisions_no_update BEFORE UPDATE ON grant_decisions
+BEGIN SELECT RAISE(ABORT, 'grant decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS grant_decisions_no_delete BEFORE DELETE ON grant_decisions
+BEGIN SELECT RAISE(ABORT, 'grant decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS grant_decisions_no_replace BEFORE INSERT ON grant_decisions
+WHEN EXISTS (SELECT 1 FROM grant_decisions WHERE id = NEW.id)
+BEGIN SELECT RAISE(ABORT, 'grant decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS grant_decisions_by_appeal BEFORE INSERT ON grant_decisions
+WHEN NEW.appeal_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM appeals WHERE id = NEW.appeal_id AND wiki_id = NEW.wiki_id
+                                                AND status = 'open' AND action_kind = 'grant')
+BEGIN SELECT RAISE(ABORT, 'grant decisions are append-only: an appeal named here is an open appeal of a grant in this wiki'); END;
+
+CREATE TABLE IF NOT EXISTS restrictions (
+    id           TEXT PRIMARY KEY,
+    seq          INTEGER NOT NULL,
+    wiki_id      TEXT NOT NULL REFERENCES wikis(id),
+    at           INTEGER NOT NULL,
+    event        TEXT NOT NULL CHECK (event IN ('set', 'renewed', 'lifted', 'reversed')),
+    account      TEXT NOT NULL REFERENCES accounts(id),
+    actor        TEXT NOT NULL REFERENCES accounts(id),
+    actor_rung   TEXT NOT NULL CHECK (actor_rung IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    policy_block TEXT CHECK (policy_block IS NULL OR (length(policy_block) BETWEEN 1 AND 128 AND policy_block NOT GLOB '*[^0-9a-f]*')),
+    reason       TEXT CHECK (reason IS NULL OR length(CAST(reason AS BLOB)) BETWEEN 1 AND 4096),
+    expires_at   INTEGER,
+    of_event     TEXT REFERENCES restrictions(id),
+    appeal_id    TEXT REFERENCES appeals(id),
+    CHECK (actor <> account),
+    CHECK ((event = 'set') = (of_event IS NULL)),
+    CHECK ((event = 'reversed') = (appeal_id IS NOT NULL)),
+    CHECK ((event IN ('set', 'renewed') AND reason IS NOT NULL AND expires_at IS NOT NULL AND expires_at > at)
+        OR (event IN ('lifted', 'reversed') AND expires_at IS NULL))
+);
+CREATE INDEX IF NOT EXISTS restrictions_wiki ON restrictions(wiki_id, seq);
+CREATE INDEX IF NOT EXISTS restrictions_account ON restrictions(wiki_id, account, seq);
+CREATE UNIQUE INDEX IF NOT EXISTS restrictions_one_follow ON restrictions(of_event) WHERE of_event IS NOT NULL;
+CREATE TRIGGER IF NOT EXISTS restrictions_no_update BEFORE UPDATE ON restrictions
+BEGIN SELECT RAISE(ABORT, 'restrictions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS restrictions_no_delete BEFORE DELETE ON restrictions
+BEGIN SELECT RAISE(ABORT, 'restrictions are append-only'); END;
+-- Two unique keys: the id, and the one event that follows another.
+CREATE TRIGGER IF NOT EXISTS restrictions_no_replace BEFORE INSERT ON restrictions
+WHEN EXISTS (SELECT 1 FROM restrictions WHERE id = NEW.id)
+  OR (NEW.of_event IS NOT NULL AND EXISTS (SELECT 1 FROM restrictions WHERE of_event = NEW.of_event))
+BEGIN SELECT RAISE(ABORT, 'restrictions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS restrictions_follow_a_set BEFORE INSERT ON restrictions
+WHEN NEW.of_event IS NOT NULL AND NOT EXISTS (SELECT 1 FROM restrictions p WHERE p.id = NEW.of_event
+       AND p.wiki_id = NEW.wiki_id AND p.account = NEW.account AND p.event IN ('set', 'renewed') AND p.at <= NEW.at)
+BEGIN SELECT RAISE(ABORT, 'restrictions are append-only: an event follows a set or renewed event of the same account in the same wiki'); END;
+CREATE TRIGGER IF NOT EXISTS restrictions_by_appeal BEFORE INSERT ON restrictions
+WHEN NEW.appeal_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM appeals WHERE id = NEW.appeal_id AND wiki_id = NEW.wiki_id
+                                                AND status = 'open' AND action_kind = 'restriction')
+BEGIN SELECT RAISE(ABORT, 'restrictions are append-only: an appeal named here is an open appeal of a restriction in this wiki'); END;
+
+CREATE TABLE IF NOT EXISTS protections (
+    id           TEXT PRIMARY KEY,
+    seq          INTEGER NOT NULL,
+    wiki_id      TEXT NOT NULL REFERENCES wikis(id),
+    at           INTEGER NOT NULL,
+    event        TEXT NOT NULL CHECK (event IN ('set', 'renewed', 'lifted', 'reversed')),
+    kind         TEXT NOT NULL CHECK (kind IN ('page', 'namespace')),
+    target       TEXT NOT NULL CHECK (length(CAST(target AS BLOB)) BETWEEN 1 AND 1024),
+    requirement  TEXT CHECK (requirement IN ('review', 'rung')),
+    rung         TEXT CHECK (rung IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    actor        TEXT NOT NULL REFERENCES accounts(id),
+    actor_rung   TEXT NOT NULL CHECK (actor_rung IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    policy_block TEXT CHECK (policy_block IS NULL OR (length(policy_block) BETWEEN 1 AND 128 AND policy_block NOT GLOB '*[^0-9a-f]*')),
+    reason       TEXT CHECK (reason IS NULL OR length(CAST(reason AS BLOB)) BETWEEN 1 AND 4096),
+    expires_at   INTEGER,
+    of_event     TEXT REFERENCES protections(id),
+    appeal_id    TEXT REFERENCES appeals(id),
+    CHECK ((event = 'set') = (of_event IS NULL)),
+    CHECK ((event = 'reversed') = (appeal_id IS NOT NULL)),
+    CHECK ((event IN ('set', 'renewed') AND requirement IS NOT NULL AND ((requirement = 'rung') = (rung IS NOT NULL))
+            AND reason IS NOT NULL AND expires_at IS NOT NULL AND expires_at > at)
+        OR (event IN ('lifted', 'reversed') AND requirement IS NULL AND rung IS NULL AND expires_at IS NULL))
+);
+CREATE INDEX IF NOT EXISTS protections_wiki ON protections(wiki_id, seq);
+CREATE INDEX IF NOT EXISTS protections_target ON protections(wiki_id, kind, target);
+CREATE UNIQUE INDEX IF NOT EXISTS protections_one_follow ON protections(of_event) WHERE of_event IS NOT NULL;
+CREATE TRIGGER IF NOT EXISTS protections_no_update BEFORE UPDATE ON protections
+BEGIN SELECT RAISE(ABORT, 'protections are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS protections_no_delete BEFORE DELETE ON protections
+BEGIN SELECT RAISE(ABORT, 'protections are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS protections_no_replace BEFORE INSERT ON protections
+WHEN EXISTS (SELECT 1 FROM protections WHERE id = NEW.id)
+  OR (NEW.of_event IS NOT NULL AND EXISTS (SELECT 1 FROM protections WHERE of_event = NEW.of_event))
+BEGIN SELECT RAISE(ABORT, 'protections are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS protections_follow_a_set BEFORE INSERT ON protections
+WHEN NEW.of_event IS NOT NULL AND NOT EXISTS (SELECT 1 FROM protections p WHERE p.id = NEW.of_event
+       AND p.wiki_id = NEW.wiki_id AND p.kind = NEW.kind AND p.target = NEW.target AND p.event IN ('set', 'renewed') AND p.at <= NEW.at)
+BEGIN SELECT RAISE(ABORT, 'protections are append-only: an event follows a set or renewed event of the same page or namespace in the same wiki'); END;
+CREATE TRIGGER IF NOT EXISTS protections_by_appeal BEFORE INSERT ON protections
+WHEN NEW.appeal_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM appeals WHERE id = NEW.appeal_id AND wiki_id = NEW.wiki_id
+                                                AND status = 'open' AND action_kind = 'protection')
+BEGIN SELECT RAISE(ABORT, 'protections are append-only: an appeal named here is an open appeal of a protection in this wiki'); END;
+
+CREATE TABLE IF NOT EXISTS tombstones (
+    id                  TEXT PRIMARY KEY,
+    seq                 INTEGER NOT NULL,
+    wiki_id             TEXT NOT NULL REFERENCES wikis(id),
+    at                  INTEGER NOT NULL,
+    event               TEXT NOT NULL CHECK (event IN ('hide', 'unhide')),
+    item_kind           TEXT NOT NULL CHECK (item_kind IN ('proposal-comment', 'claim-comment', 'proposal-revision', 'page-revision')),
+    item_id             TEXT NOT NULL CHECK (length(item_id) BETWEEN 1 AND 128 AND item_id NOT GLOB '*[^0-9a-f-]*'),
+    item_ref            TEXT CHECK (item_ref IS NULL OR length(CAST(item_ref AS BLOB)) BETWEEN 1 AND 1024),
+    hides_content       INTEGER NOT NULL CHECK (hides_content IN (0, 1)),
+    hides_summary       INTEGER NOT NULL CHECK (hides_summary IN (0, 1)),
+    hides_author        INTEGER NOT NULL CHECK (hides_author IN (0, 1)),
+    reason_category     TEXT CHECK (reason_category IN ('personal-data', 'harassment', 'unlawful', 'copyright', 'spam', 'other')),
+    note                TEXT CHECK (note IS NULL OR length(CAST(note AS BLOB)) BETWEEN 1 AND 4096),
+    affected            TEXT REFERENCES accounts(id),
+    actor               TEXT NOT NULL REFERENCES accounts(id),
+    actor_rung          TEXT NOT NULL CHECK (actor_rung IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    policy_block        TEXT CHECK (policy_block IS NULL OR (length(policy_block) BETWEEN 1 AND 128 AND policy_block NOT GLOB '*[^0-9a-f]*')),
+    of_event            TEXT REFERENCES tombstones(id),
+    appeal_id           TEXT REFERENCES appeals(id),
+    declined_transition INTEGER REFERENCES proposal_transitions(seq),
+    CHECK (hides_content + hides_summary + hides_author >= 1),
+    CHECK (item_kind NOT IN ('proposal-comment', 'claim-comment') OR (hides_summary = 0 AND item_ref IS NULL)),
+    CHECK (item_kind <> 'proposal-revision' OR (item_ref IS NOT NULL AND item_ref NOT GLOB '*[^0-9]*')),
+    CHECK (declined_transition IS NULL OR item_kind = 'proposal-revision'),
+    CHECK ((event = 'hide' AND of_event IS NULL AND appeal_id IS NULL AND reason_category IS NOT NULL)
+        OR (event = 'unhide' AND of_event IS NOT NULL AND reason_category IS NULL AND declined_transition IS NULL))
+);
+CREATE INDEX IF NOT EXISTS tombstones_wiki ON tombstones(wiki_id, seq);
+CREATE INDEX IF NOT EXISTS tombstones_item ON tombstones(wiki_id, item_kind, item_id);
+CREATE UNIQUE INDEX IF NOT EXISTS tombstones_one_unhide ON tombstones(of_event) WHERE of_event IS NOT NULL;
+CREATE TRIGGER IF NOT EXISTS tombstones_no_update BEFORE UPDATE ON tombstones
+BEGIN SELECT RAISE(ABORT, 'tombstones are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS tombstones_no_delete BEFORE DELETE ON tombstones
+BEGIN SELECT RAISE(ABORT, 'tombstones are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS tombstones_no_replace BEFORE INSERT ON tombstones
+WHEN EXISTS (SELECT 1 FROM tombstones WHERE id = NEW.id)
+  OR (NEW.of_event IS NOT NULL AND EXISTS (SELECT 1 FROM tombstones WHERE of_event = NEW.of_event))
+BEGIN SELECT RAISE(ABORT, 'tombstones are append-only'); END;
+-- An unhide restores exactly: it follows a hide of the same item and the same parts, once.
+CREATE TRIGGER IF NOT EXISTS tombstones_unhide_a_hide BEFORE INSERT ON tombstones
+WHEN NEW.of_event IS NOT NULL AND NOT EXISTS (SELECT 1 FROM tombstones h WHERE h.id = NEW.of_event
+       AND h.event = 'hide' AND h.wiki_id = NEW.wiki_id AND h.item_kind = NEW.item_kind AND h.item_id = NEW.item_id
+       AND h.item_ref IS NEW.item_ref AND h.hides_content = NEW.hides_content AND h.hides_summary = NEW.hides_summary
+       AND h.hides_author = NEW.hides_author AND h.at <= NEW.at)
+BEGIN SELECT RAISE(ABORT, 'tombstones are append-only: an unhide follows a hide of the same item and parts'); END;
+CREATE TRIGGER IF NOT EXISTS tombstones_by_appeal BEFORE INSERT ON tombstones
+WHEN NEW.appeal_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM appeals WHERE id = NEW.appeal_id AND wiki_id = NEW.wiki_id
+                                                AND status = 'open' AND action_kind = 'tombstone')
+BEGIN SELECT RAISE(ABORT, 'tombstones are append-only: an appeal named here is an open appeal of a tombstone in this wiki'); END;
+
+CREATE TABLE IF NOT EXISTS governance_derived (
+    wiki_id      TEXT NOT NULL,
+    tip          TEXT NOT NULL,
+    policy_block TEXT CHECK (policy_block IS NULL OR (length(policy_block) BETWEEN 1 AND 128 AND policy_block NOT GLOB '*[^0-9a-f]*')),
+    constitution TEXT CHECK (constitution IS NULL OR length(CAST(constitution AS BLOB)) <= 1048576),
+    policy       TEXT CHECK (policy IS NULL OR length(CAST(policy AS BLOB)) <= 1048576),
+    fault_file   TEXT CHECK (fault_file IS NULL OR length(CAST(fault_file AS BLOB)) BETWEEN 1 AND 256),
+    fault_line   INTEGER CHECK (fault_line IS NULL OR fault_line >= 1),
+    fault_rule   TEXT CHECK (fault_rule IS NULL OR length(CAST(fault_rule AS BLOB)) BETWEEN 1 AND 128),
+    built_at     INTEGER NOT NULL,
+    PRIMARY KEY (wiki_id, tip),
+    CHECK ((fault_file IS NULL) = (fault_rule IS NULL)),
+    CHECK (fault_line IS NULL OR fault_file IS NOT NULL)
+);
+";
+
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and
 /// [`SCHEMA_VERSION`] moves with it (a test holds the two together).
 pub const MIGRATIONS: &[(i64, &str)] = &[
@@ -937,6 +1220,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (16, V16),
     (17, V17),
     (18, V18),
+    (19, V19),
 ];
 
 /// The SQLite-backed store.
