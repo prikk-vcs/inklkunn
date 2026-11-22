@@ -153,3 +153,29 @@ The plan's section 2 *Not in 0.4.0*:
 A surface that meets one of these says plainly that it is not offered, and names no form that cannot act. Readiness
 (R-5: the end-to-end proof on a real prikk, the CHANGELOG lead, the report) gets its own section here when G-T7 is
 approved.
+
+## G-T1 reviewed: corrections C-1 – C-7 (2026-11-23; binding, before G-T2)
+
+G-T1 is **Conditionally Approved** (`.git-exclude/reviewed/006-governance-g-t1-review-result.md`) and pushed. The
+details and tests are in the result. In short:
+- **C-1 (Medium, first): a change to the rules is its own proposal.** A proposal touching `governance/` touches nothing
+  else (`governance-mixed`, refused at proposing, at each revision and under the lease). The hatch also checks it
+  itself.
+- **C-2:** under the lease, the rules are those of the tip the change is signed on, never cached.
+- **C-3:** while the rules cannot be read, decline, ask-for-revision and supersede also refuse, unless the proposal
+  touches only the governance files.
+- **C-4:** a disabled account's approval does not count.
+- **C-5:** a non-file at a governance path is a read fault. The frozen test pins its enum orders as literals.
+- **C-6:** the policy block does not drift. The walk stops at the previous row's tip and inherits its block; the window
+  is only a cold build's bound.
+- **C-7:** OpenAPI names the new refusals.
+
+**Clarifications of this handoff, from the review:**
+- The repair path (an admin's change to the governance files only, while they cannot be read) is INV-14's reading of
+  *every write refuses*.
+- The derived row is keyed by the view's state.
+- A namespace protection does not cover the page of the same name, as everywhere else, and G-T7's sentences say so.
+- `entry` has no effect in a restricted wiki.
+
+Hand back as `006-governance-g-t1-corrections-review-request.md`. **G-T2 – G-T3 start when it is approved.**
+
