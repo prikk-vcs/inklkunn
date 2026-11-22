@@ -18,6 +18,8 @@
 //! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`, and `wiki import-folder`: from the environment, or from `--config FILE`) the most files the title index is built from | `200000` |
 //! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`, and `wiki import-folder`: from the environment, or from `--config FILE`) the largest page source read, in KiB | `1024` |
 //! | `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS` | (`serve`) `knowledge.review_after` (RFC 005 part 2 D-10): how many days after a person last reviewed a source it is listed on the health list *Sources to review*; a source marked unavailable, or never reviewed, is listed whatever this says. The wiki fetches nothing: a person looks at a source and says so in a proposal | `1096` (three years) |
+//! | `INKLKUNN_GOVERNANCE_ENTRY_MAX` | (`serve`) the platform constitution's first limit (RFC 006 D-3): the highest `entry` rung a wiki's policy may give every signed-in account without a grant: `none`, `observer`, `questioner` or `contributor`. A policy above it is refused when it is accepted; if the operator lowers it later, a wiki above it is read as if it were at the limit, and its policy page says so | `contributor` |
+//! | `INKLKUNN_GOVERNANCE_LIMIT_DAYS` | (`serve`) the platform constitution's second limit (RFC 006 D-3): the longest a temporary protection or restriction may last, in days (1 to 3650) | `90` |
 //! | `INKLKUNN_JOIN` | (`serve`) who may make an account without an invitation: `off` (accounts come only from invitations), `provider` (a first sign-in through the configured OpenID Connect provider makes one; **a public provider makes this open registration**) or `anyone` (also a local account with a password) | `off` |
 //! | `INKLKUNN_OIDC_ISSUER` | (`serve`) the OpenID Connect provider's issuer, an `https` address exactly as the provider publishes it (its discovery document is at `<issuer>/.well-known/openid-configuration`); switches provider sign-in on. Needs `curl`, the system CA bundle, `prlimit` and bubblewrap on the host | none (no provider) |
 //! | `INKLKUNN_OIDC_CLIENT_ID` | (`serve`) the client id registered at the provider; required with the issuer | none |
@@ -40,6 +42,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use inklkunn_auth::JoinPolicy;
+use inklkunn_core::governance::{
+    Entry, LIMIT_DAYS_MAX, LIMIT_DAYS_MIN, PlatformLimits, defaults as governance_defaults,
+};
 use inklkunn_core::read::ReadConfig;
 use inklkunn_prikk::sandbox::{BwrapConfig, Sandbox, probe_bwrap};
 
@@ -397,6 +402,39 @@ impl ReadSettings {
     }
 }
 
+/// Read the platform constitution's two limits (RFC 006 D-3) through `get`: `INKLKUNN_GOVERNANCE_ENTRY_MAX` and
+/// `INKLKUNN_GOVERNANCE_LIMIT_DAYS`, the defaults where they are not set. A value that is not one of the words, or not
+/// in the range, is a start-up error that names the variable.
+// Nothing in the binary calls it yet: `serve` hands the limits to acceptance and to `authorize()`'s snapshot in the
+// task that wires them (G-T1 part C), which makes them a field of `WebSettings`. The tests read them now, so the
+// settings, their refusals and their documentation are in force from this commit.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn platform_limits(
+    get: &dyn Fn(&str) -> Option<OsString>,
+) -> Result<PlatformLimits, ConfigError> {
+    const ENTRY_MAX: &str = "INKLKUNN_GOVERNANCE_ENTRY_MAX";
+    const LIMIT_DAYS: &str = "INKLKUNN_GOVERNANCE_LIMIT_DAYS";
+    let entry_max = match text_setting(get, ENTRY_MAX)? {
+        None => governance_defaults::PLATFORM_ENTRY_MAX,
+        Some(t) => Entry::parse(&t).ok_or_else(|| {
+            ConfigError(format!(
+                "{ENTRY_MAX} must be none, observer, questioner or contributor (it is `{t}`)"
+            ))
+        })?,
+    };
+    let days = number_setting(
+        get,
+        LIMIT_DAYS,
+        u64::from(governance_defaults::PLATFORM_LIMIT_DAYS),
+        u64::from(LIMIT_DAYS_MIN),
+        u64::from(LIMIT_DAYS_MAX),
+    )?;
+    Ok(PlatformLimits {
+        entry_max,
+        limit_days: u32::try_from(days).unwrap_or(LIMIT_DAYS_MAX),
+    })
+}
+
 impl WebSettings {
     /// Read the web settings through `get`.
     pub fn load(get: &dyn Fn(&str) -> Option<OsString>) -> Result<Self, ConfigError> {
@@ -453,6 +491,8 @@ pub const KNOWN: &[&str] = &[
     "INKLKUNN_INDEX_MAX_FILES",
     "INKLKUNN_PAGE_MAX_KIB",
     "INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS",
+    "INKLKUNN_GOVERNANCE_ENTRY_MAX",
+    "INKLKUNN_GOVERNANCE_LIMIT_DAYS",
     "INKLKUNN_TRUSTED_PROXIES",
     "INKLKUNN_JOIN",
     "INKLKUNN_OIDC_ISSUER",

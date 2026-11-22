@@ -307,6 +307,76 @@ fn joining_is_off_unless_the_operator_opens_it_and_only_three_words_open_it() {
 }
 
 #[test]
+fn the_platform_constitutions_two_limits_have_the_defaults_and_named_refusals() {
+    // RFC 006 D-3: contributor at most, and ninety days.
+    let d = platform_limits(&env(&[])).unwrap();
+    assert_eq!(d, PlatformLimits::default());
+    assert_eq!((d.entry_max, d.limit_days), (Entry::Contributor, 90));
+    for (word, entry) in [
+        ("none", Entry::None),
+        ("observer", Entry::Observer),
+        ("questioner", Entry::Questioner),
+        ("contributor", Entry::Contributor),
+    ] {
+        let l = platform_limits(&env(&[("INKLKUNN_GOVERNANCE_ENTRY_MAX", word)])).unwrap();
+        assert_eq!(l.entry_max, entry, "{word}");
+        assert_eq!(l.limit_days, 90);
+    }
+    for (days, n) in [("1", 1), ("30", 30), ("3650", 3650)] {
+        let l = platform_limits(&env(&[("INKLKUNN_GOVERNANCE_LIMIT_DAYS", days)])).unwrap();
+        assert_eq!(l.limit_days, n);
+        assert_eq!(l.entry_max, Entry::Contributor);
+    }
+    for (name, bad) in [
+        ("INKLKUNN_GOVERNANCE_ENTRY_MAX", ""),
+        ("INKLKUNN_GOVERNANCE_ENTRY_MAX", "reviewer"),
+        ("INKLKUNN_GOVERNANCE_ENTRY_MAX", "maintainer"),
+        ("INKLKUNN_GOVERNANCE_ENTRY_MAX", "Contributor"),
+        ("INKLKUNN_GOVERNANCE_ENTRY_MAX", "contributor "),
+        ("INKLKUNN_GOVERNANCE_LIMIT_DAYS", "0"),
+        ("INKLKUNN_GOVERNANCE_LIMIT_DAYS", "3651"),
+        ("INKLKUNN_GOVERNANCE_LIMIT_DAYS", "-1"),
+        ("INKLKUNN_GOVERNANCE_LIMIT_DAYS", "ninety"),
+        ("INKLKUNN_GOVERNANCE_LIMIT_DAYS", ""),
+    ] {
+        let e = platform_limits(&env(&[(name, bad)])).unwrap_err().0;
+        assert!(e.contains(name), "{name}={bad:?}: {e}");
+    }
+    assert!(
+        platform_limits(&env(&[("INKLKUNN_GOVERNANCE_ENTRY_MAX", "x")]))
+            .unwrap_err()
+            .0
+            .contains("none, observer, questioner or contributor")
+    );
+    for name in [
+        "INKLKUNN_GOVERNANCE_ENTRY_MAX",
+        "INKLKUNN_GOVERNANCE_LIMIT_DAYS",
+    ] {
+        assert!(KNOWN.contains(&name), "a file may carry {name}");
+    }
+    // The configuration file's layering reaches them too.
+    let file =
+        read_file("INKLKUNN_GOVERNANCE_ENTRY_MAX=questioner\nINKLKUNN_GOVERNANCE_LIMIT_DAYS=7\n")
+            .unwrap();
+    let none = |_: &str| None;
+    let l = platform_limits(&layered(&none, &file)).unwrap();
+    assert_eq!((l.entry_max, l.limit_days), (Entry::Questioner, 7));
+}
+
+#[test]
+fn every_setting_the_file_may_carry_is_documented_in_the_table() {
+    // The table at the top of config.rs is the operator's documentation: a setting that is in KNOWN and not in the
+    // table is one the operator cannot find.
+    let source = include_str!("../config.rs");
+    for name in KNOWN {
+        assert!(
+            source.contains(&format!("//! | `{name}` |")),
+            "{name} is in the table"
+        );
+    }
+}
+
+#[test]
 fn a_configuration_file_is_name_equals_value_and_a_typo_is_refused() {
     let file = read_file(
         "# a comment\n\nINKLKUNN_DATA_DIR = /var/lib/inklkunn\nINKLKUNN_BIND=0.0.0.0:80\n",
