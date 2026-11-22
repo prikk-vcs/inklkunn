@@ -248,23 +248,19 @@ fn an_approval_from_someone_who_no_longer_holds_the_review_role_does_not_count()
 }
 
 #[test]
-fn the_proposers_own_approval_is_never_counted() {
-    let a = approvals(1);
-    let id = &a.proposal.id;
+fn the_proposers_own_approval_is_never_counted_even_when_the_proposer_holds_the_review_role() {
+    let rig = policy("acceptance:\n  approvals: 1\n");
+    let (_, maintainer) = rig.person("Maya", Some(Role::Maintainer));
+    let (proposer_id, proposer) = rig.person("Rin", Some(Role::Reviewer));
+    let text = change_text();
+    let p = rig.propose(&proposer, "My own", &[("pages/Home.md", Some(&text))]);
     // The service refuses a proposer's own decision; a record that reached the store another way is still not counted.
-    let proposer = a
-        .rig
-        .proposals
-        .get(&a.maintainer, &a.rig.wiki, id)
-        .unwrap()
-        .author;
-    a.rig
-        .store
+    rig.store
         .add_decision(&DecisionRecord {
             id: DecisionId::new(),
-            proposal: id.clone(),
+            proposal: p.id.clone(),
             revision: 1,
-            reviewer: proposer,
+            reviewer: proposer_id,
             kind: DecisionKind::Approve,
             body: String::new(),
             reviewer_rung: Some(Role::Reviewer),
@@ -273,7 +269,7 @@ fn the_proposers_own_approval_is_never_counted() {
         })
         .unwrap();
     assert_eq!(
-        refused(a.rig.acceptor().accept(&a.maintainer, &a.rig.wiki, id, 1)),
+        refused(rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1)),
         AcceptFailure::ApprovalsMissing { needed: 1, have: 0 }
     );
 }
@@ -774,6 +770,33 @@ fn a_governance_file_the_view_changed_since_the_base_is_an_overlap_and_never_a_m
         AcceptFailure::Overlap { overlaps: 1 }
     );
     assert!(rig.double.calls().is_empty());
+    assert_eq!(rig.state(&p.id), ProposalState::NeedsRevision);
+}
+
+#[test]
+fn a_governance_file_changed_in_another_place_is_still_an_overlap_and_the_proposal_is_never_re_authored()
+ {
+    // Two paragraphs the page merge would take apart: one proposal changes the first, the view changes the second.
+    let both = "entry: none\n\nknowledge:\n  review_after: 100\n";
+    let (rig, maintainer, _admin, author, _) = rig_with_people(&[("governance/policy.yaml", both)]);
+    let p = rig.propose(
+        &author,
+        "Let everyone observe",
+        &[(
+            "governance/policy.yaml",
+            Some("entry: observer\n\nknowledge:\n  review_after: 100\n"),
+        )],
+    );
+    rig.fake.set(
+        "governance/policy.yaml",
+        "entry: none\n\nknowledge:\n  review_after: 200\n",
+    );
+    rig.reads.forget_wiki(&rig.wiki);
+    assert_eq!(
+        refused(rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1)),
+        AcceptFailure::Overlap { overlaps: 1 }
+    );
+    assert!(rig.double.calls().is_empty(), "nothing was signed");
     assert_eq!(rig.state(&p.id), ProposalState::NeedsRevision);
 }
 

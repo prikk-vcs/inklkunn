@@ -574,10 +574,23 @@ async fn the_service_judges_renames_removals_and_new_paths_the_api_did_not_check
         assert_eq!(problem_type(a), urn("unacceptable"));
         assert_eq!(a.json().at("/reason"), reason, "{}", a.text());
     };
-    // Both ends of a rename must be pages.
+    // Both ends of a rename must be pages; a governance file is never renamed, and is refused by its own name.
     for (from, to) in [
         ("pages/Home.md", "governance/Home.md"),
         ("governance/rules.md", "pages/Rules.md"),
+    ] {
+        let a = propose_files(
+            &c,
+            &c.contributor,
+            json!([]),
+            json!([{"from": from, "to": to}]),
+        )
+        .await;
+        refused(&a, "governance-path");
+    }
+    for (from, to) in [
+        ("pages/Home.md", "attachments/Home.md"),
+        ("attachments/rules.md", "pages/Rules.md"),
         ("pages/Home.md", "pages/Home.txt"),
     ] {
         let a = propose_files(
@@ -2029,4 +2042,65 @@ async fn the_write_api_writes_no_claim_or_source_file_so_it_cannot_set_a_communi
             .list(&principal(&c.contributor), &c.w.wiki, &Default::default())
             .unwrap();
     assert!(all.is_empty());
+}
+
+/// [`propose_files`] against the repository as it stands in `cast()` (version 1).
+async fn propose_files_at_one(c: &Cast, who: &AccountId, files: Value, renames: Value) -> Answer {
+    post(
+        &c.w,
+        &format!("{API}/proposals"),
+        &[session(who), quoted(&state_id(1))],
+        json!({"summary": "x", "submit": false, "files": files, "renames": renames}).to_string(),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn the_two_governance_files_are_what_the_api_writes_under_governance_and_nothing_else_is() {
+    let c = cast();
+    // Each of the two is an ordinary proposal; its text is judged when the proposal is accepted, and it is no page, so no
+    // key of a page is owned in it.
+    for path in ["governance/policy.yaml", "governance/constitution.yaml"] {
+        let a = propose_files_at_one(
+            &c,
+            &c.contributor,
+            json!([{"path": path, "text": "kind: system\n"}]),
+            json!([]),
+        )
+        .await;
+        assert_eq!(a.status, 201, "{path}: {}", a.text());
+    }
+    // Nothing else under it is, by name.
+    for path in [
+        "governance/other.yaml",
+        "governance/policy.yml",
+        "governance/",
+        "governance/sub/policy.yaml",
+        "Governance/policy.yaml",
+        "./governance/policy.yaml",
+    ] {
+        let a = propose_files_at_one(
+            &c,
+            &c.contributor,
+            json!([{"path": path, "text": "x"}]),
+            json!([]),
+        )
+        .await;
+        assert_eq!(a.status, 422, "{path}: {}", a.text());
+        assert_eq!(
+            a.json().at("/reason"),
+            "governance-path",
+            "{path}: {}",
+            a.text()
+        );
+    }
+    // A path outside `pages/` that is not under it keeps its own word.
+    let a = propose_files_at_one(
+        &c,
+        &c.contributor,
+        json!([{"path": "attachments/x.md", "text": "x"}]),
+        json!([]),
+    )
+    .await;
+    assert_eq!(a.json().at("/reason"), "path-outside-pages", "{}", a.text());
 }
