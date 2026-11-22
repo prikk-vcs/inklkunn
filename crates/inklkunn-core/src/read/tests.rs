@@ -36,6 +36,7 @@ mod history;
 mod pinned;
 mod preview;
 mod rollback;
+mod rules;
 mod safety;
 mod scratch;
 mod stale;

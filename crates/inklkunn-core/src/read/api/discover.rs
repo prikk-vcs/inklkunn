@@ -253,8 +253,8 @@ impl ReadService {
     ) -> Result<SourcesToReviewPage, ApiError> {
         let now = (self.clock)();
         let index = self.knowledge_index(wiki, view)?;
-        let (all, numbers) =
-            freshness::sources_to_review_numbered(&index, now, self.review_after_days);
+        let review_after_days = self.review_after_days_of(wiki);
+        let (all, numbers) = freshness::sources_to_review_numbered(&index, now, review_after_days);
         // The page begins after the last source id the reader was shown, wherever that id now stands in the list:
         // an edit elsewhere, a new day or a changed setting does not send the walk back to the first page (K50).
         let start = match after.map(Cursor::position) {
@@ -278,7 +278,7 @@ impl ReadService {
             total: all.len(),
             next,
             offset: start,
-            review_after_days: self.review_after_days,
+            review_after_days,
             numbers,
         })
     }

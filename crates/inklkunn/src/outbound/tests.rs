@@ -320,12 +320,14 @@ fn a_provider_whose_secret_cannot_be_read_is_refused_at_start_naming_the_setting
         oidc: Some(oidc_settings(Some(PathBuf::from(
             "/nonexistent/oidc-secret",
         )))),
+        governance: inklkunn_core::governance::PlatformLimits::default(),
     };
     let e = provider_if_configured(&web).err().unwrap();
     assert!(e.contains("INKLKUNN_OIDC_CLIENT_SECRET_FILE"), "{e}");
     // No provider configured: nothing to check and nothing built.
     let none = WebSettings {
         oidc: None,
+        governance: inklkunn_core::governance::PlatformLimits::default(),
         ..web.clone()
     };
     assert!(provider_if_configured(&none).unwrap().is_none());
@@ -343,6 +345,7 @@ fn the_start_says_a_provider_is_on_with_the_address_to_register_and_warns_of_joi
         trusted_proxies: Vec::new(),
         join: inklkunn_auth::JoinPolicy::Off,
         oidc: None,
+        governance: inklkunn_core::governance::PlatformLimits::default(),
     };
     assert!(start_notes(&web).is_empty(), "nothing to say about nothing");
     web.join = inklkunn_auth::JoinPolicy::Provider;

@@ -841,3 +841,51 @@ fn nothing_in_the_freshness_code_can_reach_the_network_or_a_process() {
         );
     }
 }
+
+#[test]
+fn a_wikis_own_review_interval_is_its_policys_and_the_operators_is_the_default() {
+    // Reviewed 45 days before the day of the tests, and 5 days before it.
+    let w = world(
+        &[],
+        &[
+            source(1, Availability::Available, Some("2026-10-01")),
+            source(2, Availability::Available, Some("2026-11-10")),
+        ],
+    );
+    w.fake().derive_changes();
+    let service = clocked(&w, DEFAULT_REVIEW_AFTER_DAYS);
+    // No policy: the operator's interval (three years) lists neither.
+    let none = service.sources_to_review(&w.wiki, None).expect("rows");
+    assert_eq!(none.review_after_days, DEFAULT_REVIEW_AFTER_DAYS);
+    assert!(none.rows.is_empty());
+    assert_eq!(
+        service.review_after_days_of(&w.wiki),
+        DEFAULT_REVIEW_AFTER_DAYS
+    );
+    // The wiki's policy says 30 days: the source reviewed 45 days ago is listed, the other is not.
+    w.fake()
+        .set("governance/policy.yaml", "knowledge:\n  review_after: 30\n");
+    service.forget_wiki(&w.wiki);
+    let own = service.sources_to_review(&w.wiki, None).expect("rows");
+    assert_eq!(own.review_after_days, 30);
+    assert_eq!(ids(&own.rows), [source_id(1).as_str()]);
+    let page = service
+        .sources_to_review_page(&w.wiki, None, None, 10)
+        .expect("a page");
+    assert_eq!(page.review_after_days, 30);
+    assert_eq!(page.total, 1);
+    // A policy that does not say leaves the operator's interval in force, whatever else it says.
+    w.fake().set("governance/policy.yaml", "entry: observer\n");
+    service.forget_wiki(&w.wiki);
+    assert_eq!(
+        service.review_after_days_of(&w.wiki),
+        DEFAULT_REVIEW_AFTER_DAYS
+    );
+    // And a governance file that cannot be read leaves it too (the defaults decide, and say nothing of it).
+    w.fake().set("governance/policy.yaml", "knowledge: [1\n");
+    service.forget_wiki(&w.wiki);
+    assert_eq!(
+        service.review_after_days_of(&w.wiki),
+        DEFAULT_REVIEW_AFTER_DAYS
+    );
+}

@@ -51,6 +51,7 @@ fn web(bind: &str, app: &str, content: &str) -> WebSettings {
         trusted_proxies: Vec::new(),
         join: inklkunn_auth::JoinPolicy::Off,
         oidc: None,
+        governance: inklkunn_core::governance::PlatformLimits::default(),
     }
 }
 

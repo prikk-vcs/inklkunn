@@ -149,13 +149,19 @@ fn prepare_probing(
         )
         // The flags of accepted changes (minor, machine-assisted) are the proposal records' (RFC 004 D-10).
         .with_revision_flags(store.clone())
-        // `knowledge.review_after` (RFC 005 part 2 D-10): the operator's setting, in days; the config bounds it.
+        // `knowledge.review_after` (RFC 005 part 2 D-10): the operator's setting, in days; the config bounds it. A wiki's
+        // own policy overrides it for that wiki (RFC 006 D-2, D-14).
         .with_review_after_days(
             u32::try_from(web.read.knowledge_review_after_days).unwrap_or(u32::MAX),
-        ),
+        )
+        // The rules of each wiki, read from its default view's tip and kept as a derived row (RFC 006 D-5), under the
+        // operator's two limits (D-3).
+        .with_governance_snapshots(store.clone())
+        .with_platform_limits(web.governance),
     );
+    // `authorize()` reads the rules of a wiki through the read service, and only through it: a handler cannot pass one.
     let authorizer = Arc::new(Authorizer::new(
-        Arc::new(StoreAuthz::new(store.clone(), store.clone())),
+        Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(read.clone())),
         store.clone() as Arc<dyn AuditSink>,
     ));
     let inbox = Arc::new(Inbox::new(

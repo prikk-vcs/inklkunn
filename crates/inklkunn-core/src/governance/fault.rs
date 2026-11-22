@@ -111,9 +111,41 @@ pub enum Refusal {
     PlatformLimit(Limit),
     /// A proposal in an alternative view touches `governance/` (RFC 006 D-1: governance forks are not in scope).
     OutsideDefaultView,
+    /// A proposal writes a path under `governance/` that is neither of the two files: the set of paths is closed
+    /// (exactly `governance/constitution.yaml` and `governance/policy.yaml`), and no other file there is part of the
+    /// rules of a wiki.
+    UnknownFile,
 }
 
 impl Refusal {
+    /// Every refusal, in the order of the declaration. [`Refusal::from_name`] reads this list, and a test holds that it
+    /// is complete (a refusal that is not here is one the stored name of a snapshot could not be read back as).
+    pub const ALL: [Refusal; 18] = [
+        Refusal::NotText,
+        Refusal::TooLong,
+        Refusal::WrongShape,
+        Refusal::UnknownKey,
+        Refusal::RepeatedKey,
+        Refusal::UnknownValue,
+        Refusal::OutOfRange,
+        Refusal::Bounds,
+        Refusal::ForbiddenCharacter,
+        Refusal::Missing,
+        Refusal::Duplicate,
+        Refusal::Ordering(OrderingPair::ProposeAboveReview),
+        Refusal::Ordering(OrderingPair::ReviewAboveAccept),
+        Refusal::Ordering(OrderingPair::ModerateBelowReviewer),
+        Refusal::PlatformLimit(Limit::EntryMax),
+        Refusal::PlatformLimit(Limit::LimitDays),
+        Refusal::OutsideDefaultView,
+        Refusal::UnknownFile,
+    ];
+
+    /// The refusal a stable [`name`](Refusal::name) is of.
+    pub fn from_name(name: &str) -> Option<Refusal> {
+        Refusal::ALL.into_iter().find(|r| r.name() == name)
+    }
+
     /// The stable name: what the catalog, the audit trail and the API key on. Never reworded.
     pub const fn name(self) -> &'static str {
         match self {
@@ -136,6 +168,7 @@ impl Refusal {
             Refusal::PlatformLimit(Limit::EntryMax) => "platform-limit-entry-max",
             Refusal::PlatformLimit(Limit::LimitDays) => "platform-limit-limit-days",
             Refusal::OutsideDefaultView => "outside-default-view",
+            Refusal::UnknownFile => "unknown-file",
         }
     }
 
@@ -175,6 +208,9 @@ impl Refusal {
             }
             Refusal::OutsideDefaultView => {
                 "governance/ can be changed only in the default view, and this proposal is in another view"
+            }
+            Refusal::UnknownFile => {
+                "governance/ holds exactly two files, constitution.yaml and policy.yaml, and this is neither"
             }
         }
     }
@@ -230,6 +266,17 @@ impl Fault {
         Fault {
             file,
             refusal: Refusal::OutsideDefaultView,
+            field: "",
+            item: None,
+            line: None,
+        }
+    }
+
+    /// A refusal of a path under `governance/` that is neither of the two files.
+    pub const fn unknown_file() -> Fault {
+        Fault {
+            file: None,
+            refusal: Refusal::UnknownFile,
             field: "",
             item: None,
             line: None,
@@ -302,6 +349,18 @@ pub struct ReadFault {
 impl ReadFault {
     pub(super) fn new(file: GovernanceFile, fault: Fault) -> ReadFault {
         ReadFault { file, fault }
+    }
+
+    /// A read fault as a derived snapshot keeps it: the file, the line when there was one and the rule. The snapshot keeps
+    /// no field of the schema, so the fault has none (its `Display` is the same sentence without the parenthesis).
+    pub fn from_stored(file: GovernanceFile, line: Option<usize>, refusal: Refusal) -> ReadFault {
+        ReadFault {
+            file,
+            fault: Fault {
+                line,
+                ..Fault::whole(file, refusal)
+            },
+        }
     }
 
     /// The file that cannot be read.

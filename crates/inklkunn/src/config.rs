@@ -211,6 +211,9 @@ pub struct WebSettings {
     pub join: JoinPolicy,
     /// `INKLKUNN_OIDC_*`: the OpenID Connect provider, if the operator configured one.
     pub oidc: Option<OidcSettings>,
+    /// `INKLKUNN_GOVERNANCE_ENTRY_MAX` and `INKLKUNN_GOVERNANCE_LIMIT_DAYS`: what the operator allows any wiki's rules
+    /// (RFC 006 D-3). A value outside what the settings allow is a start-up error.
+    pub governance: PlatformLimits,
 }
 
 /// The OpenID Connect provider the operator configured (`INKLKUNN_OIDC_*`). All or nothing: the issuer and the
@@ -405,10 +408,8 @@ impl ReadSettings {
 /// Read the platform constitution's two limits (RFC 006 D-3) through `get`: `INKLKUNN_GOVERNANCE_ENTRY_MAX` and
 /// `INKLKUNN_GOVERNANCE_LIMIT_DAYS`, the defaults where they are not set. A value that is not one of the words, or not
 /// in the range, is a start-up error that names the variable.
-// Nothing in the binary calls it yet: `serve` hands the limits to acceptance and to `authorize()`'s snapshot in the
-// task that wires them (G-T1 part C), which makes them a field of `WebSettings`. The tests read them now, so the
-// settings, their refusals and their documentation are in force from this commit.
-#[cfg_attr(not(test), allow(dead_code))]
+/// `serve` reads them at start ([`WebSettings::governance`]), so that a bad value is a start-up error and never a wiki's
+/// surprise; the read service reads each wiki's rules under them and acceptance judges a policy against them.
 pub fn platform_limits(
     get: &dyn Fn(&str) -> Option<OsString>,
 ) -> Result<PlatformLimits, ConfigError> {
@@ -461,6 +462,7 @@ impl WebSettings {
                 })?,
             },
             oidc: OidcSettings::load(get)?,
+            governance: platform_limits(get)?,
             trusted_proxies: match text("INKLKUNN_TRUSTED_PROXIES")? {
                 None => Vec::new(),
                 Some(list) => list

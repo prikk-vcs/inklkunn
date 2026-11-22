@@ -73,7 +73,11 @@ fn scope_reaches(scope: Scope) -> Vec<Action> {
 }
 
 fn snap(visibility: Option<Visibility>, role: Option<Role>) -> Snapshot {
-    Snapshot { visibility, role }
+    Snapshot {
+        visibility,
+        role,
+        cap: None,
+    }
 }
 
 #[test]
@@ -650,3 +654,6 @@ fn the_identity_authority_is_claimed_once_per_process_and_whoever_asks_second_ge
     assert!(matches!(&p, Principal::Account(a) if a.scope() == Scope::Admin));
     assert!(p.audit_name().starts_with("account:"));
 }
+
+mod frozen;
+mod rules;

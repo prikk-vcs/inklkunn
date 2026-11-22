@@ -43,6 +43,7 @@ fn a_token_gets_a_principal_with_its_scope_and_authorize_never_lets_it_do_more()
                     let snapshot = Snapshot {
                         visibility: Some(visibility),
                         role,
+                        cap: None,
                     };
                     let by_token = decide(snapshot, &principal, action);
                     let by_session = decide(snapshot, &session, action);
@@ -70,6 +71,7 @@ fn a_propose_token_held_by_a_maintainer_still_cannot_accept_but_the_session_can(
     let snapshot = Snapshot {
         visibility: Some(Visibility::Public),
         role: Some(Role::Maintainer),
+        cap: None,
     };
     let token = w
         .auth

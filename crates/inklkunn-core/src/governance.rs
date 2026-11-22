@@ -101,6 +101,7 @@ mod model;
 mod parse;
 mod policy;
 pub mod protect;
+mod rules;
 mod validate;
 mod warning;
 
@@ -110,9 +111,11 @@ pub use limits::{LIMIT_DAYS_MAX, LIMIT_DAYS_MIN, Lowered, PlatformLimits};
 pub use model::{Acceptance, AppealRung, Entry, GrantUpTo, Rungs, SelfAcceptance};
 pub use policy::Policy;
 pub use protect::{Protection, Require, Target, is_canonical_title, namespace_covers};
+pub use rules::{DEFAULTS_WORD, Rules, SHORT_BLOCK_CHARS, short_block};
 pub use validate::{
     ViewPlace, is_governance_path, read_constitution, read_policy, refuse_outside_default_view,
-    validate_constitution, validate_constitution_bytes, validate_policy, validate_policy_bytes,
+    refuse_unknown_files, validate_constitution, validate_constitution_bytes, validate_policy,
+    validate_policy_bytes,
 };
 pub use warning::{ApprovalsWarning, approvals_unreachable, approvals_warning};
 

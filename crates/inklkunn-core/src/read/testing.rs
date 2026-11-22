@@ -43,6 +43,8 @@ struct State {
     messages: BTreeMap<u64, String>,
     /// What `show` answers for a block id.
     shows: BTreeMap<String, Result<Change>>,
+    /// `show` of a block nobody scripted answers what the block changed, from the files at it and at the block before.
+    derive_shows: bool,
     /// What `diff` answers, and every `diff` asked.
     diff: Option<Result<Diff>>,
     diffs: Vec<(Point, Point, Vec<String>)>,
@@ -183,6 +185,12 @@ impl Fake {
     /// The message the block of `version` was sealed with.
     pub(crate) fn say(&self, version: u64, message: &str) {
         self.state().messages.insert(version, message.to_owned());
+    }
+
+    /// `show` of a block nobody scripted answers what the block changed: each path that differs from the block before it, as
+    /// one operation (an addition, an edit or a removal).
+    pub(crate) fn derive_changes(&self) {
+        self.state().derive_shows = true;
     }
 
     /// What `show` answers for the block of `version`.
@@ -454,11 +462,53 @@ impl Storage for Fake {
     }
 
     fn change(&self, _: &Path, id: &str) -> Result<Change> {
-        self.state()
-            .shows
-            .get(id)
+        let s = self.state();
+        if let Some(scripted) = s.shows.get(id) {
+            return scripted.clone();
+        }
+        if !s.derive_shows {
+            return Err(unsupported("show"));
+        }
+        let Some((version, files)) = s
+            .snapshots
+            .iter()
+            .find(|(v, _)| block_id(**v) == id)
+            .map(|(v, f)| (*v, f))
+        else {
+            return Err(unsupported("show"));
+        };
+        let before = version
+            .checked_sub(1)
+            .and_then(|v| s.snapshots.get(&v))
             .cloned()
-            .unwrap_or_else(|| Err(unsupported("show")))
+            .unwrap_or_default();
+        let paths: std::collections::BTreeSet<&String> =
+            files.keys().chain(before.keys()).collect();
+        let operations = paths
+            .into_iter()
+            .filter(|p| files.get(*p) != before.get(*p))
+            .map(|p| inklkunn_prikk::Operation {
+                kind: match (before.contains_key(p), files.contains_key(p)) {
+                    (false, _) => "add-file",
+                    (true, true) => "edit-text",
+                    (true, false) => "remove",
+                }
+                .to_owned(),
+                paths: vec![inklkunn_prikk::storage::PathRef {
+                    path: Some(p.clone()),
+                    unresolved_node_id: None,
+                }],
+                content: serde_json::Value::Null,
+            })
+            .collect();
+        Ok(Change {
+            schema_version: "show-report-v1".to_owned(),
+            patches: vec![inklkunn_prikk::Patch {
+                patch_id: format!("{version:064x}"),
+                queued: false,
+                operations,
+            }],
+        })
     }
 
     fn diff(&self, _: &Path, from: &Point, to: &Point, paths: &[&str]) -> Result<Diff> {

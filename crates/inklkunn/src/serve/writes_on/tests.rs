@@ -274,6 +274,7 @@ impl Running {
             trusted_proxies: Vec::new(),
             join: inklkunn_auth::JoinPolicy::Off,
             oidc: None,
+            governance: inklkunn_core::governance::PlatformLimits::default(),
         };
         let log = Arc::new(Mutex::new(Vec::new()));
         let sink = log.clone();

@@ -537,3 +537,33 @@ fn a_provider_is_all_or_nothing_and_every_part_of_it_is_checked() {
         assert!(KNOWN.contains(&name), "a file may carry {name}");
     }
 }
+
+#[test]
+fn the_web_settings_carry_the_platform_limits_and_a_bad_one_is_a_start_up_error() {
+    let base = [
+        ("INKLKUNN_APP_ORIGIN", "https://a.example"),
+        ("INKLKUNN_CONTENT_ORIGIN", "https://b.example"),
+    ];
+    // Unset: the defaults the RFC names.
+    let w = WebSettings::load(&env(&base)).unwrap();
+    assert_eq!(w.governance, PlatformLimits::default());
+    // Set: the web settings hold them, so that `serve` hands them to the read service and to acceptance.
+    let mut all = base.to_vec();
+    all.push(("INKLKUNN_GOVERNANCE_ENTRY_MAX", "observer"));
+    all.push(("INKLKUNN_GOVERNANCE_LIMIT_DAYS", "30"));
+    let w = WebSettings::load(&env(&all)).unwrap();
+    assert_eq!(
+        (w.governance.entry_max, w.governance.limit_days),
+        (Entry::Observer, 30)
+    );
+    // A bad value stops `serve` before anything is served, and names the variable.
+    for (name, bad) in [
+        ("INKLKUNN_GOVERNANCE_ENTRY_MAX", "everyone"),
+        ("INKLKUNN_GOVERNANCE_LIMIT_DAYS", "0"),
+    ] {
+        let mut all = base.to_vec();
+        all.push((name, bad));
+        let e = WebSettings::load(&env(&all)).unwrap_err().0;
+        assert!(e.contains(name), "{name}={bad}: {e}");
+    }
+}

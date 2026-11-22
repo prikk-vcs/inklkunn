@@ -78,7 +78,8 @@ pub use acceptance::{
 pub use assurance::Assurance;
 pub use authorize::{
     AccountPrincipal, Action, Authorizer, AuthzSource, Decision, IdentityAuthority, Principal,
-    Resource, Snapshot, SourceError, StoreAuthz, SystemPrincipal, decide,
+    Resource, RulesSource, Snapshot, SourceError, Standing, StoreAuthz, SystemPrincipal, decide,
+    decide_under, rung_of,
 };
 pub use check::{
     CONCURRENT_CHECKS, CheckOutcome, Checked, Declined, MIN_RECHECK_SECS, NotChecked,
@@ -87,7 +88,7 @@ pub use check::{
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
 pub use governance::{
     ApprovalsWarning, Constitution, GovernanceChange, GovernanceFile, PlatformLimits, Policy,
-    ReadFault, Requirement,
+    ReadFault, Requirement, Rules,
 };
 pub use inbox::Inbox;
 pub use inklkunn_signer::{

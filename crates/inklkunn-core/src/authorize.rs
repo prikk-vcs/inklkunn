@@ -17,9 +17,24 @@
 //! | Principal | Reads | Everything else |
 //! |---|---|---|
 //! | anonymous | a `public` wiki | denied |
-//! | account, no role in the wiki | a `public` or `internal` wiki | denied |
-//! | account with a role | whatever its role allows ([`Action::minimum_role`]), limited by its credential's [`Scope`] | denied |
+//! | account, no role in the wiki | a `public` or `internal` wiki | denied, unless the wiki's `entry` rung (below) gives it one |
+//! | account with a role | whatever its role allows ([`Action::minimum_role`], or the wiki's policy), limited by its credential's [`Scope`] | denied |
 //! | the system (import, recovery) | any existing wiki; accepts and imports | denied |
+//!
+//! **The rules of a wiki are data** (RFC 006 D-5; handoff G-T1 part C): the [`Rules`] in force, read from the default
+//! view's tip by the [`AuthzSource`] and never passed in by a handler. Without governance files they are the defaults,
+//! which are this table (the test that holds it is acceptance criterion 1). With them:
+//!
+//! - **The rung an account holds** is the higher of its grant and the wiki's `entry`, **then capped by a restriction**
+//!   ([`Snapshot::cap`]; always `None` until grants and restrictions arrive with G-T2). **`entry` does not apply to a
+//!   `restricted` wiki**: its members are the accounts the operator granted a rung (visibility is the operator's, RFC 006
+//!   D-3). The lowest rung of each action is the policy's ([`Policy::minimum_role`](crate::governance::Policy)).
+//! - **A governance file that cannot be read** ([`Rules::fault`]) makes the wiki **refuse every write** (everything but
+//!   `read`) to every account, with one exception, the repair path of INV-14: an *admin* of the wiki may *propose* a change to
+//!   one of the two governance files and may *accept*; the acceptance judges what the change touches (nothing but
+//!   `governance/`, [`ProposalAcceptor`](crate::ProposalAcceptor)). The system principal's acts (import, recovery) are not
+//!   writes of a person and are decided as before. Whoever may read the wiki can be told why ([`Authorizer::write_refusal`]);
+//!   everyone else gets the existence-neutral answer they always got.
 //!
 //! A wiki that is not there, and a `restricted` wiki the caller holds no role in, produce **the same
 //! answer** (and, for a consequential action, the same audit event), so a decision cannot be used to find
@@ -35,6 +50,7 @@
 
 use std::sync::Arc;
 
+use crate::governance::{GovernanceFile, ReadFault, Rules};
 use inklkunn_signer::message::SystemLabel;
 use inklkunn_store::{
     AccountId, AuditEvent, AuditOutcome, AuditSink, Role, RoleStore, Scope, StoreError, Visibility,
@@ -366,13 +382,50 @@ impl Decision {
 pub struct Snapshot {
     /// The wiki's visibility, or `None` when there is no such wiki.
     pub visibility: Option<Visibility>,
-    /// The role the account holds in the wiki (always `None` for a principal that is not an account).
+    /// The role the account holds in the wiki **through a grant** (always `None` for a principal that is not an account).
     pub role: Option<Role>,
+    /// The highest rung a restriction leaves the account (RFC 006 D-7: a restriction caps an account at observer), or
+    /// `None` when nothing caps it. **Always `None` until restrictions are recorded (G-T2)**: the hook is here so that the
+    /// rung is computed in one place, in the order the RFC gives (the higher of grant and `entry`, then capped).
+    pub cap: Option<Role>,
 }
 
-/// The rule (see the module docs for the table). Pure: the same inputs always give the same answer, and
-/// every path that is not explicitly allowed is denied.
+/// The rung an account holds in the wiki, under `rules`: **the higher of its grant and the wiki's `entry`, then capped by a
+/// restriction** (RFC 006 D-5). `None` is no rung at all (the account may read what the wiki's visibility lets it read, and
+/// nothing else). `entry` gives nothing in a `restricted` wiki: its members are the accounts the operator granted a rung.
+/// A wiki that is not there gives no rung.
+pub fn rung_of(snapshot: Snapshot, rules: &Rules) -> Option<Role> {
+    let visibility = snapshot.visibility?;
+    let entry = match visibility {
+        Visibility::Restricted => None,
+        Visibility::Public | Visibility::Internal => rules.policy().entry().rung(),
+    };
+    let held = snapshot.role.max(entry);
+    match (held, snapshot.cap) {
+        (Some(held), Some(cap)) => Some(held.min(cap)),
+        (held, _) => held,
+    }
+}
+
+/// The rule (see the module docs for the table), **with 0.3.0's rules**: [`decide_under`] with no governance. Pure: the same
+/// inputs always give the same answer, and every path that is not explicitly allowed is denied.
 pub fn decide(snapshot: Snapshot, principal: &Principal, action: Action) -> Decision {
+    decide_under(snapshot, &Rules::defaults(), principal, action, false)
+}
+
+/// The rule under the wiki's [`Rules`]. Pure: the same inputs always give the same answer, and every path that is not
+/// explicitly allowed is denied.
+///
+/// `on_governance_file` says that the resource is one of the two governance files (a page resource whose path is
+/// `governance/constitution.yaml` or `governance/policy.yaml`): it matters only in the repair state, where the wiki refuses
+/// every write ([`Rules::fault`]) and an admin may still propose a change to those files.
+pub fn decide_under(
+    snapshot: Snapshot,
+    rules: &Rules,
+    principal: &Principal,
+    action: Action,
+    on_governance_file: bool,
+) -> Decision {
     let Some(visibility) = snapshot.visibility else {
         // No such wiki: denied for everyone, in the same words as a wiki one may not see.
         return Decision::Deny;
@@ -382,11 +435,22 @@ pub fn decide(snapshot: Snapshot, principal: &Principal, action: Action) -> Deci
         Principal::Anonymous => action == Action::Read && visibility == Visibility::Public,
         Principal::Account(a) => {
             let scope = &a.scope;
+            let rung = rung_of(snapshot, rules);
             // The credential limits the account; the role limits the credential. Both must allow.
             *scope >= action.required_scope()
-                && match snapshot.role {
-                    Some(role) => role >= action.minimum_role(),
-                    None => action == Action::Read && visibility != Visibility::Restricted,
+                && if action != Action::Read && rules.fault().is_some() {
+                    // A governance file cannot be read: every write refuses, but an admin's repair of the rules.
+                    rung == Some(Role::Admin)
+                        && match action {
+                            Action::Propose => on_governance_file,
+                            Action::Accept => true,
+                            _ => false,
+                        }
+                } else {
+                    match rung {
+                        Some(role) => role >= rules.policy().minimum_role(action),
+                        None => action == Action::Read && visibility != Visibility::Restricted,
+                    }
                 }
         }
     };
@@ -395,6 +459,22 @@ pub fn decide(snapshot: Snapshot, principal: &Principal, action: Action) -> Deci
     } else {
         Decision::Deny
     }
+}
+
+/// Is the resource one of the two governance files?
+fn is_governance_file(resource: &Resource) -> bool {
+    matches!(resource, Resource::Page { path, .. } if GovernanceFile::of_path(path).is_some())
+}
+
+/// Where an account stands in a wiki at this moment: **the rung it holds and the block that set the rules it holds it
+/// under** (RFC 006 D-5). What a decision record names (*accepted by Name (maintainer), under the rules as of
+/// `<block>`*).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Standing {
+    /// The rung, or `None` for an account that holds none.
+    pub rung: Option<Role>,
+    /// The block that last changed a governance file, or `None` for the defaults.
+    pub policy_block: Option<String>,
 }
 
 /// A source that could not answer. The text is for operators (it never reaches a user); the decision
@@ -414,8 +494,22 @@ impl std::error::Error for SourceError {}
 pub trait AuthzSource: Send + Sync {
     /// The wiki's visibility, or `None` when there is no such wiki.
     fn visibility(&self, wiki: &WikiId) -> Result<Option<Visibility>, SourceError>;
-    /// The role the account holds in the wiki, if any.
+    /// The role the account holds in the wiki through a grant, if any.
     fn role(&self, account: &AccountId, wiki: &WikiId) -> Result<Option<Role>, SourceError>;
+    /// The rules in force for the wiki: **its governance as read from the tip of its default view** (RFC 006 D-5). The
+    /// default answer is the defaults, which are 0.3.0's rules: a source that does not read governance decides every wiki as
+    /// a wiki with none. (The service's own source, [`StoreAuthz::with_rules`], reads it; a surface cannot make one.)
+    fn rules(&self, wiki: &WikiId) -> Result<Arc<Rules>, SourceError> {
+        let _ = wiki;
+        Ok(Arc::new(Rules::defaults()))
+    }
+}
+
+/// Where the rules of a wiki are read from: the tip of its default view. Implemented by the read service
+/// ([`ReadService`](crate::ReadService)), which holds the derived snapshot and rebuilds it from the repository.
+pub trait RulesSource: Send + Sync {
+    /// The rules in force for the wiki. An error is *could not be read now*, and the decision it was for is **deny**.
+    fn rules(&self, wiki: &WikiId) -> Result<Arc<Rules>, SourceError>;
 }
 
 /// The facts from the service store: the wiki record and the role grants.
@@ -423,6 +517,7 @@ pub trait AuthzSource: Send + Sync {
 pub struct StoreAuthz {
     wikis: Arc<dyn WikiStore>,
     roles: Arc<dyn RoleStore>,
+    rules: Option<Arc<dyn RulesSource>>,
 }
 
 impl std::fmt::Debug for StoreAuthz {
@@ -432,9 +527,21 @@ impl std::fmt::Debug for StoreAuthz {
 }
 
 impl StoreAuthz {
-    /// Over a wiki store and a role store (the same SQLite store serves both in service).
+    /// Over a wiki store and a role store (the same SQLite store serves both in service), **with no governance**: every wiki
+    /// is decided by the defaults, 0.3.0's rules. The service reads governance through [`StoreAuthz::with_rules`].
     pub fn new(wikis: Arc<dyn WikiStore>, roles: Arc<dyn RoleStore>) -> Self {
-        StoreAuthz { wikis, roles }
+        StoreAuthz {
+            wikis,
+            roles,
+            rules: None,
+        }
+    }
+
+    /// The same, reading each wiki's rules from `rules`: the tip of its default view.
+    #[must_use]
+    pub fn with_rules(mut self, rules: Arc<dyn RulesSource>) -> Self {
+        self.rules = Some(rules);
+        self
     }
 }
 
@@ -454,20 +561,35 @@ impl AuthzSource for StoreAuthz {
     fn role(&self, account: &AccountId, wiki: &WikiId) -> Result<Option<Role>, SourceError> {
         self.roles.role(account, wiki).map_err(source_error)
     }
+
+    fn rules(&self, wiki: &WikiId) -> Result<Arc<Rules>, SourceError> {
+        match &self.rules {
+            Some(source) => source.rules(wiki),
+            None => Ok(Arc::new(Rules::defaults())),
+        }
+    }
 }
 
-/// What a surface calls: [`decide`] over a snapshot it loads itself, with the audit trail.
+/// What a surface calls: [`decide_under`] over a snapshot and the wiki's rules, which it loads itself, with the audit trail.
 #[derive(Clone)]
 pub struct Authorizer {
     source: Arc<dyn AuthzSource>,
     audit: Arc<dyn AuditSink>,
     clock: fn() -> i64,
+    /// The rules of a wiki that has none (and what a decision uses when the rules cannot matter to it).
+    defaults: Arc<Rules>,
 }
 
 impl std::fmt::Debug for Authorizer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Authorizer")
     }
+}
+
+/// What a decision was made from: the wiki's facts and its rules.
+struct Facts {
+    snapshot: Snapshot,
+    rules: Arc<Rules>,
 }
 
 impl Authorizer {
@@ -479,6 +601,7 @@ impl Authorizer {
             source,
             audit,
             clock: inklkunn_store::record::now_secs,
+            defaults: Arc::new(Rules::defaults()),
         }
     }
 
@@ -489,7 +612,20 @@ impl Authorizer {
         self
     }
 
-    fn snapshot(&self, principal: &Principal, wiki: &WikiId) -> Result<Snapshot, SourceError> {
+    /// The wiki's visibility and the account's grant, and, **when they can matter to the decision**, the wiki's rules.
+    ///
+    /// The rules decide a *write by an account* in a wiki the account may be a member of. A read is never decided by them
+    /// (reading is always `observer`, no `entry` gives less, and a restriction caps at `observer`), the system's acts and an
+    /// anonymous caller are not decided by them, a wiki that is not there has none, and `entry` gives nothing in a
+    /// `restricted` wiki to an account that holds no grant there: for each of these the defaults stand in, and the source
+    /// is not asked (a read costs no walk of the repository; an absent wiki and a restricted one the caller is no member of
+    /// still cost the same).
+    fn facts(
+        &self,
+        principal: &Principal,
+        action: Action,
+        wiki: &WikiId,
+    ) -> Result<Facts, SourceError> {
         let visibility = self.source.visibility(wiki)?;
         // The role is looked up for every account whether or not the wiki exists, so that an absent wiki and
         // a private one cost the same to ask about.
@@ -497,21 +633,69 @@ impl Authorizer {
             Principal::Account(a) => self.source.role(&a.id, wiki)?,
             Principal::Anonymous | Principal::System(_) => None,
         };
-        Ok(Snapshot { visibility, role })
+        let snapshot = Snapshot {
+            visibility,
+            role,
+            cap: None,
+        };
+        let rules_matter = action != Action::Read
+            && matches!(principal, Principal::Account(_))
+            && visibility.is_some_and(|v| role.is_some() || v != Visibility::Restricted);
+        let rules = if rules_matter {
+            self.source.rules(wiki)?
+        } else {
+            Arc::clone(&self.defaults)
+        };
+        Ok(Facts { snapshot, rules })
     }
 
     /// The role `account` holds in `wiki`, for the service's own bookkeeping (which limit binds whom): nothing is
     /// recorded and nothing leaves this crate. `None` when it holds none, or when the facts cannot be read (the
-    /// answer that binds the account to every limit).
+    /// answer that binds the account to every limit). **A grant only**: the rung `entry` gives is not counted, which binds
+    /// the account to every limit, the stricter side.
     pub(crate) fn role_in(&self, account: &AccountId, wiki: &WikiId) -> Option<Role> {
         self.source.role(account, wiki).ok().flatten()
     }
 
+    /// The rung `principal` holds in `wiki` now and the block that set the rules it holds it under: what a decision record
+    /// names (RFC 006 D-5; criterion 12). Nothing is recorded. An error is *could not be read now*.
+    pub fn standing(&self, principal: &Principal, wiki: &WikiId) -> Result<Standing, SourceError> {
+        // A write is asked, so that the rules are read: the rung is theirs.
+        let facts = self.facts(principal, Action::Propose, wiki)?;
+        let rung = match principal {
+            Principal::Account(_) => rung_of(facts.snapshot, &facts.rules),
+            Principal::Anonymous | Principal::System(_) => None,
+        };
+        Ok(Standing {
+            rung,
+            policy_block: facts.rules.block().map(str::to_owned),
+        })
+    }
+
+    /// The rules in force for `wiki`, as the source reads them from the default view's tip. For a service that has to say
+    /// what they are (the acceptance, the approvals warning, a page): never a way to assert anything about a wiki.
+    pub fn rules(&self, wiki: &WikiId) -> Result<Arc<Rules>, SourceError> {
+        self.source.rules(wiki)
+    }
+
+    /// **Why every write of this wiki refuses**, for a principal who may read the wiki: the governance file that cannot be
+    /// read, with its line and the rule it breaks ([`ReadFault`]'s `Display`). `None` when nothing is wrong, when the
+    /// principal may not read the wiki (it is told what anyone is told about a wiki it may not see: nothing), or when the
+    /// facts cannot be read. Nothing is recorded.
+    pub fn write_refusal(&self, principal: &Principal, wiki: &WikiId) -> Option<ReadFault> {
+        let facts = self.facts(principal, Action::Propose, wiki).ok()?;
+        let reads = decide_under(facts.snapshot, &facts.rules, principal, Action::Read, false);
+        if !reads.is_allowed() {
+            return None;
+        }
+        facts.rules.fault().cloned()
+    }
+
     /// May this account, **carrying the whole authority of its role** as a browser session does, do the
     /// non-consequential `action` to `resource`? For the service's own bookkeeping about *other* people (whom
-    /// to tell something, a watch to keep): it builds no principal that leaves this crate and records
-    /// nothing. It is never the answer to a request: a request is authorized as the principal it came from,
-    /// whose credential may carry less. Fails closed, and refuses a consequential action outright.
+    /// to tell something, a watch to keep, whether a reviewer still holds the rung): it builds no principal that leaves this
+    /// crate and records nothing. It is never the answer to a request: a request is authorized as the principal it came
+    /// from, whose credential may carry less. Fails closed, and refuses a consequential action outright.
     pub(crate) fn account_may(
         &self,
         account: &AccountId,
@@ -525,33 +709,49 @@ impl Authorizer {
             id: account.clone(),
             scope: Scope::Admin,
         });
-        self.snapshot(&principal, resource.wiki())
-            .is_ok_and(|snapshot| decide(snapshot, &principal, action).is_allowed())
+        self.facts(&principal, action, resource.wiki())
+            .is_ok_and(|facts| {
+                decide_under(
+                    facts.snapshot,
+                    &facts.rules,
+                    &principal,
+                    action,
+                    is_governance_file(resource),
+                )
+                .is_allowed()
+            })
     }
 
     /// May `principal` do `action` to `resource`? **Fails closed**: if the facts cannot be read the answer is
-    /// deny. A consequential action is recorded whatever the answer; an *allowed* one whose record cannot be
-    /// written is denied, because nothing consequential happens unrecorded.
+    /// deny. A consequential action is recorded whatever the answer, **with the rung the principal held and the block of
+    /// the rules it was decided under** (`rung=<rung or none>; policy=<the block's first 12 characters, or defaults>`); an
+    /// *allowed* one whose record cannot be written is denied, because nothing consequential happens unrecorded.
     pub fn authorize(
         &self,
         principal: &Principal,
         action: Action,
         resource: &Resource,
     ) -> Decision {
-        let (decision, outcome, detail) = match self.snapshot(principal, resource.wiki()) {
-            Ok(snapshot) => {
-                let decision = decide(snapshot, principal, action);
+        let (decision, outcome, detail) = match self.facts(principal, action, resource.wiki()) {
+            Ok(facts) => {
+                let decision = decide_under(
+                    facts.snapshot,
+                    &facts.rules,
+                    principal,
+                    action,
+                    is_governance_file(resource),
+                );
                 let outcome = if decision.is_allowed() {
                     AuditOutcome::Allowed
                 } else {
                     AuditOutcome::Denied
                 };
-                (decision, outcome, "")
+                (decision, outcome, authority_detail(principal, &facts))
             }
             Err(_) => (
                 Decision::Deny,
                 AuditOutcome::Failed,
-                "the facts for the decision could not be read",
+                "the facts for the decision could not be read".to_owned(),
             ),
         };
         if action.is_consequential() {
@@ -561,7 +761,7 @@ impl Authorizer {
                 action.name(),
                 &resource.audit_name(),
                 outcome,
-                detail,
+                &detail,
             );
             if self.audit.record(&event).is_err() && decision.is_allowed() {
                 return Decision::Deny;
@@ -569,6 +769,21 @@ impl Authorizer {
         }
         decision
     }
+}
+
+/// The detail of a consequential decision's audit event: **the rung the principal held and the block of the rules the
+/// decision was made under**, in one stable form (`rung=maintainer; policy=0123456789ab`, or `rung=none; policy=defaults`).
+/// Never a path or a content (RFC 002 D-9).
+fn authority_detail(principal: &Principal, facts: &Facts) -> String {
+    let rung = match principal {
+        Principal::Account(_) => rung_of(facts.snapshot, &facts.rules),
+        Principal::Anonymous | Principal::System(_) => None,
+    };
+    format!(
+        "rung={}; policy={}",
+        rung.map_or("none", Role::as_str),
+        facts.rules.short_block()
+    )
 }
 
 #[cfg(test)]

@@ -63,6 +63,7 @@ mod links;
 mod preview;
 mod raw;
 mod rollback;
+mod rules;
 mod sanitize;
 pub mod scratch;
 mod search;
@@ -397,6 +398,12 @@ pub struct ReadService {
     /// What history, change, diff and permalink pages hold (handoff 003 T5): log windows, the operations of
     /// blocks, a few permalink renders.
     history: history::State,
+    /// The derived governance snapshot (RFC 006 D-5), when the store keeps one.
+    governance: Option<Arc<dyn inklkunn_store::GovernanceSnapshotStore>>,
+    /// What the operator allows any wiki (RFC 006 D-3): a policy above a limit is read as if it were at it.
+    limits: crate::governance::PlatformLimits,
+    /// The rules of each wiki at its last-seen tip, and the walk's memory.
+    rules: rules::RulesState,
     /// The clock the freshness list reads the day from, in Unix seconds (RFC 005 part 2 D-10); a test fixes it.
     clock: fn() -> i64,
     /// `knowledge.review_after`, in days: a source reviewed longer ago than this is listed for review.
@@ -433,6 +440,9 @@ impl ReadService {
             store_failures: AtomicU64::new(0),
             flags: None,
             history: history::State::default(),
+            governance: None,
+            limits: crate::governance::PlatformLimits::default(),
+            rules: rules::RulesState::default(),
             clock: inklkunn_store::record::now_secs,
             review_after_days: crate::knowledge::freshness::DEFAULT_REVIEW_AFTER_DAYS,
         }
@@ -455,9 +465,22 @@ impl ReadService {
         self
     }
 
-    /// `knowledge.review_after`, in days.
+    /// The operator's `knowledge.review_after`, in days: what a wiki whose policy does not say has. The wiki's own is
+    /// [`ReadService::review_after_days_of`].
     pub fn review_after_days(&self) -> u32 {
         self.review_after_days
+    }
+
+    /// `knowledge.review_after` for this wiki, in days: **its policy's when it sets one, else the operator's** (RFC 006 D-2,
+    /// D-14). The rules are those of the default view's tip; **when they cannot be read now the operator's value is used**
+    /// (a list of sources to look at again is not a decision, and a day count that failed is not a reason to show none).
+    pub fn review_after_days_of(&self, wiki: &WikiRecord) -> u32 {
+        self.rules_of(wiki).map_or(self.review_after_days, |rules| {
+            rules
+                .policy()
+                .review_after_days(self.review_after_days)
+                .clamp(1, crate::knowledge::freshness::MAX_REVIEW_AFTER_DAYS)
+        })
     }
 
     /// Is `day` (`YYYY-MM-DD`) a day that has not come: after the current date in the earliest timezone (UTC+14), by
@@ -477,15 +500,16 @@ impl ReadService {
         view: Option<&str>,
     ) -> Result<crate::knowledge::freshness::SourcesToReview, ReadError> {
         let index = self.knowledge_index(wiki, view)?;
+        let review_after_days = self.review_after_days_of(wiki);
         Ok(crate::knowledge::freshness::SourcesToReview {
             rows: crate::knowledge::freshness::sources_to_review_kept(
                 &index,
                 (self.clock)(),
-                self.review_after_days,
+                review_after_days,
             )
             .to_vec(),
             index,
-            review_after_days: self.review_after_days,
+            review_after_days,
         })
     }
 
@@ -521,6 +545,7 @@ impl ReadService {
     pub fn forget_wiki(&self, wiki: &WikiRecord) {
         self.tips.forget(&wiki.id, &self.layout.repo_dir(&wiki.id));
         self.history.forget(&wiki.id);
+        self.rules.forget(&wiki.id);
         self.refused_builds
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

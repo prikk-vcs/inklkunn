@@ -94,3 +94,16 @@ pub fn refuse_outside_default_view<'a>(
         Some(path) => Err(Fault::outside_default_view(GovernanceFile::of_path(path))),
     }
 }
+
+/// The set of paths under `governance/` is closed: exactly the two files ([`GovernanceFile::path`]). Any other path
+/// under it that a proposal writes, removes or renames to or from is refused as [`Refusal::UnknownFile`]: no other file
+/// there is part of the rules of a wiki, and none is ever read as if it were.
+pub fn refuse_unknown_files<'a>(touched: impl IntoIterator<Item = &'a str>) -> Result<(), Fault> {
+    match touched
+        .into_iter()
+        .find(|p| is_governance_path(p) && GovernanceFile::of_path(p).is_none())
+    {
+        None => Ok(()),
+        Some(_) => Err(Fault::unknown_file()),
+    }
+}
