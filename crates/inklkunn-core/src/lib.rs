@@ -35,6 +35,8 @@
 //!   pages matched by page id, an overlap never resolved by the code. Pure.
 //! - [`knowledge`]: the claim and source files beside the pages, their reader, validator and merge, and the derived
 //!   knowledge index of a tip (RFC 005 part 2; handoff K-T1 … K-T4).
+//! - [`governance`]: the rules of a wiki as data (RFC 006 D-1 – D-4): the policy and the constitution as types, their
+//!   schema, reader and validator, the defaults (0.3.0's behaviour) and the platform's limits. Pure; no surface.
 //! - [`import`] and [`export`]: `import-folder` (one accepted change under the system principal) and the
 //!   Portable Wiki Bundle export at fidelity level 3 (handoff 003 T7; RFC 003 D-11, D-12).
 
@@ -46,6 +48,7 @@ pub mod bundle;
 pub mod check;
 pub mod egress;
 pub mod export;
+pub mod governance;
 pub mod import;
 pub mod inbox;
 pub mod knowledge;
@@ -82,6 +85,10 @@ pub use check::{
     RetirementReader, StageFinding, Verifier,
 };
 pub use egress::{EgressGuard, EgressRefusal, PinnedTarget, Resolver, StdEgressGuard, StdResolver};
+pub use governance::{
+    ApprovalsWarning, Constitution, GovernanceChange, GovernanceFile, PlatformLimits, Policy,
+    ReadFault, Requirement,
+};
 pub use inbox::Inbox;
 pub use inklkunn_signer::{
     ACTION_FINISH_RETIREMENT, ACTION_RETIRE, ACTION_ROTATE, ArchiveExported, KeyAuthority,
