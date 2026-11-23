@@ -801,6 +801,97 @@ fn an_overturned_grant_decision_restores_the_role_and_a_later_change_makes_it_mo
 }
 
 #[test]
+fn a_grant_decision_is_in_force_only_while_it_is_the_persons_latest_and_an_overturn_never_undoes_a_later_one()
+ {
+    for kind in KINDS {
+        let w = World::new(kind);
+        let admin = w.person("Dee", Some(Role::Admin));
+        let other = w.person("Eve", Some(Role::Admin));
+        let target = w.person("Pat", Some(Role::Admin));
+        // D1 took Pat from admin to maintainer, and Pat appealed it while it was the standing.
+        let d1 = w.regrade(
+            Some(&admin),
+            &target,
+            Some(Role::Admin),
+            Some(Role::Maintainer),
+        );
+        assert_eq!(
+            w.appeals.offer(&target.principal, &w.wiki, &d1),
+            crate::appeal::Offer::Contest
+        );
+        let filed = w
+            .appeals
+            .file(&target.principal, &w.wiki, &d1, WORDS)
+            .unwrap();
+        // D2 took Pat to observer, D3 gave maintainer back: Pat holds what D1 left them, but D1 is not their standing any more.
+        let d2 = w.regrade(
+            Some(&admin),
+            &target,
+            Some(Role::Maintainer),
+            Some(Role::Observer),
+        );
+        let d3 = w.regrade(
+            Some(&other),
+            &target,
+            Some(Role::Observer),
+            Some(Role::Maintainer),
+        );
+        assert_eq!(w.grant_of(&target), Some(Role::Maintainer));
+        for old in [&d1, &d2] {
+            assert_eq!(
+                w.appeals.offer(&target.principal, &w.wiki, old),
+                crate::appeal::Offer::Nothing,
+                "{kind:?}: a decision that is not the latest is nothing to contest"
+            );
+            assert_eq!(
+                w.appeals
+                    .file(&target.principal, &w.wiki, old, WORDS)
+                    .unwrap_err(),
+                AppealError::NotAffected,
+                "{kind:?}"
+            );
+        }
+        // The appeal filed in time is decided by name: restoring admin would undo D3. Nothing was written.
+        assert_eq!(
+            w.appeals
+                .decide(
+                    &other.principal,
+                    &w.wiki,
+                    &filed.id,
+                    Outcome::Overturned,
+                    WHY
+                )
+                .unwrap_err(),
+            AppealError::Overturn(OverturnRefusal::RoleChanged),
+            "{kind:?}"
+        );
+        assert_eq!(w.grant_of(&target), Some(Role::Maintainer), "{kind:?}");
+        assert_eq!(w.appeal(&filed.id).state, AppealState::Open);
+        // D3 raised a role: no grievance. A later lowering is the standing, and is contested and overturned as before.
+        assert_eq!(
+            w.appeals.offer(&target.principal, &w.wiki, &d3),
+            crate::appeal::Offer::Nothing
+        );
+        let d4 = w.regrade(
+            Some(&admin),
+            &target,
+            Some(Role::Maintainer),
+            Some(Role::Reviewer),
+        );
+        assert_eq!(
+            w.appeals.offer(&target.principal, &w.wiki, &d4),
+            crate::appeal::Offer::Contest
+        );
+        overturned(&w, &target, &d4, &other).expect("the latest is overturned");
+        assert_eq!(w.grant_of(&target), Some(Role::Maintainer), "{kind:?}");
+        // The upholding of the appeal that was moot is still possible.
+        w.appeals
+            .decide(&other.principal, &w.wiki, &filed.id, Outcome::Upheld, WHY)
+            .expect("the action stands");
+    }
+}
+
+#[test]
 fn a_decision_that_raised_a_role_or_gave_a_first_one_is_no_ones_grievance() {
     for kind in KINDS {
         let w = World::new(kind);

@@ -11,7 +11,7 @@ use inklkunn_store::{
 use super::service::{AppealError, AppealService, unavailable};
 use crate::protection::{Notice, titles_of};
 use crate::tombstone::Hidden;
-use inklkunn_store::GrantDecisionId;
+use inklkunn_store::{GrantDecisionId, GrantDecisionRecord};
 
 /// Whom an action affects.
 pub(super) enum Who {
@@ -176,8 +176,24 @@ impl AppealService {
         }))
     }
 
-    /// A **grant decision** that took a rung away or lowered it is in force while the person still holds the rung it gave them.
-    /// (A decision that raised a rung, or gave a first one, is no one's grievance.)
+    /// Is this grant decision **the latest** about its person in the wiki? A decision is in force only while it is: after D1 (admin to
+    /// maintainer), D2 (to observer) and D3 (to maintainer) the person holds what D1 gave them, but D1 is not their standing any more,
+    /// and overturning it would undo D3 (A-3).
+    pub(super) fn is_latest_grant(
+        &self,
+        wiki: &WikiRecord,
+        decision: &GrantDecisionRecord,
+    ) -> Result<bool, AppealError> {
+        let latest = self
+            .governance
+            .grant_decisions(&wiki.id, Some(&decision.target), 1)
+            .map_err(unavailable)?;
+        Ok(latest.first().is_some_and(|d| d.id == decision.id))
+    }
+
+    /// A **grant decision** that took a rung away or lowered it is in force while it is **the person's latest decision in the
+    /// wiki** and they still hold the rung it gave them. (A decision that raised a rung, or gave a first one, is no one's
+    /// grievance.)
     fn find_grant(&self, wiki: &WikiRecord, id: &str) -> Result<Option<Found>, AppealError> {
         let Some(id) = GrantDecisionId::parse(id) else {
             return Ok(None);
@@ -199,7 +215,10 @@ impl AppealService {
             .roles
             .role(&decision.target, &wiki.id)
             .map_err(unavailable)?;
-        Ok((lowered && holds == decision.after).then(|| Found {
+        if !(lowered && holds == decision.after && self.is_latest_grant(wiki, &decision)?) {
+            return Ok(None);
+        }
+        Ok(Some(Found {
             who: Who::Account(decision.target),
             actor: decision.by.map(|a| a.account),
             proposal: None,

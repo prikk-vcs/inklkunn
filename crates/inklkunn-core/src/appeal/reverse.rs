@@ -2,7 +2,7 @@
 //!
 //! | Kind | The reversing record | Written |
 //! |---|---|---|
-//! | grant | a grant decision restoring the rung before, **only if** the person still holds the rung the decision gave them, and the decider may grant it (a maintainer's reach is `rungs.grant_up_to`, [`check_grant`]'s own rule) | in the decision's transaction (the store) |
+//! | grant | a grant decision restoring the rung before, **only if** the decision is still the person's latest in the wiki (A-3) and they still hold the rung it gave them, and the decider may grant it (a maintainer's reach is `rungs.grant_up_to`, [`check_grant`]'s own rule) | in the decision's transaction (the store) |
 //! | restriction | a *reversed* event after the restriction's last event, if it is still in force | in the decision's transaction |
 //! | protection | the same, for the protection | in the decision's transaction |
 //! | tombstone | an *unhide* of the hide, with an unhide (naming the appeal too) of every hide **the same act** made, and the reopening of the proposal the act declined | all in the decision's transaction |
@@ -112,6 +112,11 @@ impl AppealService {
             .map_err(unavailable)?
             .filter(|d| d.wiki == wiki.id)
             .ok_or(moot(OverturnRefusal::RoleChanged))?;
+        // The decision must still be the person's standing: a later decision (one or more) is theirs to keep, even when it put them
+        // back where this one left them (A-3).
+        if !self.is_latest_grant(wiki, &decision)? {
+            return Err(moot(OverturnRefusal::RoleChanged));
+        }
         // The person must still hold what the decision gave them: a later change is theirs to keep.
         let current = self
             .roles

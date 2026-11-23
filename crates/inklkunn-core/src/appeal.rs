@@ -10,14 +10,14 @@
 //! | Kind | The action's id | Affects (may appeal) | Who took it | An overturn |
 //! |---|---|---|---|---|
 //! | **decline** | the log position (`proposal_transitions.seq`, decimal) of the decline that is the proposal's last step | the proposal's author | the one who declined | the proposal is **reopened** ([`ProposalOp::Reopen`](inklkunn_store::ProposalOp)), held for review again |
-//! | **tombstone** | a hide in force | the author of what was hidden | the one who hid it | an **unhide** of it, of every hide the same act made, and the reopening of the proposal that act declined (if it is still as that act left it) |
+//! | **tombstone** | a hide in force | the author of what was hidden | the one who hid it | an **unhide** of it, of every hide **of the same act** (one act id, A-2), and the reopening of the proposal that act declined (if it is still as that act left it) |
 //! | **restriction** | the restriction in force | the restricted account | the one who set (or renewed) it | a **reversed** event of it |
 //! | **protection** | a temporary protection in force | the author of an open proposal it holds back (a proposal that touches a page it covers) | the one who set (or renewed) it | a **reversed** event of it |
-//! | **grant** | a decision that took a rung away or lowered it | the account it was about | the one who decided (none: the operator's command line) | a decision **restoring the rung before**, if the person still holds the rung the decision gave them, and the decider may grant it |
+//! | **grant** | a decision that took a rung away or lowered it, **while it is the person's latest decision in the wiki** (A-3) | the account it was about | the one who decided (none: the operator's command line) | a decision **restoring the rung before**, if the decision is still the person's latest and they still hold the rung it gave them, and the decider may grant it |
 //!
 //! A protection is appealable by someone it **affected**, never a bystander: the *affected* are the people whose proposals it
 //! holds, which is a fact of the records. An acceptance a protection refused leaves no record that names who tried, so the rule
-//! does not pretend to know them. A grant decision that **raised** a rung is no one's grievance and is not appealable.
+//! does not pretend to know them. A grant decision that **raised** a rung is no one's grievance and is not appealable; nor is one that a later decision followed (D1 admin to maintainer, D2 to observer, D3 to maintainer: restoring D1's admin would undo D3).
 //!
 //! # What an appeal is
 //!
@@ -42,10 +42,11 @@
 //!
 //! # How an overturn is made atomic
 //!
-//! The store writes the record that reverses a grant, a restriction, a protection or a tombstone **in the same transaction** as
-//! the decision. A decline's reversal and a tombstone's siblings are other stores' records (the proposal log; the same item's
-//! other hides), so those two deciders are **serialized in this process** (one lock for the two kinds) and every check that can
-//! refuse is made before the first of those records is written.
+//! **Every record of an overturn is written in the one transaction of the decision** (A-1): the record that reverses a grant, a
+//! restriction, a protection or a tombstone, the unhides of the rest of a hiding's act, and the reopening of a proposal (the
+//! proposal log is the same database). All or none: a moderator's unhide of one page while the decision is made makes the decision
+//! fail whole, with nothing left written. Every check that can refuse is made before, and the two deciders that read more than
+//! their own record (a decline's, a hiding's) go one at a time in this process, so that what is checked is what the next decision finds.
 
 mod find;
 mod limits;
