@@ -496,5 +496,8 @@ pub(crate) const SIZES: (usize, usize) = (DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
 mod write;
 pub(crate) use write::*;
 
+mod governance_api;
+pub(crate) use governance_api::*;
+
 mod knowledge_api;
 pub(crate) use knowledge_api::*;

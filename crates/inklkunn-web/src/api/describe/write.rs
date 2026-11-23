@@ -30,6 +30,36 @@ pub(crate) const SMALL_BODY_LIMIT: usize = json_of(if MAX_COMMENT_BYTES > MAX_RE
 /// The most bytes of a body that carries no member (`{}`): a little room for white space.
 pub(crate) const EMPTY_BODY_LIMIT: usize = 1024;
 
+/// What a proposal that is refused as `unacceptable` says it was refused for: the `reason` words of the pages' own refusals
+/// (`invalid_word`), listed in the description of each operation that can answer one (handoff G-T7: a test holds that every
+/// word the server can say is described by the operations that can say it).
+macro_rules! proposing_reasons {
+    () => {
+        " The `reason` of an `unacceptable` it answers is one of: `summary-missing`, `summary-too-long`, `summary-not-one-line`, `too-many-sources`, `bad-source`, `nothing-proposed`, `too-large`, `page-too-large`, `bad-path`, `duplicate-path`, `rename-to-self`, `path-outside-pages`, `path-not-canonical`, `path-collides`, `front-unreadable`, `bad-base`, `knowledge-curated`, `knowledge-not-shown`, `knowledge-unjudged`, `knowledge-status-unjudged`, `knowledge-retired-unexplained`, `knowledge-check-unstated`, `governance-path`, `governance-mixed`."
+    };
+}
+
+/// The same for a comment, and for a decision's body, which are bounded as a comment is.
+macro_rules! comment_reasons {
+    () => {
+        " The `reason` of an `unacceptable` it answers is one of: `comment-empty`, `comment-too-long`, `comment-nul` and `bad-anchor`."
+    };
+}
+
+/// The same for a decision, whose body is a comment's and whose reason may be asked.
+macro_rules! decision_reasons {
+    () => {
+        " The `reason` of an `unacceptable` it answers is `comment-too-long`."
+    };
+}
+
+/// The same for the reason a decline or a withdrawal is given with.
+macro_rules! reason_reasons {
+    () => {
+        " The `reason` of an `unacceptable` it answers is `reason-missing` or `reason-too-long`."
+    };
+}
+
 const PROPOSALS: &str = "/{slug}/-/api/v1/proposals";
 
 pub(crate) const CREATE_PROPOSAL: Doc = Doc {
@@ -37,7 +67,10 @@ pub(crate) const CREATE_PROPOSAL: Doc = Doc {
     operation_id: "createProposal",
     tag: "proposals",
     summary: "Open a proposal: a draft, or a proposal sent for review",
-    description: "Opens a proposal of changes to whole pages (each file is a page's full new text, or `null` to remove it; a page is named by its repository `path`, as `storage_path` of the raw endpoint gives it, or a new page by its `title`). `submit: false` keeps it a draft that only its author sees; `submit: true` sends it for review at once. The write names the view's tip it was written against in `If-Match`: the `state_id` of the `tip` the read endpoints give (a stale one is `stale-base`). The answer is the proposal, with the `etag` every later write sends back. Scope `propose`; the quotas of open proposals and of proposals per hour refuse by name (`refused-limit`, with `Retry-After` where waiting helps). A source file under `knowledge/` that this proposal moves to another `reference` and that still carries a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`) when the draft is sent and at every revision: a check of the new place is stated by the proposal, never taken from the old one. A hand-written file states one with `last_reviewed.proposal` set to the proposal's own id (the `id` of the draft, which a `submit: false` call returns) beside the day it looked at the new place, which may not be earlier than the old place's day nor a day that has not come (checked when the proposal is accepted); a curation proposal states it with `checked`. **A change to the rules of the wiki is its own proposal:** under `governance/` a file may be written only at `governance/constitution.yaml` or `governance/policy.yaml` (a write of anything else there, and a rename of either file, is `unacceptable` with `reason` `governance-path`), but any path below `governance/` may be removed (`\"text\": null`: how something that stands where a governance file belongs is cleared, in the same proposal that writes the file), and a proposal that names a path under `governance/` names nothing else, no page and no rename (`unacceptable`, `governance-mixed`); the two files together are one change to the rules. The files' text is judged when the proposal is accepted.",
+    description: concat!(
+        "Opens a proposal of changes to whole pages (each file is a page's full new text, or `null` to remove it; a page is named by its repository `path`, as `storage_path` of the raw endpoint gives it, or a new page by its `title`). `submit: false` keeps it a draft that only its author sees; `submit: true` sends it for review at once. The write names the view's tip it was written against in `If-Match`: the `state_id` of the `tip` the read endpoints give (a stale one is `stale-base`). The answer is the proposal, with the `etag` every later write sends back. Scope `propose`; the quotas of open proposals and of proposals per hour refuse by name (`refused-limit`, with `Retry-After` where waiting helps). A source file under `knowledge/` that this proposal moves to another `reference` and that still carries a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`) when the draft is sent and at every revision: a check of the new place is stated by the proposal, never taken from the old one. A hand-written file states one with `last_reviewed.proposal` set to the proposal's own id (the `id` of the draft, which a `submit: false` call returns) beside the day it looked at the new place, which may not be earlier than the old place's day nor a day that has not come (checked when the proposal is accepted); a curation proposal states it with `checked`. **A change to the rules of the wiki is its own proposal:** under `governance/` a file may be written only at `governance/constitution.yaml` or `governance/policy.yaml` (a write of anything else there, and a rename of either file, is `unacceptable` with `reason` `governance-path`), but any path below `governance/` may be removed (`\"text\": null`: how something that stands where a governance file belongs is cleared, in the same proposal that writes the file), and a proposal that names a path under `governance/` names nothing else, no page and no rename (`unacceptable`, `governance-mixed`); the two files together are one change to the rules. The files' text is judged when the proposal is accepted.",
+        proposing_reasons!()
+    ),
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -72,7 +105,10 @@ pub(crate) const SAVE_DRAFT: Doc = Doc {
     operation_id: "saveDraft",
     tag: "proposals",
     summary: "Save a draft's working copy",
-    description: "Replaces the draft's summary, sources, pages and renames with these (its base is kept). Only the author, and only while it is a draft. Scope `propose`. A draft is checked for what is wrong with it, not for what is missing: the summary and a change are required only to submit it. The rules for `governance/` are `createProposal`'s: `governance-path`, and `governance-mixed` for a draft that names a governance file and anything else.",
+    description: concat!(
+        "Replaces the draft's summary, sources, pages and renames with these (its base is kept). Only the author, and only while it is a draft. Scope `propose`. A draft is checked for what is wrong with it, not for what is missing: the summary and a change are required only to submit it. The rules for `governance/` are `createProposal`'s: `governance-path`, and `governance-mixed` for a draft that names a governance file and anything else.",
+        proposing_reasons!()
+    ),
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -90,7 +126,10 @@ pub(crate) const SUBMIT_DRAFT: Doc = Doc {
     operation_id: "submitDraft",
     tag: "proposals",
     summary: "Send a draft for review",
-    description: "The draft's working copy becomes revision 1 and the proposal is held for review. Only the author. The body is `{}`. Scope `propose`. A draft that moves a source to another `reference` and leaves a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`): a check of the new place is stated as `createProposal` says (`checked` in a curation; the proposal's own id in `last_reviewed.proposal` in a hand-written file). The rules for `governance/` are `createProposal`'s too (`governance-path`, `governance-mixed`).",
+    description: concat!(
+        "The draft's working copy becomes revision 1 and the proposal is held for review. Only the author. The body is `{}`. Scope `propose`. A draft that moves a source to another `reference` and leaves a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`): a check of the new place is stated as `createProposal` says (`checked` in a curation; the proposal's own id in `last_reviewed.proposal` in a hand-written file). The rules for `governance/` are `createProposal`'s too (`governance-path`, `governance-mixed`).",
+        proposing_reasons!()
+    ),
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -108,7 +147,10 @@ pub(crate) const REVISE: Doc = Doc {
     operation_id: "reviseProposal",
     tag: "proposals",
     summary: "Add a revision to a proposal",
-    description: "A new revision of a proposal that is held for review or needs one: the proposal is held for review again, and decisions on earlier revisions no longer count towards acceptance (they stay recorded). Only the proposer, within the quota of revisions. Pages are as for a new proposal, held to the base the proposal already has, and a check of a source moved to another reference is stated as `createProposal` says (`knowledge-check-unstated`), and a change to the rules is its own proposal at every revision (`governance-path`, `governance-mixed`). Scope `propose`. The answer is the proposal, with the `etag` of the new revision.",
+    description: concat!(
+        "A new revision of a proposal that is held for review or needs one: the proposal is held for review again, and decisions on earlier revisions no longer count towards acceptance (they stay recorded). Only the proposer, within the quota of revisions. Pages are as for a new proposal, held to the base the proposal already has, and a check of a source moved to another reference is stated as `createProposal` says (`knowledge-check-unstated`), and a change to the rules is its own proposal at every revision (`governance-path`, `governance-mixed`). Scope `propose`. The answer is the proposal, with the `etag` of the new revision.",
+        proposing_reasons!()
+    ),
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -126,7 +168,10 @@ pub(crate) const COMMENT: Doc = Doc {
     operation_id: "commentOnProposal",
     tag: "review",
     summary: "Comment on a proposal",
-    description: "A comment on the latest revision of a proposal that is held for review or needs a revision; a reply names its `parent`; a comment on a part of a page names it by `anchor` (the page's path, the part's position in the revision seen, and that revision), and the server builds the anchor from that revision's own text. Scope `propose`.",
+    description: concat!(
+        "A comment on the latest revision of a proposal that is held for review or needs a revision; a reply names its `parent`; a comment on a part of a page names it by `anchor` (the page's path, the part's position in the revision seen, and that revision), and the server builds the anchor from that revision's own text. Scope `propose`.",
+        comment_reasons!()
+    ),
     query: &[],
     answer: Answer::Schema("Comment"),
     write: Some(Write {
@@ -144,7 +189,10 @@ pub(crate) const DECIDE: Doc = Doc {
     operation_id: "decideOnProposal",
     tag: "review",
     summary: "Approve a revision, or ask for changes",
-    description: "A decision bound to the revision named by `If-Match` (the latest, or `stale-base`). One decision per reviewer per revision; a decision is not changed (`already-decided`). A proposer's own decision is refused (`own-proposal`); a comment on one's own proposal is not. Scope `review`.",
+    description: concat!(
+        "A decision bound to the revision named by `If-Match` (the latest, or `stale-base`). One decision per reviewer per revision; a decision is not changed (`already-decided`). A proposer's own decision is refused (`own-proposal`); a comment on one's own proposal is not. Scope `review`.",
+        decision_reasons!()
+    ),
     query: &[],
     answer: Answer::Schema("Decision"),
     write: Some(Write {
@@ -198,7 +246,10 @@ pub(crate) const DECLINE: Doc = Doc {
     operation_id: "declineProposal",
     tag: "review",
     summary: "Decline a proposal, with a reason",
-    description: "Ends a proposal that is held for review or needs a revision; the reason is required and the proposer is told. Scope `accept`. While a governance file of the wiki cannot be read, only a proposal that changes the two governance files and nothing else can be declined; any other is `forbidden` with `reason` `rules-unreadable` (and `file`, `rule` and `line`, as `acceptProposal` says).",
+    description: concat!(
+        "Ends a proposal that is held for review or needs a revision; the reason is required and the proposer is told. Scope `accept`. While a governance file of the wiki cannot be read, only a proposal that changes the two governance files and nothing else can be declined; any other is `forbidden` with `reason` `rules-unreadable` (and `file`, `rule` and `line`, as `acceptProposal` says).",
+        reason_reasons!()
+    ),
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -216,7 +267,10 @@ pub(crate) const WITHDRAW: Doc = Doc {
     operation_id: "withdrawProposal",
     tag: "proposals",
     summary: "Take a proposal back, with a reason",
-    description: "Ends the proposer's own proposal, a draft included; the reason is required. Only the proposer. Scope `propose`.",
+    description: concat!(
+        "Ends the proposer's own proposal, a draft included; the reason is required. Only the proposer. Scope `propose`.",
+        reason_reasons!()
+    ),
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {

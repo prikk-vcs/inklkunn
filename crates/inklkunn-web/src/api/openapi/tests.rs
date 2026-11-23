@@ -483,6 +483,8 @@ fn a_restricted_account_refusal_is_described_with_every_member_the_server_emits(
         id: RestrictionEventId::new(),
         reason: "spam".to_owned(),
         until: 1_700_000_000,
+        by_rung: inklkunn_store::Role::Maintainer,
+        policy_block: None,
     };
     let t = crate::api::request::language(&axum::http::HeaderMap::new());
     let body = crate::api::write::refuse::restricted_problem(t, &notice).body(t);
@@ -495,5 +497,113 @@ fn a_restricted_account_refusal_is_described_with_every_member_the_server_emits(
             members.get(member).is_some(),
             "the problem member `{member}` of a restricted account is not described"
         );
+    }
+}
+
+/// **Every reason a proposal can be refused with is described** (the reasons-tie of handoff G-T1 correction C-7, widened by G-T7
+/// to the older `Invalid` reasons, `bad-path` among them): each word the server can say for an `unacceptable` write is named by
+/// the description of each operation that can say it. A new `Invalid` has to be classified here to compile.
+#[test]
+fn every_reason_a_write_is_refused_with_is_described_by_the_operations_that_can_say_it() {
+    use crate::api::write::refuse::invalid_word;
+    use inklkunn_core::proposal::Invalid as I;
+
+    enum Where {
+        Proposing,
+        Comment,
+        Decision,
+        Reason,
+        NoEndpoint,
+    }
+    // Exhaustive: a new refusal of a proposal is a compile error until it is said where the API can answer it.
+    fn place(why: I) -> Vec<Where> {
+        match why {
+            I::SummaryMissing
+            | I::SummaryTooLong
+            | I::SummaryNotOneLine
+            | I::TooManySources
+            | I::BadSource
+            | I::NothingProposed
+            | I::TooLarge
+            | I::PageTooLarge
+            | I::BadPath
+            | I::DuplicatePath
+            | I::RenameToSelf
+            | I::PathOutsidePages
+            | I::PathNotCanonical
+            | I::PathCollides
+            | I::FrontUnreadable
+            | I::BadBase
+            | I::KnowledgeCurated
+            | I::KnowledgeNotShown
+            | I::KnowledgeUnjudged
+            | I::KnowledgeStatusUnjudged
+            | I::KnowledgeRetiredUnexplained
+            | I::KnowledgeCheckUnstated
+            | I::GovernancePath
+            | I::GovernanceMixed => vec![Where::Proposing],
+            I::CommentEmpty | I::CommentNul | I::BadAnchor => vec![Where::Comment],
+            I::CommentTooLong => vec![Where::Comment, Where::Decision],
+            I::ReasonMissing | I::ReasonTooLong => vec![Where::Reason],
+            // Setting one proposal aside for another is a form's act: the API has no endpoint for it.
+            I::SupersedeSelf => vec![Where::NoEndpoint],
+        }
+    }
+    let document = document(&real_table(), &docs()).unwrap();
+    let all = [
+        I::SummaryMissing,
+        I::SummaryTooLong,
+        I::SummaryNotOneLine,
+        I::TooManySources,
+        I::BadSource,
+        I::NothingProposed,
+        I::TooLarge,
+        I::PageTooLarge,
+        I::BadPath,
+        I::DuplicatePath,
+        I::RenameToSelf,
+        I::PathOutsidePages,
+        I::PathNotCanonical,
+        I::PathCollides,
+        I::FrontUnreadable,
+        I::BadBase,
+        I::ReasonMissing,
+        I::ReasonTooLong,
+        I::CommentEmpty,
+        I::CommentTooLong,
+        I::CommentNul,
+        I::BadAnchor,
+        I::SupersedeSelf,
+        I::KnowledgeCurated,
+        I::KnowledgeNotShown,
+        I::KnowledgeUnjudged,
+        I::KnowledgeStatusUnjudged,
+        I::KnowledgeRetiredUnexplained,
+        I::KnowledgeCheckUnstated,
+        I::GovernancePath,
+        I::GovernanceMixed,
+    ];
+    for why in all {
+        let word = invalid_word(why);
+        for at in place(why) {
+            let ops: &[&str] = match at {
+                Where::Proposing => &[
+                    "createProposal",
+                    "saveDraft",
+                    "submitDraft",
+                    "reviseProposal",
+                ],
+                Where::Comment => &["commentOnProposal"],
+                Where::Decision => &["decideOnProposal"],
+                Where::Reason => &["declineProposal", "withdrawProposal"],
+                Where::NoEndpoint => &[],
+            };
+            for op in ops {
+                assert!(
+                    described(&document, op).contains(&format!("`{word}`")),
+                    "{op} does not describe `{word}`"
+                );
+            }
+        }
     }
 }

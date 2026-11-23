@@ -420,7 +420,7 @@ impl<'a> Checker<'a> {
     }
 }
 
-fn schema_of_operation(document: &Value, template: &str) -> Value {
+pub(super) fn schema_of_operation(document: &Value, template: &str) -> Value {
     let key = template.replace('/', "~1");
     document
         .pointer(&format!(

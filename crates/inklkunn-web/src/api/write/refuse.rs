@@ -392,7 +392,7 @@ fn restricted_members(problem: Problem, notice: &RestrictionNotice) -> Problem {
 /// Where the rule is `not-a-file`, **`found`** lists what stands at or below the file's place (the repository's paths, at most
 /// 50) and **`found_more`** counts the rest: what the repair, a change by an admin that removes these and writes the file,
 /// removes. Said only to whoever may read the wiki, as the fault is.
-fn rules_unreadable_problem(fault: &ReadFault) -> Problem {
+pub(crate) fn rules_unreadable_problem(fault: &ReadFault) -> Problem {
     let problem = Problem::new(Code::Forbidden)
         .named("reason", "rules-unreadable")
         .named("file", fault.file().path())

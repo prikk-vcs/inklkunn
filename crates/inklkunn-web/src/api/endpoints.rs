@@ -29,6 +29,7 @@ use crate::services::Services;
 use crate::url::view_ref;
 
 mod across;
+mod governance_api;
 mod knowledge_api;
 mod past;
 
@@ -92,6 +93,17 @@ pub(super) fn all() -> Vec<Endpoint> {
         }),
         documented(&describe::COMPARE_VIEWS, read, || {
             get(knowledge_api::compare_views)
+        }),
+        // --- governance (RFC 006 D-12; handoff G-T7): the rules, the protections, the moderation log and one's own appeals. Read only.
+        documented(&describe::POLICY, read, || get(governance_api::policy)),
+        documented(&describe::PROTECTIONS, read, || {
+            get(governance_api::protections)
+        }),
+        documented(&describe::MODERATION_LOG, read, || {
+            get(governance_api::moderation_log)
+        }),
+        documented(&describe::MY_APPEALS, read, || {
+            get(governance_api::my_appeals)
         }),
         // --- the write API (handoff 004 T7)
         written(&describe::CREATE_PROPOSAL, || post(propose::create)),

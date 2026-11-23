@@ -272,3 +272,35 @@ fn the_retired_words_do_not_appear_in_any_problem_outside_an_explanation() {
         }
     }
 }
+
+/// **Criterion 15, for the API's problems** (RFC 006; handoff G-T7): no problem says a key of the rules' files as the files write
+/// it, and none calls anything *official*, in either language. The rules are *the rules of this wiki*.
+#[test]
+fn no_problem_says_a_key_of_the_files_or_calls_anything_official() {
+    let keys = [
+        "rungs.",
+        "acceptance.",
+        "create_view",
+        "decide_appeal",
+        "grant_up_to",
+        "review_after",
+        "small-wiki",
+        "policy_change",
+        "constitution_change",
+        "entry:",
+        "rungs:",
+    ];
+    for t in [en(), ja()] {
+        for code in Code::ALL {
+            let (title, detail, hint) = code.keys();
+            for key in [title, detail, hint] {
+                let words = t.get(key);
+                for raw in keys {
+                    assert!(!words.contains(raw), "{code:?} says `{raw}`: {words}");
+                }
+                assert!(!words.to_lowercase().contains("official"), "{words}");
+                assert!(!words.contains("公式"), "{words}");
+            }
+        }
+    }
+}

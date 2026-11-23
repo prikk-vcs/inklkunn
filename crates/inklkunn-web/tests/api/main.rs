@@ -8,6 +8,7 @@ mod across;
 #[path = "../common/mod.rs"]
 mod common;
 mod description;
+mod governance;
 mod knowledge;
 mod past;
 mod shapes;
