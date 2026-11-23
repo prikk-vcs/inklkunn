@@ -162,8 +162,12 @@ is escalated through a policy edit (A-AUTHZ, A-CONTENT).
   (RFC 006 D-1).
 - **C-3f** The hatch: an admin of a wiki can always accept a change to `governance/`, with no approvals, and the
   acceptance record names the hatch (RFC 006 D-4; INV-14).
-- **C-3g** Protections and restrictions are outcomes of `authorize()` (AZ-3), never of a template, and each refusal
-  names its cause, reason and end (RFC 006 D-7).
+- **C-3g** Protections and restrictions are decided in the core, never in a template, and each refusal names its cause,
+  reason and end (RFC 006 D-7).
+  - A restriction caps the rung inside `authorize()`.
+  - A protection limits acceptance. The acceptance's `judge` evaluates it through the authorizer, before the lease and
+    again under it (AZ-3; G-T3 F-3).
+  - Under the lease the acceptor must still hold the accept rung (G-T1 F-1).
 
 ### T-4 — Hostile proposed content
 Attacker-controlled text that becomes a file in a repository: a title that is a path (`../`, reserved names,

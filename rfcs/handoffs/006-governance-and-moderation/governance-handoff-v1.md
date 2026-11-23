@@ -217,3 +217,45 @@ Hand back as `006-governance-g-t2-g-t3-corrections-review-request.md` (F-1 may c
 assignable now, beside the round** (one request for the group, `006-governance-g-t4-g-t6-review-request.md`). F-1 changes
 `judge`: merge it before G-T5's overturns touch acceptance.
 
+## G-T4 – G-T6 reviewed; the corrections approved; G-T7 assignable (2026-11-24)
+
+- **F-1 – F-7 and E-1: Approved** (`.git-exclude/reviewed/006-governance-g-t2-g-t3-corrections-review-result.md`).
+- **G-T5 and G-T6: Conditionally Approved. G-T4: Changes Requested**
+  (`.git-exclude/reviewed/006-governance-g-t4-g-t6-review-result.md`).
+- **Nothing is pushed** until G-T4's round is approved, because the commits are interleaved.
+
+The corrections, in order of weight. The details and tests are in the result.
+- **H-1 (High).** One reader in the core for page and knowledge-file text at a block. It resolves the revision that
+  wrote each path and checks that revision's content mark, and every read goes through it: `at`, both diff sides, every
+  proposal base, revise, `rollback_plan`, Why's attached sources. The storage read is private to it, with a test that
+  fails if another module calls it. INV-13 then holds for reads as well as routes.
+- **H-2 (High).** Every surface of a page change, and the export, read the hides of every revision of its proposal.
+  Acceptance refuses while the latest revision's summary is hidden (`summary-hidden`).
+- **H-3 – H-7.**
+  - H-3: a hidden author is masked in the withdraw sentence and on the author's comments.
+  - H-4: Why's attached sources go through H-1.
+  - H-5: the tip check compares every path, and the form states surviving lines with their count.
+  - H-6: a decline by a hide names no moderator.
+  - H-7: new rollbacks write *Undo: change {number}*, and old *Undo:* summaries that quote a hidden summary are masked.
+- **N-1.** The renew and lift races say `state-changed`.
+- **A-1 – A-6.**
+  - A-1: an overturn and its decision in one transaction.
+  - A-2: an act id in V19, replacing the 2 s heuristic.
+  - A-3: only a grant's latest decision can be overturned.
+  - A-4: `decide_appeal` ≥ `moderate` in the ordering rule.
+  - A-5: every actor of the chain is barred from deciding.
+  - A-6: the open queue is read separately, plus `INKLKUNN_APPEAL_OPEN_PER_PERSON`.
+- **S-1 – S-3.**
+  - S-1: the 410 reads the removal only, and the way back is worked out on `/-/restore` only.
+  - S-2: *unreadable* is judged from the bytes (not UTF-8, over the bound, not parsing), and `moderate` is asked again
+    at acceptance.
+  - S-3: the restore summary from the catalog, and a separate not-offered sentence.
+- **Small items:**
+  - `export_bundle` is test-only;
+  - glossary rows for *appeal* and *contest this*.
+
+Hand back as `006-governance-g-t4-g-t6-corrections-review-request.md` (H-1 and H-2 may come first).
+
+**G-T7 is assignable now, beside the round** (`006-governance-g-t7-review-request.md`). It should read page text only
+through H-1's reader once that lands. Readiness (R-5) gets its section here when G-T7 is approved.
+

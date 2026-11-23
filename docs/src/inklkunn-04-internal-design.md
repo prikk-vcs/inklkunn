@@ -234,8 +234,9 @@ crate, lints as prikk's: `unwrap_used`, `expect_used` and `indexing_slicing` den
 - **AZ-2** `authorize(principal, action, resource)` in CR-core: pure over a snapshot of roles, policy and
   the resource's visibility; default deny; existence-neutral; audited for consequential actions (ID-8).
   Policy in M2 is the bootstrap's fixed role set; M4 reads the versioned policy object (GV-1).
-- **AZ-3** Scopes intersect roles (`read` ⊂ `propose` ⊂ `review` ⊂ `accept` ⊂ `admin`); protections
-  evaluated inside `authorize(_, accept | propose, page)`.
+- **AZ-3** Scopes intersect roles (`read` ⊂ `propose` ⊂ `review` ⊂ `accept` ⊂ `admin`). A restriction caps the rung
+  inside `authorize()`. Protections limit **acceptance** only (RFC 006 D-7). The acceptance's `judge` evaluates them
+  through the authorizer (`protections_for_change`), before the lease and again under it, and never in a template.
 
 ## 11. Concurrency, consistency and recovery (CON-…)
 
