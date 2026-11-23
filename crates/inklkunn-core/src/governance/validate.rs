@@ -107,3 +107,20 @@ pub fn refuse_unknown_files<'a>(touched: impl IntoIterator<Item = &'a str>) -> R
         Some(_) => Err(Fault::unknown_file()),
     }
 }
+
+/// **A change to the rules is its own proposal** (RFC 006 D-4; handoff G-T1 correction C-1): a change that touches a path
+/// under `governance/` touches nothing else. `touched` is every path the proposal writes, removes or renames to or from;
+/// the answer is *yes* when at least one is under `governance/` and at least one is not. Touching both governance files
+/// together is not mixing. What accepts a change to the rules (the hatch, and the approvals it lifts) is then never what
+/// accepts a page.
+pub fn mixes_rules_with_other_paths<'a>(touched: impl IntoIterator<Item = &'a str>) -> bool {
+    let (mut rules, mut others) = (false, false);
+    for path in touched {
+        if is_governance_path(path) {
+            rules = true;
+        } else {
+            others = true;
+        }
+    }
+    rules && others
+}

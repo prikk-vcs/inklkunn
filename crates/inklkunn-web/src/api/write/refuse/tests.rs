@@ -107,6 +107,7 @@ fn every_reason_a_proposal_can_be_unacceptable_has_a_distinct_stable_word() {
         BadAnchor,
         SupersedeSelf,
         GovernancePath,
+        GovernanceMixed,
     ];
     let words: std::collections::BTreeSet<&str> = all.iter().map(|w| invalid_word(*w)).collect();
     assert_eq!(words.len(), all.len());

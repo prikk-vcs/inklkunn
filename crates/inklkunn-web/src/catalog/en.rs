@@ -3348,6 +3348,10 @@ pub const CATALOG: &[Entry] = &[
         "invalid.governance_path",
         "Under governance/ a proposal may write constitution.yaml and policy.yaml and nothing else, and cannot rename them.",
     ),
+    msg(
+        "invalid.governance_mixed",
+        "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml or policy.yaml cannot change a page or anything else.",
+    ),
     plural_msg(
         "proposal.approvals_unreachable",
         "The rules of this wiki ask for {count} approval from someone other than the proposer, and not enough people can give it yet. No proposal can be accepted until more people hold the role that reviews.",

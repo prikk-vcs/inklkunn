@@ -33,6 +33,7 @@ use inklkunn_store::{
 use crate::authorize::{Action, Authorizer, Principal, Resource, Standing};
 use crate::governance::{
     ApprovalsWarning, GovernanceFile, ReadFault, Rules, approvals_warning, is_governance_path,
+    mixes_rules_with_other_paths,
 };
 use crate::notify::Notifier;
 use crate::read::{ReadError, ReadService};
@@ -248,6 +249,12 @@ pub enum Invalid {
     /// never renamed. (A proposal that writes one of the two is an ordinary proposal; its text is judged when it is
     /// accepted.)
     GovernancePath,
+    /// The proposal touches `governance/` **and** something else (RFC 006 D-4; handoff G-T1 correction C-1): a change to the
+    /// rules of a wiki is proposed on its own, so that the people who approve it approve a change to the rules and nothing
+    /// else, and what accepts a change to the rules (an admin's hatch) never accepts a page. Touching both governance files
+    /// together is one change to the rules and is allowed. Refused when a draft is saved, when it is sent, at each revision,
+    /// and again when the proposal is accepted.
+    GovernanceMixed,
     /// A page that is not at the base has a path other than the one its title gives (P4).
     PathNotCanonical,
     /// A new path collides, on a case-insensitive file system, with a page that stays or with another new path;
@@ -580,6 +587,9 @@ fn validate(
         if !froms.insert(r.from.as_str()) || !tos.insert(r.to.as_str()) {
             return Err(Invalid::DuplicatePath);
         }
+    }
+    if mixes_rules_with_other_paths(touched_by(content)) {
+        return Err(Invalid::GovernanceMixed);
     }
     if content.bytes() > MAX_PROPOSAL_BYTES {
         return Err(Invalid::TooLarge);

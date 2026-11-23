@@ -57,7 +57,9 @@ use crate::governance::{Fault as GovernanceFault, ReadFault};
 use crate::knowledge::check::Refusal as KnowledgeRefusal;
 use crate::lease::{Busy, BusyWhy, Lease, LeaseError, Purpose, WikiLeases};
 use crate::notify::Notifier;
-use crate::proposal::{ProposalError, ProposalService, QuotaLimit, QuotaRefusal, Reset, machine};
+use crate::proposal::{
+    Invalid, ProposalError, ProposalService, QuotaLimit, QuotaRefusal, Reset, machine,
+};
 use crate::read::ReadService;
 use crate::reconcile::Finding;
 
@@ -133,6 +135,9 @@ pub mod words {
     pub const APPROVALS_MISSING: &str = "approvals-missing";
     /// A governance file of this wiki cannot be read, so every write refuses until it is repaired (RFC 006 D-1).
     pub const RULES_UNREADABLE: &str = "rules-unreadable";
+    /// A change that touches `governance/` and something else is refused: a change to the rules is its own proposal
+    /// (RFC 006 D-4; handoff G-T1 correction C-1). It is the word of [`Invalid::GovernanceMixed`](crate::proposal::Invalid).
+    pub const GOVERNANCE_MIXED: &str = "governance-mixed";
 }
 
 /// What a proposal's change is recorded as: the message's `Kind`. A rollback is a proposal that was created as
@@ -384,6 +389,9 @@ impl AcceptFailure {
             AcceptFailure::ApprovalsMissing { .. } => words::APPROVALS_MISSING,
             AcceptFailure::RulesUnreadable(_) => words::RULES_UNREADABLE,
             AcceptFailure::Failed { word, .. } => word,
+            AcceptFailure::Proposal(ProposalError::Invalid(Invalid::GovernanceMixed)) => {
+                words::GOVERNANCE_MIXED
+            }
             AcceptFailure::Proposal(_)
             | AcceptFailure::InProgress { .. }
             | AcceptFailure::Unavailable(_)
@@ -715,6 +723,7 @@ impl ProposalAcceptor {
         // The rung, the approvals and the proposer's own acceptance, judged by the rules of the wiki, from what the revision
         // writes (an early refusal; the one that counts is made again under the lease, from what is about to be signed).
         let touched = self.revision_paths(principal, wiki, id, revision)?;
+        governance::refuse_mixed(&touched)?;
         self.judge(principal, wiki, &proposal, &acceptor, &touched)?;
 
         // 1. The lease.

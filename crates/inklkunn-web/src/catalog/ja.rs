@@ -3409,6 +3409,10 @@ pub const CATALOG: &[Entry] = &[
         "governance/ の下に書けるのは constitution.yaml と policy.yaml だけで、名前を変えることもできません。",
     ),
     msg(
+        "invalid.governance_mixed",
+        "このウィキのルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",
+    ),
+    msg(
         "proposal.approvals_unreachable",
         "このウィキのルールでは、提案者以外の人からの承認が {count} 件必要ですが、承認できる人がまだ足りません。レビューできる役割を持つ人が増えるまで、どの提案も受け入れられません。",
     ),

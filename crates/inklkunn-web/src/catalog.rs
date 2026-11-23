@@ -1722,6 +1722,7 @@ keys! {
     OutcomeRulesUnreadable => "outcome.rules_unreadable",
     OutcomeNoteRulesUnreadable => "outcome_note.rules_unreadable",
     InvalidGovernancePath => "invalid.governance_path",
+    InvalidGovernanceMixed => "invalid.governance_mixed",
     ProposalApprovalsUnreachable => "proposal.approvals_unreachable",
     // governance: the refusals of acceptance and the approvals warning (RFC 006 D-1, D-4; handoff G-T1 part C): end
 }

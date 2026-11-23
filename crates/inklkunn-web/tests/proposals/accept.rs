@@ -11,7 +11,9 @@ use axum::http::StatusCode;
 use inklkunn_core::acceptance::{Reconciled, words};
 use inklkunn_core::governance::{Fault, GovernanceFile, ReadFault, Refusal as GovernanceRefusal};
 use inklkunn_core::lease::{Busy, BusyWhy};
-use inklkunn_core::proposal::{ProposalEdit, ProposalError, QuotaLimit, QuotaRefusal, Reset};
+use inklkunn_core::proposal::{
+    Invalid, ProposalEdit, ProposalError, QuotaLimit, QuotaRefusal, Reset,
+};
 use inklkunn_core::{AcceptFailure, Accepted, IdentityAuthority, Principal, Signed};
 use inklkunn_store::{
     AcceptanceId, AccountId, ActStore, FileChange, OverlapRecord, OverlapText, ProposalId,
@@ -452,6 +454,21 @@ fn cases() -> Vec<Case> {
             japanese: &[
                 "<h1>署名されませんでした: 承認がまだ足りません</h1>",
                 "最新の修正版への承認が 2 件必要です。現在は 1 件です。",
+            ],
+        },
+        Case {
+            name: "the rules of the wiki: a change to them is proposed on its own",
+            answer: || {
+                Err(AcceptFailure::Proposal(ProposalError::Invalid(
+                    Invalid::GovernanceMixed,
+                )))
+            },
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            english: &[
+                "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml or policy.yaml cannot change a page or anything else.",
+            ],
+            japanese: &[
+                "このウィキのルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",
             ],
         },
         Case {

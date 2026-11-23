@@ -24,6 +24,12 @@
 //! whose policy says *an admin accepts* and *never one's own* would otherwise be unable to change the rules, which is the one
 //! way such a wiki dies.
 //!
+//! **A change to the rules is its own proposal.** A proposal that touches `governance/` touches nothing else
+//! ([`Invalid::GovernanceMixed`]): it is refused when it is proposed and at each revision, and again at acceptance, before
+//! the lease and under it ([`refuse_mixed`]). The hatch checks it for itself too: it covers a change only if **every** path the
+//! change touches is under `governance/`, so a page that reached acceptance beside a rules change is judged by the policy's
+//! approvals like any page, never by the hatch.
+//!
 //! # A wiki whose governance cannot be read (D-1, C-3d)
 //!
 //! Every write refuses, naming the file and the line ([`AcceptFailure::RulesUnreadable`]), **except the repair**: an admin's
@@ -40,9 +46,10 @@ use super::{AcceptFailure, ProposalAcceptor};
 use crate::authorize::Principal;
 use crate::governance::{
     Fault, GovernanceChange, GovernanceFile, Requirement, ViewPlace, is_governance_path,
-    refuse_outside_default_view, refuse_unknown_files, validate_constitution_bytes,
-    validate_policy_bytes,
+    mixes_rules_with_other_paths, refuse_outside_default_view, refuse_unknown_files,
+    validate_constitution_bytes, validate_policy_bytes,
 };
+use crate::proposal::{Invalid, ProposalError};
 
 /// How an acceptance was authorized: what the acceptance record says about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,7 +92,10 @@ impl ProposalAcceptor {
         // The hatch is an admin's: the rung, and a credential that carries it (a token of a narrower scope does not).
         let admin = rung >= Role::Admin
             && matches!(principal, Principal::Account(a) if a.scope() >= inklkunn_store::Scope::Admin);
-        let hatch = admin && !kinds.is_empty();
+        // A second guard beside `check_governance`'s (C-1): the hatch is for a change to the rules and for nothing else, so a
+        // change that also touches anything outside `governance/` is not the hatch, whatever reached here.
+        let rules_only = !touched.is_empty() && touched.iter().all(|p| is_governance_path(p));
+        let hatch = admin && !kinds.is_empty() && rules_only;
         if let Some(fault) = rules.fault() {
             let only_governance =
                 !touched.is_empty() && touched.iter().all(|p| GovernanceFile::of_path(p).is_some());
@@ -186,6 +196,7 @@ impl ProposalAcceptor {
         if !paths.iter().any(|p| is_governance_path(p)) {
             return Ok(());
         }
+        refuse_mixed(&paths)?;
         let place = if proposal.view == wiki.default_view {
             ViewPlace::Default
         } else {
@@ -216,6 +227,18 @@ impl ProposalAcceptor {
             Err(AcceptFailure::GovernanceInvalid(faults))
         }
     }
+}
+
+/// A change to the rules touches nothing else (C-1): the refusal made when it was proposed, made again at acceptance for a
+/// proposal made before the rule, or one that reached the store another way. Asked before the lease, from what the revision
+/// writes, and again under it, from what is about to be signed.
+pub(super) fn refuse_mixed(touched: &[String]) -> Result<(), AcceptFailure> {
+    if mixes_rules_with_other_paths(touched.iter().map(String::as_str)) {
+        return Err(AcceptFailure::Proposal(ProposalError::Invalid(
+            Invalid::GovernanceMixed,
+        )));
+    }
+    Ok(())
 }
 
 /// Every repository path a change writes, removes or renames to or from.

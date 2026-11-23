@@ -992,3 +992,100 @@ fn governance_is_a_closed_set_of_two_files_and_anything_else_under_it_is_refused
         }
     });
 }
+
+#[test]
+fn a_change_to_the_rules_is_proposed_on_its_own_and_mixing_is_refused_by_name_at_every_step() {
+    on_both(|e| {
+        e.bases.put_page("pages/A.md", "x\n");
+        let page = || change("pages/A.md", Some("y\n"));
+        let rules = || change("governance/policy.yaml", Some("entry: none\n"));
+        let constitution = || change("governance/constitution.yaml", Some("entry: none\n"));
+        // Drafted: a page and a governance file together are refused, whichever order and whatever the page is.
+        for files in [
+            vec![page(), rules()],
+            vec![rules(), page()],
+            vec![constitution(), page()],
+        ] {
+            assert_eq!(
+                create(e, &e.author, proposal(files, vec![])),
+                invalid(Invalid::GovernanceMixed)
+            );
+        }
+        // A page renamed beside a rules change is something else touched too.
+        assert_eq!(
+            create(
+                e,
+                &e.author,
+                proposal(vec![rules()], vec![rename("pages/A.md", "pages/B.md")])
+            ),
+            invalid(Invalid::GovernanceMixed)
+        );
+        // A file under `governance/` that is neither of the two is `GovernancePath`, not mixing.
+        assert_eq!(
+            create(
+                e,
+                &e.author,
+                proposal(vec![page(), change("governance/x.md", Some("x\n"))], vec![])
+            ),
+            invalid(Invalid::GovernancePath)
+        );
+        // Both governance files together are one change to the rules, and a page alone is as it was.
+        assert_eq!(
+            create(
+                e,
+                &e.author,
+                proposal(vec![rules(), constitution()], vec![])
+            ),
+            Ok(())
+        );
+        assert_eq!(create(e, &e.author, proposal(vec![page()], vec![])), Ok(()));
+
+        // Saving a draft is refused too.
+        let draft = e
+            .service
+            .create(
+                &e.author.principal,
+                &e.wiki,
+                None,
+                proposal(vec![page()], vec![]),
+            )
+            .expect("a draft");
+        assert_eq!(
+            e.service
+                .save_draft(
+                    &e.author.principal,
+                    &e.wiki,
+                    &draft.id,
+                    proposal(vec![page(), rules()], vec![])
+                )
+                .map(|_| ()),
+            invalid(Invalid::GovernanceMixed),
+            "a draft saved"
+        );
+        // A sent proposal is revised to mix: refused, and the revision is not made.
+        let held = e
+            .service
+            .submit(&e.author.principal, &e.wiki, &draft.id)
+            .expect("sent");
+        assert_eq!(held.state, ProposalState::HeldForReview);
+        assert_eq!(
+            e.service
+                .revise(
+                    &e.author.principal,
+                    &e.wiki,
+                    &held.id,
+                    proposal(vec![page(), rules()], vec![])
+                )
+                .map(|_| ()),
+            invalid(Invalid::GovernanceMixed),
+            "a revision"
+        );
+        assert_eq!(
+            e.service
+                .revisions(&e.author.principal, &e.wiki, &held.id)
+                .expect("revisions")
+                .len(),
+            1
+        );
+    });
+}

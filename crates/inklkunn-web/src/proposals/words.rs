@@ -136,6 +136,7 @@ pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
         Invalid::PathCollides => t.get(Key::InvalidPathCollides),
         Invalid::FrontUnreadable => t.get(Key::ProposeFrontUnreadable),
         Invalid::GovernancePath => t.get(Key::InvalidGovernancePath),
+        Invalid::GovernanceMixed => t.get(Key::InvalidGovernanceMixed),
         Invalid::BadPath
         | Invalid::PathOutsidePages
         | Invalid::PathNotCanonical

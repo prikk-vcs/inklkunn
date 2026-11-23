@@ -515,6 +515,165 @@ fn the_hatch_is_for_a_change_to_governance_only_and_an_admin_needs_the_approvals
     );
 }
 
+/// The wiki of the review's scenario (C-1): three approvals, never one's own, and an admin who would like to skip both.
+const STRICT: &str = "acceptance:\n  approvals: 3\n  self: never\n";
+
+/// A page changed beside a no-op edit of the policy: the way the hatch would have covered a page.
+fn page_beside_the_rules() -> [(&'static str, Option<String>); 2] {
+    [
+        ("pages/Home.md", Some(change_text())),
+        (
+            "governance/policy.yaml",
+            Some(format!("{STRICT}# as it was\n")),
+        ),
+    ]
+}
+
+#[test]
+fn an_admin_cannot_carry_a_page_through_the_hatch_beside_a_no_op_edit_of_the_rules() {
+    let rig = ruled(&[("governance/policy.yaml", STRICT)]);
+    let (_, admin) = rig.person("Ada", Some(Role::Admin));
+    let both = page_beside_the_rules();
+    let files: Vec<(&str, Option<&str>)> = both.iter().map(|(p, t)| (*p, t.as_deref())).collect();
+    // At proposing: refused by name, nothing stored.
+    let edit = ProposalEdit {
+        summary: "A page and the rules".to_owned(),
+        files: both
+            .iter()
+            .map(|(path, text)| inklkunn_store::FileChange {
+                path: (*path).to_owned(),
+                text: text.clone(),
+            })
+            .collect(),
+        ..ProposalEdit::default()
+    };
+    assert_eq!(
+        rig.proposals
+            .create_named(ProposalId::new(), &admin, &rig.wiki, None, edit)
+            .map(|_| ()),
+        Err(ProposalError::Invalid(Invalid::GovernanceMixed))
+    );
+    // A proposal made before the rule (a record the service did not judge) is refused when it is accepted, by the same word,
+    // before the signer is asked, and it stays as it was. The admin is its proposer and its acceptor, with no approval.
+    let p = rig.propose_unjudged(&admin, "A page and the rules", &files);
+    let failure = refused(rig.acceptor().accept(&admin, &rig.wiki, &p.id, 1));
+    assert_eq!(
+        failure,
+        AcceptFailure::Proposal(ProposalError::Invalid(Invalid::GovernanceMixed))
+    );
+    assert_eq!(failure.word(), words::GOVERNANCE_MIXED);
+    assert!(rig.double.calls().is_empty(), "the signer was asked");
+    assert!(rig.store.acceptances_of(&p.id, 1).unwrap().is_empty());
+    assert_eq!(rig.state(&p.id), ProposalState::HeldForReview);
+    // The rules alone are the hatch's, as they were.
+    let alone = rig.propose(
+        &admin,
+        "The rules",
+        &[(
+            "governance/policy.yaml",
+            Some("acceptance:\n  approvals: 0\n"),
+        )],
+    );
+    assert!(matches!(
+        rig.acceptor().accept(&admin, &rig.wiki, &alone.id, 1),
+        Ok(Accepted::Signed(_))
+    ));
+}
+
+#[test]
+fn what_is_about_to_be_signed_is_judged_again_under_the_lease_for_mixing_the_rules_with_anything_else()
+ {
+    // `check_governance` on its own, over the prepared files: the check before the lease is not here.
+    let rig = ruled(&[("governance/policy.yaml", STRICT)]);
+    let (_, author) = rig.person("Noor", Some(Role::Contributor));
+    let text = change_text();
+    let p = rig.propose(&author, "A page", &[("pages/Home.md", Some(&text))]);
+    let file = |path: &str| inklkunn_signer::PreparedFile {
+        path: std::path::PathBuf::from(path),
+        content: Some(b"entry: none\n".to_vec()),
+    };
+    let acceptor = rig.acceptor();
+    let mixed = acceptor.check_governance(
+        &rig.wiki,
+        &p,
+        &[file("pages/Home.md"), file("governance/policy.yaml")],
+        &[],
+    );
+    assert_eq!(
+        mixed,
+        Err(AcceptFailure::Proposal(ProposalError::Invalid(
+            Invalid::GovernanceMixed
+        )))
+    );
+    // A rename of a page beside the rules is the same.
+    let renamed = acceptor.check_governance(
+        &rig.wiki,
+        &p,
+        &[file("governance/policy.yaml")],
+        &[("pages/A.md".into(), "pages/B.md".into())],
+    );
+    assert_eq!(
+        renamed,
+        Err(AcceptFailure::Proposal(ProposalError::Invalid(
+            Invalid::GovernanceMixed
+        )))
+    );
+    // Both files together, and a page alone, are not mixing.
+    assert_eq!(
+        acceptor.check_governance(
+            &rig.wiki,
+            &p,
+            &[
+                file("governance/policy.yaml"),
+                inklkunn_signer::PreparedFile {
+                    content: Some(b"policy_change:\n  approvals: 1\n".to_vec()),
+                    ..file("governance/constitution.yaml")
+                }
+            ],
+            &[]
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        acceptor.check_governance(&rig.wiki, &p, &[file("pages/Home.md")], &[]),
+        Ok(())
+    );
+}
+
+#[test]
+fn the_hatch_checks_for_itself_that_every_path_it_covers_is_a_governance_file() {
+    // `judge` on its own, with what a change touches: the check that stops a mixed change before the signer is not here.
+    let rig = ruled(&[("governance/policy.yaml", STRICT)]);
+    let (admin_id, admin) = rig.person("Ada", Some(Role::Admin));
+    let (_, author) = rig.person("Noor", Some(Role::Contributor));
+    let text = change_text();
+    let p = rig.propose(&author, "A page", &[("pages/Home.md", Some(&text))]);
+    let acceptor = rig.acceptor();
+    let judge = |touched: &[&str]| {
+        let touched: Vec<String> = touched.iter().map(|p| (*p).to_owned()).collect();
+        acceptor.judge(&admin, &rig.wiki, &p, &admin_id, &touched)
+    };
+    // The rules alone: the hatch, with no approvals.
+    assert!(judge(&["governance/policy.yaml"]).unwrap().hatch);
+    assert!(
+        judge(&["governance/policy.yaml", "governance/constitution.yaml"])
+            .unwrap()
+            .hatch
+    );
+    // A page beside them is not the hatch: the policy's three approvals are asked.
+    for touched in [
+        &["pages/Home.md", "governance/policy.yaml"][..],
+        &["governance/policy.yaml", "pages/Home.md"],
+        &["governance/constitution.yaml", "knowledge/claims/c-1.md"],
+    ] {
+        assert_eq!(
+            judge(touched),
+            Err(AcceptFailure::ApprovalsMissing { needed: 3, have: 0 }),
+            "{touched:?}"
+        );
+    }
+}
+
 #[test]
 fn the_hatch_lifts_the_rule_against_accepting_ones_own_change_to_the_rules_and_no_other() {
     // The wiki's only admin proposes a change to the rules in a wiki that says never and asks an admin to accept.
@@ -875,7 +1034,8 @@ fn an_admin_repairs_the_rules_with_a_change_that_touches_governance_only_by_the_
 fn the_repair_does_not_open_the_wiki_to_anything_but_the_rules() {
     let (rig, maintainer, admin, author, _) = broken();
     let _ = (maintainer, author);
-    // A page and the rules together are not the repair; the admin is told what anyone is told.
+    // A page and the rules together are not the repair: since C-1 they are refused as what they are (a change to the rules is
+    // proposed on its own), before the rules are looked at, and the signer is not asked.
     let text = change_text();
     let p = rig.propose_unjudged(
         &admin,
@@ -885,10 +1045,10 @@ fn the_repair_does_not_open_the_wiki_to_anything_but_the_rules() {
             ("governance/policy.yaml", Some("entry: none\n")),
         ],
     );
-    assert!(matches!(
+    assert_eq!(
         refused(rig.acceptor().accept(&admin, &rig.wiki, &p.id, 1)),
-        AcceptFailure::RulesUnreadable(_)
-    ));
+        AcceptFailure::Proposal(ProposalError::Invalid(Invalid::GovernanceMixed))
+    );
     assert!(rig.double.calls().is_empty());
     // A proposal that touched only a page, made before the file broke, is refused for the same reason by an admin.
     let only = rig.propose_unjudged(&admin, "A page", &[("pages/Home.md", Some(&text))]);

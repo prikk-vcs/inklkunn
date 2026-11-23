@@ -2094,6 +2094,33 @@ async fn the_two_governance_files_are_what_the_api_writes_under_governance_and_n
             a.text()
         );
     }
+    // A change to the rules is proposed on its own: a page, or a rename, beside one of the two files is refused by name, and
+    // the sentence is the problem's explanation (C-1).
+    for (files, renames) in [
+        (
+            json!([
+                {"path": "pages/Home.md", "text": "x\n"},
+                {"path": "governance/policy.yaml", "text": "entry: none\n"}
+            ]),
+            json!([]),
+        ),
+        (
+            json!([{"path": "governance/policy.yaml", "text": "entry: none\n"}]),
+            json!([{"from": "pages/Home.md", "to": "pages/Other.md"}]),
+        ),
+    ] {
+        let a = propose_files_at_one(&c, &c.contributor, files, renames).await;
+        assert_eq!(a.status, 422, "{}", a.text());
+        assert_eq!(a.json().at("/reason"), "governance-mixed", "{}", a.text());
+        assert!(
+            a.json()
+                .at("/detail")
+                .as_str()
+                .is_some_and(|s| s.contains("on its own")),
+            "{}",
+            a.text()
+        );
+    }
     // A path outside `pages/` that is not under it keeps its own word.
     let a = propose_files_at_one(
         &c,
