@@ -21,6 +21,7 @@ use crate::common::{
 const HOME: &str = "pages/Home.md";
 const GUIDE: &str = "pages/Guide.md";
 const NOTES: &str = "pages/Notes.md";
+const DRAFT: &str = "pages/Draft.md";
 
 fn text(title: &str, body: &str) -> String {
     format!("---\ntitle: {title}\n---\n\n{body}\n")
@@ -47,6 +48,9 @@ pub(crate) enum Shape {
     /// 1 creation (`Home`, `Guide`, `Notes`), 2 an edit of `Guide`, 3 an edit of `Notes`, 4 the removal of both: one rollback
     /// that writes two pages.
     Two,
+    /// 1 creation (`Home`, `Draft`), 2 an edit of `Draft` (its last text), 3 a move of `Draft` to `Guide`, 4 the removal of
+    /// `Guide`: the change before the removal wrote no text, the one before it did.
+    Moved,
 }
 
 pub(crate) struct Gone {
@@ -79,9 +83,10 @@ fn message(id: &ProposalId, proposer: &AccountId, acceptor: &AccountId) -> Strin
 /// The wiki of the shape, its people (a maintainer who moderates, a contributor who proposed the removal, an observer) and the
 /// removing proposal, which this wiki keeps.
 pub(crate) fn gone(shape: Shape) -> Gone {
+    let first = if shape == Shape::Moved { DRAFT } else { GUIDE };
     let mut files = vec![
         (HOME, text("Home", "Welcome.")),
-        (GUIDE, text("Guide", "The guide.")),
+        (first, text("Guide", "The guide.")),
     ];
     if shape == Shape::Two {
         files.push((NOTES, text("Notes", "The notes.")));
@@ -92,18 +97,24 @@ pub(crate) fn gone(shape: Shape) -> Gone {
     add_person(&w, &maintainer, "Mika Ito", Some(Role::Maintainer));
     add_person(&w, &author, PROPOSER, Some(Role::Contributor));
     add_person(&w, &reader, "Olu Reader", Some(Role::Observer));
-    let mut created = vec![op("create-file", &[HOME]), op("create-file", &[GUIDE])];
+    let mut created = vec![op("create-file", &[HOME]), op("create-file", &[first])];
     if shape == Shape::Two {
         created.push(op("create-file", &[NOTES]));
     }
     w.fake.say(1, "Create the handbook");
     w.fake.show(1, shown(created));
     // 2: the last text of the guide.
-    w.fake.set(GUIDE, &text("Guide", LAST_TEXT));
+    w.fake.set(first, &text("Guide", LAST_TEXT));
     w.fake.say(2, &service_text("Improve the guide"));
-    w.fake.show(2, shown(vec![op("edit-text", &[GUIDE])]));
-    // 3: another page changes (the guide's writer is not this change); in `Two`, the notes' last text.
-    if shape == Shape::Two {
+    w.fake.show(2, shown(vec![op("edit-text", &[first])]));
+    // 3: another page changes (the guide's writer is not this change); in `Two`, the notes' last text; in `Moved`, the page
+    // is moved to its title.
+    if shape == Shape::Moved {
+        w.fake.rename(DRAFT, GUIDE);
+        w.fake.say(3, &service_text("Move the draft"));
+        w.fake
+            .show(3, shown(vec![op("rename-path", &[DRAFT, GUIDE])]));
+    } else if shape == Shape::Two {
         w.fake.set(NOTES, &text("Notes", NOTES_LAST));
         w.fake.say(3, &service_text("Improve the notes"));
         w.fake.show(3, shown(vec![op("edit-text", &[NOTES])]));
@@ -124,7 +135,7 @@ pub(crate) fn gone(shape: Shape) -> Gone {
     accept_by_hand(&w, &record.id, &maintainer, &author);
     w.fake.say(4, &message(&record.id, &author, &maintainer));
     match shape {
-        Shape::Clean => {
+        Shape::Clean | Shape::Moved => {
             w.fake.remove(GUIDE);
             w.fake.show(4, shown(vec![op("delete-node", &[GUIDE])]));
         }
@@ -276,6 +287,13 @@ pub(crate) async fn surface_removed_page() {
     let html = g.get("/handbook/Guide", None).await;
     assert_eq!(html.status, StatusCode::GONE, "{}", html.body());
     assert!(html.body().contains(REMOVAL_SUMMARY), "{}", html.body());
+    // The proposal is a link: its page is a surface of its own.
+    assert!(
+        html.body()
+            .contains(&format!("/handbook/-/proposals/{}", g.proposal)),
+        "{}",
+        html.body()
+    );
     let api = g.get("/handbook/-/api/v1/pages/Guide", None).await;
     assert!(api.body().contains(REMOVAL_SUMMARY), "{}", api.body());
 
@@ -292,9 +310,17 @@ pub(crate) async fn surface_removed_page() {
             }
             if uri == "/handbook/-/api/v1/pages/Guide" {
                 let json: serde_json::Value = serde_json::from_slice(&a.bytes).expect("json");
-                assert_eq!(json["reason"], serde_json::Value::Null, "{json}");
-                assert_eq!(json["hidden"], serde_json::json!(["summary"]), "{json}");
-                assert!(json["tombstones"].is_array(), "{json}");
+                assert_eq!(json.get("reason"), Some(&serde_json::Value::Null), "{json}");
+                assert_eq!(
+                    json.get("hidden"),
+                    Some(&serde_json::json!(["summary"])),
+                    "{json}"
+                );
+                assert!(
+                    json.get("tombstones")
+                        .is_some_and(serde_json::Value::is_array),
+                    "{json}"
+                );
             }
         }
     }
@@ -394,7 +420,11 @@ pub(crate) async fn surface_restore_offer() {
         no_text(&gone_page, "the page of the removal");
         let api = g.get("/handbook/-/api/v1/pages/Guide", None).await;
         let json: serde_json::Value = serde_json::from_slice(&api.bytes).expect("json");
-        assert_eq!(json["restore"], "none", "{json}");
+        assert_eq!(
+            json.get("restore"),
+            Some(&serde_json::json!("none")),
+            "{json}"
+        );
         // An observer is still refused as before: the offer is the proposers'.
         let seen = g.get("/handbook/-/restore/Guide", Some(&g.reader)).await;
         assert_eq!(seen.status, StatusCode::FORBIDDEN, "{}", seen.body());
@@ -448,6 +478,28 @@ async fn the_restoring_draft_copies_no_hidden_summary() {
         free_of(&draft, "the draft", &["ZEBRASUMMARY"]);
         free_of(&made, "the redirect", &["ZEBRASUMMARY"]);
     }
+}
+
+/// A page that was moved before it was removed: the text was written before the move, and the move wrote none of its own.
+#[tokio::test]
+async fn the_revision_that_wrote_the_text_is_found_behind_a_move() {
+    let g = gone(Shape::Moved);
+    let author = g.author.clone();
+    let form = g.get("/handbook/-/restore/Guide", Some(&author)).await;
+    assert_eq!(offered(&form), Some("rollback"), "{}", form.body());
+    // Change 3 only moved the page, so it wrote no text: the text is change 2's.
+    g.hide(2, &["part_content"]).await;
+    let form = g.get("/handbook/-/restore/Guide", Some(&author)).await;
+    assert_eq!(offered(&form), None, "{}", form.body());
+    assert!(
+        form.body().contains("The last text of Guide"),
+        "{}",
+        form.body()
+    );
+    no_text(&form, "the restore form");
+    let a = g.post("rollback", &author).await;
+    assert_eq!(a.status, StatusCode::CONFLICT, "{}", a.body());
+    no_text(&a, "the refusal");
 }
 
 /// A rollback that writes two pages is refused as a whole when the text of either is hidden, and says which page by its title

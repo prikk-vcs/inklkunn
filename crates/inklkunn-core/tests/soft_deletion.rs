@@ -16,6 +16,7 @@ use inklkunn_core::message::SystemLabel;
 use inklkunn_core::proposal::rollback::restore_edit;
 use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalService, QuotaConfig};
 use inklkunn_core::read::{PageEvent, Reason, Restore, RollbackOutcome};
+use inklkunn_core::tombstone::{Item, ModerationService, Tombstones};
 use inklkunn_core::{
     AcceptFailure, AcceptStep, AcceptanceParts, Accepted, Authorizer, IdentityAuthority,
     KeyAuthority, LeaseConfig, PreparedFile, Principal, ProposalAcceptor, ReadConfig, ReadService,
@@ -25,8 +26,8 @@ use inklkunn_core::{
 use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
     AcceptanceRecord, AcceptanceStore, Account, AccountId, AccountStore, DecisionKind, DisplayName,
-    FileChange, NewWiki, ProposalId, ProposalRecord, ProposalState, ProposalStore, Role, RoleGrant,
-    RoleStore, Slug, SqliteStore, SystemActKind,
+    FileChange, HiddenParts, NewWiki, ProposalId, ProposalRecord, ProposalState, ProposalStore,
+    ReasonCategory, Role, RoleGrant, RoleStore, Slug, SqliteStore, SystemActKind, TombstoneEventId,
 };
 
 /// Every question this crate asks of the prikk on `PATH`: the only place a test reaches a capability (maintenance M39).
@@ -75,6 +76,7 @@ struct World {
     proposals: Arc<ProposalService>,
     acceptor: Arc<ProposalAcceptor>,
     desk: Authorizer,
+    moderation: ModerationService,
     hook: Hook,
     acts: SystemActs,
     wiki: inklkunn_store::WikiRecord,
@@ -145,6 +147,8 @@ impl World {
             "governance-test",
             LeaseConfig::default(),
         );
+        // What moderation hides, asked by every surface through the one reader.
+        let tombstones = Arc::new(Tombstones::new(store.clone(), store.clone()));
         // The same wiring as `serve`: the rules of each wiki read by the read service, through the derived store, under the
         // operator's limits; the authorizer reads them through it and nowhere else.
         let reads = Arc::new(
@@ -157,6 +161,7 @@ impl World {
                 None,
             )
             .with_governance_snapshots(store.clone())
+            .with_tombstones(tombstones.clone())
             .with_platform_limits(limits),
         );
         let authorizer = || {
@@ -244,7 +249,18 @@ impl World {
             }
         };
         let desk = authorizer();
+        let moderation = ModerationService::new(
+            authorizer(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            reads.clone(),
+            tombstones,
+            store.clone(),
+        );
         let world = World {
+            moderation,
             admin: person("Ada Admin", Role::Admin),
             maintainer: person("Maya Maintainer", Role::Maintainer),
             reviewer: person("Rin Reviewer", Role::Reviewer),
@@ -565,6 +581,160 @@ fn the_newest_change_that_touched_the_path_decides_whether_it_is_a_removed_page(
         .unwrap();
     assert_eq!(removed.removal.block_id, second);
     assert_eq!(removed.reason(), Reason::Given("Remove the guide again"));
+}
+
+// ------------------------------------------------------------------------------------ INV-13: hidden text never comes back
+
+/// Hide `parts` of the change `block` as the maintainer, through the moderation service.
+fn hide(w: &World, block: &str, content: bool, summary: bool, author: bool) -> TombstoneEventId {
+    w.moderation
+        .hide(
+            &w.maintainer.principal,
+            &w.wiki,
+            &Item::PageRevision {
+                block: block.to_owned(),
+                view: None,
+            },
+            HiddenParts {
+                content,
+                summary,
+                author,
+            },
+            ReasonCategory::PersonalData,
+            "",
+        )
+        .unwrap_or_else(|e| panic!("hide: {e}"))
+        .id
+}
+
+fn unhide(w: &World, hide: &TombstoneEventId) {
+    w.moderation
+        .unhide(&w.maintainer.principal, &w.wiki, hide)
+        .unwrap_or_else(|e| panic!("unhide: {e}"));
+}
+
+fn removed_now(w: &World) -> inklkunn_core::read::RemovedPage {
+    w.reads
+        .removed_page(&w.wiki, None, "Guide")
+        .unwrap()
+        .expect("the page was removed")
+}
+
+#[test]
+fn inv_13_a_rollback_never_writes_hidden_text_again_and_a_hidden_summary_is_a_tombstone() {
+    let Some(w) = World::new("soft-hidden-rollback", PlatformLimits::default(), now) else {
+        return;
+    };
+    // The text is written by one change, another change comes between it and the removal, then the removal.
+    let written = w.write_outside(&[("pages/Guide.md", GUIDE)]);
+    let between = w.propose(
+        "Reword the front page",
+        &[("pages/Home.md", Some(&home_changed()))],
+    );
+    signed(w.accept(&w.maintainer, &between.id));
+    let removal = w.propose(
+        "Remove the guide: it is out of date",
+        &[("pages/Guide.md", None)],
+    );
+    let removing = signed(w.accept(&w.maintainer, &removal.id));
+    w.reads.forget_wiki(&w.wiki);
+    assert!(matches!(removed_now(&w).restore, Restore::Rollback { .. }));
+
+    // A hidden summary or author of the revision that wrote the text leaves the text free.
+    let soft = hide(&w, &written, false, true, true);
+    assert!(matches!(removed_now(&w).restore, Restore::Rollback { .. }));
+    unhide(&w, &soft);
+
+    // Its content hidden: neither way back is offered, and the page says which page (by title), live, with no cache to forget.
+    let hidden = hide(&w, &written, true, false, false);
+    assert_eq!(
+        removed_now(&w).restore,
+        Restore::TextHidden {
+            titles: vec!["Guide".to_owned()]
+        }
+    );
+    // Un-hidden: the offer is the same as before, and the rollback restores the text exactly.
+    unhide(&w, &hidden);
+    let removed = removed_now(&w);
+    let Restore::Rollback { undoes } = removed.restore.clone() else {
+        panic!("{:?}", removed.restore);
+    };
+    assert_eq!(undoes, removing);
+    let RollbackOutcome::Plan(plan) = w.reads.rollback_plan(&w.wiki, None, &undoes).unwrap() else {
+        panic!("a plan");
+    };
+    assert_eq!(plan.files.len(), 1);
+    assert_eq!(
+        plan.files.first().and_then(|f| f.text.as_deref()),
+        Some(GUIDE)
+    );
+
+    // The removal's summary hidden: the reason is the tombstone, and no byte of the page's record holds the words.
+    assert_eq!(
+        removed.reason(),
+        Reason::Given("Remove the guide: it is out of date")
+    );
+    hide(&w, &removing, false, true, false);
+    let removed = removed_now(&w);
+    assert!(
+        matches!(removed.reason(), Reason::Hidden(_)),
+        "{:?}",
+        removed.reason()
+    );
+    assert!(
+        !format!("{removed:?}").contains("out of date"),
+        "{removed:?}"
+    );
+    // And the rollback's own summary does not copy them.
+    let RollbackOutcome::Plan(plan) = w.reads.rollback_plan(&w.wiki, None, &undoes).unwrap() else {
+        panic!("a plan");
+    };
+    assert_eq!(plan.summary, format!("Undo change {}", plan.number));
+    assert!(!format!("{plan:?}").contains("out of date"), "{plan:?}");
+}
+
+#[test]
+fn inv_13_the_last_text_is_never_offered_when_it_is_hidden() {
+    let Some(w) = World::new("soft-hidden-last", PlatformLimits::default(), now) else {
+        return;
+    };
+    let written = w.write_outside(&[("pages/Guide.md", GUIDE)]);
+    // The removal also rewords the front page and a later change rewords the same place: the rollback is blocked.
+    let removal = w.propose(
+        "Remove the guide and reword the front page",
+        &[
+            ("pages/Guide.md", None),
+            ("pages/Home.md", Some(&home_changed())),
+        ],
+    );
+    signed(w.accept(&w.maintainer, &removal.id));
+    let later = w.propose(
+        "Reword the front page again",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Eins.")))],
+    );
+    signed(w.accept(&w.maintainer, &later.id));
+    w.reads.forget_wiki(&w.wiki);
+    assert!(matches!(removed_now(&w).restore, Restore::LastText { .. }));
+
+    let hidden = hide(&w, &written, true, false, false);
+    assert_eq!(
+        removed_now(&w).restore,
+        Restore::TextHidden {
+            titles: vec!["Guide".to_owned()]
+        }
+    );
+    unhide(&w, &hidden);
+    let removed = removed_now(&w);
+    let Restore::LastText { from } = removed.restore.clone() else {
+        panic!("{:?}", removed.restore);
+    };
+    assert_eq!(
+        w.reads
+            .source_at(&w.wiki, &from, &removed.path)
+            .unwrap()
+            .as_deref(),
+        Some(GUIDE)
+    );
 }
 
 // ------------------------------------------------------------------------------------ criterion 11: retiring

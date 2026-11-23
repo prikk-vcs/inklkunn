@@ -89,8 +89,10 @@ fn a_removed_page_and_the_offer_to_restore_it_are_surfaces_and_not_routes_that_s
     assert_eq!(surface("removed-page").map(|s| s.shows.summary), Some(true));
     // The restore form copies the last text and the removal's summary into a draft.
     assert_eq!(classify("/{slug}/-/restore/{*title}"), Class::Surface);
-    let offer = surface("restore-offer").expect("a row");
-    assert!(offer.shows.content && offer.shows.summary);
+    assert_eq!(
+        surface("restore-offer").map(|s| (s.shows.content, s.shows.summary)),
+        Some((true, true))
+    );
     // The form for an unreadable knowledge file reads the tip only, for its stated reason.
     assert_eq!(classify("/{slug}/-/knowledge/replace"), Class::ShowsNone);
 }
