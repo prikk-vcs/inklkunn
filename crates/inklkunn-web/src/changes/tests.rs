@@ -26,6 +26,7 @@ fn row(view: &str, pages: Option<&[&str]>) -> ChangeRow {
         minor: false,
         machine_assisted: false,
         first_seen: 1_700_000_000,
+        hidden: inklkunn_core::tombstone::Hidden::none(),
         pages: pages.map(|ps| {
             ps.iter()
                 .map(|p| ChangedPage {

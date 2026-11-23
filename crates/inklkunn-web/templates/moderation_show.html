@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ intro }}</p>
+{% for f in facts %}<p>{{ f }}</p>
+{% endfor %}{% if let Some(text) = text %}<h2>{{ text_label }}</h2>
+<pre class="hidden-content">{{ text }}</pre>
+{% endif %}{% if let Some(name) = author %}<h2>{{ author_label }}</h2>
+<p>{{ name }}</p>
+{% endif %}{% if !files.is_empty() %}<h2>{{ files_label }}</h2>
+{% for f in files %}<h3>{{ f.path }}</h3>
+<pre class="hidden-content">{{ f.text }}</pre>
+{% endfor %}{% endif %}{% if let Some(note) = note %}<p>{{ note }}</p>
+{% endif %}{% if let Some(nothing) = nothing %}<p>{{ nothing }}</p>
+{% endif %}<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

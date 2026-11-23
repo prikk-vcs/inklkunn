@@ -114,9 +114,12 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
             // Putting a temporary protection in place (RFC 006 D-7; handoff G-T3) and the forms that change a role or restrict
             // a person (D-6, D-7; handoff G-T2) carry the action the core authorizes them with: `moderate` (an admin's change
             // of a role is `admin`, decided in the core). The people page itself reads.
+            // Hiding, restoring and showing hidden content (RFC 006 D-8; handoff G-T4) are the `moderate` rung's too; the moderation
+            // log reads.
             let moderates = entry.path == "/{slug}/-/protect"
                 || (entry.path.starts_with("/{slug}/-/people/")
-                    && entry.path != "/{slug}/-/people/grant");
+                    && entry.path != "/{slug}/-/people/grant")
+                || entry.path.starts_with("/{slug}/-/moderate");
             // A change of a role is no action of its own: a maintainer's depends on the rung and `rungs.grant_up_to` alone
             // (handoff G-T1 correction F-7), so its form is read like the page and the core authorizes the act.
             let expected = if moderates {

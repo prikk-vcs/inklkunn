@@ -17,4 +17,5 @@
 {% for item in did %}<li>{{ item.text }}{% if let Some(link) = item.diff %}<ul class="change-links"><li><a href="{{ link.href }}">{{ link.label }}</a></li></ul>{% endif %}</li>
 {% endfor %}</ul>
 {% endif %}{% if let Some(text) = more %}<p class="note">{{ text }}</p>
+{% endif %}{% if let Some(link) = moderate %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
 {% endif %}{% endblock %}

@@ -49,6 +49,8 @@ type Params = Result<Query<HashMap<String, String>>, QueryRejection>;
 enum Early {
     Shown(Shown),
     NoSuchChange(Box<WikiRecord>),
+    /// What the person asked for is hidden by moderation (RFC 006 D-8): the page says so, and why, in place of it.
+    Hidden(Box<WikiRecord>, Key, Vec<String>, Vec<Choice>),
 }
 
 /// The wiki and the view an address names, if the principal may read the wiki.
@@ -163,6 +165,15 @@ fn settle<V>(
         None => render_failed(page),
         Some(Err(Early::Shown(shown))) => present(page, shown),
         Some(Err(Early::NoSuchChange(wiki))) => no_such_change(page, &wiki),
+        Some(Err(Early::Hidden(wiki, heading, paragraphs, choices))) => notice(
+            page,
+            &wiki,
+            StatusCode::OK,
+            heading,
+            paragraphs,
+            choices,
+            None,
+        ),
         Some(Ok(value)) => show(value),
     }
 }
@@ -184,6 +195,7 @@ fn who_text(t: T, who: &Who) -> String {
         Who::Person { name } => name.clone(),
         Who::Anonymous { token } => t.msg(Key::PeopleAnonymous).with("token", token).text(),
         Who::Service => t.get(Key::PeopleService),
+        Who::Hidden => crate::tombstone::author_word(t),
     }
 }
 
@@ -334,6 +346,7 @@ fn row_view(
     let mut facts: Vec<String> = row.events.iter().map(|e| event_text(t, e)).collect();
     facts.extend(people(t, &info.provenance));
     facts.extend(flags(t, info));
+    facts.extend(crate::tombstone::facts(t, &info.hidden));
     let edited = row.events.contains(&PageEvent::Edited);
     let gone = row.events.last() == Some(&PageEvent::Deleted)
         || row.events.last() == Some(&PageEvent::NotInspected);
@@ -465,6 +478,7 @@ struct ChangeTpl<'a> {
     did: Vec<DidView>,
     too_large: Option<String>,
     more: Option<String>,
+    moderate: Option<LinkView>,
 }
 
 /// What the change page says of who signed, and for whom: the service signs; the people are those the message
@@ -569,18 +583,28 @@ pub(crate) async fn change(
             .read
             .change(&start.wiki, start.full.as_deref(), &block)
         {
-            Ok(ChangeOutcome::Found(detail)) => Ok((start, detail)),
+            Ok(ChangeOutcome::Found(detail)) => {
+                // The `moderate` rung is offered the form that hides or restores this change (RFC 006 D-8).
+                let principal = services.identity.principal(&headers);
+                let may = services.moderation.may_moderate(&principal, &start.wiki);
+                Ok((start, detail, may))
+            }
             Ok(ChangeOutcome::NoSuchChange) => Err(Early::NoSuchChange(start.wiki)),
             Err(e) => Err(failed(&services, start.wiki, "a change", e)),
         }
     })
     .await;
-    settle(&page, done, |(start, detail)| {
-        render_change(&page, &start, &detail)
+    settle(&page, done, |(start, detail, may_moderate)| {
+        render_change(&page, &start, &detail, may_moderate)
     })
 }
 
-fn render_change(page: &Page, start: &Start, detail: &ChangeDetail) -> Response {
+fn render_change(
+    page: &Page,
+    start: &Start,
+    detail: &ChangeDetail,
+    may_moderate: bool,
+) -> Response {
     let t = page.t();
     let wiki = &start.wiki;
     let slug = wiki.slug.as_str();
@@ -590,6 +614,7 @@ fn render_change(page: &Page, start: &Start, detail: &ChangeDetail) -> Response 
     let shell = Shell::of(wiki);
     let mut facts = people(t, &info.provenance);
     facts.extend(flags(t, info));
+    facts.extend(crate::tombstone::facts(t, &info.hidden));
     let rendered = ChangeTpl {
         page,
         shell: &shell,
@@ -613,6 +638,16 @@ fn render_change(page: &Page, start: &Start, detail: &ChangeDetail) -> Response 
         too_large: detail.too_large.then(|| page.get(Key::ChangeTooLarge)),
         more: (detail.omitted > 0)
             .then(|| t.msg(Key::ChangeDidMore).n(detail.omitted as u64).text()),
+        moderate: may_moderate.then(|| LinkView {
+            href: crate::tombstone::paths::form_for(
+                slug,
+                &inklkunn_core::tombstone::Item::PageRevision {
+                    block: info.block_id.clone(),
+                    view: view.map(str::to_owned),
+                },
+            ),
+            label: t.get(Key::TombstoneModerateLink),
+        }),
     }
     .render();
     answer(StatusCode::OK, page, rendered)
@@ -713,6 +748,37 @@ pub(crate) async fn diff(
         {
             Ok(DiffOutcome::Found(diff)) => Ok((start, diff)),
             Ok(DiffOutcome::NoSuchChange) => Err(Early::NoSuchChange(start.wiki)),
+            Ok(DiffOutcome::Hidden(hidden)) => {
+                // A side that is hidden gives no difference: the page says which side, and why.
+                let mut paragraphs = Vec::new();
+                for (side, mark) in [
+                    (Key::TombstoneDiffFrom, &hidden.from_hidden),
+                    (Key::TombstoneDiffTo, &hidden.to_hidden),
+                ] {
+                    if let Some(mark) = mark {
+                        paragraphs.push(t.get(side));
+                        paragraphs.extend(crate::tombstone::mark_facts(t, mark));
+                    }
+                }
+                let slug = start.wiki.slug.as_str().to_owned();
+                let view = start.view.clone();
+                let choices = [
+                    (hidden.from_number, &hidden.from),
+                    (hidden.to_number, &hidden.to),
+                ]
+                .into_iter()
+                .map(|(number, block)| Choice {
+                    label: change_label(t, number),
+                    href: change_path(&slug, view.as_deref(), block),
+                })
+                .collect();
+                Err(Early::Hidden(
+                    start.wiki,
+                    Key::TombstoneDiffHeading,
+                    paragraphs,
+                    choices,
+                ))
+            }
             Ok(DiffOutcome::Ambiguous { candidates }) => Err(ambiguous(
                 t,
                 start.wiki,
@@ -857,6 +923,28 @@ pub(crate) async fn at(
                 change,
             }),
             Ok(AtOutcome::NoSuchChange) => Err(Early::NoSuchChange(start.wiki)),
+            Ok(AtOutcome::Hidden { change, .. }) => {
+                // The text is hidden: the page says so and why, and the change it is after is one link away.
+                let mut paragraphs = vec![t.get(Key::TombstoneAtHidden)];
+                paragraphs.extend(
+                    change
+                        .hidden
+                        .content()
+                        .into_iter()
+                        .flat_map(|mark| crate::tombstone::mark_facts(t, mark)),
+                );
+                let link = change_link(t, &start, &change);
+                let choices = vec![Choice {
+                    label: link.label,
+                    href: link.href,
+                }];
+                Err(Early::Hidden(
+                    start.wiki,
+                    Key::TombstoneAtHeading,
+                    paragraphs,
+                    choices,
+                ))
+            }
             Ok(AtOutcome::Ambiguous { candidates }) => Err(ambiguous(
                 t,
                 start.wiki,

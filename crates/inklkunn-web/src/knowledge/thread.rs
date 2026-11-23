@@ -86,6 +86,10 @@ pub(crate) struct Read {
     names: HashMap<String, Option<String>>,
     /// Where a comment this page answers is, when it is on an earlier page, by its place in the thread.
     parents: HashMap<u32, Parent>,
+    /// What moderation hides of the comments of this page (RFC 006 D-8), by comment: the body, or the author.
+    hidden: HashMap<CommentId, inklkunn_core::tombstone::Hidden>,
+    /// May the person hide or restore a comment? Offered to the `moderate` rung alone.
+    may_moderate: bool,
 }
 
 /// A comment on an earlier page, and the comment its page follows (`None` for the first page).
@@ -104,6 +108,8 @@ impl Read {
             can_comment: false,
             names: HashMap::new(),
             parents: HashMap::new(),
+            hidden: HashMap::new(),
+            may_moderate: false,
         }
     }
 }
@@ -201,6 +207,20 @@ pub(crate) fn read(
     let parents = page.as_ref().map_or_else(HashMap::new, |p| {
         earlier_parents(services, &principal, wiki, claim, p)
     });
+    // What moderation hides of this page's comments: asked now, at every request. A thread whose hidden comments cannot be
+    // read is not shown (it says it is unavailable), never shown with them.
+    let hidden = match page
+        .as_ref()
+        .map(|p| services.proposals.claim_comment_marks(wiki, p))
+    {
+        None => Some(HashMap::new()),
+        Some(Ok(marks)) => Some(marks),
+        Some(Err(_)) => None,
+    };
+    let (page, hidden) = match hidden {
+        Some(hidden) => (page, hidden),
+        None => (None, HashMap::new()),
+    };
     Read {
         can_comment: page.is_some()
             && services
@@ -211,6 +231,8 @@ pub(crate) fn read(
         reply,
         names,
         parents,
+        hidden,
+        may_moderate: services.moderation.may_moderate(&principal, wiki),
     }
 }
 
@@ -283,8 +305,23 @@ pub(crate) fn section(
         .rows
         .iter()
         .map(|row| {
-            let author = name(row);
+            let marks = read.hidden.get(&row.comment.id);
+            let author = crate::tombstone::author_of(t, || name(row), marks);
+            let (body_hidden, tombstone) = crate::tombstone::comment_state(t, marks);
+            let moderate = read.may_moderate.then(|| LinkView {
+                href: crate::tombstone::paths::form_for(
+                    slug,
+                    &inklkunn_core::tombstone::Item::ClaimComment {
+                        claim: claim.to_owned(),
+                        comment: row.comment.id.clone(),
+                    },
+                ),
+                label: t.get(Key::TombstoneModerateLink),
+            });
             CommentView {
+                body_hidden,
+                tombstone,
+                moderate,
                 parent: answers(row),
                 id: format!("k-{}", row.comment.id),
                 depth: 0,

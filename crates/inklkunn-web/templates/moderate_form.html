@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}<p>{{ intro }}</p>
+<p class="note" role="note">{{ still_held }}</p>
+<p><strong>{{ item_line }}</strong></p>
+{% if !in_force.is_empty() %}<h2>{{ in_force_heading }}</h2>
+<ul class="moderation-in-force">
+{% for h in in_force %}<li>
+{% for f in h.facts %}<p>{{ f }}</p>
+{% endfor %}<form method="post" action="{{ unhide_action }}" class="inline-form">
+{% include "csrf.html" %}{% for (name, value) in item_fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">
+{% endfor %}<input type="hidden" name="{{ hide_field }}" value="{{ h.id }}">
+<button type="submit">{{ unhide_label }}</button>
+</form>
+<form method="post" action="{{ show_action }}" class="inline-form">
+{% include "csrf.html" %}{% for (name, value) in item_fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">
+{% endfor %}<input type="hidden" name="{{ hide_field }}" value="{{ h.id }}">
+<button type="submit">{{ show_label }}</button> <small>{{ show_note }}</small>
+</form>
+</li>
+{% endfor %}</ul>
+{% endif %}{% if let Some(text) = tip_notice %}<p class="note" role="note">{{ text }}{% if let Some(link) = tip_link %} <a href="{{ link.href }}">{{ link.label }}</a>{% endif %}</p>
+{% endif %}{% if let Some(text) = declines %}<p class="note" role="note">{{ text }}</p>
+{% endif %}<form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}{% for (name, value) in item_fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">
+{% endfor %}<fieldset>
+<legend>{{ parts_legend }}</legend>
+{% for c in parts %}<p><input id="moderate-{{ c.value }}" type="checkbox" name="{{ c.value }}" value="1"{% if c.checked %} checked{% endif %}{% if c.disabled %} disabled{% endif %}> <label for="moderate-{{ c.value }}">{{ c.label }}</label></p>
+{% endfor %}</fieldset>
+<fieldset>
+<legend>{{ category_legend }}</legend>
+{% for c in categories %}<p><input id="moderate-cat-{{ c.value }}" type="radio" name="{{ category_field }}" value="{{ c.value }}"{% if c.checked %} checked{% endif %}> <label for="moderate-cat-{{ c.value }}">{{ c.label }}</label></p>
+{% endfor %}</fieldset>
+<div class="field">
+<label for="moderate-note">{{ note_label }}</label>
+<input id="moderate-note" name="{{ note_field }}" type="text" value="{{ typed_note }}" maxlength="{{ note_max }}" autocomplete="off">
+</div>
+<p class="buttons"><button type="submit">{{ hide_label }}</button></p>
+</form>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

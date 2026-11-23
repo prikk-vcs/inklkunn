@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ intro }}</p>
+{% if rows.is_empty() %}<p>{{ none }}</p>
+{% else %}<ol class="moderation-log">
+{% for row in rows %}<li>
+<p class="change-head">{% if let Some(link) = row.link %}<a href="{{ link.href }}">{{ row.head }}</a>{% else %}{{ row.head }}{% endif %}</p>
+<ul class="change-facts">
+{% for f in row.facts %}<li>{{ f }}</li>
+{% endfor %}{% if let Some(text) = row.declined %}<li>{{ text }}</li>
+{% endif %}{% if let Some(text) = row.note %}<li>{{ text }}</li>
+{% endif %}</ul>
+{% if let Some(form) = row.restore %}<form method="post" action="{{ form.action }}" class="inline-form">
+{% include "csrf.html" %}<input type="hidden" name="{{ form.field }}" value="{{ form.id }}">
+<button type="submit">{{ form.label }}</button>
+</form>
+{% endif %}</li>
+{% endfor %}</ol>
+{% endif %}{% if let Some(older) = older %}<p><a href="{{ older.href }}">{{ older.label }}</a></p>
+{% endif %}{% endblock %}

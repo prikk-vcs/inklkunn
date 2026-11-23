@@ -551,3 +551,23 @@ exact :: sentences.rs :: date :: a placeholder name of a catalog message
 exact :: sentences.rs :: role :: a placeholder name of a catalog message
 exact :: sentences.rs :: limit :: a placeholder name of a catalog message
 exact :: account.rs :: what an account holds in wiki `{}` could not be read now: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: show.rs :: seq :: a placeholder name of a catalog message
+exact :: form.rs :: seq :: a placeholder name of a catalog message
+exact :: form.rs :: view :: a placeholder name of a catalog message
+exact :: form.rs :: note :: a placeholder name of a catalog message
+exact :: log.rs :: seq :: a placeholder name of a catalog message
+exact :: log.rs :: item :: a placeholder name of a catalog message
+exact :: log.rs :: part :: a placeholder name of a catalog message
+exact :: log.rs :: category :: a placeholder name of a catalog message
+exact :: log.rs :: role :: a placeholder name of a catalog message
+exact :: log.rs :: date :: a placeholder name of a catalog message
+exact :: log.rs :: note :: a placeholder name of a catalog message
+exact :: log.rs :: wiki :: a placeholder name of a catalog message
+exact :: tombstone.rs :: part :: a placeholder name of a catalog message
+exact :: tombstone.rs :: category :: a placeholder name of a catalog message
+exact :: tombstone.rs :: role :: a placeholder name of a catalog message
+exact :: tombstone.rs :: date :: a placeholder name of a catalog message
+exact :: form.rs :: moderation could not be done: {other} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: log.rs :: the moderation log could not be read: {other} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: form.rs :: no-store :: a cache directive: the answer that shows hidden content is never stored
+exact :: log.rs :: before :: the name of the query parameter that carries the entry the log continues after

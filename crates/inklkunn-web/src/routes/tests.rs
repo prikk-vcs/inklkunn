@@ -338,6 +338,10 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/views/compare", Read),
             ("/{slug}/-/views/compare/{*title}", Read),
             ("/{slug}/-/protect", Moderate),
+            ("/{slug}/-/moderation", Read),
+            ("/{slug}/-/moderate", Moderate),
+            ("/{slug}/-/moderate/unhide", Moderate),
+            ("/{slug}/-/moderate/show", Moderate),
             ("/{slug}/-/people", Read),
             // A role is no `Action` of its own: a maintainer's change of one depends on the rung and `grant_up_to` alone (F-7),
             // so the form is read like the page, and the core authorizes the act.

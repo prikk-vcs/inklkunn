@@ -135,11 +135,35 @@ struct ProposalTpl<'a> {
 struct Cast<'a> {
     ctx: &'a Ctx,
     t: T,
+    /// What moderation hides of the comments (RFC 006 D-8), by comment.
+    hidden: &'a HashMap<inklkunn_store::CommentId, inklkunn_core::tombstone::Hidden>,
+    /// May the person hide or restore a comment? Offered to the `moderate` rung alone.
+    may_moderate: bool,
+    proposal: &'a ProposalId,
 }
 
 impl Cast<'_> {
     fn name(&self, id: &inklkunn_store::AccountId) -> String {
         self.ctx.person(self.t, id)
+    }
+
+    /// The name of a comment's author: **a hidden author is named nowhere**.
+    fn author_of(&self, c: &CommentRecord) -> String {
+        crate::tombstone::author_of(self.t, || self.name(&c.author), self.hidden.get(&c.id))
+    }
+
+    /// The link that hides or restores a comment, offered to the `moderate` rung.
+    fn moderate_link(&self, c: &CommentRecord) -> Option<LinkView> {
+        self.may_moderate.then(|| LinkView {
+            href: crate::tombstone::paths::form_for(
+                self.ctx.slug(),
+                &inklkunn_core::tombstone::Item::ProposalComment {
+                    proposal: self.proposal.clone(),
+                    comment: c.id.clone(),
+                },
+            ),
+            label: self.t.get(Key::TombstoneModerateLink),
+        })
     }
 }
 
@@ -160,10 +184,14 @@ fn comment_view(
     orphaned: Option<String>,
 ) -> CommentView {
     let t = cast.t;
+    let (body_hidden, tombstone) = crate::tombstone::comment_state(t, cast.hidden.get(&c.id));
     CommentView {
+        body_hidden,
+        tombstone,
+        moderate: cast.moderate_link(c),
         id: format!("k-{}", c.id),
         depth: depth.min(3),
-        author: cast.name(&c.author),
+        author: cast.author_of(c),
         meta: t
             .msg(Key::CommentMeta)
             .with("when", utc_minutes(c.created_at))
@@ -200,7 +228,7 @@ fn threads(
             ),
             label: t
                 .msg(Key::CommentReply)
-                .with("author", cast.name(&c.author))
+                .with("author", cast.author_of(c))
                 .text(),
         })
     };
@@ -309,6 +337,12 @@ impl Beside for Placed {
 
 fn copy_comment(c: &CommentView) -> CommentView {
     CommentView {
+        body_hidden: c.body_hidden,
+        tombstone: c.tombstone.clone(),
+        moderate: c.moderate.as_ref().map(|l| LinkView {
+            href: l.href.clone(),
+            label: l.label.clone(),
+        }),
         id: c.id.clone(),
         depth: c.depth,
         author: c.author.clone(),
@@ -359,6 +393,12 @@ struct Records {
     comments: Vec<CommentRecord>,
     decisions: Vec<DecisionRecord>,
     transitions: Vec<ProposalTransition>,
+    /// What moderation hides of the proposal wherever it is named: its summary and its author.
+    hidden: inklkunn_core::tombstone::ProposalHidden,
+    /// What moderation hides of each revision, with its number.
+    revision_marks: Vec<(u32, inklkunn_core::tombstone::Hidden)>,
+    /// What moderation hides of each comment that has something hidden.
+    comment_marks: HashMap<inklkunn_store::CommentId, inklkunn_core::tombstone::Hidden>,
 }
 
 fn records(ctx: &Ctx, id: &ProposalId) -> Result<Records, ProposalError> {
@@ -372,6 +412,9 @@ fn records(ctx: &Ctx, id: &ProposalId) -> Result<Records, ProposalError> {
         _ => None,
     };
     Ok(Records {
+        hidden: service.hidden_of(p, w, id)?,
+        revision_marks: service.revision_marks(p, w, id)?,
+        comment_marks: service.comment_marks(p, w, id)?,
         comments: service.comments(p, w, id)?,
         decisions: service.decisions(p, w, id)?,
         transitions: service.transitions(p, w, id)?,
@@ -395,7 +438,23 @@ pub(crate) fn draw(
     };
     let t = page.t();
     let slug = ctx.slug();
-    let cast = Cast { ctx, t };
+    let may_moderate = ctx
+        .services
+        .moderation
+        .may_moderate(&ctx.principal, &ctx.wiki);
+    let cast = Cast {
+        ctx,
+        t,
+        hidden: &r.comment_marks,
+        may_moderate,
+        proposal: id,
+    };
+    // The name of the proposer: **a hidden author is named nowhere** (RFC 006 D-8).
+    let proposer = if r.hidden.author.is_some() {
+        crate::tombstone::author_word(t)
+    } else {
+        ctx.person(t, &r.record.author)
+    };
     let record = &r.record;
     let latest = r.revisions.last().map(|rev| rev.seq);
     let open_for_talk = matches!(
@@ -492,7 +551,7 @@ pub(crate) fn draw(
     // The state, in words, and what has been said about it.
     let mut notes = vec![
         t.msg(words::state_note(record.state))
-            .with("author", ctx.person(t, &record.author))
+            .with("author", &proposer)
             .html(),
     ];
     for tr in &r.transitions {
@@ -516,14 +575,23 @@ pub(crate) fn draw(
             .services
             .proposals
             .get(&ctx.principal, &ctx.wiki, new)
-            .map_or_else(|_| t.get(Key::ProposalAnother), |p| p.summary);
+            .map_or_else(
+                |_| t.get(Key::ProposalAnother),
+                |p| {
+                    if p.summary.is_empty() {
+                        t.get(Key::TombstoneSummaryHidden)
+                    } else {
+                        p.summary
+                    }
+                },
+            );
         t.msg(Key::SupersededBy)
             .link("proposal", label, paths::proposal(slug, new.as_str()))
             .html()
     });
     let mut facts = vec![
         t.msg(Key::FactProposedBy)
-            .with("author", ctx.person(t, &record.author))
+            .with("author", &proposer)
             .with(
                 "when",
                 utc_minutes(record.submitted_at.unwrap_or(record.created_at)),
@@ -531,6 +599,18 @@ pub(crate) fn draw(
             .text(),
     ];
     facts.push(t.msg(Key::FactPages).n(files.len() as u64).text());
+    // What moderation hides of the revisions, in place of it: the text of a hidden revision is not shown above, and each
+    // hiding says why, which role and when (RFC 006 D-8). **A name is never in it.**
+    for (seq, hidden) in &r.revision_marks {
+        if hidden.content().is_some() {
+            facts.push(
+                t.msg(Key::TombstoneRevisionHidden)
+                    .with("number", *seq)
+                    .text(),
+            );
+        }
+        facts.extend(crate::tombstone::facts(t, hidden));
+    }
     if let Some(n) = latest {
         facts.push(
             t.msg(Key::FactRevision)
@@ -595,6 +675,25 @@ pub(crate) fn draw(
         )
     {
         actions.push(link(Key::ActionDecline, paths::ACT_DECLINE));
+    }
+    // The `moderate` rung hides or restores a revision here (RFC 006 D-8): one link for each, named by its number.
+    if may_moderate {
+        for revision in &r.revisions {
+            actions.push(LinkView {
+                href: crate::tombstone::paths::form_for(
+                    slug,
+                    &inklkunn_core::tombstone::Item::ProposalRevision {
+                        proposal: id.clone(),
+                        seq: revision.seq,
+                    },
+                ),
+                label: t
+                    .msg(Key::ModerateItemProposalRevision)
+                    .with("seq", revision.seq)
+                    .with("id", id.as_str().chars().take(12).collect::<String>())
+                    .text(),
+            });
+        }
     }
     let accept = (can_accept && record.state == ProposalState::HeldForReview).then(|| AcceptView {
         action: paths::act(slug, id.as_str(), paths::ACT_ACCEPT),
@@ -667,7 +766,16 @@ pub(crate) fn draw(
                 .services
                 .proposals
                 .get(&ctx.principal, &ctx.wiki, open)
-                .map_or_else(|_| t.get(Key::ProposalAnother), |p| p.summary);
+                .map_or_else(
+                    |_| t.get(Key::ProposalAnother),
+                    |p| {
+                        if p.summary.is_empty() {
+                            t.get(Key::TombstoneSummaryHidden)
+                        } else {
+                            p.summary
+                        }
+                    },
+                );
             Some(
                 t.msg(Key::TouchReconfirmOpen)
                     .link("proposal", label, paths::proposal(slug, open.as_str()))
@@ -756,7 +864,7 @@ pub(crate) fn draw(
             hidden.push((fields::PARENT.to_owned(), parent.id.to_string()));
             about = Some(
                 t.msg(Key::CommentFormReplyTo)
-                    .with("author", ctx.person(t, &parent.author))
+                    .with("author", cast.author_of(parent))
                     .text(),
             );
         }
@@ -825,7 +933,9 @@ pub(crate) fn draw(
     }
     let head = page.wiki_head(&ctx.wiki, Subject::Wiki);
     let shell = Shell::of(&ctx.wiki);
-    let summary = if record.summary.is_empty() {
+    let summary = if r.hidden.summary.is_some() {
+        t.get(Key::TombstoneSummaryHidden)
+    } else if record.summary.is_empty() {
         t.get(Key::ProposalNoSummary)
     } else {
         record.summary.clone()

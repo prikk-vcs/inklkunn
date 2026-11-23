@@ -50,6 +50,7 @@ pub mod services;
 mod signin;
 pub mod style;
 mod time;
+mod tombstone;
 mod url;
 pub mod views;
 mod watch;

@@ -310,11 +310,24 @@ fn proposal_of(
     if !crate::knowledge::why::sealed_as(services, &ctx.principal, wiki, &id, &info.block_id) {
         return Value::Null;
     }
-    json!({
+    // What moderation hides of the proposal is told in place of it (RFC 006 D-8); what cannot be read is not given.
+    let Ok(hidden) = services.proposals.hidden_of(&ctx.principal, wiki, &id) else {
+        return Value::Null;
+    };
+    let mut body = json!({
         "id": id.to_string(),
         "summary": record.summary,
         "sources": record.sources.iter().map(|s| shortened(s)).collect::<Vec<_>>(),
-    })
+    });
+    if let Value::Object(members) = &mut body {
+        crate::api::shape::tombstones(
+            members,
+            &inklkunn_core::tombstone::Hidden::from_marks(
+                hidden.summary.iter().chain(hidden.author.iter()).cloned(),
+            ),
+        );
+    }
+    body
 }
 
 /// `GET /{slug}/-/api/v1/views/compare`.

@@ -103,6 +103,12 @@ pub(super) async fn revision(
                         .map_err(|e| from_read(services, wiki, e))?
                     {
                         AtOutcome::Found { view: page, .. } => shape::page(wiki, &page),
+                        // The text at this change is hidden: the member says so, and why, in place of the page.
+                        AtOutcome::Hidden { change, .. } => {
+                            let mut hidden = serde_json::Map::new();
+                            shape::tombstones(&mut hidden, &change.hidden);
+                            Value::Object(hidden)
+                        }
                         AtOutcome::PageMissing { .. } => {
                             return Err(Problem::new(Code::PageNotFound));
                         }
@@ -169,6 +175,33 @@ pub(super) async fn diff(State(state): State<PageState>, headers: HeaderMap, uri
             {
                 DiffOutcome::Found(diff) => diff,
                 DiffOutcome::NoSuchChange => return Err(Problem::new(Code::ChangeNotFound)),
+                // A side that is hidden gives no difference: the member says which side, and why (never the lines).
+                DiffOutcome::Hidden(hidden) => {
+                    let mut body = serde_json::Map::new();
+                    body.insert("title".to_owned(), json!(hidden.title));
+                    body.insert("from".to_owned(), json!(hidden.from));
+                    body.insert("to".to_owned(), json!(hidden.to));
+                    body.insert("from_number".to_owned(), json!(hidden.from_number));
+                    body.insert("to_number".to_owned(), json!(hidden.to_number));
+                    body.insert("status".to_owned(), json!("hidden"));
+                    body.insert("hunks".to_owned(), json!([]));
+                    body.insert(
+                        "from_hidden".to_owned(),
+                        json!(hidden.from_hidden.is_some()),
+                    );
+                    body.insert("to_hidden".to_owned(), json!(hidden.to_hidden.is_some()));
+                    shape::tombstones(
+                        &mut body,
+                        &inklkunn_core::tombstone::Hidden::from_marks(
+                            hidden
+                                .from_hidden
+                                .iter()
+                                .chain(hidden.to_hidden.iter())
+                                .cloned(),
+                        ),
+                    );
+                    return Reply::json(&Value::Object(body));
+                }
                 DiffOutcome::Ambiguous { candidates } => return Err(ambiguous(&candidates)),
             };
             Reply::json(&json!({

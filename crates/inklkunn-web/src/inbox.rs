@@ -72,6 +72,7 @@ fn sentence(t: T, entry: &Entry) -> Rich {
         wiki,
         proposal,
         actor,
+        actor_hidden,
     } = &entry.about
     else {
         return t.msg(Key::InboxEventUnreadable).html();
@@ -87,9 +88,19 @@ fn sentence(t: T, entry: &Entry) -> Rich {
         InboxEventKind::Mentioned => Key::InboxEventMentioned,
         InboxEventKind::WatchedPageChanged => Key::InboxEventWatched,
     };
-    let person = actor.clone().unwrap_or_else(|| t.get(Key::InboxSomeone));
-    // The proposal is named by its summary, linked to its own page; an event with none names the wiki.
+    // A person whose authorship is hidden is named nowhere (RFC 006 D-8).
+    let person = if actor_hidden.is_some() {
+        crate::tombstone::author_word(t)
+    } else {
+        actor.clone().unwrap_or_else(|| t.get(Key::InboxSomeone))
+    };
+    // The proposal is named by its summary, linked to its own page; an event with none names the wiki. A hidden summary is
+    // told as hidden.
     let (label, href) = match proposal {
+        Some(p) if p.summary_hidden.is_some() => (
+            t.get(Key::TombstoneSummaryHidden),
+            format!("/{slug}/-/proposals/{}", p.id),
+        ),
         Some(p) => (p.summary.clone(), format!("/{slug}/-/proposals/{}", p.id)),
         None => (wiki.clone(), format!("/{slug}")),
     };

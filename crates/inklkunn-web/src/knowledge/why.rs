@@ -269,6 +269,8 @@ impl Reading<'_> {
         let service = &self.services.proposals;
         let decisions = service.decisions(self.principal, self.wiki, id).ok()?;
         let comments = service.comments(self.principal, self.wiki, id).ok()?;
+        // What moderation hides of a comment is asked now; a review whose hidden comments cannot be read is not shown.
+        let marks = service.comment_marks(self.principal, self.wiki, id).ok()?;
         let total = decisions.len() + comments.len();
         let decided = decisions.iter().map(|d| {
             let sentence = t
@@ -290,10 +292,20 @@ impl Reading<'_> {
             }
         });
         let commented = comments.iter().map(|c| {
+            let hidden = marks.get(&c.id);
+            // A hidden comment's body and a hidden author are not quoted: the tombstone's own word stands in place of each.
+            let text = if hidden.is_some_and(|h| h.content().is_some()) {
+                t.get(Key::TombstoneCommentHidden)
+            } else {
+                shortened(&c.body)
+            };
             t.msg(Key::WhyComment)
-                .with("author", person(self.services, t, &c.author))
+                .with(
+                    "author",
+                    crate::tombstone::author_of(t, || person(self.services, t, &c.author), hidden),
+                )
                 .with("number", c.revision)
-                .with("text", shortened(&c.body))
+                .with("text", text)
                 .text()
         });
         let items: Vec<String> = decided.chain(commented).take(MAX_REVIEW_ITEMS).collect();
@@ -374,6 +386,8 @@ fn change_view(
     let number = info.number;
     let mut people_lines = people(t, &info.provenance);
     people_lines.extend(flags(t, info));
+    // What moderation hides of the change is told in place of it (RFC 006 D-8): *Why is this here?* does not quote it.
+    people_lines.extend(crate::tombstone::facts(t, &info.hidden));
     let mut out = ChangeView {
         id: paths::why_change_id(number),
         heading: t.msg(Key::HistoryChangeLabel).with("number", number).text(),
@@ -406,7 +420,14 @@ fn change_view(
         out.note = Some(t.get(Key::WhyProposalUnlisted));
         return Ok(out);
     };
-    let label = if record.summary.is_empty() {
+    let summary_hidden = reading
+        .services
+        .proposals
+        .hidden_of(reading.principal, reading.wiki, &id)
+        .map_or(true, |hidden| hidden.summary.is_some());
+    let label = if summary_hidden {
+        t.get(Key::TombstoneSummaryHidden)
+    } else if record.summary.is_empty() {
         t.get(Key::ProposalNoSummary)
     } else {
         record.summary.clone()

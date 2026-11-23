@@ -30,6 +30,7 @@ pub(super) fn person(person: &Person) -> Value {
         Person::Account(name) => json!({"kind": "account", "name": name}),
         Person::Anonymous(token) => json!({"kind": "anonymous", "name": token}),
         Person::Service(label) => json!({"kind": "service", "name": label}),
+        Person::Hidden => json!({"kind": "hidden", "name": Value::Null}),
     }
 }
 
@@ -39,7 +40,45 @@ pub(super) fn who(who: &Who) -> Value {
         Who::Person { name } => json!({"kind": "account", "name": name}),
         Who::Anonymous { token } => json!({"kind": "anonymous", "name": token}),
         Who::Service => json!({"kind": "service", "name": Value::Null}),
+        Who::Hidden => json!({"kind": "hidden", "name": Value::Null}),
     }
+}
+
+/// What moderation hides of an item, as every member of the API that can carry it says it (RFC 006 D-8, D-12; INV-13):
+/// `hidden` lists the parts (`content`, `summary`, `author`) and `tombstone` is the newest hiding's category, role and time.
+/// `tombstones` lists every hiding in force, each with its own parts. **Never a name, never the note**: the note is for the
+/// `moderate` rung, who read it in the web (moderation is web-only, so a token has no use for it).
+pub(super) fn tombstones(into: &mut Map<String, Value>, hidden: &inklkunn_core::tombstone::Hidden) {
+    let Some(newest) = hidden.marks().last() else {
+        return;
+    };
+    let parts = |p: inklkunn_store::HiddenParts| -> Vec<&'static str> {
+        [
+            (p.content, "content"),
+            (p.summary, "summary"),
+            (p.author, "author"),
+        ]
+        .into_iter()
+        .filter_map(|(on, word)| on.then_some(word))
+        .collect()
+    };
+    let one = |m: &inklkunn_core::tombstone::Mark| {
+        json!({
+            "hidden": parts(m.parts),
+            "category": m.category.as_str(),
+            "rung": m.rung.as_str(),
+            "at": m.at,
+        })
+    };
+    into.insert("hidden".to_owned(), json!(parts(hidden.parts())));
+    into.insert(
+        "tombstone".to_owned(),
+        json!({"category": newest.category.as_str(), "rung": newest.rung.as_str(), "at": newest.at}),
+    );
+    into.insert(
+        "tombstones".to_owned(),
+        Value::Array(hidden.marks().iter().map(one).collect()),
+    );
 }
 
 const fn history_kind(kind: HistoryChangeKind) -> &'static str {
@@ -108,6 +147,7 @@ pub(super) fn change_head(t: T, info: &ChangeInfo) -> Map<String, Value> {
                 .collect::<Vec<_>>()
         ),
     );
+    tombstones(&mut head, &info.hidden);
     head
 }
 

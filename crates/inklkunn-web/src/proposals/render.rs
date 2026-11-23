@@ -36,6 +36,12 @@ pub(crate) struct CommentView {
     /// A reply in a claim's thread: the sentence naming the comment it answers, with a link to that comment (on its own
     /// page) when one can be made. It stands in place of `location`.
     pub(crate) parent: Option<crate::catalog::Rich>,
+    /// The body is hidden by moderation (RFC 006 D-8): `body` is empty, and the tombstone stands in its place.
+    pub(crate) body_hidden: bool,
+    /// What moderation hides of the comment, in lines: the body and the author, with the reason, the role and the date.
+    pub(crate) tombstone: Vec<String>,
+    /// Where the `moderate` rung hides or restores it, offered to that rung alone.
+    pub(crate) moderate: Option<LinkView>,
 }
 
 /// A link.

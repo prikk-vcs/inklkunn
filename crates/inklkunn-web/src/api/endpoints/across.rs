@@ -298,7 +298,7 @@ pub(super) async fn changes(
             let items: Vec<Value> = rows
                 .iter()
                 .map(|row| {
-                    json!({
+                    let mut item = json!({
                         "id": row.block_id,
                         "view": short(&row.view),
                         "summary": row.summary,
@@ -313,7 +313,12 @@ pub(super) async fn changes(
                             "title": p.title,
                             "exists": p.exists,
                         })).collect::<Vec<_>>()),
-                    })
+                    });
+                    // What moderation hides of the change is told in place of it (RFC 006 D-8).
+                    if let Value::Object(members) = &mut item {
+                        shape::tombstones(members, &row.hidden);
+                    }
+                    item
                 })
                 .collect();
             Reply::json(&json!({

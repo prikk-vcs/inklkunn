@@ -188,6 +188,7 @@ fn person_text(t: T, person: &Person) -> String {
             .with("token", token)
             .text(),
         Person::Service(label) => t.msg(Key::ChangesPersonService).with("label", label).text(),
+        Person::Hidden => crate::tombstone::author_word(t),
     }
 }
 
@@ -300,6 +301,8 @@ pub(crate) fn flag_marks(t: T, row: &ChangeRow) -> Vec<String> {
             None => t.get(Key::ChangesMachineAssistedOnly),
         });
     }
+    // What moderation hides of the change is told in place of it (RFC 006 D-8): the page and the feed alike.
+    marks.extend(crate::tombstone::facts(t, &row.hidden));
     marks
 }
 

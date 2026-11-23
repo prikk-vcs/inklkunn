@@ -21,7 +21,7 @@ use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
     account, api, changes, csrf, discover, health, history, inbox, knowledge, people, probe,
-    proposals, protections, raw, search, signin, style, views, watch, wiki,
+    proposals, protections, raw, search, signin, style, tombstone, views, watch, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -219,16 +219,48 @@ fn view_specs() -> Vec<Spec> {
 /// The moderation forms (RFC 006 D-7; handoff G-T3): put a temporary protection in place, renew it, lift it. **Web only**: there
 /// is no write API for moderation (RFC 006 D-12). Each carries the action the authorizer decides it with.
 fn moderation_specs() -> Vec<Spec> {
-    vec![Spec {
-        path: "/{slug}/-/protect",
-        methods: &["GET", "HEAD", "POST"],
-        guard: Guard::Action(Action::Moderate),
-        handler: form_route!(
-            protections::form::protect_form,
-            protections::form::protect_post,
-            protections::form::FORM_LIMIT
-        ),
-    }]
+    vec![
+        Spec {
+            path: "/{slug}/-/protect",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: form_route!(
+                protections::form::protect_form,
+                protections::form::protect_post,
+                protections::form::FORM_LIMIT
+            ),
+        },
+        // --- handoff G-T4 (RFC 006 D-8, D-12): tombstones. The log is read by whoever may read the wiki; the form and the
+        // acts are the `moderate` rung's, web only.
+        Spec {
+            path: "/{slug}/-/moderation",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(tombstone::log::moderation_log),
+        },
+        Spec {
+            path: "/{slug}/-/moderate",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: form_route!(
+                tombstone::form::moderate_form,
+                tombstone::form::moderate_post,
+                tombstone::form::FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/moderate/unhide",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: post_route!(tombstone::form::unhide_post, tombstone::form::FORM_LIMIT),
+        },
+        Spec {
+            path: "/{slug}/-/moderate/show",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: post_route!(tombstone::form::show_post, tombstone::form::FORM_LIMIT),
+        },
+    ]
 }
 
 /// The people of a wiki (RFC 006 D-6, D-7; handoff G-T2): the page, and the four forms that change a role, restrict a

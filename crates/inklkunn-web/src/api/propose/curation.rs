@@ -310,7 +310,10 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
             .map_err(|error| req.refusal(error))?;
         (draft, 0)
     };
-    Ok(answer::reply(&record, revision, req.account())?.created(req.proposal_path(&record.id)))
+    Ok(
+        answer::reply_for(&req.services, &req.principal, &req.wiki, &record, revision)?
+            .created(req.proposal_path(&record.id)),
+    )
 }
 
 /// What the core refused to write, as the problem the form's words say. A source the claim does not cite is a source

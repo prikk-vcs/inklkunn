@@ -140,6 +140,12 @@ fn prepare_probing(
         layout.clone(),
     ));
     verifier.flag_format_markers_in(store.clone());
+    // What moderation hides (RFC 006 D-8; INV-13): every service that shows a revision, a proposal or a comment asks the
+    // same reader, over the moderation records and the acceptance records that tie a proposal's revision to its change.
+    let tombstones = Arc::new(inklkunn_core::tombstone::Tombstones::new(
+        store.clone(),
+        store.clone(),
+    ));
     let read = Arc::new(
         ReadService::new(
             storage.clone(),
@@ -149,6 +155,7 @@ fn prepare_probing(
             web.read.read_config(),
             Some(hints),
         )
+        .with_tombstones(tombstones.clone())
         // The flags of accepted changes (minor, machine-assisted) are the proposal records' (RFC 004 D-10).
         .with_revision_flags(store.clone())
         // `knowledge.review_after` (RFC 005 part 2 D-10): the operator's setting, in days; the config bounds it. A wiki's
@@ -185,13 +192,16 @@ fn prepare_probing(
         store.clone() as Arc<dyn AuditSink>,
         web.governance,
     ));
-    let inbox = Arc::new(Inbox::new(
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        store.clone(),
-        (*authorizer).clone(),
-    ));
+    let inbox = Arc::new(
+        Inbox::new(
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            (*authorizer).clone(),
+        )
+        .with_tombstones(tombstones.clone()),
+    );
     let notifier = Arc::new(Notifier::new(
         store.clone(),
         store.clone(),
@@ -208,11 +218,26 @@ fn prepare_probing(
             read.clone(),
             QuotaConfig::default(),
         )
-        .with_notifier(notifier)
+        .with_notifier(notifier.clone())
+        .with_tombstones(tombstones.clone())
         // The people who could give the approvals the rules ask for, for the warning on a proposal's page (RFC 006 D-4).
         .with_roles(store.clone())
         // A claim's own discussion (RFC 005 part 2 D-11) is kept in the same store, under the same limits.
         .with_claim_threads(store.clone(), read.clone()),
+    );
+    // Hide, unhide and show hidden content: web-only acts of the `moderate` rung (RFC 006 D-8, D-12), over the same stores.
+    let moderation = Arc::new(
+        inklkunn_core::tombstone::ModerationService::new(
+            (*authorizer).clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            read.clone(),
+            tombstones,
+            store.clone() as Arc<dyn AuditSink>,
+        )
+        .with_notifier(notifier),
     );
     let auth = Arc::new(outbound::attach(
         Authenticator::new(
@@ -254,6 +279,7 @@ fn prepare_probing(
         proposals,
         accounts: store.clone(),
         people,
+        moderation,
         acceptances: store.clone(),
         acts: store.clone(),
         // The acceptor of RFC 004 D-4 over the same lease as the command line, or `NoSigner` when this server was

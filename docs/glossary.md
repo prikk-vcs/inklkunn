@@ -1630,6 +1630,76 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `account.wikis_heading` | the heading of the part of the account page that says the person's role in each wiki | "Your role in each wiki" | "各ウィキでのあなたの役割" |
 | `account.wikis_intro` | under that heading | "The role you hold in each wiki you can read, and what gives it to you. A restriction, if there is one, is told here with its reason and its end." | "読めるウィキごとに、あなたの役割と、その役割の理由を示します。制限がある場合は、理由と終了日もここに示します。" |
 | `account.wikis_none` | in that part when there is no wiki the person can read | "There is no wiki you can read here yet." | "いま読めるウィキはありません。" |
+| `tombstone.fact` | the line that stands in place of what moderation hid, one for each part: `{part}` is what is hidden, `{category}` why, `{role}` the role that hid it, `{date}` when | "Hidden by moderation: {part}. Reason: {category}. Role: {role}. Date: {date}." | "モデレーションにより非表示: {part}。理由: {category}。役割: {role}。日時: {date}。" |
+| `tombstone.restored_fact` | the line of the moderation log for a restored part: `{part}` is what was restored, `{role}` the role that restored it, `{date}` when | "Restored: {part}. Role: {role}. Date: {date}." | "元に戻しました: {part}。役割: {role}。日時: {date}。" |
+| `tombstone.part_content` | the name of the text of a revision or the body of a comment, in a line about what is hidden | "the text" | "本文" |
+| `tombstone.part_summary` | the name of the summary of a revision, in a line about what is hidden | "the summary" | "要約" |
+| `tombstone.part_author` | the name of the author, in a line about what is hidden | "the author" | "作成者" |
+| `tombstone.cat_personal_data` | the reason category of a hiding: personal data | "personal data" | "個人情報" |
+| `tombstone.cat_harassment` | the reason category of a hiding: harassment | "harassment" | "嫌がらせ" |
+| `tombstone.cat_unlawful` | the reason category of a hiding: unlawful content | "unlawful content" | "違法な内容" |
+| `tombstone.cat_copyright` | the reason category of a hiding: copyright | "copyright" | "著作権" |
+| `tombstone.cat_spam` | the reason category of a hiding: spam | "spam" | "スパム" |
+| `tombstone.cat_other` | the reason category of a hiding: another reason | "another reason" | "その他の理由" |
+| `tombstone.author_hidden` | in place of the name of a person whose authorship is hidden | "(hidden)" | "（非表示）" |
+| `tombstone.comment_hidden` | in place of a comment whose body is hidden | "This comment is hidden." | "このコメントは非表示です。" |
+| `tombstone.diff_from` | on a page of a difference, when the text of the earlier change is hidden | "The text of the earlier change is hidden, so no difference is shown." | "前の変更の本文は非表示のため、差分を表示していません。" |
+| `tombstone.diff_to` | on a page of a difference, when the text of the later change is hidden | "The text of the later change is hidden, so no difference is shown." | "後の変更の本文は非表示のため、差分を表示していません。" |
+| `tombstone.diff_heading` | the heading of a page of a difference whose text is hidden | "Difference hidden" | "差分は非表示です" |
+| `tombstone.at_heading` | the heading of the page of a page as it was after a change, when its text is hidden | "Text hidden" | "本文は非表示です" |
+| `tombstone.at_hidden` | on the page of a page as it was after a change, when its text is hidden | "The text of this page after this change is hidden." | "この変更後のページの本文は非表示です。" |
+| `tombstone.revision_hidden` | on a proposal's page, in place of the pages of a revision whose text is hidden; `{number}` is the revision | "The text of revision {number} is hidden." | "修正版 {number} の本文は非表示です。" |
+| `tombstone.summary_hidden` | in place of the summary of a proposal whose summary is hidden | "(summary hidden)" | "（要約は非表示です）" |
+| `tombstone.moderate_link` | the link, offered to those who moderate, to the form that hides or restores | "Hide or restore this" | "非表示にする・元に戻す" |
+| `title.moderate` | the title of the page that hides or restores | "Hide or restore · {wiki} · {product}" | "非表示と復元 · {wiki} · {product}" |
+| `moderate.heading` | the heading of that page | "Hide or restore" | "非表示にする・元に戻す" |
+| `moderate.intro` | the first paragraph of that page | "Hiding keeps the item's place and says why. It does not erase: it can be restored, and no one but the people who moderate sees what is hidden through this site." | "非表示にしても、項目の位置は残り、理由が示されます。消去ではないので、あとで元に戻せます。非表示にした内容は、このサイトでは、モデレーションを行う人以外には表示されません。" |
+| `moderate.still_held` | on that page: where the hidden content still is | "What still holds the content: the repository (prikk keeps every object), the operator's backups and `archive export`, and any copy made before the hide. Removal from those is the operator's P-1 procedure, not offered yet." | "内容が残る場所: リポジトリ（prikk はすべてのオブジェクトを保持します）、運営者のバックアップと `archive export`、非表示にする前に作られたコピー。そこからの削除は運営者の P-1 の手順で行うもので、まだ提供していません。" |
+| `moderate.item_page_revision` | what the form is about, a change in the history; `{id}` is its address | "A change in the history ({id})" | "履歴の変更（{id}）" |
+| `moderate.item_proposal_revision` | what the form is about, a revision of a proposal; `{seq}` is the revision, `{id}` the proposal | "Revision {seq} of the proposal {id}" | "提案 {id} の修正版 {seq}" |
+| `moderate.item_proposal_comment` | what the form is about, a comment on a proposal; `{id}` is the comment | "A comment on a proposal ({id})" | "提案へのコメント（{id}）" |
+| `moderate.item_claim_comment` | what the form is about, a comment in the discussion of a claim; `{id}` is the comment | "A comment in the discussion of a claim ({id})" | "主張についての議論のコメント（{id}）" |
+| `moderate.parts_legend` | the legend of the choice of what to hide | "What to hide" | "非表示にするもの" |
+| `moderate.label_content` | the choice to hide the text | "The text" | "本文" |
+| `moderate.label_summary` | the choice to hide the summary | "The summary" | "要約" |
+| `moderate.label_author` | the choice to hide the author | "The author" | "作成者" |
+| `moderate.category_legend` | the legend of the choice of why | "Why" | "理由の種類" |
+| `moderate.note_label` | the label of the note's field | "Note, shown only to people who moderate" | "メモ（モデレーションを行う人だけに表示されます）" |
+| `moderate.hide` | the button that hides | "Hide" | "非表示にする" |
+| `moderate.in_force_heading` | the heading of what is hidden now, on that page | "Hidden now" | "いま非表示のもの" |
+| `moderate.unhide` | the button that restores what a hiding hid | "Restore" | "元に戻す" |
+| `moderate.show` | the button that shows the hidden content | "Show hidden content" | "非表示の内容を表示する" |
+| `moderate.show_note` | under that button: showing is recorded | "Showing hidden content is recorded in the audit trail." | "非表示の内容を表示すると、監査の記録に残ります。" |
+| `moderate.tip_refused` | on that page, when the text of a change is the current text of a page in a view, so it cannot be hidden; `{view}` is the view | "The text of this change is the current text of a page in the view {view}, and a page's current text is never hidden. First replace or remove it by a proposal, an undo or a new proposal for the page, then hide it here. Its summary and its author can be hidden now." | "この変更の本文は、ビュー {view} のページの現在の本文なので、非表示にできません。ページの現在の本文は、非表示にしないことにしています。先に、提案でこの変更を取り消すか、ページの本文を置き換えるか削除してから、ここで非表示にしてください。要約と作成者は、いま非表示にできます。" |
+| `moderate.tip_unchecked` | on that page, when the change is too large to be compared with the pages' current text | "This change is too large to compare with the current text of the pages, so its text cannot be hidden. Its summary and its author can be hidden now." | "この変更は大きすぎて、ページの現在の本文と照らし合わせられないため、本文は非表示にできません。要約と作成者は、いま非表示にできます。" |
+| `moderate.tip_link` | the link on that page to the change, where it can be undone by a proposal | "See the change" | "変更を見る" |
+| `moderate.declines` | on that page, when hiding the text of a proposal's latest revision also declines the proposal | "Hiding the text of the latest revision of an open proposal also declines the proposal, because a proposal no one can read cannot be reviewed." | "進行中の提案の最新の修正版の本文を非表示にすると、提案も見送られます。だれも読めない提案は、レビューできないからです。" |
+| `moderate.back` | the link back from that page | "Back to the moderation log" | "モデレーションのログに戻る" |
+| `moderate.problem_no_part` | a problem: nothing was chosen to hide | "Choose what to hide." | "非表示にするものを選んでください。" |
+| `moderate.problem_no_such_part` | a problem: the item has no such part | "This item has no such part. (The summary of an earlier revision of a proposal is not kept.)" | "この項目には、そのような部分がありません。（提案の前の修正版の要約は保存されていません。）" |
+| `moderate.problem_already` | a problem: it is hidden already | "That is hidden already." | "すでに非表示です。" |
+| `moderate.problem_note` | a problem: the note is not one line; `{limit}` is the most characters | "Write the note on one line of at most {limit} characters." | "メモは、{limit} 文字以内の 1 行で書いてください。" |
+| `moderate.problem_changed` | a problem: the records changed meanwhile | "The records changed while you were doing this. Look again." | "操作している間に記録が変わりました。もう一度確認してください。" |
+| `moderate.not_allowed` | under the outcome not allowed, on that page | "Only people who hold the role that moderates in this wiki can hide or restore. Nothing was changed." | "このウィキでモデレーションを行える役割を持つ人だけが、非表示にしたり元に戻したりできます。何も変更していません。" |
+| `moderate.unavailable` | under the outcome that the records could not be used | "This could not be done now. Nothing was changed. Try again later." | "いまは実行できませんでした。何も変更していません。しばらくしてからもう一度お試しください。" |
+| `moderate.done_hidden` | the notice after a hiding | "Hidden. The moderation log shows it." | "非表示にしました。モデレーションのログに記録されています。" |
+| `moderate.done_declined` | the notice after a hiding that also declined a proposal | "Hidden, and the proposal was declined with it. The moderation log shows both." | "非表示にし、提案も見送りました。モデレーションのログに両方が記録されています。" |
+| `title.moderation_log` | the title of the moderation log | "Moderation log · {wiki} · {product}" | "モデレーションのログ · {wiki} · {product}" |
+| `log.heading` | the heading of the moderation log | "Moderation log" | "モデレーションのログ" |
+| `log.intro` | the first paragraph of the moderation log | "What was hidden and restored in this wiki: the item, why, which role and when. The hidden content is never shown here, and no one is named." | "このウィキで非表示にされたものと、元に戻されたものです。項目、理由、役割、日時を示します。非表示の内容はここには表示されず、だれの名前も示しません。" |
+| `log.none` | in the moderation log when nothing was hidden | "Nothing has been hidden here." | "ここで非表示にされたものはありません。" |
+| `log.hidden` | the head of a row of the log for a hiding; `{item}` is what was hidden | "Hidden: {item}" | "非表示: {item}" |
+| `log.restored` | the head of a row of the log for a restoring; `{item}` is what was restored | "Restored: {item}" | "元に戻した項目: {item}" |
+| `log.declined` | in a row of the log: the hiding also declined a proposal | "The proposal was declined in the same act." | "同じ操作で、提案も見送られました。" |
+| `log.note` | in a row of the log, for those who moderate; `{note}` is the moderator's note | "Note: {note}" | "メモ: {note}" |
+| `log.older` | the link to older rows of the log | "Older entries" | "さらに前の記録" |
+| `title.moderation_show` | the title of the page that shows hidden content | "Hidden content · {wiki} · {product}" | "非表示の内容 · {wiki} · {product}" |
+| `show.heading` | the heading of that page | "Hidden content" | "非表示の内容" |
+| `show.intro` | the first paragraph of that page | "You asked to see what is hidden. This was recorded in the audit trail, without the content. Do not copy it to a place where others can read it." | "非表示の内容の表示を求められました。この操作は、内容を含めずに、監査の記録に残りました。ほかの人が読める場所にはコピーしないでください。" |
+| `show.text_label` | the label of the hidden text or summary | "Text" | "本文" |
+| `show.author_label` | the label of the hidden author's name | "Author" | "作成者" |
+| `show.files_label` | the heading of the hidden pages of a revision | "Pages" | "ページ" |
+| `show.nothing` | on that page when the hiding had nothing to show | "There is nothing to show for this hiding." | "この非表示で表示できるものはありません。" |
 
 ## 3. Words the interface does not say
 

@@ -785,6 +785,10 @@ pub fn assemble_under(
     layout: RootLayout,
     rules: Option<Arc<dyn inklkunn_core::RulesSource>>,
 ) -> (Arc<Services>, Arc<MemoryAudit>, Arc<Mutex<Vec<String>>>) {
+    let tombstones = Arc::new(inklkunn_core::tombstone::Tombstones::new(
+        store.clone(),
+        store.clone(),
+    ));
     let read = Arc::new(
         ReadService::new(
             storage.clone(),
@@ -798,6 +802,7 @@ pub fn assemble_under(
             None,
         )
         .with_revision_flags(store.clone())
+        .with_tombstones(tombstones.clone())
         .with_clock(|| NOW),
     );
     let verifier = Arc::new(Verifier::new(storage, store.clone(), layout).with_clock(|| NOW));
@@ -834,6 +839,7 @@ pub fn assemble_under(
             store.clone(),
             (*authorizer).clone(),
         )
+        .with_tombstones(tombstones.clone())
         .with_clock(|| NOW),
     );
     let notifier = Arc::new(
@@ -855,9 +861,23 @@ pub fn assemble_under(
             read.clone(),
             QuotaConfig::default(),
         )
-        .with_notifier(notifier)
+        .with_notifier(notifier.clone())
+        .with_tombstones(tombstones.clone())
         .with_claim_threads(store.clone(), read.clone())
         .with_clock(|| NOW),
+    );
+    let moderation = Arc::new(
+        inklkunn_core::tombstone::ModerationService::new(
+            (*authorizer).clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            read.clone(),
+            tombstones,
+            audit.clone(),
+        )
+        .with_notifier(notifier),
     );
     let services = Arc::new(Services {
         wikis: store.clone(),
@@ -870,6 +890,7 @@ pub fn assemble_under(
         acceptor: None,
         accounts: store.clone(),
         people,
+        moderation,
         acceptances: store.clone(),
         acts: store.clone(),
         auth: None,

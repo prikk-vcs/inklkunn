@@ -7,6 +7,8 @@
 //! page says what it shows and does not pretend to more.
 
 use askama::Template;
+use std::collections::HashMap;
+
 use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -55,18 +57,38 @@ struct ListTpl<'a> {
     propose: Option<LinkView>,
 }
 
+/// What a proposal is called in a list, and who made it: **what moderation hides is told as hidden** (RFC 006 D-8).
+fn named(ctx: &Ctx, t: T, p: &ProposalRecord) -> (String, String) {
+    // What cannot be read is told as hidden: nothing is named when it cannot be known whether it may be.
+    let hidden = ctx
+        .services
+        .proposals
+        .hidden_of(&ctx.principal, &ctx.wiki, &p.id)
+        .ok();
+    let summary = if hidden.as_ref().is_none_or(|h| h.summary.is_some()) {
+        t.get(Key::TombstoneSummaryHidden)
+    } else if p.summary.is_empty() {
+        t.get(Key::ProposalNoSummary)
+    } else {
+        p.summary.clone()
+    };
+    let author = if hidden.as_ref().is_none_or(|h| h.author.is_some()) {
+        crate::tombstone::author_word(t)
+    } else {
+        ctx.person(t, &p.author)
+    };
+    (summary, author)
+}
+
 fn row(ctx: &Ctx, t: T, p: &ProposalRecord) -> Row {
+    let (summary, author) = named(ctx, t, p);
     Row {
         href: paths::proposal(ctx.slug(), p.id.as_str()),
-        summary: if p.summary.is_empty() {
-            t.get(Key::ProposalNoSummary)
-        } else {
-            p.summary.clone()
-        },
+        summary,
         state: t.get(words::state_label(p.state)),
         byline: t
             .msg(Key::ProposalsRowBy)
-            .with("author", ctx.person(t, &p.author))
+            .with("author", author)
             .with("when", utc_minutes(p.updated_at))
             .text(),
     }
@@ -202,13 +224,18 @@ fn touches(service: &ProposalService, ctx: &Ctx, p: &ProposalRecord, path: &str)
     })
 }
 
-fn flatten(ctx: &Ctx, t: T, comments: &[CommentRecord]) -> Vec<CommentView> {
+fn flatten(
+    ctx: &Ctx,
+    t: T,
+    comments: &[CommentRecord],
+    marks: &HashMap<inklkunn_store::CommentId, inklkunn_core::tombstone::Hidden>,
+) -> Vec<CommentView> {
     comments
         .iter()
         .map(|c| CommentView {
             id: format!("d-{}", c.id),
             depth: usize::from(c.parent.is_some()),
-            author: ctx.person(t, &c.author),
+            author: crate::tombstone::author_of(t, || ctx.person(t, &c.author), marks.get(&c.id)),
             meta: t
                 .msg(Key::CommentMeta)
                 .with("when", utc_minutes(c.created_at))
@@ -220,6 +247,9 @@ fn flatten(ctx: &Ctx, t: T, comments: &[CommentRecord]) -> Vec<CommentView> {
             orphaned: None,
             reply: None,
             parent: None,
+            body_hidden: crate::tombstone::comment_state(t, marks.get(&c.id)).0,
+            tombstone: crate::tombstone::comment_state(t, marks.get(&c.id)).1,
+            moderate: None,
         })
         .collect()
 }
@@ -262,17 +292,18 @@ pub(crate) async fn discussion(
             let comments = service
                 .comments(&ctx.principal, &ctx.wiki, &p.id)
                 .unwrap_or_default();
+            // What is hidden of a comment is asked: if it cannot be, the comments are not shown (never shown unmasked).
+            let (comments, marks) = match service.comment_marks(&ctx.principal, &ctx.wiki, &p.id) {
+                Ok(marks) => (comments, marks),
+                Err(_) => (Vec::new(), HashMap::new()),
+            };
             discussed.push(Discussed {
                 heading: LinkView {
                     href: paths::proposal(ctx.slug(), p.id.as_str()),
-                    label: if p.summary.is_empty() {
-                        t.get(Key::ProposalNoSummary)
-                    } else {
-                        p.summary.clone()
-                    },
+                    label: named(&ctx, t, p).0,
                 },
                 state: t.get(words::state_label(p.state)),
-                comments: flatten(&ctx, t, &comments),
+                comments: flatten(&ctx, t, &comments, &marks),
             });
         }
         let shell = Shell::of(&ctx.wiki);

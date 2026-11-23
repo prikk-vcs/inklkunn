@@ -76,7 +76,7 @@ pub(super) fn schemas() -> Map<String, Value> {
     let cursor = json!({"type": ["string", "null"], "description": "Where the next page begins; `null` on the last. Opaque."});
     let people = json!({"type": "array", "items": {"type": "string"}, "description": "The sentences the pages say about the people of the change, in the language of `Content-Language`, from the change's message and no more. The wiki service signs a change into the history; no sentence says a person signed."});
     let change = object(
-        "What every description of a change has, from the history's record of it. There is no time: the history carries none.",
+        "What every description of a change has, from the history's record of it. There is no time: the history carries none. When moderation hides something of the change (RFC 006 D-8; moderation is done in the web by the `moderate` rung, never through this API), the object also has `hidden` (the parts hidden: `content`, `summary`, `author`), `tombstone` (the newest hiding: `category`, `rung`, `at`) and `tombstones` (every hiding in force, each with its own `hidden`, `category`, `rung` and `at`): the `summary` is then empty, the people are of `kind` `hidden`, and nothing hidden is given to any caller. A tombstone never names a person and never carries the moderator's note.",
         json!({
             "id": {"type": "string", "description": "The change's id: 64 lower-case hexadecimal digits. Give it to `revisions/{id}` and `diff`."},
             "number": {"type": "integer", "minimum": 1, "description": "The change's number in its view's history (1 for the first)."},
@@ -96,7 +96,7 @@ pub(super) fn schemas() -> Map<String, Value> {
         object(
             "Who a message names. `name` is the text of a person as written (an account's display name then, an anonymous proposer's pseudonym, the service's label); it is plain text.",
             json!({
-                "kind": {"type": "string", "enum": ["account", "anonymous", "service"]},
+                "kind": {"type": "string", "enum": ["account", "anonymous", "service", "hidden"]},
                 "name": {"type": ["string", "null"]},
             }),
             &[],

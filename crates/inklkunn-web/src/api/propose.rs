@@ -133,7 +133,10 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     } else {
         (draft, 0)
     };
-    Ok(answer::reply(&record, revision, req.account())?.created(req.proposal_path(&record.id)))
+    Ok(
+        answer::reply_for(&req.services, &req.principal, &req.wiki, &record, revision)?
+            .created(req.proposal_path(&record.id)),
+    )
 }
 
 /// `GET /{slug}/-/api/v1/proposals/{id}`.
@@ -154,7 +157,7 @@ pub(crate) async fn get(State(state): State<PageState>, headers: HeaderMap, uri:
             });
             match looked {
                 Ok((record, revision)) => {
-                    answer::reply(&record, revision, ctx.principal.account_id())
+                    answer::reply_for(services, &ctx.principal, wiki, &record, revision)
                 }
                 // A proposal that is absent and one that may not be seen are the same answer.
                 Err(
@@ -206,7 +209,7 @@ pub(crate) async fn save_draft(
                 .proposals
                 .save_draft(&req.principal, &req.wiki, &id, edit)
                 .map_err(|error| req.refusal(error))?;
-            answer::reply(&record, 0, req.account())
+            answer::reply_for(&req.services, &req.principal, &req.wiki, &record, 0)
         },
     )
     .await
@@ -245,7 +248,7 @@ pub(crate) async fn submit_draft(
                         None => req.refusal(error),
                     }
                 })?;
-            answer::reply(&record, 1, req.account())
+            answer::reply_for(&req.services, &req.principal, &req.wiki, &record, 1)
         },
     )
     .await
@@ -289,8 +292,14 @@ pub(crate) async fn revise(
             let record = service
                 .revise(&req.principal, &req.wiki, &id, edit)
                 .map_err(|error| req.refusal(error))?;
-            Ok(answer::reply(&record, latest + 1, req.account())?
-                .created(req.proposal_path(&record.id)))
+            Ok(answer::reply_for(
+                &req.services,
+                &req.principal,
+                &req.wiki,
+                &record,
+                latest + 1,
+            )?
+            .created(req.proposal_path(&record.id)))
         },
     )
     .await
@@ -321,7 +330,7 @@ pub(crate) async fn withdraw(
                 .proposals
                 .withdraw(&req.principal, &req.wiki, &id, &reason)
                 .map_err(|error| req.refusal(error))?;
-            answer::reply(&record, revision, req.account())
+            answer::reply_for(&req.services, &req.principal, &req.wiki, &record, revision)
         },
     )
     .await

@@ -201,6 +201,8 @@ pub struct Services {
     pub accounts: Arc<dyn AccountStore>,
     /// Who holds which rung, and who is restricted (RFC 006 D-6, D-7): the people page and its acts, which are web-only.
     pub people: Arc<PeopleService>,
+    /// Hide, unhide and show hidden content, and the moderation log (RFC 006 D-8, D-12): the acts are web-only.
+    pub moderation: Arc<inklkunn_core::tombstone::ModerationService>,
     /// The acceptance records, to link an accepted proposal to its change.
     pub acceptances: Arc<dyn AcceptanceStore>,
     /// The overlaps an acceptance found, kept on the proposal: shown where the proposal needs a revision (D-5).

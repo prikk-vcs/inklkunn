@@ -226,7 +226,12 @@ pub(crate) async fn accept(
                 .proposals
                 .get(&req.principal, &req.wiki, &id)
                 .map_err(|error| req.refusal(error))?;
-            let mut body = answer::proposal(&record, revision, req.account());
+            let hidden = req
+                .services
+                .proposals
+                .hidden_of(&req.principal, &req.wiki, &id)
+                .map_err(|error| req.refusal(error))?;
+            let mut body = answer::proposal(&record, revision, req.account(), &hidden);
             if let Some(object) = body.as_object_mut() {
                 object.insert(
                     "acceptance".to_owned(),
@@ -270,7 +275,7 @@ pub(crate) async fn decline(
                 .proposals
                 .decline(&req.principal, &req.wiki, &id, &reason)
                 .map_err(|error| req.refusal(error))?;
-            answer::reply(&record, revision, req.account())
+            answer::reply_for(&req.services, &req.principal, &req.wiki, &record, revision)
         },
     )
     .await
