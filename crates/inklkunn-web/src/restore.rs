@@ -49,7 +49,7 @@ use crate::wiki::{Choice, Shell, generic_not_found, missing_page, notice, with_r
 mod fields;
 mod paths;
 
-use fields::{MODE, MODE_LAST_TEXT, MODE_ROLLBACK, VIEW};
+use fields::{MODE, MODE_LAST_TEXT, MODE_ROLLBACK, SUMMARY, VIEW};
 pub(crate) use paths::path;
 
 type PathTitle = Result<Path<(String, String)>, PathRejection>;
@@ -227,6 +227,17 @@ struct FormTpl<'a> {
     view: Option<String>,
     button: String,
     back: Choice,
+    /// The draft's summary, for the way that writes the page again (the person's own words, or the catalog's default).
+    summary: Option<String>,
+    summary_field: &'static str,
+    summary_label: String,
+    summary_hint: String,
+    summary_max: usize,
+}
+
+/// The default summary of the draft that writes a removed page again: the catalog's sentence in the person's language.
+fn default_summary(t: T, title: &str) -> String {
+    t.msg(Key::RestoreSummary).with("title", title).text()
 }
 
 fn form_page(
@@ -281,6 +292,14 @@ fn form_page(
             href: WikiLinks::new(t, ctx.slug(), subject.view_name.as_deref())
                 .page_href(&removed.title),
         },
+        summary: (mode == MODE_LAST_TEXT).then(|| default_summary(t, &removed.title)),
+        summary_field: SUMMARY,
+        summary_label: t
+            .msg(Key::ProposeLabelSummary)
+            .with("limit", inklkunn_core::proposal::MAX_SUMMARY_CHARS)
+            .text(),
+        summary_hint: t.get(Key::ProposeSummaryHint),
+        summary_max: inklkunn_core::proposal::MAX_SUMMARY_CHARS,
     }
     .render();
     answer(status, &head, rendered)
@@ -364,13 +383,20 @@ pub(crate) async fn restore_post(
                 StatusCode::CONFLICT,
             );
         }
-        make(page, &ctx, &subject)
+        make(
+            page,
+            &ctx,
+            &subject,
+            given.get(SUMMARY).map_or("", |s| s.trim()),
+        )
     })
     .await
 }
 
-/// Make the draft the removed page's way back is, and send the person to it.
-fn make(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {
+/// Make the draft the removed page's way back is, and send the person to it. `summary` is what the person wrote in the summary
+/// field (trimmed): for the way that writes the page again, empty is the catalog's default in their language; a rollback's
+/// summary is the plan's.
+fn make(page: &Page, ctx: &Ctx, subject: &Subject_, summary: &str) -> Response {
     let removed = &subject.removed;
     let view = subject.view_full.as_deref();
     let services = &ctx.services;
@@ -405,7 +431,12 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {
                 Ok(None) => return changed(page, ctx, subject),
                 Err(e) => return unavailable(e.to_string()),
             };
-            let Some(edit) = restore_edit(&removed.title, &removed.path, text, &removed.tip) else {
+            let summary = if summary.is_empty() {
+                default_summary(page.t(), &removed.title)
+            } else {
+                summary.to_owned()
+            };
+            let Some(edit) = restore_edit(&summary, &removed.path, text, &removed.tip) else {
                 return changed(page, ctx, subject);
             };
             services

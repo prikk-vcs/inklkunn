@@ -1949,6 +1949,7 @@ keys! {
     RemovedCannotPropose => "removed.cannot_propose",
     RemovedRaw => "removed.raw",
     RestoreHeading => "restore.heading",
+    RestoreSummary => "restore.summary",
     RestoreIntroRollback => "restore.intro_rollback",
     RestoreIntroLastText => "restore.intro_last_text",
     RestoreOpenDraft => "restore.open_draft",

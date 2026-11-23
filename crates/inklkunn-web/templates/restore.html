@@ -14,6 +14,11 @@
 {% include "csrf.html" %}
 <input type="hidden" name="{{ mode_field }}" value="{{ mode }}">
 {% if let Some(view) = view %}<input type="hidden" name="{{ view_field }}" value="{{ view }}">
+{% endif %}{% if let Some(summary) = summary %}<div class="field">
+<label for="restore-summary">{{ summary_label }}</label>
+<input id="restore-summary" name="{{ summary_field }}" type="text" maxlength="{{ summary_max }}" value="{{ summary }}" aria-describedby="restore-summary-hint">
+<p id="restore-summary-hint" class="note">{{ summary_hint }}</p>
+</div>
 {% endif %}<p class="buttons"><button type="submit">{{ button }}</button></p>
 </form>
 <p><a href="{{ back.href }}">{{ back.label }}</a></p>

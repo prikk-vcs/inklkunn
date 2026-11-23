@@ -526,3 +526,202 @@ async fn a_visit_to_a_removed_page_costs_the_same_whatever_the_change_removed() 
         }
     }
 }
+
+// ------------------------------------------------------------------------------------ S-3: the summary and the two sentences
+
+/// A POST of the restore form in the language `lang` (`en` or `ja`) as `who`, with these fields.
+async fn restore_as(
+    w: &World,
+    who: &inklkunn_store::AccountId,
+    lang: &str,
+    fields: &[(&str, &str)],
+) -> common::Answer {
+    let body = fields
+        .iter()
+        .map(|(k, v)| {
+            format!(
+                "{}={}",
+                inklkunn_markup::percent_encode(k),
+                inklkunn_markup::percent_encode(v)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    common::send_body(
+        w,
+        "POST",
+        "/handbook/-/restore/Guide",
+        Some(who),
+        &[
+            ("sec-fetch-site", "same-origin"),
+            ("cookie", &format!("inklkunn_lang={lang}")),
+        ],
+        body,
+    )
+    .await
+}
+
+/// The restore form in the language `lang`.
+async fn restore_form_in(w: &World, who: &inklkunn_store::AccountId, lang: &str) -> common::Answer {
+    request(
+        w,
+        APP,
+        "GET",
+        "/handbook/-/restore/Guide",
+        &[
+            ("x-test-account", who.as_str()),
+            ("cookie", &format!("inklkunn_lang={lang}")),
+        ],
+    )
+    .await
+}
+
+/// The summary of the draft at `location`, as its page shows it (in the language asked for).
+async fn draft_page(w: &World, who: &inklkunn_store::AccountId, location: &str) -> String {
+    let shown = get_as(w, location, Some(who)).await;
+    assert_eq!(shown.status, 200, "{}", shown.body());
+    shown.body()
+}
+
+#[tokio::test]
+async fn the_restore_drafts_summary_is_a_catalog_message_in_the_persons_language_and_the_person_may_change_it()
+ {
+    // The removal also edited `Home` and a later change edited the same place: the way back is the last text.
+    let (w, _) = scripted(Visibility::Public, "handbook", true);
+    let w = with_accounts(w);
+    w.fake.set(HOME, &home("Welcome again, edited later.\n"));
+    w.fake.say(4, "Edit the welcome");
+    w.fake.show(4, shown(vec![op("edit-text", &[HOME])]));
+    let who = person(1);
+    // The form carries the default, in the person's language, in a field they can edit.
+    let en = restore_form_in(&w, &who, "en").await;
+    assert_eq!(en.status, 200, "{}", en.body());
+    assert!(en.body().contains("name=\"summary\""), "{}", en.body());
+    assert!(
+        en.body().contains("value=\"Restore: Guide\""),
+        "{}",
+        en.body()
+    );
+    let ja = restore_form_in(&w, &who, "ja").await;
+    assert!(ja.body().contains("name=\"summary\""), "{}", ja.body());
+    assert!(ja.body().contains("value=\"復元: Guide\""), "{}", ja.body());
+    assert!(!ja.body().contains("Restore: Guide"), "{}", ja.body());
+    // Sent as it came, the draft says it in that language; sent with no field at all (an older form), the default too.
+    for (lang, fields, expected) in [
+        (
+            "en",
+            vec![("mode", "last-text"), ("summary", "Restore: Guide")],
+            "Restore: Guide",
+        ),
+        (
+            "ja",
+            vec![("mode", "last-text"), ("summary", "復元: Guide")],
+            "復元: Guide",
+        ),
+        ("ja", vec![("mode", "last-text")], "復元: Guide"),
+        (
+            "en",
+            vec![("mode", "last-text"), ("summary", "  ")],
+            "Restore: Guide",
+        ),
+        (
+            "en",
+            vec![
+                ("mode", "last-text"),
+                ("summary", "The guide was removed by mistake"),
+            ],
+            "The guide was removed by mistake",
+        ),
+    ] {
+        let made = restore_as(&w, &who, lang, &fields).await;
+        assert_eq!(made.status, 303, "{lang} {fields:?}: {}", made.body());
+        let at = made.header("location").expect("a location").to_owned();
+        let page = draft_page(&w, &who, &at).await;
+        assert!(page.contains(expected), "{lang} {fields:?}: {page}");
+    }
+    // A rollback's summary is the plan's: its form has no field for one.
+    let (w, _) = removed_handbook();
+    let form = restore_form_in(&w, &person(1), "en").await;
+    assert!(
+        form.body().contains("value=\"rollback\""),
+        "{}",
+        form.body()
+    );
+    assert!(!form.body().contains("name=\"summary\""), "{}", form.body());
+}
+
+/// A wiki whose page `Guide` was removed and cannot be restored by a proposal, in `way` (the last text is not text, or the change
+/// that wrote it is further back than the history this wiki reads), and the person who may propose.
+fn unrestorable(way: &str) -> World {
+    let w = World::new("handbook", "The Handbook", &[(HOME, &home("Welcome.\n"))]);
+    w.fake.say(1, "Create the handbook");
+    w.fake.show(1, shown(vec![op("create-file", &[HOME])]));
+    match way {
+        "not text" => {
+            w.fake.set_bytes(GUIDE, &[0xff, 0xfe, 0x00, b'x']);
+            w.fake.say(2, "Add the guide");
+            w.fake.show(2, shown(vec![op("create-file", &[GUIDE])]));
+            w.fake.apply(&[], &[GUIDE]);
+            w.fake.say(3, "Remove the guide");
+            w.fake.show(3, shown(vec![op("delete-node", &[GUIDE])]));
+        }
+        _ => {
+            w.fake.set(GUIDE, &guide("The guide.\n"));
+            w.fake.say(2, "Add the guide");
+            w.fake.show(2, shown(vec![op("create-file", &[GUIDE])]));
+            // More changes of other pages than the history behind a removal is read through.
+            for n in 0..100 {
+                w.fake.set(HOME, &home(&format!("Welcome {n}.\n")));
+            }
+            w.fake.apply(&[], &[GUIDE]);
+            w.fake.say(103, "Remove the guide");
+            w.fake.show(103, shown(vec![op("delete-node", &[GUIDE])]));
+        }
+    }
+    let w = with_accounts(w);
+    add_person(&w, &person(1), "Mika Tanaka", Some(Role::Contributor));
+    w
+}
+
+#[tokio::test]
+async fn a_page_that_cannot_be_restored_says_why_in_its_own_sentence_for_each_cause_in_both_languages()
+ {
+    let not_text = ["cannot be read as text", "テキストとして読めない"];
+    let beyond = [
+        "further back than the history this wiki reads",
+        "履歴よりも前にある",
+    ];
+    for (way, mine, other) in [("not text", not_text, beyond), ("beyond", beyond, not_text)] {
+        let who = person(1);
+        for ((lang, mine_here), other_here) in ["en", "ja"].into_iter().zip(mine).zip(other) {
+            // A world of its own for each request: how far back a request reads is bounded for it, and the blocks it has read are
+            // held by id, so that a second request of the same wiki reads further than the first (RFC 003 D-2).
+            let w = unrestorable(way);
+            let form = restore_form_in(&w, &who, lang).await;
+            assert_eq!(form.status, 200, "{way} {lang}: {}", form.body());
+            let body = form.body();
+            assert!(!body.contains("name=\"mode\""), "{way} {lang}: {body}");
+            assert!(body.contains(mine_here), "{way} {lang}: {body}");
+            assert!(!body.contains(other_here), "{way} {lang}: {body}");
+            // The way on is the empty new page; a request for a restoring draft is refused and makes none.
+            assert!(
+                body.contains("/handbook/-/proposals/new?"),
+                "{way} {lang}: {body}"
+            );
+            let w = unrestorable(way);
+            let post = restore_as(&w, &who, lang, &[("mode", "last-text")]).await;
+            assert_eq!(post.status, 409, "{way} {lang}: {}", post.body());
+            assert!(
+                post.body().contains(mine_here),
+                "{way} {lang}: {}",
+                post.body()
+            );
+            assert_eq!(post.header("location"), None);
+        }
+        // The page of the removal says neither: it works nothing out.
+        let w = unrestorable(way);
+        let gone = get_as(&w, "/handbook/Guide", Some(&who)).await;
+        assert_eq!(gone.status, 410, "{way}: {}", gone.body());
+        assert!(!gone.body().contains(mine[0]), "{way}");
+    }
+}

@@ -3876,6 +3876,7 @@ pub const CATALOG: &[Entry] = &[
         "This page was removed. Its source is no longer served. Open the page's address on the wiki to see when it was removed, and why.",
     ),
     msg("restore.heading", "Propose restoring {title}"),
+    msg("restore.summary", "Restore: {title}"),
     msg(
         "restore.intro_rollback",
         "This opens a draft proposal that takes back change {number}, which removed the page. A draft is yours alone until you send it for review: you can read it and change it first.",

@@ -584,7 +584,7 @@ fn criterion_10_when_later_changes_block_the_rollback_the_page_comes_back_with_i
         .unwrap()
         .expect("the text the page had last");
     assert_eq!(text, GUIDE);
-    let edit = restore_edit(&removed.title, &removed.path, text, &removed.tip).expect("an edit");
+    let edit = restore_edit("Restore: Guide", &removed.path, text, &removed.tip).expect("an edit");
     assert_eq!(edit.summary, "Restore: Guide");
     let draft = w
         .proposals

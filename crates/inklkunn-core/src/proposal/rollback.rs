@@ -87,10 +87,12 @@ pub fn rollback_edit(plan: &RollbackPlan) -> ProposalEdit {
 /// The edit that restores a removed page when later changes block a rollback (RFC 006 D-10; handoff G-T6): the page written
 /// again, at the path its title spells, with the text it had last (`text`, read at the removing change's parent). It is written
 /// against the tip it was asked at (`tip`): a path the base does not have is a new page, so nothing of what later changes did
-/// is touched. The summary is *Restore: {title}*, cut to the summary's bound. Nothing is minor and nothing is
-/// machine-assisted: a person asked for it. `None` when the tip is not a base a proposal can name.
-pub fn restore_edit(title: &str, path: &str, text: String, tip: &Tip) -> Option<ProposalEdit> {
-    let mut summary: String = format!("Restore: {title}")
+/// is touched. The summary is the one **given** (the caller's, in the person's language: the web's default is the catalog's
+/// restoring sentence and the person may change it on the form), with line breaks and control characters made spaces and cut
+/// to the summary's bound. Nothing is minor and nothing is machine-assisted: a person asked for it. `None` when the tip is not
+/// a base a proposal can name.
+pub fn restore_edit(summary: &str, path: &str, text: String, tip: &Tip) -> Option<ProposalEdit> {
+    let mut summary: String = summary
         .chars()
         .map(|c| {
             if inklkunn_store::record::is_line_or_control(c) {
