@@ -106,7 +106,7 @@ mod validate;
 mod warning;
 
 pub use constitution::{Constitution, GovernanceChange, Requirement};
-pub use fault::{Fault, GovernanceFile, Limit, OrderingPair, ReadFault, Refusal};
+pub use fault::{Fault, GovernanceFile, Limit, MAX_FOUND, OrderingPair, ReadFault, Refusal};
 pub use limits::{LIMIT_DAYS_MAX, LIMIT_DAYS_MIN, Lowered, PlatformLimits};
 pub use model::{Acceptance, AppealRung, Entry, GrantUpTo, Rungs, SelfAcceptance};
 pub use policy::Policy;

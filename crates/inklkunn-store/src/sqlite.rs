@@ -1203,10 +1203,16 @@ CREATE TABLE IF NOT EXISTS governance_derived (
     fault_file   TEXT CHECK (fault_file IS NULL OR length(CAST(fault_file AS BLOB)) BETWEEN 1 AND 256),
     fault_line   INTEGER CHECK (fault_line IS NULL OR fault_line >= 1),
     fault_rule   TEXT CHECK (fault_rule IS NULL OR length(CAST(fault_rule AS BLOB)) BETWEEN 1 AND 128),
+    -- What stands at or below the place of a governance file that is not an ordinary file (E-1): the paths found there, as a
+    -- JSON list of at most 50, and how many more there were. NULL when there is none to list.
+    fault_found  TEXT CHECK (fault_found IS NULL OR length(CAST(fault_found AS BLOB)) BETWEEN 2 AND 400000),
+    fault_more   INTEGER CHECK (fault_more IS NULL OR fault_more >= 1),
     built_at     INTEGER NOT NULL,
     PRIMARY KEY (wiki_id, tip),
     CHECK ((fault_file IS NULL) = (fault_rule IS NULL)),
-    CHECK (fault_line IS NULL OR fault_file IS NOT NULL)
+    CHECK (fault_line IS NULL OR fault_file IS NOT NULL),
+    CHECK (fault_found IS NULL OR fault_file IS NOT NULL),
+    CHECK (fault_more IS NULL OR fault_found IS NOT NULL)
 );
 ";
 

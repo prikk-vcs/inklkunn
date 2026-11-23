@@ -938,26 +938,39 @@ fn d1_a_directory_where_the_policy_belongs_is_cleared_and_the_file_written_by_on
     let rules = w.reads.rules_of(&w.wiki).unwrap();
     assert_eq!(rules.block(), Some(broke.as_str()));
     assert!(rules.fault().is_some());
+    // What the page tells the admin to remove (E-1) is what the loader found at and below the path in the repository: the names
+    // are read from the fault the unreadable-state page and the API problem are built from, never from this test's own
+    // fixture, and an admin's repair is the change that removes exactly these and writes the file.
+    let fault = rules.fault().expect("a fault");
+    assert_eq!(
+        fault.found(),
+        [
+            "governance/policy.yaml/inner.txt",
+            "governance/policy.yaml/sub/deeper.txt"
+        ],
+        "what the page lists"
+    );
+    assert_eq!(fault.more(), 0);
+    let removals: Vec<String> = fault.found().to_vec();
     // The repair, an admin's: remove what is below the path, write the file, in one proposal. A maintainer may not propose it.
-    let files = [
-        ("governance/policy.yaml/inner.txt", None),
-        ("governance/policy.yaml/sub/deeper.txt", None),
-        ("governance/policy.yaml", Some("entry: observer\n")),
-    ];
+    let mut files: Vec<(&str, Option<&str>)> =
+        removals.iter().map(|p| (p.as_str(), None)).collect();
+    files.push(("governance/policy.yaml", Some("entry: observer\n")));
+    let files = files.as_slice();
     let refused = w
         .proposals
         .create(
             &w.maintainer.principal,
             &w.wiki,
             None,
-            edit("Clear the directory", &files),
+            edit("Clear the directory", files),
         )
         .unwrap_err();
     assert!(
         matches!(refused, ProposalError::RulesUnreadable(_)),
         "{refused:?}"
     );
-    let repair = w.propose_as(&w.admin, "Clear the directory", &files);
+    let repair = w.propose_as(&w.admin, "Clear the directory", files);
     // A maintainer cannot accept it, and nothing else is accepted meanwhile.
     assert!(matches!(
         w.accept(&w.maintainer, &repair.id),

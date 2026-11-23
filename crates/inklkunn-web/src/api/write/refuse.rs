@@ -381,12 +381,25 @@ fn restricted_members(problem: Problem, notice: &RestrictionNotice) -> Problem {
 
 /// `403 forbidden`, `rules-unreadable`: every write of the wiki is refused until its governance file is repaired; the file,
 /// the rule and the line say which.
+///
+/// Where the rule is `not-a-file`, **`found`** lists what stands at or below the file's place (the repository's paths, at most
+/// 50) and **`found_more`** counts the rest: what the repair, a change by an admin that removes these and writes the file,
+/// removes. Said only to whoever may read the wiki, as the fault is.
 fn rules_unreadable_problem(fault: &ReadFault) -> Problem {
-    Problem::new(Code::Forbidden)
+    let problem = Problem::new(Code::Forbidden)
         .named("reason", "rules-unreadable")
         .named("file", fault.file().path())
         .named("rule", fault.refusal().name())
-        .member("line", json!(fault.line()))
+        .member("line", json!(fault.line()));
+    if fault.found().is_empty() {
+        return problem;
+    }
+    let problem = problem.member("found", json!(fault.found()));
+    if fault.more() > 0 {
+        problem.member("found_more", json!(fault.more()))
+    } else {
+        problem
+    }
 }
 
 /// How long a caller is told to wait for a wiki that needs recovery: recovery is the operator's, and minutes.

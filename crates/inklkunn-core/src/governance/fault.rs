@@ -364,11 +364,25 @@ impl std::error::Error for Fault {}
 pub struct ReadFault {
     file: GovernanceFile,
     fault: Fault,
+    /// What stands at or below the place of the file, when the rule is [`Refusal::NotAFile`]: the repository paths, at most
+    /// [`MAX_FOUND`], so that an admin can say what the repair removes (handoff G-T1 correction E-1). Empty for every other
+    /// rule.
+    found: Vec<String>,
+    /// How many more paths there were than `found` lists.
+    more: usize,
 }
+
+/// The most paths a [`ReadFault`] lists ([`ReadFault::found`]); the rest are only counted.
+pub const MAX_FOUND: usize = inklkunn_store::MAX_FAULT_FOUND;
 
 impl ReadFault {
     pub(super) fn new(file: GovernanceFile, fault: Fault) -> ReadFault {
-        ReadFault { file, fault }
+        ReadFault {
+            file,
+            fault,
+            found: Vec::new(),
+            more: 0,
+        }
     }
 
     /// A read fault as a derived snapshot keeps it: the file, the line when there was one and the rule. The snapshot keeps
@@ -380,7 +394,31 @@ impl ReadFault {
                 line,
                 ..Fault::whole(file, refusal)
             },
+            found: Vec::new(),
+            more: 0,
         }
+    }
+
+    /// The same fault **with the paths found at its place**: the first [`MAX_FOUND`] of `found` are kept, and the rest are
+    /// counted with `more`. Only the `not-a-file` rule has any.
+    #[must_use]
+    pub fn with_found(mut self, mut found: Vec<String>, more: usize) -> ReadFault {
+        let over = found.len().saturating_sub(MAX_FOUND);
+        found.truncate(MAX_FOUND);
+        self.found = found;
+        self.more = more.saturating_add(over);
+        self
+    }
+
+    /// The paths found at or below the place of the file, for a `not-a-file` fault: **what a repair removes**. At most
+    /// [`MAX_FOUND`]; [`ReadFault::more`] counts the rest. The names are the repository's, never a file's text.
+    pub fn found(&self) -> &[String] {
+        &self.found
+    }
+
+    /// How many more paths than [`ReadFault::found`] lists were at or below the place of the file.
+    pub fn more(&self) -> usize {
+        self.more
     }
 
     /// The file that cannot be read.

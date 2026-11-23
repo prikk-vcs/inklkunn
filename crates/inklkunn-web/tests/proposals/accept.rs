@@ -562,6 +562,57 @@ fn cases() -> Vec<Case> {
             ],
         },
         Case {
+            name: "the rules of the wiki cannot be read: something stands where the file belongs, and the page names it and the repair",
+            answer: || {
+                Err(AcceptFailure::RulesUnreadable(
+                    ReadFault::from_stored(
+                        GovernanceFile::Policy,
+                        None,
+                        GovernanceRefusal::NotAFile,
+                    )
+                    .with_found(
+                        vec![
+                            "governance/policy.yaml/inner.txt".to_owned(),
+                            "governance/policy.yaml/sub/deeper.txt".to_owned(),
+                            "governance/policy.yaml/evil\u{202e}name.txt".to_owned(),
+                        ],
+                        0,
+                    ),
+                ))
+            },
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            english: &[
+                "governance/policy.yaml: Where this file belongs there is something that is not an ordinary file.",
+                "These stand where the file belongs: governance/policy.yaml/inner.txt, governance/policy.yaml/sub/deeper.txt, governance/policy.yaml/evil?name.txt. An admin of the wiki repairs the rules by proposing a change that removes these and writes the file.",
+                "Nothing in this wiki can be changed until the rules are repaired.",
+            ],
+            japanese: &[
+                "このファイルがあるべき場所に、次のものがあります: governance/policy.yaml/inner.txt, governance/policy.yaml/sub/deeper.txt, governance/policy.yaml/evil?name.txt。このウィキの管理者が、これらを削除してファイルを書く変更を提案すると、ルールを直せます。",
+            ],
+        },
+        Case {
+            name: "the rules of the wiki cannot be read: more than the page lists stands there, and it says how many more",
+            answer: || {
+                let found: Vec<String> = (0..50)
+                    .map(|n| format!("governance/policy.yaml/f{n:02}"))
+                    .collect();
+                // 57 were found: the loader keeps the first 50 and counts the rest.
+                Err(AcceptFailure::RulesUnreadable(
+                    ReadFault::from_stored(
+                        GovernanceFile::Policy,
+                        None,
+                        GovernanceRefusal::NotAFile,
+                    )
+                    .with_found(found, 7),
+                ))
+            },
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            english: &[
+                "governance/policy.yaml/f48, governance/policy.yaml/f49, and 7 more. An admin of the wiki repairs the rules",
+            ],
+            japanese: &["governance/policy.yaml/f49, ほか 7 件。このウィキの管理者が"],
+        },
+        Case {
             name: "nothing to change",
             answer: || Err(AcceptFailure::NothingToChange),
             status: StatusCode::CONFLICT,

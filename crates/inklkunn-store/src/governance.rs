@@ -1027,7 +1027,16 @@ pub struct GovernanceFault {
     pub line: Option<u32>,
     /// The stable name of the rule (1 - 128 bytes).
     pub rule: String,
+    /// **What was found at or below the place of the file** when something that is not an ordinary file stands there (the
+    /// `not-a-file` rule): the repository paths, in the order the repository listed them, at most
+    /// [`MAX_FAULT_FOUND`], so that an admin can say what is to be removed. Empty for every other rule.
+    pub found: Vec<String>,
+    /// How many more paths there were than [`GovernanceFault::found`] lists.
+    pub found_more: u32,
 }
+
+/// The most paths a fault of a governance file lists ([`GovernanceFault::found`]); the rest are only counted.
+pub const MAX_FAULT_FOUND: usize = 50;
 
 impl GovernanceSnapshot {
     /// Is the snapshot well formed? A file longer than [`MAX_SNAPSHOT_FILE_BYTES`] is a fault, not a text kept.
@@ -1043,6 +1052,15 @@ impl GovernanceSnapshot {
             check_text(&fault.rule, 128, "a fault's rule")?;
             if fault.line == Some(0) {
                 return refuse("a fault's line is counted from 1");
+            }
+            if fault.found.len() > MAX_FAULT_FOUND {
+                return refuse("a fault lists at most 50 paths");
+            }
+            if fault.found_more > 0 && fault.found.is_empty() {
+                return refuse("a fault that counts more paths lists some");
+            }
+            for path in &fault.found {
+                check_text(path, MAX_TARGET_BYTES, "a path a fault lists")?;
             }
         }
         Ok(())

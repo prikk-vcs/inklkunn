@@ -299,6 +299,8 @@ exact :: governance.rs :: file :: a placeholder name of a catalog message
 exact :: governance.rs :: line :: a placeholder name of a catalog message
 exact :: governance.rs :: rule :: a placeholder name of a catalog message
 exact :: governance.rs :: have :: a placeholder name of a catalog message
+exact :: governance.rs :: list :: a placeholder name of a catalog message
+exact :: governance.rs :: more :: a placeholder name of a catalog message
 exact :: overlaps.rs :: the overlaps of a proposal could not be read: {error} :: a line for the operator's log; no response carries it
 exact :: overlaps.rs :: page :: a placeholder name of a catalog message, or the description of a place that the acceptance recorded: data, not a sentence
 exact :: overlaps.rs :: place :: a placeholder name of a catalog message

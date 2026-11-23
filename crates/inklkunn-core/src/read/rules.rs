@@ -262,7 +262,9 @@ impl ReadService {
                     // Something that is not an ordinary file is where the file belongs: read as no file, it would be read as the
                     // defaults, and the rules would say less than the repository does. It is a fault, as an unreadable file is.
                     present = true;
-                    let fault = ReadFault::from_stored(file, None, Refusal::NotAFile);
+                    let (found, more) = found_at(&listing.entries, file);
+                    let fault = ReadFault::from_stored(file, None, Refusal::NotAFile)
+                        .with_found(found, more);
                     snapshot.fault.get_or_insert_with(|| stored_fault(&fault));
                     continue;
                 }
@@ -515,6 +517,23 @@ pub(super) fn shape_at(entries: &[Entry], file: GovernanceFile) -> Shape<'_> {
     found
 }
 
+/// **What a repair removes** (handoff G-T1 correction E-1): the paths the listing has at the place of `file` or below it, in
+/// order and each once, the first [`MAX_FOUND`](crate::governance::MAX_FOUND) of them and how many more there were. The
+/// listing is the one [`shape_at`] read, so no path is asked for twice.
+fn found_at(entries: &[Entry], file: GovernanceFile) -> (Vec<String>, usize) {
+    let below = format!("{}/", file.path());
+    let mut found: Vec<String> = entries
+        .iter()
+        .filter(|e| e.path == file.path() || e.path.starts_with(&below))
+        .map(|e| e.path.clone())
+        .collect();
+    found.sort();
+    found.dedup();
+    let more = found.len().saturating_sub(crate::governance::MAX_FOUND);
+    found.truncate(crate::governance::MAX_FOUND);
+    (found, more)
+}
+
 /// A governance file as it was read.
 enum Read {
     Constitution(Constitution),
@@ -527,6 +546,8 @@ fn stored_fault(fault: &ReadFault) -> GovernanceFault {
         file: fault.file().path().to_owned(),
         line: fault.line().and_then(|l| u32::try_from(l).ok()),
         rule: fault.refusal().name().to_owned(),
+        found: fault.found().to_vec(),
+        found_more: u32::try_from(fault.more()).unwrap_or(u32::MAX),
     }
 }
 
@@ -541,7 +562,8 @@ fn rules_from(snapshot: &GovernanceSnapshot, limits: &PlatformLimits) -> Option<
         let line = fault.line.and_then(|l| usize::try_from(l).ok());
         return Some(Rules::faulted(
             snapshot.policy_block.clone(),
-            ReadFault::from_stored(file, line, refusal),
+            ReadFault::from_stored(file, line, refusal)
+                .with_found(fault.found.clone(), fault.found_more as usize),
         ));
     }
     if snapshot.policy_block.is_none()

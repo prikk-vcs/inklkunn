@@ -368,7 +368,9 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
         line: Some(4),
         ..Fault::at(GovernanceFile::Policy, Refusal::UnknownKey, "rungs")
     };
-    let unreadable = ReadFault::from_stored(GovernanceFile::Policy, Some(2), Refusal::NotAFile);
+    // With what stands at its place, so that the members `found` and `found_more` are tied to the schema too (E-1).
+    let unreadable = ReadFault::from_stored(GovernanceFile::Policy, Some(2), Refusal::NotAFile)
+        .with_found(vec!["governance/policy.yaml/a.txt".to_owned()], 3);
     let at_acceptance = [
         problem(AcceptFailure::GovernanceInvalid(vec![fault])),
         problem(AcceptFailure::GovernanceRung(Role::Admin)),

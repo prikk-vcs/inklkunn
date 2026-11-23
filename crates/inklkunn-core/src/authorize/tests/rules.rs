@@ -433,6 +433,45 @@ fn only_someone_who_may_read_the_wiki_is_told_why_its_writes_refuse() {
     assert!(healthy.write_refusal(&reader, &w.internal).is_none());
 }
 
+#[test]
+fn what_stands_where_a_governance_file_belongs_is_told_to_whoever_may_read_the_wiki_and_to_nobody_else()
+ {
+    let w = wikis();
+    let member = account();
+    let mut f = facts(&w, &[]);
+    f.roles
+        .insert((member.clone(), w.restricted.clone()), Role::Observer);
+    let fault = ReadFault::from_stored(GovernanceFile::Policy, None, Refusal::NotAFile).with_found(
+        vec![
+            "governance/policy.yaml/a.txt".to_owned(),
+            "governance/policy.yaml/b.txt".to_owned(),
+        ],
+        9,
+    );
+    let (a, _, _) = over(Governed::new(
+        f,
+        Rules::faulted(Some(BLOCK.to_owned()), fault),
+    ));
+    let told = |who: &Principal, wiki: &WikiId| {
+        a.write_refusal(who, wiki)
+            .map(|f| (f.found().to_vec(), f.more()))
+    };
+    let listing = Some((
+        vec![
+            "governance/policy.yaml/a.txt".to_owned(),
+            "governance/policy.yaml/b.txt".to_owned(),
+        ],
+        9,
+    ));
+    // An account that may read the wiki is told the names and how many more; a member of a restricted wiki too.
+    assert_eq!(told(&session(&account()), &w.internal), listing);
+    assert_eq!(told(&session(&member), &w.restricted), listing);
+    // A stranger to a restricted wiki, an anonymous visitor to an internal one, and a wiki that is not there: nothing.
+    assert_eq!(told(&session(&account()), &w.restricted), None);
+    assert_eq!(told(&Principal::Anonymous, &w.internal), None);
+    assert_eq!(told(&session(&account()), &WikiId::new()), None);
+}
+
 // ---- the audit record names the rung and the block
 
 #[test]

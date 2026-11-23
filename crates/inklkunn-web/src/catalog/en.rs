@@ -3349,6 +3349,11 @@ pub const CATALOG: &[Entry] = &[
         "Nothing in this wiki can be changed until the rules are repaired. It can still be read. An admin of the wiki can propose a change that repairs only the rules, and accept it.",
     ),
     msg(
+        "outcome_note.rules_unreadable_found",
+        "These stand where the file belongs: {list}. An admin of the wiki repairs the rules by proposing a change that removes these and writes the file.",
+    ),
+    msg("governance.found_more", "and {more} more"),
+    msg(
         "invalid.governance_path",
         "Under governance/ a proposal may write constitution.yaml and policy.yaml and nothing else, and cannot rename them.",
     ),

@@ -1722,6 +1722,8 @@ keys! {
     OutcomeNoteApprovalsMissing => "outcome_note.approvals_missing",
     OutcomeRulesUnreadable => "outcome.rules_unreadable",
     OutcomeNoteRulesUnreadable => "outcome_note.rules_unreadable",
+    OutcomeNoteRulesUnreadableFound => "outcome_note.rules_unreadable_found",
+    GovernanceFoundMore => "governance.found_more",
     InvalidGovernancePath => "invalid.governance_path",
     InvalidGovernanceMixed => "invalid.governance_mixed",
     ProposalApprovalsUnreachable => "proposal.approvals_unreachable",

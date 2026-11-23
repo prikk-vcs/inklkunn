@@ -336,7 +336,41 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
     );
     assert_eq!(at(&body(&unreadable), "rule"), "wrong-shape");
     assert_eq!(at(&body(&unreadable), "line"), 2);
+    // A fault of any other rule lists nothing: no member `found` and none `found_more`.
+    assert!(body(&unreadable).get("found").is_none());
+    assert!(body(&unreadable).get("found_more").is_none());
     assert_eq!(logged.len(), 1);
+    // Where something stands in the file's place: what it is, in order, and how many more (E-1).
+    let stands = inklkunn_core::governance::ReadFault::from_stored(
+        inklkunn_core::governance::GovernanceFile::Policy,
+        None,
+        inklkunn_core::governance::Refusal::NotAFile,
+    );
+    let (listed, _) = failure_problem(AcceptFailure::RulesUnreadable(stands.clone().with_found(
+        vec![
+            "governance/policy.yaml/a.txt".to_owned(),
+            "governance/policy.yaml/b/c.txt".to_owned(),
+        ],
+        7,
+    )));
+    assert_eq!(at(&body(&listed), "rule"), "not-a-file");
+    assert_eq!(
+        *at(&body(&listed), "found"),
+        serde_json::json!([
+            "governance/policy.yaml/a.txt",
+            "governance/policy.yaml/b/c.txt"
+        ])
+    );
+    assert_eq!(*at(&body(&listed), "found_more"), serde_json::json!(7));
+    // With no more, no count.
+    let (counted, _) = failure_problem(AcceptFailure::RulesUnreadable(
+        stands.with_found(vec!["governance/policy.yaml/a.txt".to_owned()], 0),
+    ));
+    assert!(body(&counted).get("found_more").is_none());
+    assert_eq!(
+        at(&body(&counted), "found").as_array().map(Vec::len),
+        Some(1)
+    );
     let (failed, logged) = failure_problem(AcceptFailure::Failed {
         acceptance: AcceptanceId::new(),
         word: "memory-limit",

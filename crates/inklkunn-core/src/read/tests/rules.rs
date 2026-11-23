@@ -239,6 +239,69 @@ fn a_directory_where_a_governance_file_belongs_is_a_fault_naming_the_path_and_ne
 }
 
 #[test]
+fn a_not_a_file_fault_lists_what_stands_at_and_below_the_place_up_to_fifty_and_counts_the_rest_and_the_row_keeps_them()
+ {
+    let w = world();
+    // 57 paths below the policy's place, written in an order that is not their sorted one, and a sound constitution beside.
+    let below: Vec<String> = (0..57)
+        .rev()
+        .map(|n| format!("governance/policy.yaml/d{}/f{n:02}.txt", n % 3))
+        .collect();
+    let mut files: Vec<(&str, &str)> = below.iter().map(|p| (p.as_str(), "x\n")).collect();
+    files.push(("governance/constitution.yaml", CONSTITUTION));
+    write(&w, &files);
+    let fault_of = |rules: &Rules| {
+        let fault = rules.fault().expect("a fault");
+        (
+            fault.refusal(),
+            fault.found().to_vec(),
+            fault.more(),
+            fault.file().path(),
+        )
+    };
+    let built = rules(&w);
+    let (refusal, found, more, file) = fault_of(&built);
+    assert_eq!(
+        (refusal, file),
+        (Refusal::NotAFile, "governance/policy.yaml")
+    );
+    assert_eq!(found.len(), 50, "up to fifty");
+    assert_eq!(more, 7, "and the rest counted");
+    let mut sorted = below.clone();
+    sorted.sort();
+    sorted.truncate(50);
+    assert_eq!(found, sorted, "in order, the first fifty");
+    // The sound file beside it is not listed: only what stands at or below the file's place.
+    assert!(
+        found
+            .iter()
+            .all(|p| p.starts_with("governance/policy.yaml/"))
+    );
+    // Kept in the derived row and read back whole by another process.
+    let service = World::service_over(&w.counting, &w.store, &w.layout, config())
+        .with_governance_snapshots(w.store.clone());
+    service.rules_of(&w.wiki).expect("built");
+    let restarted = World::service_over(&w.counting, &w.store, &w.layout, config())
+        .with_governance_snapshots(w.store.clone());
+    let again = restarted.rules_of(&w.wiki).expect("stored");
+    assert_eq!(fault_of(&again), (refusal, found, more, file));
+    // Fewer than fifty: all of them, no more.
+    let few = world();
+    write(&few, &[("governance/constitution.yaml/a.txt", "x\n")]);
+    let few_rules = rules(&few);
+    let fault = few_rules.fault().expect("a fault");
+    assert_eq!(fault.found(), ["governance/constitution.yaml/a.txt"]);
+    assert_eq!(fault.more(), 0);
+    // A fault of any other rule lists nothing.
+    let broken = world();
+    write(&broken, &[("governance/policy.yaml", "entry: [\n")]);
+    let broken_rules = rules(&broken);
+    let fault = broken_rules.fault().expect("a fault");
+    assert!(fault.found().is_empty());
+    assert_eq!(fault.more(), 0);
+}
+
+#[test]
 fn the_shape_at_the_place_of_a_governance_file_is_a_file_or_nothing_and_every_other_entry_is_not_a_file()
  {
     use crate::governance::GovernanceFile::{Constitution, Policy};

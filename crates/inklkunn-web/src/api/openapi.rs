@@ -335,6 +335,8 @@ fn components() -> Value {
                     "file": {"type": "string", "description": "`rules-unreadable`: the governance file that cannot be read."},
                     "rule": {"type": "string", "description": "`rules-unreadable`: the rule it breaks, by its stable name (`not-a-file` where something that is not an ordinary file is at its place)."},
                     "line": {"type": ["integer", "null"], "description": "`rules-unreadable`: the line, where it can be said."},
+                    "found": {"type": "array", "items": {"type": "string"}, "description": "`rules-unreadable` with the rule `not-a-file`: the repository paths found at or below the file's place, at most 50, in order; the repair is a change by an admin that removes these and writes the file."},
+                    "found_more": {"type": "integer", "description": "`rules-unreadable` with the rule `not-a-file`: how many more paths than `found` lists were there."},
                     "restriction_reason": {"type": "string", "description": "`restricted`: the reason the account was given when it was restricted. Said to the restricted account alone."},
                     "until": {"type": "integer", "description": "`restricted`: when the restriction ends, in Unix seconds: from that second on it no longer applies."},
                     "explanation": {"type": "string", "description": "`restricted`: the same, as sentences in the caller's language."},

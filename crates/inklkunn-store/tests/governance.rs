@@ -1974,6 +1974,8 @@ where
             file: "governance/policy.yaml".to_owned(),
             line: Some(3),
             rule: "unknown-key".to_owned(),
+            found: Vec::new(),
+            found_more: 0,
         }),
     };
     s.put_governance_snapshot(w, "tip-b", &full, T0).unwrap();
@@ -1985,7 +1987,12 @@ where
         fault: Some(GovernanceFault {
             file: "governance/constitution.yaml".to_owned(),
             line: None,
-            rule: "wrong-shape".to_owned(),
+            rule: "not-a-file".to_owned(),
+            found: vec![
+                "governance/constitution.yaml/a.txt".to_owned(),
+                "governance/constitution.yaml/b/c.txt".to_owned(),
+            ],
+            found_more: 7,
         }),
         ..GovernanceSnapshot::default()
     };
@@ -2035,12 +2042,43 @@ where
             file: file.to_owned(),
             line,
             rule: rule.to_owned(),
+            found: Vec::new(),
+            found_more: 0,
         }),
         ..GovernanceSnapshot::default()
     };
     assert!(refuse(fault("f", Some(0), "r")).contains("from 1"));
     assert!(refuse(fault("", None, "r")).contains("fault's file"));
     assert!(refuse(fault("f", None, "")).contains("fault's rule"));
+    // What a fault lists (E-1): at most 50 paths, each of 1 - 1024 bytes, and a count only beside a list.
+    let listing = |found: Vec<String>, more: u32| GovernanceSnapshot {
+        fault: Some(GovernanceFault {
+            file: "governance/policy.yaml".to_owned(),
+            line: None,
+            rule: "not-a-file".to_owned(),
+            found,
+            found_more: more,
+        }),
+        ..GovernanceSnapshot::default()
+    };
+    let path = |n: usize| format!("governance/policy.yaml/{n}");
+    assert!(refuse(listing((0..51).map(path).collect(), 0)).contains("at most 50"));
+    assert!(refuse(listing(vec![String::new()], 0)).contains("a path a fault lists"));
+    assert!(refuse(listing(vec!["p".repeat(1025)], 0)).contains("a path a fault lists"));
+    assert!(refuse(listing(Vec::new(), 3)).contains("lists some"));
+    let fifty = listing((0..50).map(path).collect(), 12);
+    s.put_governance_snapshot(w, "tip-d", &fifty, T0).unwrap();
+    assert_eq!(s.governance_snapshot(w, "tip-d").unwrap(), Some(fifty));
+    // Names that are not plain text come back as they went in (the list is JSON in the row).
+    let odd = listing(
+        vec![
+            "governance/policy.yaml/a \"b\"\n\u{202e}c.txt".to_owned(),
+            "governance/policy.yaml/日本語.txt".to_owned(),
+        ],
+        0,
+    );
+    s.put_governance_snapshot(w, "tip-e", &odd, T0).unwrap();
+    assert_eq!(s.governance_snapshot(w, "tip-e").unwrap(), Some(odd));
     assert!(refuse(fault(&"f".repeat(257), None, "r")).contains("fault's file"));
     assert_eq!(s.governance_snapshot(w, "tip-c").unwrap(), None);
     let at_bound = GovernanceSnapshot {

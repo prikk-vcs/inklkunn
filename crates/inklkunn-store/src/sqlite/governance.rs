@@ -984,7 +984,8 @@ fn active_protections_sql(extra: &str) -> String {
     )
 }
 
-/// A stored row of the derived snapshot as columns: the block, the two files, and the fault's file, line and rule.
+/// A stored row of the derived snapshot as columns: the block, the two files, and the fault's file, line and rule, and the
+/// paths found at its place (a JSON list) and how many more.
 type SnapshotRow = (
     Option<String>,
     Option<String>,
@@ -992,11 +993,30 @@ type SnapshotRow = (
     Option<String>,
     Option<i64>,
     Option<String>,
+    Option<String>,
+    Option<i64>,
 );
 
-/// The snapshot a row says, or `None` when it does not decode (a fault with a half of its columns, a line that is no line).
+/// The columns a snapshot row is read from.
+const SNAPSHOT_COLUMNS: &str = "policy_block, constitution, policy, fault_file, fault_line, fault_rule, fault_found, fault_more";
+
+fn snapshot_row(r: &Row<'_>) -> rusqlite::Result<SnapshotRow> {
+    Ok((
+        r.get(0)?,
+        r.get(1)?,
+        r.get(2)?,
+        r.get(3)?,
+        r.get(4)?,
+        r.get(5)?,
+        r.get(6)?,
+        r.get(7)?,
+    ))
+}
+
+/// The snapshot a row says, or `None` when it does not decode (a fault with a half of its columns, a line that is no line, a
+/// list of paths that is not one).
 fn decoded(
-    (policy_block, constitution, policy, file, line, rule): SnapshotRow,
+    (policy_block, constitution, policy, file, line, rule, found, more): SnapshotRow,
 ) -> Option<GovernanceSnapshot> {
     let fault = match (file, rule) {
         (None, None) => None,
@@ -1007,6 +1027,14 @@ fn decoded(
                 Some(n) => Some(u32::try_from(n).ok()?),
             },
             rule,
+            found: match found {
+                None => Vec::new(),
+                Some(text) => serde_json::from_str(&text).ok()?,
+            },
+            found_more: match more {
+                None => 0,
+                Some(n) => u32::try_from(n).ok()?,
+            },
         }),
         _ => return None,
     };
@@ -1023,19 +1051,11 @@ impl GovernanceSnapshotStore for SqliteStore {
         self.with(|conn| {
             let found = conn
                 .query_row(
-                    "SELECT policy_block, constitution, policy, fault_file, fault_line, fault_rule \
-                     FROM governance_derived WHERE wiki_id = ?1 AND tip = ?2",
+                    &format!(
+                        "SELECT {SNAPSHOT_COLUMNS} FROM governance_derived WHERE wiki_id = ?1 AND tip = ?2"
+                    ),
                     params![wiki.as_str(), tip],
-                    |r| {
-                        Ok((
-                            r.get::<_, Option<String>>(0)?,
-                            r.get::<_, Option<String>>(1)?,
-                            r.get::<_, Option<String>>(2)?,
-                            r.get::<_, Option<String>>(3)?,
-                            r.get::<_, Option<i64>>(4)?,
-                            r.get::<_, Option<String>>(5)?,
-                        ))
-                    },
+                    snapshot_row,
                 )
                 .optional()
                 .map_err(backend)?;
@@ -1051,22 +1071,12 @@ impl GovernanceSnapshotStore for SqliteStore {
         self.with(|conn| {
             let found = conn
                 .query_row(
-                    "SELECT policy_block, constitution, policy, fault_file, fault_line, fault_rule, tip \
-                     FROM governance_derived WHERE wiki_id = ?1 ORDER BY built_at DESC, rowid DESC LIMIT 1",
+                    &format!(
+                        "SELECT {SNAPSHOT_COLUMNS}, tip FROM governance_derived WHERE wiki_id = ?1 \
+                         ORDER BY built_at DESC, rowid DESC LIMIT 1"
+                    ),
                     params![wiki.as_str()],
-                    |r| {
-                        Ok((
-                            (
-                                r.get::<_, Option<String>>(0)?,
-                                r.get::<_, Option<String>>(1)?,
-                                r.get::<_, Option<String>>(2)?,
-                                r.get::<_, Option<String>>(3)?,
-                                r.get::<_, Option<i64>>(4)?,
-                                r.get::<_, Option<String>>(5)?,
-                            ),
-                            r.get::<_, String>(6)?,
-                        ))
-                    },
+                    |r| Ok((snapshot_row(r)?, r.get::<_, String>(8)?)),
                 )
                 .optional()
                 .map_err(backend)?;
@@ -1086,9 +1096,17 @@ impl GovernanceSnapshotStore for SqliteStore {
         snapshot.validate()?;
         self.with(|conn| {
             let fault = snapshot.fault.as_ref();
+            // Nothing found is no column; a list is JSON text, which the row's own check bounds.
+            let found_text = match fault.map(|f| &f.found) {
+                Some(found) if !found.is_empty() || fault.is_some_and(|f| f.found_more > 0) => {
+                    Some(serde_json::to_string(found).map_err(|e| StoreError::Backend(e.to_string()))?)
+                }
+                _ => None,
+            };
             conn.execute(
                 "INSERT OR REPLACE INTO governance_derived (wiki_id, tip, policy_block, constitution, policy, \
-                 fault_file, fault_line, fault_rule, built_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 fault_file, fault_line, fault_rule, fault_found, fault_more, built_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     wiki.as_str(),
                     tip,
@@ -1098,6 +1116,11 @@ impl GovernanceSnapshotStore for SqliteStore {
                     fault.map(|f| f.file.as_str()),
                     fault.and_then(|f| f.line),
                     fault.map(|f| f.rule.as_str()),
+                    found_text,
+                    fault
+                        .map(|f| f.found_more)
+                        .filter(|more| *more > 0)
+                        .map(i64::from),
                     built_at,
                 ],
             )

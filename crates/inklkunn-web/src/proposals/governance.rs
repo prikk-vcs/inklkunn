@@ -104,8 +104,55 @@ pub(crate) fn approvals_note(t: T, needed: u8, have: usize) -> String {
 /// The paragraphs of the page that says every change is refused while a governance file cannot be read: the fault, then
 /// what can be done.
 pub(crate) fn unreadable_paragraphs(t: T, fault: &ReadFault) -> Vec<String> {
-    vec![
-        read_fault_text(t, fault),
-        t.get(Key::OutcomeNoteRulesUnreadable),
-    ]
+    let mut out = vec![read_fault_text(t, fault)];
+    // Where something that is not a file stands in the file's place, say what it is and what repairs it (handoff G-T1 correction
+    // E-1): the paths the loader read, up to 50, and how many more. The words of the repair are the catalog's; the names are
+    // the repository's, shown as text with the characters a name may not carry replaced.
+    if fault.refusal() == Rule::NotAFile && !fault.found().is_empty() {
+        out.push(found_text(t, fault));
+    }
+    out.push(t.get(Key::OutcomeNoteRulesUnreadable));
+    out
+}
+
+/// The sentence that names what stands where a governance file belongs: its paths, then *and N more* when the list is cut.
+fn found_text(t: T, fault: &ReadFault) -> String {
+    let mut paths = fault
+        .found()
+        .iter()
+        .map(|path| shown_path(path))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if fault.more() > 0 {
+        paths.push_str(", ");
+        paths.push_str(
+            &t.msg(Key::GovernanceFoundMore)
+                .with("more", fault.more())
+                .text(),
+        );
+    }
+    t.msg(Key::OutcomeNoteRulesUnreadableFound)
+        .with("list", paths)
+        .text()
+}
+
+/// A repository path as the page shows it: at most 120 characters (then `…`), and a control, direction or line-separator
+/// character shown as `?`, so that a name cannot make the line read as another.
+fn shown_path(path: &str) -> String {
+    const LONGEST: usize = 120;
+    let mut out: String = path
+        .chars()
+        .take(LONGEST)
+        .map(|c| {
+            if inklkunn_core::governance::holds_only_allowed_characters(&c.to_string()) {
+                c
+            } else {
+                '?'
+            }
+        })
+        .collect();
+    if path.chars().count() > LONGEST {
+        out.push('…');
+    }
+    out
 }

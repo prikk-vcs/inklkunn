@@ -3409,6 +3409,11 @@ pub const CATALOG: &[Entry] = &[
         "ルールが直るまで、このウィキでは何も変更できません。読むことはできます。このウィキの管理者は、ルールだけを直す変更を提案して、受け入れることができます。",
     ),
     msg(
+        "outcome_note.rules_unreadable_found",
+        "このファイルがあるべき場所に、次のものがあります: {list}。このウィキの管理者が、これらを削除してファイルを書く変更を提案すると、ルールを直せます。",
+    ),
+    msg("governance.found_more", "ほか {more} 件"),
+    msg(
         "invalid.governance_path",
         "governance/ の下に書けるのは constitution.yaml と policy.yaml だけで、名前を変えることもできません。",
     ),
