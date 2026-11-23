@@ -51,6 +51,25 @@ fn a_file_that_was_not_there_is_none_and_one_that_is_not_text_is_none() {
 }
 
 #[test]
+fn a_file_is_there_whatever_it_holds_and_a_path_that_is_no_file_is_not() {
+    // What a removal of a path below `governance/` asks (handoff G-T1 correction D-1): whether there is something to remove.
+    let w = world();
+    let first = block_id(1);
+    let exists = |block: &str, path: &str| w.service.file_exists_at(&w.wiki, block, path).unwrap();
+    assert!(exists(&first, "pages/Guide.md"));
+    assert!(!exists(&first, "pages/Nowhere.md"));
+    w.fake().set_bytes("pages/Binary.md", &[0xff, 0xfe, 0x00]);
+    w.fake().set("governance/policy.yaml/inner.txt", "x\n");
+    let now = w.fake().block_id();
+    assert!(exists(&now, "pages/Binary.md"), "not text, and there");
+    assert!(exists(&now, "governance/policy.yaml/inner.txt"));
+    assert!(!exists(&first, "pages/Binary.md"), "as it was then");
+    // The name of a directory is no file.
+    assert!(!exists(&now, "governance/policy.yaml"));
+    assert!(!exists(&now, "governance"));
+}
+
+#[test]
 fn text_is_drawn_as_the_page_would_be_with_its_links_resolved_against_the_tip() {
     let w = world();
     let p = w

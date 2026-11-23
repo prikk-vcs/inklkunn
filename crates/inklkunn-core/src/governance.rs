@@ -113,9 +113,10 @@ pub use policy::Policy;
 pub use protect::{Protection, Require, Target, is_canonical_title, namespace_covers};
 pub use rules::{DEFAULTS_WORD, Rules, SHORT_BLOCK_CHARS, short_block};
 pub use validate::{
-    ViewPlace, is_governance_path, mixes_rules_with_other_paths, only_governance_files,
-    read_constitution, read_policy, refuse_outside_default_view, refuse_unknown_files,
-    validate_constitution, validate_constitution_bytes, validate_policy, validate_policy_bytes,
+    ViewPlace, is_below_governance, is_governance_path, mixes_rules_with_other_paths,
+    only_governance_files, read_constitution, read_policy, refuse_outside_default_view,
+    refuse_unknown_files, validate_constitution, validate_constitution_bytes, validate_policy,
+    validate_policy_bytes,
 };
 pub use warning::{ApprovalsWarning, approvals_unreachable, approvals_warning};
 

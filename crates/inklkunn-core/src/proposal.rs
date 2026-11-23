@@ -32,8 +32,8 @@ use inklkunn_store::{
 
 use crate::authorize::{Action, Authorizer, Principal, Resource, Standing};
 use crate::governance::{
-    ApprovalsWarning, GovernanceFile, ReadFault, Rules, approvals_warning, is_governance_path,
-    mixes_rules_with_other_paths, only_governance_files,
+    ApprovalsWarning, GovernanceFile, ReadFault, Rules, approvals_warning, is_below_governance,
+    is_governance_path, mixes_rules_with_other_paths, only_governance_files,
 };
 use crate::notify::Notifier;
 use crate::read::{ReadError, ReadService};
@@ -554,9 +554,12 @@ fn validate(
         }
         // A file is a page, a knowledge file in the place the knowledge layer reads (`knowledge/claims/…` and
         // `knowledge/sources/…`; its name and content are judged at acceptance, K-T2), or one of the two governance files
-        // (its text is judged at acceptance, RFC 006 D-4). Nothing else; and nothing else under `governance/`, by name.
+        // (its text is judged at acceptance, RFC 006 D-4). Nothing else; and nothing else under `governance/`, by name: **a
+        // path below `governance/` may be removed** (handoff G-T1 correction D-1: something that stands where a governance file
+        // belongs is cleared by a change that removes what is there), and only the two files written.
         if is_governance_path(&f.path) {
-            if GovernanceFile::of_path(&f.path).is_none() {
+            let removal = f.text.is_none() && is_below_governance(&f.path);
+            if GovernanceFile::of_path(&f.path).is_none() && !removal {
                 return Err(Invalid::GovernancePath);
             }
         } else if !files::is_page_path(&f.path) && crate::knowledge::family_of(&f.path).is_none() {

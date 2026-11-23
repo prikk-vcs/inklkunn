@@ -254,14 +254,20 @@ impl World {
     /// Write files into the default view **outside inklkunn's proposals**: a system act, as an import or a hand edit
     /// would. Nothing judges them.
     fn write_outside(&self, files: &[(&str, &str)]) -> String {
+        let bytes: Vec<(&str, &[u8])> = files.iter().map(|(p, t)| (*p, t.as_bytes())).collect();
+        self.write_outside_bytes(&bytes)
+    }
+
+    /// [`World::write_outside`] for files that are not text.
+    fn write_outside_bytes(&self, files: &[(&str, &[u8])]) -> String {
         let request = SystemRequest {
             kind: SystemActKind::System,
             summary: "Written outside the proposals".to_owned(),
             files: files
                 .iter()
-                .map(|(path, text)| PreparedFile {
+                .map(|(path, bytes)| PreparedFile {
                     path: PathBuf::from(path),
-                    content: Some(text.as_bytes().to_vec()),
+                    content: Some(bytes.to_vec()),
                 })
                 .collect(),
             renames: Vec::new(),
@@ -882,4 +888,380 @@ fn a_wiki_whose_files_are_fine_has_no_such_state_and_the_repair_is_not_the_hatch
     signed(w.accept(&w.maintainer, &page.id));
     let record = w.record(&page.id);
     assert!(!record.hatch);
+}
+
+// ------------------------------------------------------------------------------------------------- correction D-1
+
+/// The derived store's row for the default view's tip: the rules as the loader built them, keyed by the tip.
+fn derived_row(w: &World) -> inklkunn_store::GovernanceSnapshot {
+    use inklkunn_store::GovernanceSnapshotStore;
+    let tip = w.reads.tip(&w.wiki, None).expect("tip");
+    w.store
+        .governance_snapshot(&w.wiki.id, &tip.state_id)
+        .expect("store")
+        .expect("a row")
+}
+
+fn verified(w: &World) {
+    assert!(w.storage.verify(&w.repo).expect("verify").verdict.ok);
+}
+
+fn edit(summary: &str, files: &[(&str, Option<&str>)]) -> ProposalEdit {
+    ProposalEdit {
+        summary: summary.to_owned(),
+        files: files
+            .iter()
+            .map(|(path, text)| FileChange {
+                path: (*path).to_owned(),
+                text: text.map(str::to_owned),
+            })
+            .collect(),
+        ..ProposalEdit::default()
+    }
+}
+
+#[test]
+fn d1_a_directory_where_the_policy_belongs_is_cleared_and_the_file_written_by_one_admins_proposal()
+{
+    let Some(w) = World::new("d1-repair", PlatformLimits::default()) else {
+        return;
+    };
+    let open = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&home_changed()))],
+    );
+    // A directory stands where `governance/policy.yaml` belongs, with files in it and in a directory of its own.
+    let broke = w.write_outside(&[
+        ("governance/policy.yaml/inner.txt", "x\n"),
+        ("governance/policy.yaml/sub/deeper.txt", "y\n"),
+    ]);
+    let rules = w.reads.rules_of(&w.wiki).unwrap();
+    assert_eq!(rules.block(), Some(broke.as_str()));
+    assert!(rules.fault().is_some());
+    // The repair, an admin's: remove what is below the path, write the file, in one proposal. A maintainer may not propose it.
+    let files = [
+        ("governance/policy.yaml/inner.txt", None),
+        ("governance/policy.yaml/sub/deeper.txt", None),
+        ("governance/policy.yaml", Some("entry: observer\n")),
+    ];
+    let refused = w
+        .proposals
+        .create(
+            &w.maintainer.principal,
+            &w.wiki,
+            None,
+            edit("Clear the directory", &files),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(refused, ProposalError::RulesUnreadable(_)),
+        "{refused:?}"
+    );
+    let repair = w.propose_as(&w.admin, "Clear the directory", &files);
+    // A maintainer cannot accept it, and nothing else is accepted meanwhile.
+    assert!(matches!(
+        w.accept(&w.maintainer, &repair.id),
+        Err(AcceptFailure::RulesUnreadable(_))
+    ));
+    assert!(matches!(
+        w.accept(&w.admin, &open.id),
+        Err(AcceptFailure::RulesUnreadable(_))
+    ));
+    let before = w.history_len();
+    let healed = signed(w.accept(&w.admin, &repair.id));
+    assert_eq!(w.history_len(), before + 1, "one block");
+    let record = w.record(&repair.id);
+    assert!(record.hatch, "an admin's repair is the hatch");
+    assert_eq!(record.policy_block.as_deref(), Some(broke.as_str()));
+    assert_eq!(
+        w.file("governance/policy.yaml").as_deref(),
+        Some("entry: observer\n")
+    );
+    assert_eq!(w.file("governance/policy.yaml/inner.txt"), None);
+    assert_eq!(w.file("governance/policy.yaml/sub/deeper.txt"), None);
+    verified(&w);
+    // The rules are read again: no fault, the block that names the repair, and the derived row says so.
+    let rules = w.reads.rules_of(&w.wiki).unwrap();
+    assert!(rules.fault().is_none());
+    assert_eq!(rules.block(), Some(healed.as_str()));
+    assert_eq!(rules.policy().entry(), Entry::Observer);
+    let row = derived_row(&w);
+    assert!(row.fault.is_none());
+    assert_eq!(row.policy_block.as_deref(), Some(healed.as_str()));
+    // The wiki takes writes again: the page proposal made before, and one made now by a contributor.
+    signed(w.accept(&w.maintainer, &open.id));
+    assert!(w.file("pages/Home.md").unwrap().contains("Uno."));
+    let again = w.propose(
+        "Say it in Italian",
+        &[("pages/Home.md", Some(&HOME.replace("One.", "Uno!")))],
+    );
+    signed(w.accept(&w.maintainer, &again.id));
+    verified(&w);
+}
+
+#[test]
+fn d1_removing_only_what_is_below_the_path_is_a_repair_too_and_the_wiki_is_then_on_the_defaults() {
+    let Some(w) = World::new("d1-clear", PlatformLimits::default()) else {
+        return;
+    };
+    w.write_outside(&[("governance/constitution.yaml/inner.txt", "x\n")]);
+    assert!(w.reads.rules_of(&w.wiki).unwrap().fault().is_some());
+    let repair = w.propose_as(
+        &w.admin,
+        "Clear the directory",
+        &[("governance/constitution.yaml/inner.txt", None)],
+    );
+    signed(w.accept(&w.admin, &repair.id));
+    assert!(w.record(&repair.id).hatch);
+    let rules = w.reads.rules_of(&w.wiki).unwrap();
+    assert!(rules.fault().is_none());
+    assert_eq!(
+        rules.block(),
+        None,
+        "no governance file: the defaults, with no block that set them"
+    );
+    assert_eq!(w.file("governance/constitution.yaml"), None);
+    verified(&w);
+}
+
+#[test]
+fn d1_an_unknown_file_under_governance_in_a_sound_wiki_is_removed_like_any_file_and_never_written()
+{
+    let Some(w) = World::new("d1-unknown", PlatformLimits::default()) else {
+        return;
+    };
+    // Written outside inklkunn; the loader reads the two files only, so the wiki is sound.
+    w.write_outside(&[("governance/x/y.yaml", "z: 1\n")]);
+    assert!(w.reads.rules_of(&w.wiki).unwrap().fault().is_none());
+    // The API does not write another path: refused by name, as before.
+    let e = w
+        .proposals
+        .create(
+            &w.admin.principal,
+            &w.wiki,
+            None,
+            edit("Write it", &[("governance/x/other.yaml", Some("z: 2\n"))]),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(
+            e,
+            ProposalError::Invalid(inklkunn_core::proposal::Invalid::GovernancePath)
+        ),
+        "{e:?}"
+    );
+    // It is removed by a proposal like any file, by the ordinary acceptance (it is no rule).
+    let removal = w.propose_as(&w.admin, "Remove it", &[("governance/x/y.yaml", None)]);
+    signed(w.accept(&w.maintainer, &removal.id));
+    assert!(!w.record(&removal.id).hatch);
+    assert_eq!(w.file("governance/x/y.yaml"), None);
+    verified(&w);
+}
+
+#[test]
+fn d1_while_the_rules_cannot_be_read_the_repair_is_the_two_files_and_what_is_below_them_and_a_stray_file_waits()
+ {
+    let Some(w) = World::new("d1-stray", PlatformLimits::default()) else {
+        return;
+    };
+    w.write_outside(&[
+        ("governance/policy.yaml/inner.txt", "x\n"),
+        ("governance/x/y.yaml", "z: 1\n"),
+    ]);
+    // A removal of the stray file beside the repair is not the repair: refused to begin with, in that state.
+    let e = w
+        .proposals
+        .create(
+            &w.admin.principal,
+            &w.wiki,
+            None,
+            edit(
+                "Both",
+                &[
+                    ("governance/policy.yaml/inner.txt", None),
+                    ("governance/x/y.yaml", None),
+                ],
+            ),
+        )
+        .unwrap_err();
+    assert!(matches!(e, ProposalError::RulesUnreadable(_)), "{e:?}");
+    // The repair first, then the stray file.
+    let repair = w.propose_as(
+        &w.admin,
+        "Clear the directory",
+        &[("governance/policy.yaml/inner.txt", None)],
+    );
+    signed(w.accept(&w.admin, &repair.id));
+    let stray = w.propose_as(&w.admin, "Remove it", &[("governance/x/y.yaml", None)]);
+    signed(w.accept(&w.maintainer, &stray.id));
+    assert_eq!(w.file("governance/x/y.yaml"), None);
+    verified(&w);
+}
+
+#[test]
+fn d1_removing_a_governance_file_returns_the_wiki_to_the_defaults_and_is_judged_like_any_change_to_the_rules()
+ {
+    let Some(w) = World::new("d1-defaults", PlatformLimits::default()) else {
+        return;
+    };
+    // The rules say: a reviewer accepts.
+    let set = w.propose(
+        "Let reviewers accept",
+        &[(
+            "governance/policy.yaml",
+            Some("rungs:\n  accept: reviewer\n"),
+        )],
+    );
+    signed(w.accept(&w.maintainer, &set.id));
+    let page = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&home_changed()))],
+    );
+    assert!(w.reads.rules_of(&w.wiki).unwrap().block().is_some());
+    // Removing the policy is a change to the policy: the constitution's rung, not a page's.
+    let removal = w.propose_as(
+        &w.admin,
+        "Back to the defaults",
+        &[("governance/policy.yaml", None)],
+    );
+    assert_eq!(
+        w.accept(&w.reviewer, &removal.id),
+        Err(AcceptFailure::GovernanceRung(Role::Maintainer))
+    );
+    let before = w.history_len();
+    signed(w.accept(&w.maintainer, &removal.id));
+    assert_eq!(w.history_len(), before + 1);
+    assert_eq!(w.file("governance/policy.yaml"), None);
+    verified(&w);
+    // A missing file is its defaults: the rules are read, and with no governance file left no block set them; a reviewer may not
+    // accept.
+    let rules = w.reads.rules_of(&w.wiki).unwrap();
+    assert!(rules.fault().is_none());
+    assert_eq!(rules.block(), None);
+    assert_eq!(
+        w.accept(&w.reviewer, &page.id),
+        Err(AcceptFailure::NotAllowed)
+    );
+    signed(w.accept(&w.maintainer, &page.id));
+    // The constitution is judged the same way: its removal needs an admin (a maintainer is refused), and the admin's is the
+    // hatch, whatever the constitution asked.
+    let strict = w.propose_as(
+        &w.admin,
+        "Ask for approvals",
+        &[(
+            "governance/constitution.yaml",
+            Some("policy_change:\n  approvals: 2\n"),
+        )],
+    );
+    signed(w.accept(&w.admin, &strict.id));
+    let drop = w.propose_as(
+        &w.admin,
+        "Back to the defaults",
+        &[("governance/constitution.yaml", None)],
+    );
+    assert_eq!(
+        w.accept(&w.maintainer, &drop.id),
+        Err(AcceptFailure::GovernanceRung(Role::Admin))
+    );
+    signed(w.accept(&w.admin, &drop.id));
+    assert!(w.record(&drop.id).hatch);
+    assert_eq!(w.file("governance/constitution.yaml"), None);
+    verified(&w);
+}
+
+#[test]
+fn d1_a_repair_made_against_an_older_tip_is_applied_when_nothing_it_names_has_changed_and_stops_when_something_has()
+ {
+    let Some(w) = World::new("d1-moved", PlatformLimits::default()) else {
+        return;
+    };
+    w.write_outside(&[("governance/policy.yaml/inner.txt", "x\n")]);
+    let files = [
+        ("governance/policy.yaml/inner.txt", None),
+        ("governance/policy.yaml", Some("entry: observer\n")),
+    ];
+    let repair = w.propose_as(&w.admin, "Clear the directory", &files);
+    let second = w.propose_as(&w.admin, "Clear it again", &files);
+    // The wiki moves on by something the repair does not name (a system act, as an import would make).
+    w.write_outside(&[(
+        "pages/Other.md",
+        "---\ntitle: Other\nid: p-other\n---\n\nHi.\n",
+    )]);
+    signed(w.accept(&w.admin, &repair.id));
+    assert_eq!(
+        w.file("governance/policy.yaml").as_deref(),
+        Some("entry: observer\n")
+    );
+    assert_eq!(w.file("governance/policy.yaml/inner.txt"), None);
+    verified(&w);
+    // The second was made against the old tip, and what it names has changed since: a stop, not a merge.
+    let result = w.accept(&w.admin, &second.id);
+    assert!(
+        matches!(result, Err(AcceptFailure::Overlap { overlaps: 1 })),
+        "{result:?}"
+    );
+    assert_eq!(
+        w.file("governance/policy.yaml").as_deref(),
+        Some("entry: observer\n")
+    );
+}
+
+#[test]
+fn d1_what_is_removed_need_not_be_text_and_a_repair_made_against_an_older_tip_still_applies() {
+    let Some(w) = World::new("d1-binary", PlatformLimits::default()) else {
+        return;
+    };
+    // A file that is not text stands below the path (an import or a hand edit may leave anything there).
+    w.write_outside_bytes(&[("governance/policy.yaml/blob.bin", &[0xff, 0xfe, 0x00, 0x80])]);
+    assert!(w.reads.rules_of(&w.wiki).unwrap().fault().is_some());
+    let repair = w.propose_as(
+        &w.admin,
+        "Clear the directory",
+        &[
+            ("governance/policy.yaml/blob.bin", None),
+            ("governance/policy.yaml", Some("entry: observer\n")),
+        ],
+    );
+    // The wiki moves on by something the repair does not name; the merge could not read the file as a page, and this is not one.
+    w.write_outside(&[(
+        "pages/Other.md",
+        "---\ntitle: Other\nid: p-other\n---\n\nHi.\n",
+    )]);
+    signed(w.accept(&w.admin, &repair.id));
+    assert_eq!(w.file("governance/policy.yaml/blob.bin"), None);
+    assert_eq!(
+        w.file("governance/policy.yaml").as_deref(),
+        Some("entry: observer\n")
+    );
+    assert!(w.reads.rules_of(&w.wiki).unwrap().fault().is_none());
+    verified(&w);
+}
+
+#[test]
+fn d1_a_path_below_the_policy_that_changed_since_the_repair_was_made_stops_it() {
+    let Some(w) = World::new("d1-changed", PlatformLimits::default()) else {
+        return;
+    };
+    w.write_outside(&[("governance/policy.yaml/inner.txt", "x\n")]);
+    let repair = w.propose_as(
+        &w.admin,
+        "Clear the directory",
+        &[
+            ("governance/policy.yaml/inner.txt", None),
+            ("governance/policy.yaml", Some("entry: observer\n")),
+        ],
+    );
+    // Someone changes the file since: the repair did not see that, and it is not the repair any more.
+    w.write_outside(&[("governance/policy.yaml/inner.txt", "changed\n")]);
+    let before = (w.tip(), w.history_len());
+    let result = w.accept(&w.admin, &repair.id);
+    assert!(
+        matches!(result, Err(AcceptFailure::Overlap { overlaps: 1 })),
+        "{result:?}"
+    );
+    assert_eq!((w.tip(), w.history_len()), before, "nothing was written");
+    assert_eq!(
+        w.file("governance/policy.yaml/inner.txt").as_deref(),
+        Some("changed\n")
+    );
 }

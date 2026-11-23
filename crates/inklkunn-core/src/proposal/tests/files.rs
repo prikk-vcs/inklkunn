@@ -994,6 +994,97 @@ fn governance_is_a_closed_set_of_two_files_and_anything_else_under_it_is_refused
 }
 
 #[test]
+fn a_path_below_governance_may_be_removed_and_never_written_and_a_removal_never_travels_with_a_page()
+ {
+    // Handoff G-T1 correction D-1: a change writes only the two files and may remove any path below `governance/`.
+    on_both(|e| {
+        e.bases.put_page("pages/A.md", "x\n");
+        for path in [
+            "governance/x/y.yaml",
+            "governance/policy.yaml/inner.txt",
+            "governance/policy.yaml",
+            "governance/other.yaml",
+        ] {
+            // Removed: a proposal like any other, alone and with the other files of the rules.
+            assert_eq!(
+                create(e, &e.author, proposal(vec![change(path, None)], vec![])),
+                Ok(()),
+                "a removal of {path}"
+            );
+            // Written (any but the two files): refused by name, whatever else is removed beside it.
+            if !path.ends_with("/policy.yaml") {
+                assert_eq!(
+                    create(
+                        e,
+                        &e.author,
+                        proposal(vec![change(path, Some("x\n"))], vec![])
+                    ),
+                    invalid(Invalid::GovernancePath),
+                    "a write of {path}"
+                );
+                assert_eq!(
+                    create(
+                        e,
+                        &e.author,
+                        proposal(
+                            vec![
+                                change("governance/policy.yaml/inner.txt", None),
+                                change(path, Some("x\n"))
+                            ],
+                            vec![]
+                        )
+                    ),
+                    invalid(Invalid::GovernancePath),
+                    "a write of {path} beside a removal"
+                );
+            }
+            // Beside a page: mixing, as for any governance path.
+            assert_eq!(
+                create(
+                    e,
+                    &e.author,
+                    proposal(
+                        vec![change("pages/A.md", Some("y\n")), change(path, None)],
+                        vec![]
+                    )
+                ),
+                invalid(Invalid::GovernanceMixed),
+                "a removal of {path} beside a page"
+            );
+            // A removal of a page beside it is a page touched too.
+            assert_eq!(
+                create(
+                    e,
+                    &e.author,
+                    proposal(vec![change("pages/A.md", None), change(path, None)], vec![])
+                ),
+                invalid(Invalid::GovernanceMixed),
+                "a removal of {path} beside the removal of a page"
+            );
+        }
+        // Not under `governance/` in the repository's own spelling: not a removal that is allowed.
+        for path in ["Governance/policy.yaml", "./governance/x.md", "governance"] {
+            assert!(
+                create(e, &e.author, proposal(vec![change(path, None)], vec![])).is_err(),
+                "a removal of {path}"
+            );
+        }
+        // A rename is of pages, and never into or out of `governance/`, a removal beside it or not.
+        assert_eq!(
+            create(
+                e,
+                &e.author,
+                proposal(
+                    vec![change("governance/x/y.yaml", None)],
+                    vec![rename("governance/x/y.yaml", "governance/x/z.yaml")]
+                )
+            ),
+            invalid(Invalid::GovernancePath)
+        );
+    });
+}
+
+#[test]
 fn a_change_to_the_rules_is_proposed_on_its_own_and_mixing_is_refused_by_name_at_every_step() {
     on_both(|e| {
         e.bases.put_page("pages/A.md", "x\n");

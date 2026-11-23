@@ -9,7 +9,7 @@
 //! the kind (INV-1). Only then does it decrypt the wiki's seeds, into a directory that lives for this call.
 //!
 //! **What happens to the worktree.** The sequence is: nothing unfinished in the repository; the view's
-//! worktree; the renames, the writes and the removals; `commit`; `seal`; read the block back; `verify`.
+//! worktree; the renames, the removals and the writes; `commit`; `seal`; read the block back; `verify`.
 //! A failure **before `commit` succeeds** puts the worktree back (originals restored, renames moved back)
 //! and says so, or says plainly that it could not ([`AcceptError::WorktreeDirty`]); a failure **after** it is
 //! [`AcceptError::Queued`] (nothing sealed yet) or [`AcceptError::SealedUnconfirmed`] (sealed; do not retry),
@@ -353,7 +353,7 @@ impl Signer {
         }
     }
 
-    /// The renames, the writes and the removals of `plan`, in that order, recorded in `applied`/`moved`.
+    /// The renames, the removals and the writes of `plan`, in that order, recorded in `applied`/`moved`.
     fn apply(
         &self,
         repo: &Path,
@@ -368,14 +368,16 @@ impl Signer {
             self.writes.mv(repo, from, to)?;
             moved.push((from.clone(), to.clone()));
         }
-        for (path, bytes) in &plan.writes {
-            applied
-                .write(repo, path, bytes)
-                .map_err(SignerError::Unavailable)?;
-        }
+        // The removals come before the writes: a file written at a path where a directory stood (a repair removes the files
+        // below `governance/policy.yaml` and writes the file, handoff G-T1 correction D-1) needs the directory gone first.
         for path in &plan.deletes {
             applied
                 .delete(repo, path)
+                .map_err(SignerError::Unavailable)?;
+        }
+        for (path, bytes) in &plan.writes {
+            applied
+                .write(repo, path, bytes)
                 .map_err(SignerError::Unavailable)?;
         }
         Ok(())

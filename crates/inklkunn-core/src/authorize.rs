@@ -31,7 +31,7 @@
 //!   D-3). The lowest rung of each action is the policy's ([`Policy::minimum_role`](crate::governance::Policy)).
 //! - **A governance file that cannot be read** ([`Rules::fault`]) makes the wiki **refuse every write** (everything but
 //!   `read`) to every account, with one exception, the repair path of INV-14: an *admin* of the wiki may *propose* a change to
-//!   one of the two governance files and may *accept*; the acceptance judges what the change touches (nothing but
+//!   one of the two governance files or a removal of what is below one, and may *accept*; the acceptance judges what the change touches (nothing but
 //!   `governance/`, [`ProposalAcceptor`](crate::ProposalAcceptor)). The system principal's acts (import, recovery) are not
 //!   writes of a person and are decided as before. Whoever may read the wiki can be told why ([`Authorizer::write_refusal`]);
 //!   everyone else gets the existence-neutral answer they always got.
@@ -416,9 +416,10 @@ pub fn decide(snapshot: Snapshot, principal: &Principal, action: Action) -> Deci
 /// The rule under the wiki's [`Rules`]. Pure: the same inputs always give the same answer, and every path that is not
 /// explicitly allowed is denied.
 ///
-/// `on_governance_file` says that the resource is one of the two governance files (a page resource whose path is
-/// `governance/constitution.yaml` or `governance/policy.yaml`): it matters only in the repair state, where the wiki refuses
-/// every write ([`Rules::fault`]) and an admin may still propose a change to those files.
+/// `on_governance_file` says that the resource is one of the two governance files or a path below one (a page resource whose
+/// path is `governance/constitution.yaml`, `governance/policy.yaml` or lies below either): it matters only in the repair
+/// state, where the wiki refuses every write ([`Rules::fault`]) and an admin may still propose a change to those paths (the
+/// file written, what is below it removed).
 pub fn decide_under(
     snapshot: Snapshot,
     rules: &Rules,
@@ -461,9 +462,10 @@ pub fn decide_under(
     }
 }
 
-/// Is the resource one of the two governance files?
+/// Is the resource one of the two governance files, **or a path below one** (what stands where the file belongs, and what a
+/// repair removes: handoff G-T1 correction D-1)? In the repair state an admin may propose a change to exactly these.
 fn is_governance_file(resource: &Resource) -> bool {
-    matches!(resource, Resource::Page { path, .. } if GovernanceFile::of_path(path).is_some())
+    matches!(resource, Resource::Page { path, .. } if GovernanceFile::at_or_below(path).is_some())
 }
 
 /// Where an account stands in a wiki at this moment: **the rung it holds and the block that set the rules it holds it

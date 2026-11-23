@@ -229,6 +229,78 @@ fn writes_are_atomic_create_parents_and_are_undone_exactly() {
 }
 
 #[test]
+fn removing_the_last_file_of_a_directory_takes_the_directory_and_the_file_can_then_be_written_where_it_stood()
+ {
+    // Handoff G-T1 correction D-1: a directory stands where `governance/policy.yaml` belongs; the change removes the files
+    // below it and writes the file.
+    let tmp = temp("dir-to-file");
+    let root = &tmp.0;
+    std::fs::create_dir_all(root.join("governance/policy.yaml/sub")).unwrap();
+    std::fs::write(root.join("governance/policy.yaml/inner.txt"), "x").unwrap();
+    std::fs::write(root.join("governance/policy.yaml/sub/deeper.txt"), "y").unwrap();
+    std::fs::write(root.join("governance/constitution.yaml"), "keep").unwrap();
+    let mut applied = Applied::default();
+    // Written before the directory is gone: refused, and nothing is touched.
+    assert!(applied.write(root, "governance/policy.yaml", b"p").is_err());
+    applied
+        .delete(root, "governance/policy.yaml/sub/deeper.txt")
+        .unwrap();
+    assert!(
+        !root.join("governance/policy.yaml/sub").exists(),
+        "the directory the removal emptied is gone"
+    );
+    assert!(root.join("governance/policy.yaml/inner.txt").exists());
+    applied
+        .delete(root, "governance/policy.yaml/inner.txt")
+        .unwrap();
+    assert!(!root.join("governance/policy.yaml").exists());
+    // Never a directory of the bundle's roots, and never what holds another file.
+    assert!(root.join("governance").is_dir());
+    assert!(root.join("governance/constitution.yaml").is_file());
+    applied.write(root, "governance/policy.yaml", b"p").unwrap();
+    assert_eq!(
+        std::fs::read(root.join("governance/policy.yaml")).unwrap(),
+        b"p"
+    );
+    // Undone: the file is gone and the directory and the files below it are back, as they were.
+    assert!(applied.undo());
+    assert!(root.join("governance/policy.yaml").is_dir());
+    assert_eq!(
+        std::fs::read(root.join("governance/policy.yaml/inner.txt")).unwrap(),
+        b"x"
+    );
+    assert_eq!(
+        std::fs::read(root.join("governance/policy.yaml/sub/deeper.txt")).unwrap(),
+        b"y"
+    );
+    assert_eq!(
+        std::fs::read(root.join("governance/constitution.yaml")).unwrap(),
+        b"keep"
+    );
+}
+
+#[test]
+fn removing_a_file_leaves_a_directory_that_still_holds_something_and_never_a_root() {
+    let tmp = temp("dir-kept");
+    let root = &tmp.0;
+    std::fs::create_dir_all(root.join("pages/Sub")).unwrap();
+    std::fs::write(root.join("pages/Sub/A.md"), "a").unwrap();
+    std::fs::write(root.join("pages/Sub/B.md"), "b").unwrap();
+    std::fs::write(root.join("pages/Only.md"), "o").unwrap();
+    let mut applied = Applied::default();
+    applied.delete(root, "pages/Sub/A.md").unwrap();
+    assert!(root.join("pages/Sub/B.md").exists(), "a neighbour is kept");
+    applied.delete(root, "pages/Only.md").unwrap();
+    assert!(
+        root.join("pages").is_dir(),
+        "a root of the bundle is never taken"
+    );
+    assert!(applied.undo());
+    assert_eq!(std::fs::read(root.join("pages/Sub/A.md")).unwrap(), b"a");
+    assert_eq!(std::fs::read(root.join("pages/Only.md")).unwrap(), b"o");
+}
+
+#[test]
 fn a_link_is_never_followed_and_nothing_is_written_through_one() {
     let tmp = temp("links");
     let root = tmp.0.join("wt");

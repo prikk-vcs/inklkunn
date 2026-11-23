@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use inklkunn_core::Action;
-use inklkunn_core::governance::{GovernanceFile, is_governance_path};
+use inklkunn_core::governance::{GovernanceFile, is_below_governance, is_governance_path};
 use inklkunn_core::knowledge::compose::{page_id_of, without_expressions};
 use inklkunn_core::knowledge::marker::words_with_id;
 use inklkunn_core::knowledge::onpage::{claim_blocks, claims_at};
@@ -171,7 +171,7 @@ pub(super) fn prepare(
     let mut whole = Vec::with_capacity(sent.files.len());
     for file in &sent.files {
         // A page is read only for a caller who may propose to it: what the base holds is not told otherwise.
-        let read = |path: &str| {
+        let allowed = |path: &str| {
             let resource = inklkunn_core::Resource::Page {
                 wiki: req.wiki.id.clone(),
                 path: path.to_owned(),
@@ -184,6 +184,10 @@ pub(super) fn prepare(
             {
                 return Err(Problem::new(crate::api::problem::Code::Forbidden));
             }
+            Ok(())
+        };
+        let read = |path: &str| {
+            allowed(path)?;
             req.services
                 .read
                 .source_at(&req.wiki, &base.block_id, path)
@@ -192,9 +196,12 @@ pub(super) fn prepare(
         let (path, old) = match &file.path {
             Some(path) => {
                 if is_governance_path(path) {
-                    // The rules of the wiki are two files, and nothing else under `governance/` is a file the API writes
-                    // (RFC 006 D-1, D-12: a policy change goes through the same propose API, as the governance file it is).
-                    if GovernanceFile::of_path(path).is_none() {
+                    // The rules of the wiki are two files, and a path under `governance/` that is neither is a file the API
+                    // only removes (RFC 006 D-1, D-12: a policy change goes through the same propose API, as the governance
+                    // file it is; handoff G-T1 correction D-1: what stands where a governance file belongs is cleared by a
+                    // removal, and a removal is as any file's).
+                    let removal = file.text.is_none() && is_below_governance(path);
+                    if GovernanceFile::of_path(path).is_none() && !removal {
                         return Err(req.unacceptable(Invalid::GovernancePath));
                     }
                 } else if !is_inside_pages(path) {
@@ -202,7 +209,19 @@ pub(super) fn prepare(
                         req.unacceptable_with("path-outside-pages", t.get(Key::InvalidIncomplete))
                     );
                 }
-                (path.clone(), read(path)?)
+                if file.text.is_none() && is_below_governance(path) {
+                    // A removal below `governance/` asks only whether there is a file to remove, never what it holds (it may
+                    // be no text at all): the text a removal "was" is empty, so that a file that is there is a change.
+                    allowed(path)?;
+                    let there = req
+                        .services
+                        .read
+                        .file_exists_at(&req.wiki, &base.block_id, path)
+                        .map_err(|error| read_failure(req, error))?;
+                    (path.clone(), there.then(String::new))
+                } else {
+                    (path.clone(), read(path)?)
+                }
             }
             None => {
                 let title = file.title.trim();

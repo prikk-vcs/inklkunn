@@ -34,17 +34,15 @@ struct Cast {
 }
 
 fn cast() -> Cast {
-    let w = with_accounts(World::new(
-        "handbook",
-        "The Handbook",
-        &[
-            ("pages/Home.md", HOME),
-            (
-                "pages/Guide.md",
-                &page(&["title: Guide"], "# Setup\n\nInstall it.\n"),
-            ),
-        ],
-    ));
+    cast_over(&[])
+}
+
+/// [`cast`] over a repository that also holds `extra` files.
+fn cast_over(extra: &[(&str, &str)]) -> Cast {
+    let guide = page(&["title: Guide"], "# Setup\n\nInstall it.\n");
+    let mut files = vec![("pages/Home.md", HOME), ("pages/Guide.md", guide.as_str())];
+    files.extend_from_slice(extra);
+    let w = with_accounts(World::new("handbook", "The Handbook", &files));
     let c = Cast {
         contributor: person(1),
         other: person(2),
@@ -2130,4 +2128,81 @@ async fn the_two_governance_files_are_what_the_api_writes_under_governance_and_n
     )
     .await;
     assert_eq!(a.json().at("/reason"), "path-outside-pages", "{}", a.text());
+}
+
+/// A proposal sent for review at once, of `files`, by the contributor, against the repository as it stands (version 1).
+async fn submit_files(c: &Cast, files: Value) -> Answer {
+    let uri = format!("{API}/proposals");
+    let headers = [session(&c.contributor), quoted(&state_id(1))];
+    let body = json!({"summary": "Clear it", "submit": true, "files": files, "renames": []});
+    post(&c.w, &uri, &headers, body.to_string()).await
+}
+
+#[tokio::test]
+async fn a_path_below_governance_is_removed_by_the_api_as_any_file_is_and_never_written_and_never_beside_a_page()
+ {
+    // Handoff G-T1 correction D-1: something stands at `governance/policy.yaml/inner.txt` (what a repair removes) and at
+    // `governance/x/y.yaml`; the API may remove them and may write only the two files.
+    let c = cast_over(&[
+        ("governance/policy.yaml/inner.txt", "x\n"),
+        ("governance/x/y.yaml", "z: 1\n"),
+    ]);
+    let send = |files: Value| submit_files(&c, files);
+    // A removal is a proposal like any other, and it is stored as a removal of that path.
+    let a = send(json!([
+        {"path": "governance/policy.yaml/inner.txt", "text": null},
+        {"path": "governance/x/y.yaml", "text": null}
+    ]))
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    let stored =
+        c.w.services
+            .proposals
+            .revisions(&principal(&c.contributor), &c.w.wiki, &id_of(&a.json()))
+            .unwrap()
+            .pop()
+            .unwrap();
+    let removed: Vec<_> = stored
+        .content
+        .files
+        .iter()
+        .map(|f| (f.path.as_str(), f.text.is_none()))
+        .collect();
+    assert_eq!(
+        removed,
+        [
+            ("governance/policy.yaml/inner.txt", true),
+            ("governance/x/y.yaml", true)
+        ]
+    );
+    // With the file of the rules written beside it, in the same proposal.
+    let a = send(json!([
+        {"path": "governance/policy.yaml/inner.txt", "text": null},
+        {"path": "governance/policy.yaml", "text": "entry: none\n"}
+    ]))
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    // A write of another path is refused by name, even beside a removal.
+    for files in [
+        json!([{"path": "governance/x/y.yaml", "text": "z: 2\n"}]),
+        json!([
+            {"path": "governance/policy.yaml/inner.txt", "text": null},
+            {"path": "governance/policy.yaml/other.txt", "text": "x"}
+        ]),
+    ] {
+        let a = send(files).await;
+        assert_eq!(a.status, 422, "{}", a.text());
+        assert_eq!(a.json().at("/reason"), "governance-path", "{}", a.text());
+    }
+    // A removal beside a page is mixing.
+    let a = send(json!([
+        {"path": "pages/Home.md", "text": null},
+        {"path": "governance/x/y.yaml", "text": null}
+    ]))
+    .await;
+    assert_eq!(a.status, 422, "{}", a.text());
+    assert_eq!(a.json().at("/reason"), "governance-mixed", "{}", a.text());
+    // Not where there is nothing to remove: the same as a page that is not there (nothing is proposed).
+    let a = send(json!([{"path": "governance/x/none.yaml", "text": null}])).await;
+    assert_eq!(a.status, 422, "{}", a.text());
 }

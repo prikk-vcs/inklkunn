@@ -55,6 +55,16 @@ impl GovernanceChange {
             super::GovernanceFile::Constitution => Some(GovernanceChange::Constitution),
         }
     }
+
+    /// The kind of change a repository path is when it is one of the two files **or lies below one** (a directory that
+    /// stands where the file belongs: removing what is in it is a change to that file's place, and needs what a change to the
+    /// file needs; handoff G-T1 correction D-1).
+    pub fn at_or_below(path: &str) -> Option<GovernanceChange> {
+        match super::GovernanceFile::at_or_below(path)? {
+            super::GovernanceFile::Policy => Some(GovernanceChange::Policy),
+            super::GovernanceFile::Constitution => Some(GovernanceChange::Constitution),
+        }
+    }
 }
 
 /// The wiki's constitution. Built by [`Constitution::default`] (0.3.0's behaviour) or by reading a file

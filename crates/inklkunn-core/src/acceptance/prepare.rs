@@ -18,7 +18,9 @@
 //! **A governance file is never merged** (RFC 006 D-4). The two files are the rules of the wiki, a small text where one
 //! changed line can be the whole meaning, and what the reviewers read and approved is what is accepted: when the tip's text
 //! of a governance file the revision writes is not the base's, the revision overlaps with the tip, both texts are kept on the
-//! proposal and its proposer revises against the rules as they are now.
+//! proposal and its proposer revises against the rules as they are now. A change that is to `governance/` alone is judged
+//! that way for every path it touches, byte for byte, whether the path is one of the two files or one below `governance/`
+//! that a repair removes (handoff G-T1 correction D-1); nothing there is read as a page.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -28,7 +30,7 @@ use inklkunn_prikk::{Point, Storage, StorageError};
 use inklkunn_signer::PreparedFile;
 use inklkunn_store::{CommentRecord, OverlapText, RevisionContent};
 
-use crate::governance::GovernanceFile;
+use crate::governance::{GovernanceFile, is_governance_path};
 use crate::merge::{MergeOutcome, Overlap, PageText, Place, merge};
 use crate::proposal::MAX_PAGE_BYTES;
 
@@ -166,6 +168,9 @@ pub(crate) fn prepare(
     if content.base.block_id == tip_block {
         return Ok(direct(content));
     }
+    if let Some(done) = governance_change(storage, repo, content, tip_block)? {
+        return Ok(done);
+    }
     let touched: BTreeSet<String> = content
         .files
         .iter()
@@ -268,6 +273,75 @@ pub(crate) fn prepare(
             .collect(),
         reauthored: true,
     })
+}
+
+/// A change to `governance/` alone, against a tip that is not its base: **never merged, and never read as pages**. Each path the
+/// revision touches is compared with the base byte for byte (its presence too), so that a file that is not text, or that stands
+/// at a path the rules do not read (what a repair removes, handoff G-T1 correction D-1), is no page to decode; any path the tip
+/// has changed since is an overlap, with both texts kept where there are texts. When none has, the revision is applied to the
+/// tip as it is: the two files written where the tip's bytes differ, a path below `governance/` removed where the tip has it.
+///
+/// `None` when the change is not of that kind (it touches a path outside `governance/`, or renames), and the merge decides.
+fn governance_change(
+    storage: &dyn Storage,
+    repo: &Path,
+    content: &RevisionContent,
+    tip_block: &str,
+) -> Result<Option<Prepared>, PrepareError> {
+    let touched: Vec<&str> = content.files.iter().map(|f| f.path.as_str()).collect();
+    if touched.is_empty()
+        || !content.renames.is_empty()
+        || !touched.iter().all(|p| is_governance_path(p))
+    {
+        return Ok(None);
+    }
+    let at = |block: &str| -> Result<BTreeMap<&str, Vec<u8>>, PrepareError> {
+        let present = files_at(storage, repo, block)?;
+        let mut out = BTreeMap::new();
+        for path in touched.iter().filter(|p| present.contains(**p)) {
+            let bytes = storage.read(
+                repo,
+                &Point::Block(block.to_owned()),
+                path,
+                MAX_PAGE_BYTES as u64,
+            )?;
+            out.insert(*path, bytes);
+        }
+        Ok(out)
+    };
+    let base = at(&content.base.block_id)?;
+    let tip = at(tip_block)?;
+    let text = |bytes: Option<&Vec<u8>>| bytes.and_then(|b| String::from_utf8(b.clone()).ok());
+    if let Some(file) = content
+        .files
+        .iter()
+        .find(|f| base.get(f.path.as_str()) != tip.get(f.path.as_str()))
+    {
+        return Ok(Some(Prepared::Overlaps(vec![OverlapText {
+            page: file.path.clone(),
+            place: "governance file".to_owned(),
+            base: text(base.get(file.path.as_str())),
+            theirs: text(tip.get(file.path.as_str())),
+            ours: file.text.clone(),
+        }])));
+    }
+    let files: Vec<PreparedFile> = content
+        .files
+        .iter()
+        .filter(|f| match &f.text {
+            Some(new) => tip.get(f.path.as_str()).map(Vec::as_slice) != Some(new.as_bytes()),
+            None => tip.contains_key(f.path.as_str()),
+        })
+        .map(|f| prepared_file(&f.path, f.text.clone()))
+        .collect();
+    if files.is_empty() {
+        return Ok(Some(Prepared::NothingToChange));
+    }
+    Ok(Some(Prepared::Change {
+        files,
+        renames: Vec::new(),
+        reauthored: true,
+    }))
 }
 
 /// The bytes an acceptance counts against the accepted-bytes quota: every path and every text, as a revision's

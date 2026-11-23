@@ -175,10 +175,19 @@ impl Plan {
 /// What has been done to a worktree, so that it can be undone.
 #[derive(Debug, Default)]
 pub(crate) struct Applied {
-    /// Files written or removed, with the bytes they held (`None`: they did not exist).
-    saved: Vec<(PathBuf, Option<Vec<u8>>)>,
+    /// What was written or removed, in the order it was done, so that it is undone in the opposite order.
+    done: Vec<Done>,
     /// Directories this change created, outermost first.
     made_dirs: Vec<PathBuf>,
+}
+
+/// One thing done to a worktree.
+#[derive(Debug)]
+enum Done {
+    /// A file written or removed, with the bytes it held (`None`: it did not exist).
+    File(PathBuf, Option<Vec<u8>>),
+    /// A directory taken away because the removal of its last file left it empty.
+    EmptiedDir(PathBuf),
 }
 
 fn io_text(what: &'static str, e: &std::io::Error) -> String {
@@ -251,7 +260,7 @@ impl Applied {
             let _ = std::fs::remove_file(&tmp);
             return Err(io_text("a file could not be written", &e));
         }
-        self.saved.push((dest, before));
+        self.done.push(Done::File(dest, before));
         Ok(())
     }
 
@@ -265,14 +274,28 @@ impl Applied {
         }
     }
 
-    /// Remove `rel` below `root` (it must be a regular file).
+    /// Remove `rel` below `root` (it must be a regular file). **A directory the removal leaves empty is taken away too**,
+    /// up to (and not including) a directory of the bundle's roots (`pages/`, `governance/` ...): prikk keeps files and no
+    /// directories, and what stood where a file belongs is a directory made of nothing but the files below it, so that the
+    /// file can be written at that path afterwards (handoff G-T1 correction D-1: a repair removes what is below
+    /// `governance/policy.yaml` and writes the file).
     pub(crate) fn delete(&mut self, root: &Path, rel: &str) -> Result<(), String> {
         let dest = root.join(rel);
         check_route(root, &dest)?;
         let before =
             std::fs::read(&dest).map_err(|e| io_text("a file to remove could not be read", &e))?;
         std::fs::remove_file(&dest).map_err(|e| io_text("a file could not be removed", &e))?;
-        self.saved.push((dest, Some(before)));
+        self.done.push(Done::File(dest.clone(), Some(before)));
+        let mut at = dest.parent().map(Path::to_path_buf);
+        while let Some(dir) = at {
+            // Never a root of the bundle, and never the worktree itself: only a directory below one.
+            let depth = dir.strip_prefix(root).map_or(0, |r| r.components().count());
+            if depth < 2 || std::fs::remove_dir(&dir).is_err() {
+                break;
+            }
+            at = dir.parent().map(Path::to_path_buf);
+            self.done.push(Done::EmptiedDir(dir));
+        }
         Ok(())
     }
 
@@ -304,13 +327,16 @@ impl Applied {
     /// `false` if anything could not be restored (the caller then says recovery is needed).
     pub(crate) fn undo(self) -> bool {
         let mut ok = true;
-        for (path, before) in self.saved.into_iter().rev() {
-            let r = match before {
-                Some(bytes) => std::fs::write(&path, bytes),
-                None => match std::fs::remove_file(&path) {
+        for done in self.done.into_iter().rev() {
+            let r = match done {
+                Done::File(path, Some(bytes)) => std::fs::write(&path, bytes),
+                Done::File(path, None) => match std::fs::remove_file(&path) {
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
                     other => other,
                 },
+                Done::EmptiedDir(dir) => std::fs::create_dir(&dir).and_then(|()| {
+                    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))
+                }),
             };
             if r.is_err() {
                 ok = false;

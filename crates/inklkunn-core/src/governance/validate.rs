@@ -95,11 +95,24 @@ pub fn refuse_outside_default_view<'a>(
     }
 }
 
-/// The set of paths under `governance/` is closed: exactly the two files ([`GovernanceFile::path`]). Any other path
-/// under it that a proposal writes, removes or renames to or from is refused as [`Refusal::UnknownFile`]: no other file
-/// there is part of the rules of a wiki, and none is ever read as if it were.
-pub fn refuse_unknown_files<'a>(touched: impl IntoIterator<Item = &'a str>) -> Result<(), Fault> {
-    match touched
+/// Is `path` **below** `governance/`, spelled as the repository spells it (`governance/` and then at least one more
+/// character; no case folding, no `./`)? What a **removal** is allowed to name (handoff G-T1 correction D-1): a change may
+/// remove any path below `governance/`, and write only the two files. Narrower than [`is_governance_path`], which is a
+/// safety net that answers *yes* when in doubt: a path this answers *yes* to is one the signer can remove.
+pub fn is_below_governance(path: &str) -> bool {
+    path.strip_prefix(GOVERNANCE_DIR)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .is_some_and(|rest| !rest.is_empty())
+}
+
+/// **The set of paths under `governance/` that a change may WRITE is closed**: exactly the two files
+/// ([`GovernanceFile::path`]). Any other path under it that is written, or renamed to or from, is refused as
+/// [`Refusal::UnknownFile`]: no other file there is part of the rules of a wiki, and none is ever read as if it were.
+/// `written` is what the change writes and both ends of each rename; **a removal is not asked here**, because a change may
+/// remove any path below `governance/` (D-1: it is how something standing where a governance file belongs is cleared, and in a
+/// sound wiki there is nothing else there to remove).
+pub fn refuse_unknown_files<'a>(written: impl IntoIterator<Item = &'a str>) -> Result<(), Fault> {
+    match written
         .into_iter()
         .find(|p| is_governance_path(p) && GovernanceFile::of_path(p).is_none())
     {
@@ -108,14 +121,17 @@ pub fn refuse_unknown_files<'a>(touched: impl IntoIterator<Item = &'a str>) -> R
     }
 }
 
-/// Is every path one of the two governance files, and is there at least one? What the repair of a wiki whose governance cannot
-/// be read is made of (RFC 006 D-1; threat model C-3d): a change that touches the rules and nothing else. The one definition,
-/// for the acceptance's judgement and for the transitions that end a proposal (handoff G-T1 correction C-3).
+/// Does the change touch nothing but the rules, and at least one path? What the repair of a wiki whose governance cannot be
+/// read is made of (RFC 006 D-1; threat model C-3d): a change whose every path is one of the two governance files **or lies
+/// below one** ([`GovernanceFile::at_or_below`]: what stands where the file belongs, which a repair removes, handoff G-T1
+/// correction D-1). The one definition, for the acceptance's judgement and for the transitions that end a proposal (correction
+/// C-3). That a path below a file is only ever *removed* is the writes' rule ([`refuse_unknown_files`], asked when the change is
+/// proposed and again before the signer); this answers *what is it about*, not *what is it allowed to do*.
 pub fn only_governance_files<'a>(touched: impl IntoIterator<Item = &'a str>) -> bool {
     let (mut any, mut all) = (false, true);
     for path in touched {
         any = true;
-        all &= GovernanceFile::of_path(path).is_some();
+        all &= GovernanceFile::at_or_below(path).is_some();
     }
     any && all
 }

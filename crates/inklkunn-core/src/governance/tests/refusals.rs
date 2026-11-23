@@ -542,3 +542,63 @@ fn only_the_two_files_are_a_path_under_governance_and_anything_else_is_refused_b
         assert_eq!(refuse_unknown_files([path]), Ok(()), "{path:?}");
     }
 }
+
+#[test]
+fn a_path_below_governance_is_one_a_removal_may_name_and_only_what_is_at_or_below_a_file_is_the_repair()
+ {
+    // Handoff G-T1 correction D-1: below `governance/`, spelled as the repository spells it.
+    for path in [
+        "governance/policy.yaml",
+        "governance/policy.yaml/inner.txt",
+        "governance/x/y.yaml",
+        "governance/other.yaml",
+    ] {
+        assert!(is_below_governance(path), "{path}");
+    }
+    for path in [
+        "governance",
+        "governance/",
+        "Governance/policy.yaml",
+        "./governance/policy.yaml",
+        "governancey/x",
+        "pages/governance/policy.yaml",
+        "pages/A.md",
+        "",
+    ] {
+        assert!(!is_below_governance(path), "{path:?}");
+    }
+    // The repair is a change whose every path is one of the two files or lies below one.
+    assert!(only_governance_files(["governance/policy.yaml"]));
+    assert!(only_governance_files([
+        "governance/policy.yaml/inner.txt",
+        "governance/constitution.yaml",
+        "governance/constitution.yaml/a/b.txt",
+    ]));
+    assert!(!only_governance_files([]));
+    for path in [
+        "governance/x/y.yaml",
+        "governance/other.yaml",
+        "governance/policy.yml/inner.txt",
+        "Governance/policy.yaml",
+        "pages/A.md",
+    ] {
+        assert!(
+            !only_governance_files(["governance/policy.yaml", path]),
+            "{path}"
+        );
+    }
+    // The kind of change a path below a file is: that file's.
+    assert_eq!(
+        GovernanceChange::at_or_below("governance/policy.yaml/inner.txt"),
+        Some(GovernanceChange::Policy)
+    );
+    assert_eq!(
+        GovernanceChange::at_or_below("governance/constitution.yaml"),
+        Some(GovernanceChange::Constitution)
+    );
+    assert_eq!(GovernanceChange::at_or_below("governance/x/y.yaml"), None);
+    assert_eq!(
+        GovernanceChange::of_path("governance/policy.yaml/inner.txt"),
+        None
+    );
+}

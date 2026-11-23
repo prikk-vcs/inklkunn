@@ -35,6 +35,16 @@
 //! Every write refuses, naming the file and the line ([`AcceptFailure::RulesUnreadable`]), **except the repair**: an admin's
 //! change that touches nothing but the two governance files, accepted by the hatch under the default policy. A change that
 //! touches anything else is refused with the same sentence, so that the files are repaired first.
+//!
+//! **What the repair may remove** (handoff G-T1 correction D-1): a change writes only the two governance files and may remove
+//! any path below `governance/`. In a sound wiki nothing else is there, so this opens nothing. In a wiki where something
+//! stands at or below a governance path (a directory where `governance/policy.yaml` belongs, with files in it: the
+//! [`Refusal::NotAFile`](crate::governance::Refusal::NotAFile) fault), the admin's repair is the proposal that removes
+//! the files below the path and, if the rules are to be set, writes the file: one change, one patch, accepted by the hatch. A
+//! removal below a file's place is judged as a change to that file ([`GovernanceChange::at_or_below`]); a removal of a path
+//! that is below neither file is judged as no rule at all (it changes none: the ordinary acceptance, for a wiki whose rules
+//! can be read; while they cannot, the repair is the two files and what lies below them, and this is refused with the rest),
+//! and is still a path under `governance/`, so a page never travels with it (`governance-mixed`).
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -63,11 +73,13 @@ pub(super) struct Judged {
     pub(super) hatch: bool,
 }
 
-/// The kinds of change the touched paths are to governance files (empty when none is).
+/// The kinds of change the touched paths are to governance files (empty when none is). A path **below** one of the two files
+/// (a removal of what stands where the file belongs, handoff G-T1 correction D-1) is a change to that file's place and counts
+/// as one to the file; any other path below `governance/` is a change to no rule, and is no kind.
 fn kinds_of(touched: &[String]) -> BTreeSet<GovernanceChange> {
     touched
         .iter()
-        .filter_map(|p| GovernanceChange::of_path(p))
+        .filter_map(|p| GovernanceChange::at_or_below(p))
         .collect()
 }
 
@@ -198,7 +210,7 @@ impl ProposalAcceptor {
     }
 
     /// Judge the governance files the change is about to write (RFC 006 D-4), before the signer is asked: a proposal in
-    /// another view that touches `governance/`, a path under it that is neither of the two files, and each file's text (the
+    /// another view that touches `governance/`, a path under it that is neither of the two files and is written (a removal of any path below it is allowed, D-1), and each file's text (the
     /// schema, the ordering rule and the platform limits). Nothing is written, the repository is untouched and the proposal
     /// stays as it is. A change that touches no governance file is not looked at.
     pub(super) fn check_governance(
@@ -221,7 +233,18 @@ impl ProposalAcceptor {
         let mut faults: Vec<Fault> = Vec::new();
         let touched = || paths.iter().map(String::as_str);
         faults.extend(refuse_outside_default_view(touched(), place).err());
-        faults.extend(refuse_unknown_files(touched()).err());
+        // The writes only (D-1): a removal of any path below `governance/` is allowed, and the rest of this function looks only
+        // at the two files' text.
+        let writes = files
+            .iter()
+            .filter(|f| f.content.is_some())
+            .map(|f| f.path.to_string_lossy().into_owned());
+        let renamed = renames
+            .iter()
+            .flat_map(|(a, b)| [a, b])
+            .map(|p| p.to_string_lossy().into_owned());
+        let written: Vec<String> = writes.chain(renamed).collect();
+        faults.extend(refuse_unknown_files(written.iter().map(String::as_str)).err());
         let limits = self.parts.reads.platform_limits();
         for file in files {
             let Some(path) = file.path.to_str() else {

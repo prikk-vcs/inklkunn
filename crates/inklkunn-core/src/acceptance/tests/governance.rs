@@ -772,6 +772,77 @@ fn what_is_about_to_be_signed_is_judged_again_under_the_lease_for_mixing_the_rul
 }
 
 #[test]
+fn a_removal_below_governance_is_allowed_a_write_there_is_not_and_a_removal_is_still_a_path_of_the_rules_when_mixed()
+ {
+    // `check_governance` on its own (handoff G-T1 correction D-1): a change writes the two files only and may remove any path
+    // below `governance/`; a removal beside a page is mixing like any other governance path.
+    let rig = ruled(&[("governance/policy.yaml", STRICT)]);
+    let (_, author) = rig.person("Noor", Some(Role::Contributor));
+    let text = change_text();
+    let p = rig.propose(&author, "A page", &[("pages/Home.md", Some(&text))]);
+    let written = |path: &str| inklkunn_signer::PreparedFile {
+        path: std::path::PathBuf::from(path),
+        content: Some(b"entry: none\n".to_vec()),
+    };
+    let removed = |path: &str| inklkunn_signer::PreparedFile {
+        path: std::path::PathBuf::from(path),
+        content: None,
+    };
+    let acceptor = rig.acceptor();
+    for path in [
+        "governance/x/y.yaml",
+        "governance/policy.yaml/inner.txt",
+        "governance/policy.yaml/sub/deeper.txt",
+        "governance/other.yaml",
+        "governance/policy.yaml",
+    ] {
+        assert_eq!(
+            acceptor.check_governance(&rig.wiki, &p, &[removed(path)], &[]),
+            Ok(()),
+            "a removal of {path}"
+        );
+        assert_eq!(
+            acceptor.check_governance(
+                &rig.wiki,
+                &p,
+                &[written("pages/Home.md"), removed(path)],
+                &[]
+            ),
+            Err(AcceptFailure::Proposal(ProposalError::Invalid(
+                Invalid::GovernanceMixed
+            ))),
+            "a removal of {path} beside a page"
+        );
+    }
+    // A write of any path but the two files is still refused by name, whatever else the change removes.
+    for path in [
+        "governance/x/y.yaml",
+        "governance/policy.yaml/inner.txt",
+        "governance/other.yaml",
+    ] {
+        let failure = acceptor
+            .check_governance(
+                &rig.wiki,
+                &p,
+                &[removed("governance/policy.yaml"), written(path)],
+                &[],
+            )
+            .unwrap_err();
+        assert_eq!(names(&failure), ["unknown-file"], "a write of {path}");
+    }
+    // A rename into or out of `governance/` is a write of the path it names.
+    let failure = acceptor
+        .check_governance(
+            &rig.wiki,
+            &p,
+            &[removed("governance/x/y.yaml")],
+            &[("governance/x/y.yaml".into(), "governance/x/z.yaml".into())],
+        )
+        .unwrap_err();
+    assert_eq!(names(&failure), ["unknown-file"]);
+}
+
+#[test]
 fn the_hatch_checks_for_itself_that_every_path_it_covers_is_a_governance_file() {
     // `judge` on its own, with what a change touches: the check that stops a mixed change before the signer is not here.
     let rig = ruled(&[("governance/policy.yaml", STRICT)]);
@@ -1160,6 +1231,53 @@ fn an_admin_repairs_the_rules_with_a_change_that_touches_governance_only_by_the_
     assert!(record.hatch);
     assert_eq!(record.acceptor_role, Role::Admin);
     assert_eq!(record.policy_version, GOVERNED_POLICY_VERSION);
+}
+
+#[test]
+fn a_removal_below_a_governance_file_is_a_change_to_that_file_and_the_repair_includes_it() {
+    // `judge` on its own, in a wiki whose policy cannot be read (handoff G-T1 correction D-1).
+    let (rig, _maintainer, _admin, author, _) = broken();
+    let (admin_id, admin) = rig.person("Ada Two", Some(Role::Admin));
+    let (maintainer_id, maintainer) = rig.person("Maya Two", Some(Role::Maintainer));
+    let text = change_text();
+    let p = rig.propose_unjudged(&author, "A page", &[("pages/Home.md", Some(&text))]);
+    let acceptor = rig.acceptor();
+    let rules = rig.reads.rules_of(&rig.wiki).unwrap();
+    let judge = |who: &Principal, id: &AccountId, touched: &[&str]| {
+        let touched: Vec<String> = touched.iter().map(|p| (*p).to_owned()).collect();
+        acceptor.judge(who, &rig.wiki, &p, id, &touched, &rules)
+    };
+    // What is below a file's place, alone or with the file: the hatch of an admin, and nobody else's.
+    for touched in [
+        &["governance/policy.yaml/inner.txt"][..],
+        &["governance/policy.yaml/inner.txt", "governance/policy.yaml"],
+        &["governance/constitution.yaml/inner.txt"],
+    ] {
+        assert!(
+            judge(&admin, &admin_id, touched).unwrap().hatch,
+            "{touched:?}"
+        );
+        assert!(
+            matches!(
+                judge(&maintainer, &maintainer_id, touched),
+                Err(AcceptFailure::RulesUnreadable(_))
+            ),
+            "{touched:?}"
+        );
+    }
+    // A path below `governance/` that is below neither file is no rule: while the rules cannot be read it is not the repair.
+    for touched in [
+        &["governance/x/y.yaml"][..],
+        &["governance/policy.yaml/inner.txt", "governance/x/y.yaml"],
+    ] {
+        assert!(
+            matches!(
+                judge(&admin, &admin_id, touched),
+                Err(AcceptFailure::RulesUnreadable(_))
+            ),
+            "{touched:?}"
+        );
+    }
 }
 
 #[test]

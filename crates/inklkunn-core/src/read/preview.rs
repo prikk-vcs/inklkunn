@@ -53,6 +53,27 @@ impl ReadService {
         }
     }
 
+    /// Is there a file at `path` at the block `block_id`, **whatever it holds** (text or not, of any size)? What a removal of a
+    /// path the read path does not render needs to know (a path below `governance/` that a repair removes, handoff G-T1
+    /// correction D-1): that there is something to remove, never its text. A directory is no file: the listing names files,
+    /// and a path that is only a directory's name is `false`.
+    pub fn file_exists_at(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+        path: &str,
+    ) -> Result<bool, ReadError> {
+        let repo = self.layout.repo_dir(&wiki.id);
+        match self
+            .storage
+            .stat(&repo, &Point::Block(block_id.to_owned()), path)
+        {
+            Ok(_) => Ok(true),
+            Err(StorageError::Refused { .. }) => Ok(false),
+            Err(e) => Err(self.storage_error(wiki, e)),
+        }
+    }
+
     /// Every file under `pages/` at the block `block_id`. What a proposal's new paths are judged against.
     pub fn page_paths_at(
         &self,
