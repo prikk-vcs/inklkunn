@@ -442,7 +442,8 @@ impl Authorizer {
         };
         let kind = kind_of(target);
         let in_force = book.store.active_protections_on(wiki, kind, title, now)?;
-        // The record that ends last, which a renewal or a lifting follows.
+        // The record that ends last, which a renewal follows; a lifting follows every record in force (there is one, unless an
+        // older state left more, and the person who lifts must find the page unprotected afterwards).
         let current = in_force.first();
         let follows = match (act, current) {
             (Act::Set, Some(_)) => return Err(ProtectError::AlreadyInForce),
@@ -482,7 +483,28 @@ impl Authorizer {
             appeal: None,
         };
         let id = event.id.clone();
-        book.store.record_protection_event(&event)?;
+        // The check that nothing is in force and the record are one step in the store, so that two acts at once do not both set.
+        match act {
+            Act::Set => book
+                .store
+                .record_protection_event_if_none_in_force(&event)
+                .map_err(|e| match e {
+                    StoreError::StateChanged => ProtectError::AlreadyInForce,
+                    other => other.into(),
+                })?,
+            Act::Renew => book.store.record_protection_event(&event)?,
+            Act::Lift => {
+                // Every record in force ends, each by a lifting that names it: the first is the one this act is named by.
+                for older in in_force.iter().skip(1) {
+                    book.store.record_protection_event(&ProtectionEvent {
+                        id: ProtectionEventId::new(),
+                        of_event: Some(older.id.clone()),
+                        ..event.clone()
+                    })?;
+                }
+                book.store.record_protection_event(&event)?;
+            }
+        }
         Ok(id)
     }
 }

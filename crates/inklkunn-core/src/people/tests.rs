@@ -3,9 +3,11 @@
 //! person. Each test names the rule it holds, and fails without it.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+mod atomic;
 mod entry;
 mod grants;
 mod page;
+mod races;
 mod restrictions;
 mod rules;
 mod support;

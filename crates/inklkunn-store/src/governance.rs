@@ -883,6 +883,14 @@ pub trait GovernanceStore: Send + Sync {
     /// afterwards it holds `decision.after`, or none. `role_grants.granted_by` is the decision's account, `granted_at` its
     /// time.
     fn record_grant_decision(&self, decision: &GrantDecisionRecord) -> Result<()>;
+    /// [`GovernanceStore::record_grant_decision`], **in the same step refusing to take the last admin away** (F-2): when the
+    /// decision changes an account's admin grant to anything else, at least one **other** account must hold an admin grant in
+    /// the wiki **and be able to sign in** (not disabled), counted inside the transaction (SQLite) or under the store's lock
+    /// (memory) that records the decision, so that two admins acting on each other at once cannot both succeed.
+    /// [`StoreError::StateChanged`] when it would leave none (the same word as a stale `before`: the caller reads the grant
+    /// again to tell the two apart), nothing changed. A decision that does not take an admin grant away is recorded as by
+    /// `record_grant_decision`.
+    fn record_grant_decision_keeping_an_admin(&self, decision: &GrantDecisionRecord) -> Result<()>;
     /// The decision with this id.
     fn grant_decision(&self, id: &GrantDecisionId) -> Result<Option<GrantDecisionRecord>>;
     /// At most `limit` decisions (never more than [`MAX_PAGE`], at least one) of the wiki, newest first, about `target`
@@ -898,6 +906,10 @@ pub trait GovernanceStore: Send + Sync {
     /// in the same wiki, no later than itself, that nothing else follows; a reversal names an **open** appeal of a
     /// restriction in the wiki.
     fn record_restriction_event(&self, event: &RestrictionEvent) -> Result<()>;
+    /// [`GovernanceStore::record_restriction_event`] for a `Set`, **refused when the account is restricted at the event's time
+    /// already**, the check and the record being one step (F-2): [`StoreError::StateChanged`], nothing recorded. Two acts that
+    /// set a restriction on one account at once cannot both succeed.
+    fn record_restriction_event_if_none_in_force(&self, event: &RestrictionEvent) -> Result<()>;
     /// The event with this id.
     fn restriction_event(&self, id: &RestrictionEventId) -> Result<Option<RestrictionEvent>>;
     /// Every event of every restriction of the account in the wiki, oldest first.
@@ -929,6 +941,9 @@ pub trait GovernanceStore: Send + Sync {
     /// Record one event of a temporary protection, with the rules of [`GovernanceStore::record_restriction_event`] (an
     /// event after the first follows one of the same page or namespace).
     fn record_protection_event(&self, event: &ProtectionEvent) -> Result<()>;
+    /// [`GovernanceStore::record_protection_event`] for a `Set`, **refused when this page or namespace is protected at the
+    /// event's time already**, the check and the record being one step (F-2): [`StoreError::StateChanged`], nothing recorded.
+    fn record_protection_event_if_none_in_force(&self, event: &ProtectionEvent) -> Result<()>;
     /// The event with this id.
     fn protection_event(&self, id: &ProtectionEventId) -> Result<Option<ProtectionEvent>>;
     /// At most `limit` events (never more than [`MAX_PAGE`], at least one) of the wiki, newest first.

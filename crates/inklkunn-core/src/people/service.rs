@@ -345,8 +345,10 @@ impl PeopleService {
             ),
         )?;
         let id = GrantDecisionId::new();
+        // The last-admin guard and the record are one step in the store (F-2): two admins acting on each other at once cannot
+        // both leave.
         self.governance
-            .record_grant_decision(&GrantDecisionRecord {
+            .record_grant_decision_keeping_an_admin(&GrantDecisionRecord {
                 id: id.clone(),
                 wiki: wiki.id.clone(),
                 at: self.authorizer.now(),
@@ -361,13 +363,32 @@ impl PeopleService {
                 reason,
                 appeal: None,
             })
-            .map_err(store_failure)?;
+            .map_err(|e| self.grant_refusal(e, wiki, &target.id, current))?;
         Ok(GrantMade {
             id,
             account: target.id,
             before: current,
             after: new,
         })
+    }
+
+    /// Why the store refused the record of a change of a rung: **the last admin** when the account still holds the rung it
+    /// held when the act began (so what refused it was the guard that counts admins, in the store's own step), otherwise that
+    /// the records changed meanwhile.
+    pub(super) fn grant_refusal(
+        &self,
+        e: StoreError,
+        wiki: &WikiRecord,
+        target: &AccountId,
+        current: Option<Role>,
+    ) -> PeopleError {
+        match e {
+            StoreError::StateChanged => match self.roles.role(target, &wiki.id) {
+                Ok(now) if now == current => PeopleError::Grant(GrantRefusal::LastAdmin),
+                _ => PeopleError::Changed,
+            },
+            other => store_failure(other),
+        }
     }
 
     /// How many accounts other than `except` hold an admin grant in the wiki and can still sign in.
@@ -502,24 +523,34 @@ impl PeopleService {
             &format!("days={days}"),
         )?;
         let id = RestrictionEventId::new();
-        self.governance
-            .record_restriction_event(&RestrictionEvent {
-                id: id.clone(),
-                wiki: wiki.id.clone(),
-                at: self.authorizer.now(),
-                event,
-                account: target.clone(),
-                by: Actor {
-                    account: acting.account.clone(),
-                    rung,
-                },
-                policy_block: acting.rules.block().map(str::to_owned),
-                reason: Some(reason),
-                expires_at: Some(ends),
-                of_event,
-                appeal: None,
-            })
-            .map_err(store_failure)?;
+        let record = RestrictionEvent {
+            id: id.clone(),
+            wiki: wiki.id.clone(),
+            at: self.authorizer.now(),
+            event,
+            account: target.clone(),
+            by: Actor {
+                account: acting.account.clone(),
+                rung,
+            },
+            policy_block: acting.rules.block().map(str::to_owned),
+            reason: Some(reason),
+            expires_at: Some(ends),
+            of_event,
+            appeal: None,
+        };
+        // A restriction is set only where none is in force, and the check and the record are one step in the store (F-2): two
+        // moderators at once do not both set one, and the one that is late is told by name.
+        match event {
+            MeasureEvent::Set => self
+                .governance
+                .record_restriction_event_if_none_in_force(&record)
+                .map_err(|e| self.already_restricted(e, wiki, &target))?,
+            _ => self
+                .governance
+                .record_restriction_event(&record)
+                .map_err(store_failure)?,
+        }
         Ok(RestrictionMade {
             id,
             account: target,
@@ -544,23 +575,37 @@ impl PeopleService {
         };
         self.audit_act(principal, wiki, &acting, "lift-restriction", &target, "")?;
         let id = RestrictionEventId::new();
+        // **Every** restriction in force on the person ends, not only the one that ends last: after *lifted* they are free.
+        let others: Vec<RestrictionEvent> = self
+            .governance
+            .active_restrictions(&wiki.id, &target, self.authorizer.now())
+            .map_err(unavailable)?
+            .into_iter()
+            .filter(|r| r.id != active.id)
+            .collect();
+        let lifting = |id: RestrictionEventId, of: RestrictionEventId| RestrictionEvent {
+            id,
+            wiki: wiki.id.clone(),
+            at: self.authorizer.now(),
+            event: MeasureEvent::Lifted,
+            account: target.clone(),
+            by: Actor {
+                account: acting.account.clone(),
+                rung,
+            },
+            policy_block: acting.rules.block().map(str::to_owned),
+            reason: reason.clone(),
+            expires_at: None,
+            of_event: Some(of),
+            appeal: None,
+        };
+        for other in others {
+            self.governance
+                .record_restriction_event(&lifting(RestrictionEventId::new(), other.id))
+                .map_err(store_failure)?;
+        }
         self.governance
-            .record_restriction_event(&RestrictionEvent {
-                id: id.clone(),
-                wiki: wiki.id.clone(),
-                at: self.authorizer.now(),
-                event: MeasureEvent::Lifted,
-                account: target.clone(),
-                by: Actor {
-                    account: acting.account.clone(),
-                    rung,
-                },
-                policy_block: acting.rules.block().map(str::to_owned),
-                reason,
-                expires_at: None,
-                of_event: Some(active.id),
-                appeal: None,
-            })
+            .record_restriction_event(&lifting(id.clone(), active.id))
             .map_err(store_failure)?;
         Ok(RestrictionMade {
             id,
@@ -568,6 +613,24 @@ impl PeopleService {
             outcome: RestrictionOutcome::Lifted,
             until: None,
         })
+    }
+
+    /// Why the store refused to set a restriction: someone set one first (named, with its end), or the store's own word.
+    pub(super) fn already_restricted(
+        &self,
+        e: StoreError,
+        wiki: &WikiRecord,
+        target: &AccountId,
+    ) -> PeopleError {
+        match e {
+            StoreError::StateChanged => match self.in_force(wiki, target) {
+                Ok(Some(active)) => PeopleError::Restrict(RestrictRefusal::AlreadyRestricted {
+                    until: active.expires_at.unwrap_or(i64::MAX),
+                }),
+                _ => PeopleError::Changed,
+            },
+            other => store_failure(other),
+        }
     }
 
     /// What a restricting act settles first: the person's own standing, the authorization (`moderate`), the account, the

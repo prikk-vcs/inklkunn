@@ -41,6 +41,14 @@ fn refusal(e: rusqlite::Error) -> StoreError {
     backend(e)
 }
 
+/// Does the query, with these arguments, return a row? (The arguments are typed, which `probe`'s are not.)
+fn found(tx: &Transaction<'_>, sql: &str, args: impl rusqlite::Params) -> Result<bool> {
+    tx.query_row(sql, args, |_| Ok(()))
+        .optional()
+        .map(|row| row.is_some())
+        .map_err(backend)
+}
+
 fn limit_of(limit: usize) -> i64 {
     i64::try_from(limit.clamp(1, MAX_PAGE)).unwrap_or(i64::MAX)
 }
@@ -552,6 +560,26 @@ impl GovernanceStore for SqliteStore {
         self.governance_write(|tx| insert_grant_decision(tx, decision))
     }
 
+    fn record_grant_decision_keeping_an_admin(&self, decision: &GrantDecisionRecord) -> Result<()> {
+        self.governance_write(|tx| {
+            let leaves = decision.before == Some(Role::Admin) && decision.after != Some(Role::Admin);
+            if leaves {
+                let others: i64 = tx
+                    .query_row(
+                        "SELECT COUNT(*) FROM role_grants g JOIN accounts a ON a.id = g.account_id \
+                         WHERE g.wiki_id = ?1 AND g.role = 'admin' AND g.account_id != ?2 AND a.disabled = 0",
+                        params![decision.wiki.as_str(), decision.target.as_str()],
+                        |r| r.get(0),
+                    )
+                    .map_err(backend)?;
+                if others == 0 {
+                    return Err(StoreError::StateChanged);
+                }
+            }
+            insert_grant_decision(tx, decision)
+        })
+    }
+
     fn grant_decision(&self, id: &GrantDecisionId) -> Result<Option<GrantDecisionRecord>> {
         self.governance_one(
             &format!("SELECT {GRANT_COLUMNS} FROM grant_decisions WHERE id = ?1"),
@@ -578,6 +606,21 @@ impl GovernanceStore for SqliteStore {
 
     fn record_restriction_event(&self, event: &RestrictionEvent) -> Result<()> {
         self.governance_write(|tx| insert_restriction(tx, event))
+    }
+
+    fn record_restriction_event_if_none_in_force(&self, event: &RestrictionEvent) -> Result<()> {
+        self.governance_write(|tx| {
+            if found(
+                tx,
+                "SELECT 1 FROM restrictions r WHERE r.wiki_id = ?1 AND r.account = ?2 \
+                 AND r.event IN ('set', 'renewed') AND r.at <= ?3 AND r.expires_at > ?3 \
+                 AND NOT EXISTS (SELECT 1 FROM restrictions n WHERE n.of_event = r.id)",
+                params![event.wiki.as_str(), event.account.as_str(), event.at],
+            )? {
+                return Err(StoreError::StateChanged);
+            }
+            insert_restriction(tx, event)
+        })
     }
 
     fn restriction_event(&self, id: &RestrictionEventId) -> Result<Option<RestrictionEvent>> {
@@ -638,6 +681,26 @@ impl GovernanceStore for SqliteStore {
 
     fn record_protection_event(&self, event: &ProtectionEvent) -> Result<()> {
         self.governance_write(|tx| insert_protection(tx, event))
+    }
+
+    fn record_protection_event_if_none_in_force(&self, event: &ProtectionEvent) -> Result<()> {
+        self.governance_write(|tx| {
+            if found(
+                tx,
+                "SELECT 1 FROM protections p WHERE p.wiki_id = ?1 AND p.kind = ?2 AND p.target = ?3 \
+                 AND p.event IN ('set', 'renewed') AND p.at <= ?4 AND p.expires_at > ?4 \
+                 AND NOT EXISTS (SELECT 1 FROM protections n WHERE n.of_event = p.id)",
+                params![
+                    event.wiki.as_str(),
+                    event.kind.as_str(),
+                    event.target,
+                    event.at
+                ],
+            )? {
+                return Err(StoreError::StateChanged);
+            }
+            insert_protection(tx, event)
+        })
     }
 
     fn protection_event(&self, id: &ProtectionEventId) -> Result<Option<ProtectionEvent>> {

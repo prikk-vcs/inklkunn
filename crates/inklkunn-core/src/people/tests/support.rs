@@ -143,13 +143,31 @@ impl World {
         policy: Option<&str>,
         limits: PlatformLimits,
     ) -> World {
+        World::with_clock(kind, visibility, policy, limits, now)
+    }
+
+    /// The same, read by the clock `clock`: a test that acts from several threads needs one that is not a thread's own.
+    pub(super) fn with_clock(
+        kind: Kind,
+        visibility: Visibility,
+        policy: Option<&str>,
+        limits: PlatformLimits,
+        clock: fn() -> i64,
+    ) -> World {
         match kind {
-            Kind::Memory => World::over(Arc::new(MemoryStore::new()), visibility, policy, limits),
+            Kind::Memory => World::over(
+                Arc::new(MemoryStore::new()),
+                visibility,
+                policy,
+                limits,
+                clock,
+            ),
             Kind::Sqlite => World::over(
                 Arc::new(SqliteStore::open_in_memory().expect("a store")),
                 visibility,
                 policy,
                 limits,
+                clock,
             ),
         }
     }
@@ -159,6 +177,7 @@ impl World {
         visibility: Visibility,
         policy: Option<&str>,
         limits: PlatformLimits,
+        clock: fn() -> i64,
     ) -> World {
         set_now(T0);
         let mut new = NewWiki::new(
@@ -180,7 +199,9 @@ impl World {
         let authz = StoreAuthz::new(store.clone(), store.clone())
             .with_rules(Arc::new(Fixed(rules)))
             .with_restrictions(store.clone());
-        let authorizer = Authorizer::new(Arc::new(authz), audit.clone()).with_clock(now);
+        let authorizer = Authorizer::new(Arc::new(authz), audit.clone())
+            .with_clock(clock)
+            .with_protections(store.clone(), limits);
         let people = PeopleService::new(
             authorizer.clone(),
             store.clone(),
@@ -197,7 +218,7 @@ impl World {
             Arc::new(NoPages),
             QuotaConfig::default(),
         )
-        .with_clock(now);
+        .with_clock(clock);
         World {
             people,
             authorizer,

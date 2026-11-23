@@ -44,6 +44,14 @@ impl MemoryStore {
         self.identities().accounts.iter().any(|a| a.id == *id)
     }
 
+    /// Is there such an account, and is it not disabled (can it sign in)?
+    pub(super) fn can_sign_in(&self, id: &AccountId) -> bool {
+        self.identities()
+            .accounts
+            .iter()
+            .any(|a| a.id == *id && !a.disabled)
+    }
+
     fn identities(&self) -> std::sync::MutexGuard<'_, Identities> {
         self.identities
             .lock()

@@ -4,7 +4,7 @@
 use std::sync::{MutexGuard, PoisonError};
 
 use super::MemoryStore;
-use crate::access::RoleGrant;
+use crate::access::{Role, RoleGrant};
 use crate::governance::{
     AppealDecision, AppealOutcome, AppealRecord, AppealState, AppealedAction, AppealedKind,
     Decided, GovernanceStore, GrantDecisionRecord, HiddenItem, MAX_PAGE, MeasureEvent,
@@ -232,6 +232,26 @@ impl Governance {
 }
 
 /// A chain's events in force at `at`: a `Set` or `Renewed` event that has begun, has not ended, and nothing follows.
+/// What [`in_force`] reads of a restriction event.
+fn restriction_parts(e: &RestrictionEvent) -> (MeasureEvent, i64, Option<i64>, Option<&str>) {
+    (
+        e.event,
+        e.at,
+        e.expires_at,
+        e.of_event.as_ref().map(RestrictionEventId::as_str),
+    )
+}
+
+/// What [`in_force`] reads of a protection event.
+fn protection_parts(e: &ProtectionEvent) -> (MeasureEvent, i64, Option<i64>, Option<&str>) {
+    (
+        e.event,
+        e.at,
+        e.expires_at,
+        e.of_event.as_ref().map(ProtectionEventId::as_str),
+    )
+}
+
 fn in_force<E>(
     events: &[E],
     at: i64,
@@ -312,6 +332,28 @@ impl GovernanceStore for MemoryStore {
         g.add_grant(&mut grants, decision)
     }
 
+    fn record_grant_decision_keeping_an_admin(&self, decision: &GrantDecisionRecord) -> Result<()> {
+        decision.validate()?;
+        self.grant_refs(decision)?;
+        let mut g = self.governance_lock();
+        let mut grants = self.grants.lock().unwrap_or_else(PoisonError::into_inner);
+        if decision.before == Some(Role::Admin) && decision.after != Some(Role::Admin) {
+            let others = grants
+                .iter()
+                .filter(|h| {
+                    h.wiki == decision.wiki
+                        && h.role == Role::Admin
+                        && h.account != decision.target
+                        && self.can_sign_in(&h.account)
+                })
+                .count();
+            if others == 0 {
+                return Err(StoreError::StateChanged);
+            }
+        }
+        g.add_grant(&mut grants, decision)
+    }
+
     fn grant_decision(&self, id: &GrantDecisionId) -> Result<Option<GrantDecisionRecord>> {
         Ok(self
             .governance_lock()
@@ -342,6 +384,22 @@ impl GovernanceStore for MemoryStore {
         event.validate()?;
         self.restriction_refs(event)?;
         self.governance_lock().add_restriction(event)
+    }
+
+    fn record_restriction_event_if_none_in_force(&self, event: &RestrictionEvent) -> Result<()> {
+        event.validate()?;
+        self.restriction_refs(event)?;
+        let mut g = self.governance_lock();
+        let of_account: Vec<RestrictionEvent> = g
+            .restrictions
+            .iter()
+            .filter(|r| r.wiki == event.wiki && r.account == event.account)
+            .cloned()
+            .collect();
+        if !in_force(&of_account, event.at, |e| e.id.as_str(), restriction_parts).is_empty() {
+            return Err(StoreError::StateChanged);
+        }
+        g.add_restriction(event)
     }
 
     fn restriction_event(&self, id: &RestrictionEventId) -> Result<Option<RestrictionEvent>> {
@@ -435,6 +493,22 @@ impl GovernanceStore for MemoryStore {
         event.validate()?;
         self.protection_refs(event)?;
         self.governance_lock().add_protection(event)
+    }
+
+    fn record_protection_event_if_none_in_force(&self, event: &ProtectionEvent) -> Result<()> {
+        event.validate()?;
+        self.protection_refs(event)?;
+        let mut g = self.governance_lock();
+        let of_target: Vec<ProtectionEvent> = g
+            .protections
+            .iter()
+            .filter(|p| p.wiki == event.wiki && p.kind == event.kind && p.target == event.target)
+            .cloned()
+            .collect();
+        if !in_force(&of_target, event.at, |e| e.id.as_str(), protection_parts).is_empty() {
+            return Err(StoreError::StateChanged);
+        }
+        g.add_protection(event)
     }
 
     fn protection_event(&self, id: &ProtectionEventId) -> Result<Option<ProtectionEvent>> {
