@@ -160,3 +160,32 @@ fn the_default_limits_are_the_documented_ones() {
     assert_eq!((d.per_person_per_day, d.open_per_wiki), (3, 50));
     assert_eq!(crate::appeal::OPEN_PER_WIKI_MAX, 200);
 }
+
+#[test]
+fn a_second_appeal_against_the_same_action_is_told_it_is_a_second_even_when_the_person_is_at_their_limit()
+ {
+    for kind in KINDS {
+        let w = World::with(
+            kind,
+            Visibility::Public,
+            None,
+            AppealLimits {
+                per_person_per_day: 1,
+                open_per_wiki: 50,
+            },
+            now,
+        );
+        let s = scene(&w, AppealedKind::Restriction);
+        let first = w
+            .appeals
+            .file(&s.appellant.principal, &w.wiki, &s.contest, WORDS)
+            .unwrap();
+        // The day's one is used, and the same action again is a duplicate before it is a limit: the person is told what is true.
+        assert_eq!(
+            w.appeals
+                .file(&s.appellant.principal, &w.wiki, &s.contest, WORDS)
+                .unwrap_err(),
+            AppealError::AlreadyOpen { appeal: first.id }
+        );
+    }
+}
