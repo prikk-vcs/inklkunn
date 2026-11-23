@@ -73,6 +73,7 @@ fn sentence(t: T, entry: &Entry) -> Rich {
         proposal,
         actor,
         actor_hidden,
+        by_moderation,
     } = &entry.about
     else {
         return t.msg(Key::InboxEventUnreadable).html();
@@ -104,6 +105,19 @@ fn sentence(t: T, entry: &Entry) -> Rich {
         Some(p) => (p.summary.clone(), format!("/{slug}/-/proposals/{}", p.id)),
         None => (wiki.clone(), format!("/{slug}")),
     };
+    // A decline by moderation names nobody: *declined by moderation*, and why when that can be said (D-8).
+    if let Some(by) = by_moderation {
+        let message = match by.category {
+            Some(category) => t
+                .msg(Key::InboxEventDeclinedByModeration)
+                .with("category", crate::tombstone::category_word(t, category)),
+            None => t.msg(Key::InboxEventDeclinedByModerationNoCategory),
+        };
+        return message
+            .link("proposal", label, href)
+            .link("wiki", wiki, format!("/{slug}"))
+            .html();
+    }
     t.msg(key)
         .with("person", person)
         .link("proposal", label, href)

@@ -90,6 +90,14 @@ pub struct ProposalLine {
     pub summary_hidden: Option<crate::tombstone::Mark>,
 }
 
+/// A decline that moderation made (H-6): the event says that the proposal was declined by moderation, with **no name**, and why when
+/// that can still be told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ByModeration {
+    /// The category of the hiding that declined the proposal, while that hiding is in force; none once it is not.
+    pub category: Option<inklkunn_store::ReasonCategory>,
+}
+
 /// What an event is about, as far as the person looking may be told.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum About {
@@ -106,6 +114,8 @@ pub enum About {
         actor: Option<String>,
         /// The person's name is hidden by moderation: they wrote a hidden comment, or the proposal whose author is hidden.
         actor_hidden: Option<Box<crate::tombstone::Mark>>,
+        /// The event is a decline by moderation (an event of kind *declined* that names nobody): said as such, with no name.
+        by_moderation: Option<ByModeration>,
     },
     /// They may not read it now (or it is gone): nothing is named.
     Unreadable,
@@ -272,13 +282,44 @@ impl Inbox {
             .filter(|_| actor_hidden.is_none())
             .and_then(|a| self.accounts.account(a).ok().flatten())
             .map(|a| a.display_name.as_str().to_owned());
+        // A decline that names nobody is a decline by moderation (see `Notifier::declined_by_moderation`).
+        let by_moderation =
+            (event.kind == InboxEventKind::Declined && event.actor.is_none()).then(|| {
+                ByModeration {
+                    category: proposal
+                        .as_ref()
+                        .and_then(|p| self.moderation_category(&event.wiki, &p.id, viewer)),
+                }
+            });
         About::Readable {
             slug: wiki.slug.as_str().to_owned(),
             wiki: wiki.display_name.as_str().to_owned(),
             proposal,
             actor,
             actor_hidden,
+            by_moderation,
         }
+    }
+
+    /// The category of the hiding of the proposal's latest revision's text, while it is in force.
+    fn moderation_category(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        proposal: &ProposalId,
+        viewer: Option<&AccountId>,
+    ) -> Option<inklkunn_store::ReasonCategory> {
+        let tombstones = self.tombstones.as_ref()?;
+        let latest = self
+            .proposals
+            .revisions(proposal, viewer)
+            .ok()?
+            .last()
+            .map(|r| r.seq)?;
+        tombstones
+            .proposal_revision(wiki, proposal, latest)
+            .ok()?
+            .content()
+            .map(|mark| mark.category)
     }
 
     /// What moderation hides of the proposal: its summary, and its author. `Err` when it cannot be read.

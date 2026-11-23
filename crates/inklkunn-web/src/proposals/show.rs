@@ -412,6 +412,8 @@ struct Records {
     comments: Vec<CommentRecord>,
     decisions: Vec<DecisionRecord>,
     transitions: Vec<ProposalTransition>,
+    /// The declines that a hide made: drawn as *declined by moderation*, never with the moderator's name (D-8).
+    moderation_declines: Vec<inklkunn_core::tombstone::ModerationDecline>,
     /// What moderation hides of the proposal wherever it is named: its summary and its author.
     hidden: inklkunn_core::tombstone::ProposalHidden,
     /// What moderation hides of each revision, with its number.
@@ -437,6 +439,13 @@ fn records(ctx: &Ctx, id: &ProposalId) -> Result<Records, ProposalError> {
         comments: service.comments(p, w, id)?,
         decisions: service.decisions(p, w, id)?,
         transitions: service.transitions(p, w, id)?,
+        moderation_declines: ctx
+            .services
+            .moderation
+            .declines_by_moderation(w, id)
+            .map_err(|e| {
+                ProposalError::Store(inklkunn_store::StoreError::Backend(e.to_string()))
+            })?,
         record,
         revisions,
         content,
@@ -574,6 +583,22 @@ pub(crate) fn draw(
             .html(),
     ];
     for tr in &r.transitions {
+        // A decline that a hide made names no one and quotes nothing the moderator wrote: it says *by moderation* and why.
+        if let Some(by_moderation) = r
+            .moderation_declines
+            .iter()
+            .find(|m| tr.op == ProposalOp::Decline && m.step == *tr)
+        {
+            notes.push(
+                t.msg(Key::ReasonDeclinedByModeration)
+                    .with(
+                        "category",
+                        crate::tombstone::category_word(t, by_moderation.category),
+                    )
+                    .html(),
+            );
+            continue;
+        }
         let key = match tr.op {
             ProposalOp::Decline => Key::ReasonDeclined,
             ProposalOp::Withdraw => Key::ReasonWithdrawn,

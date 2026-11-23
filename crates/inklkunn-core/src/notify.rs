@@ -159,7 +159,20 @@ impl Notifier {
         proposal: &ProposalId,
         actor: &AccountId,
     ) -> bool {
-        if to == actor
+        self.tell_as(wiki, to, kind, proposal, Some(actor))
+    }
+
+    /// [`Notifier::tell`] with an actor that may be none: an event that names nobody (a decline by moderation names no one,
+    /// D-8).
+    fn tell_as(
+        &self,
+        wiki: &WikiRecord,
+        to: &AccountId,
+        kind: InboxEventKind,
+        proposal: &ProposalId,
+        actor: Option<&AccountId>,
+    ) -> bool {
+        if actor.is_some_and(|a| to == a)
             || !self.authorizer.account_may(
                 to,
                 Action::Read,
@@ -174,7 +187,7 @@ impl Notifier {
             wiki: wiki.id.clone(),
             proposal: Some(proposal.clone()),
             kind,
-            actor: Some(actor.clone()),
+            actor: actor.cloned(),
             created_at: (self.clock)(),
             read_at: None,
         };
@@ -236,6 +249,19 @@ impl Notifier {
             InboxEventKind::Declined,
             &proposal.id,
             by,
+        );
+    }
+
+    /// A moderator's hiding declined the proposal in the same act (RFC 006 D-8: *never a name*): its proposer is told, **with no
+    /// actor**. A [`InboxEventKind::Declined`] event that names nobody is the typed mark of a decline by moderation: every
+    /// other decline names the person who declined, and the inbox draws the one that does not as *declined by moderation*.
+    pub fn declined_by_moderation(&self, wiki: &WikiRecord, proposal: &ProposalRecord) {
+        self.tell_as(
+            wiki,
+            &proposal.author,
+            InboxEventKind::Declined,
+            &proposal.id,
+            None,
         );
     }
 

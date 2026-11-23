@@ -26,8 +26,8 @@ pub use reader::{
     Tombstones, Unreadable, claim_comment_item, comment_item, page_item, revision_item,
 };
 pub use service::{
-    HideMade, Item, LogRow, MAX_NOTE_CHARS, MAX_REVEALED_FILES, ModerationError, ModerationService,
-    Preview, Revealed, RevealedFile, UnhideMade,
+    HideMade, Item, LogRow, MAX_NOTE_CHARS, MAX_REVEALED_FILES, ModerationDecline, ModerationError,
+    ModerationService, Preview, Revealed, RevealedFile, UnhideMade,
 };
 
 #[cfg(test)]

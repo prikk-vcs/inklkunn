@@ -1171,6 +1171,14 @@ pub const CATALOG: &[Entry] = &[
         "{person} が {wiki} のあなたの提案 {proposal} を見送りました。",
     ),
     msg(
+        "inbox.event_declined_by_moderation",
+        "モデレーションにより、{wiki} のあなたの提案 {proposal} が見送られました（{category}）。",
+    ),
+    msg(
+        "inbox.event_declined_by_moderation_no_category",
+        "モデレーションにより、{wiki} のあなたの提案 {proposal} が見送られました。",
+    ),
+    msg(
         "inbox.event_needs_revision",
         "{person} が {wiki} のあなたの提案 {proposal} の修正を依頼しました。",
     ),
@@ -1304,6 +1312,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "proposal.reason_declined",
         "{person} がこの提案を見送りました。理由: {reason}",
+    ),
+    msg(
+        "proposal.reason_declined_by_moderation",
+        "モデレーションにより、この提案は見送られました（{category}）。",
     ),
     msg(
         "proposal.reason_withdrawn",

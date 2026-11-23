@@ -583,6 +583,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `inbox.event_reviewed` | an event; `{person}` is who reviewed, `{proposal}` the proposal (a link), `{wiki}` the wiki | "{person} reviewed your proposal {proposal} in {wiki}." | "{person} が {wiki} のあなたの提案 {proposal} をレビューしました。" |
 | `inbox.event_accepted` | an event; `{proposal}` is the proposal (a link), `{wiki}` the wiki | "Your proposal {proposal} in {wiki} was accepted and signed into the history." | "{wiki} のあなたの提案 {proposal} は受け入れられ、署名されて履歴に記録されました。" |
 | `inbox.event_declined` | an event; `{person}` is who declined | "{person} declined your proposal {proposal} in {wiki}." | "{person} が {wiki} のあなたの提案 {proposal} を見送りました。" |
+| `inbox.event_declined_by_moderation` | an event: a hiding by moderation declined the proposal; **no person is named**; `{category}` is why it was hidden | "Moderation declined your proposal {proposal} in {wiki} ({category})." | "モデレーションにより、{wiki} のあなたの提案 {proposal} が見送られました（{category}）。" |
+| `inbox.event_declined_by_moderation_no_category` | the same, when the hiding is no longer in force and its category is not told | "Moderation declined your proposal {proposal} in {wiki}." | "モデレーションにより、{wiki} のあなたの提案 {proposal} が見送られました。" |
 | `inbox.event_needs_revision` | an event; `{person}` is who asked | "{person} asked for a revision of your proposal {proposal} in {wiki}." | "{person} が {wiki} のあなたの提案 {proposal} の修正を依頼しました。" |
 | `inbox.event_withdrawn` | an event, for the people who held the proposal; `{person}` is who took it back | "{person} withdrew the proposal {proposal} in {wiki}." | "{person} が {wiki} の提案 {proposal} を取り下げました。" |
 | `inbox.event_superseded` | an event; `{person}` is who put a later proposal in its place | "{person} replaced your proposal {proposal} in {wiki} with a later one." | "{person} が {wiki} のあなたの提案 {proposal} を、あとの提案に置き換えました。" |
@@ -636,6 +638,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `proposal.superseded_by` | on a superseded proposal; `{proposal}` links to the one that replaced it | "It was replaced by {proposal}." | "{proposal} に置き換えられました。" |
 | `proposal.another` | the name of a proposal the reader may not see, in a link to it | "another proposal" | "別の提案" |
 | `proposal.reason_declined` | on a declined proposal: who declined it and why | "{person} declined this proposal. Reason: {reason}" | "{person} がこの提案を見送りました。理由: {reason}" |
+| `proposal.reason_declined_by_moderation` | on a proposal that a hiding by moderation declined: **no person is named** and the words the moderator wrote are not shown; `{category}` is why it was hidden | "Moderation declined this proposal ({category})." | "モデレーションにより、この提案は見送られました（{category}）。" |
 | `proposal.reason_withdrawn` | on a withdrawn proposal: who took it back and why | "{person} withdrew this proposal. Reason: {reason}" | "{person} がこの提案を取り下げました。理由: {reason}" |
 | `proposal.reason_asked` | on a proposal sent back: who asked for a revision and why | "{person} asked for a revision. Reason: {reason}" | "{person} が修正を求めました。理由: {reason}" |
 | `outcome.signed` | the outcome of an acceptance that is in the history | "Signed into the history" | "署名して履歴に記録済み" |

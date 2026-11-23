@@ -161,6 +161,18 @@ fn store_failure(e: StoreError) -> ModerationError {
     }
 }
 
+/// A decline that a hide made in the same act (H-6): **the typed mark of a decline by moderation.** The proposal log has no field
+/// for it, so it is the moderation record that names the decline (`declined_transition`, the step's position in the log); this
+/// is the step itself and the category of the hide, never the moderator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModerationDecline {
+    /// The decline, as the proposal's log holds it. Its actor is the moderator and its reason is words written when it was made:
+    /// **a surface draws neither**, it says *declined by moderation* and the category.
+    pub step: ProposalTransition,
+    /// Why it was hidden, which is why it was declined.
+    pub category: ReasonCategory,
+}
+
 /// A hide that was made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HideMade {
@@ -382,6 +394,40 @@ impl ModerationService {
             .authorizer
             .restriction_refusal(principal, Action::Moderate, &resource)
             .map_or(ModerationError::NotAllowed, ModerationError::Restricted))
+    }
+
+    /// **The declines of a proposal that a hide made** (H-6): for each hide of the proposal that declined it in the same act, the
+    /// decline's step in the proposal's log and the hide's category. A page that tells why a proposal was declined asks this first,
+    /// and draws *declined by moderation* and the category for a step it finds here, **never the moderator** (D-8). Nothing is
+    /// authorized or recorded: what it returns is what the proposal's page already says, without the name.
+    pub fn declines_by_moderation(
+        &self,
+        wiki: &WikiRecord,
+        proposal: &ProposalId,
+    ) -> Result<Vec<ModerationDecline>, ModerationError> {
+        let events = self
+            .governance
+            .tombstone_events_of_id(
+                &wiki.id,
+                HiddenItemKind::ProposalRevision,
+                proposal.as_str(),
+            )
+            .map_err(unavailable)?;
+        let mut out = Vec::new();
+        for hide in events.iter().filter(|e| e.act == TombstoneAct::Hide) {
+            let (Some(position), Some(category)) = (hide.declined_transition, hide.category) else {
+                continue;
+            };
+            if let Some((of, step)) = self
+                .proposals
+                .transition_at(&wiki.id, position)
+                .map_err(unavailable)?
+                && of == *proposal
+            {
+                out.push(ModerationDecline { step, category });
+            }
+        }
+        Ok(out)
     }
 
     /// May the principal moderate here? **Draws nothing and records nothing**: what a page asks to offer *hide* and *show
@@ -779,7 +825,8 @@ impl ModerationService {
                 .last_transition_position(proposal)
                 .map_err(unavailable)?;
             if let Some(notifier) = &self.notifier {
-                notifier.declined(wiki, &after, &acting.account);
+                // The proposer is told that moderation declined it, and not by whom (D-8).
+                notifier.declined_by_moderation(wiki, &after);
             }
         }
         let records = self.records_of(wiki, &found.canonical, parts)?;

@@ -34,12 +34,17 @@ fn the_proposers_inbox_has_the_decline_with_what_it_is_about() {
             proposal,
             actor,
             actor_hidden: _,
+            by_moderation,
         } = &entry.about
         else {
             panic!("the proposer may read their own wiki: {:?}", entry.about);
         };
         assert_eq!((slug.as_str(), wiki.as_str()), ("notify", "Notify"));
         assert_eq!(actor.as_deref(), Some("maintainer"));
+        assert_eq!(
+            *by_moderation, None,
+            "a decline by a person names the person"
+        );
         let line = proposal.as_ref().expect("a proposal");
         assert_eq!(line.id, p.id);
         assert_eq!(line.summary, "Fix a typo in the intro");

@@ -273,6 +273,7 @@ exact :: inbox.rs :: {prefix}x.md :: a repository path built to read a title bac
 exact :: inbox.rs :: person :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: inbox.rs :: proposal :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: inbox.rs :: wiki :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
+exact :: inbox.rs :: category :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: inbox.rs :: page :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: inbox.rs :: namespace :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: inbox.rs :: what :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
@@ -344,6 +345,7 @@ exact :: render.rs :: {index}-{ordinal} :: the value of the query parameter that
 exact :: review.rs :: decisions :: the id of the section of decisions, which a redirect points to
 exact :: review.rs :: wiki :: a placeholder name of a catalog message
 exact :: show.rs :: when :: a placeholder name of a catalog message
+exact :: show.rs :: category :: a placeholder name of a catalog message, or the name of a query parameter or one of its values: data, not a sentence
 exact :: show.rs :: number :: a placeholder name of a catalog message
 exact :: show.rs :: author :: a placeholder name of a catalog message
 exact :: show.rs :: title :: a placeholder name of a catalog message

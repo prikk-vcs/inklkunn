@@ -1088,6 +1088,14 @@ pub const CATALOG: &[Entry] = &[
         "{person} declined your proposal {proposal} in {wiki}.",
     ),
     msg(
+        "inbox.event_declined_by_moderation",
+        "Moderation declined your proposal {proposal} in {wiki} ({category}).",
+    ),
+    msg(
+        "inbox.event_declined_by_moderation_no_category",
+        "Moderation declined your proposal {proposal} in {wiki}.",
+    ),
+    msg(
         "inbox.event_needs_revision",
         "{person} asked for a revision of your proposal {proposal} in {wiki}.",
     ),
@@ -1215,6 +1223,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "proposal.reason_declined",
         "{person} declined this proposal. Reason: {reason}",
+    ),
+    msg(
+        "proposal.reason_declined_by_moderation",
+        "Moderation declined this proposal ({category}).",
     ),
     msg(
         "proposal.reason_withdrawn",

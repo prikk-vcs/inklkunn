@@ -407,3 +407,81 @@ async fn the_form_is_offered_to_the_moderate_rung_alone_where_a_change_is_shown(
     let refused = read(&e, &form, Some(&e.reader)).await;
     assert_eq!(refused.status, StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn a_hide_that_declines_a_proposal_names_no_moderator_on_the_page_in_the_inbox_or_in_the_api()
+{
+    let e = env().await;
+    let item = proposal_item(&e.open, 1);
+    let a = hide(&e, &borrowed(&item), &["part_content"], "ZEBRANOTE").await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    assert_eq!(
+        e.w.store.proposal(&e.open, None).unwrap().unwrap().state,
+        ProposalState::Declined
+    );
+    let page = format!("/handbook/-/proposals/{}", e.open);
+    let moderator = "Mika Ito";
+    for who in [Some(&e.other), Some(&e.author), Some(&e.maintainer), None] {
+        let body = read(&e, &page, who).await.body();
+        assert!(
+            body.contains("Moderation declined this proposal (personal data)."),
+            "{who:?}: says it was moderation, and why: {body}"
+        );
+        assert!(!body.contains(moderator), "{who:?}: names the moderator");
+        assert!(
+            !body.contains("hidden by moderation:"),
+            "{who:?}: quotes the words the log holds"
+        );
+        assert!(
+            !body.contains("declined this proposal. Reason"),
+            "{who:?}: draws it as a person's decline"
+        );
+    }
+    let ja = crate::common::request(
+        &e.w,
+        crate::common::APP,
+        "GET",
+        &page,
+        &[
+            ("x-test-account", e.other.as_str()),
+            ("cookie", "inklkunn_lang=ja"),
+        ],
+    )
+    .await
+    .body();
+    assert!(
+        ja.contains("モデレーションにより、この提案は見送られました（"),
+        "{ja}"
+    );
+    assert!(!ja.contains(moderator), "{ja}");
+    // The proposer's inbox says the same, with no name.
+    let inbox = read(&e, "/-/inbox", Some(&e.other)).await.body();
+    assert!(
+        inbox.contains("Moderation declined your proposal"),
+        "{inbox}"
+    );
+    assert!(inbox.contains("(personal data)"), "{inbox}");
+    assert!(!inbox.contains(moderator), "{inbox}");
+    let inbox_ja = crate::common::request(
+        &e.w,
+        crate::common::APP,
+        "GET",
+        "/-/inbox",
+        &[
+            ("x-test-account", e.other.as_str()),
+            ("cookie", "inklkunn_lang=ja"),
+        ],
+    )
+    .await
+    .body();
+    assert!(inbox_ja.contains("モデレーションにより、"), "{inbox_ja}");
+    assert!(!inbox_ja.contains(moderator), "{inbox_ja}");
+    // The API names neither the moderator nor their account.
+    for who in [Some(&e.other), None] {
+        let api = read(&e, &format!("/handbook/-/api/v1/proposals/{}", e.open), who)
+            .await
+            .body();
+        assert!(!api.contains(moderator), "{who:?}: {api}");
+        assert!(!api.contains(e.maintainer.as_str()), "{who:?}: {api}");
+    }
+}
