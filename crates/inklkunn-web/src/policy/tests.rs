@@ -108,7 +108,7 @@ fn every_key_of_the_files_has_a_sentence_and_adding_a_key_without_one_fails_here
     let mut said: BTreeSet<String> = BTreeSet::new();
     for fact in policy_facts(t, &full_policy(), 1096)
         .into_iter()
-        .chain(constitution_facts(t, &full_constitution()))
+        .chain(constitution_facts(t, &full_constitution(), 0))
     {
         said.extend(fact.paths.iter().map(|p| (*p).to_owned()));
     }
@@ -144,7 +144,7 @@ fn each_key_says_its_sentence_in_both_languages_at_the_default_and_at_another_va
         // accept, moderate, decide_appeal, grant, entry, approvals, self, review and six promotions.
         assert_eq!(changed.len(), 14, "{changed:?}");
         for c in [Constitution::default(), full_constitution()] {
-            for fact in constitution_facts(t, &c) {
+            for fact in constitution_facts(t, &c, 0) {
                 assert!(!fact.label.is_empty() && !fact.value.is_empty());
             }
         }
@@ -258,7 +258,7 @@ fn no_sentence_is_raw_yaml_or_says_official() {
         let mut texts = Vec::new();
         for fact in policy_facts(t, &full_policy(), 1096)
             .into_iter()
-            .chain(constitution_facts(t, &full_constitution()))
+            .chain(constitution_facts(t, &full_constitution(), 0))
         {
             texts.push(fact.label);
             texts.push(fact.value);

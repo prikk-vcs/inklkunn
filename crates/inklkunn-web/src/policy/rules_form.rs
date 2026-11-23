@@ -932,7 +932,14 @@ fn notes_of(t: T, rules: &Rules) -> Vec<String> {
             notes.push(t.get(Key::PolicyEditWhoNote));
             notes.push(
                 t.msg(Key::PolicyEditAcceptNote)
-                    .with("rule", phrases::change_rules_value(t, rules.constitution()))
+                    .with(
+                        "rule",
+                        phrases::change_rules_value(
+                            t,
+                            rules.constitution(),
+                            rules.policy().acceptance().approvals(),
+                        ),
+                    )
                     .text(),
             );
         }

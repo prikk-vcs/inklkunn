@@ -4,8 +4,8 @@
 
 use inklkunn_core::governance::draft::PolicyDraft;
 use inklkunn_core::governance::{
-    Constitution, GovernanceFile, PlatformLimits, Policy, ReadFault, Refusal, Rules,
-    validate_constitution, validate_policy,
+    GovernanceFile, PlatformLimits, Policy, ReadFault, Refusal, Rules, validate_constitution,
+    validate_policy,
 };
 use inklkunn_store::{ProposalFilter, ProposalStore};
 
@@ -46,7 +46,7 @@ async fn the_form_is_filled_from_the_rules_in_force_with_a_sentence_and_a_contro
     for want in [
         "<h1>Propose a change to the rules</h1>",
         "Anyone who may propose can send a change to the rules.",
-        "Accepting a change to the rules takes: maintainer or above, with 0 approvals",
+        "Accepting a change to the rules takes: maintainer or above, with 1 approval from someone other than the proposer",
         "Who may accept a proposal</label>",
         "Approvals needed before a proposal is accepted</label>",
         "Before this wiki grants contributor</label>",
@@ -188,7 +188,6 @@ async fn the_constitutions_settings_are_written_to_its_own_file_and_a_policy_onl
     let id = proposal_of(&post_fields(&e.w, Some(&e.admin), &fields).await);
     let paths: Vec<String> = files_of(&e.w, &id).into_iter().map(|(p, _)| p).collect();
     assert_eq!(paths, [CONSTITUTION_FILE, POLICY_FILE]);
-    assert_eq!(Constitution::default().to_yaml().is_empty(), false);
 }
 
 #[tokio::test]

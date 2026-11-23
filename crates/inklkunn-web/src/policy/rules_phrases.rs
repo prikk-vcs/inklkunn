@@ -200,36 +200,39 @@ pub(crate) const fn promotion_paths(role: Role) -> &'static [&'static str] {
     }
 }
 
-/// The rule of who may accept a change to the rules, as a value: the role and the approvals.
-pub(crate) fn change_rules_value(t: T, constitution: &Constitution) -> String {
+/// The rule of who may accept a change to the rules, as a value: the role and the approvals. **The approvals are the greater of
+/// the constitution's and the policy's** (`floor`: `acceptance.approvals`), because the acceptance asks both of a change to the
+/// rules (the hatch excepted, which asks none): what a person is told is what the acceptance will ask.
+pub(crate) fn change_rules_value(t: T, constitution: &Constitution, floor: u8) -> String {
     let need = constitution.policy_change();
     t.msg(Key::PolicyValueChangeRules)
         .with("role", role_label(t, need.rung))
-        .n(u64::from(need.approvals))
+        .n(u64::from(need.approvals.max(floor)))
         .text()
 }
 
-/// The rule of who may accept a change to who may change the rules, as a value.
-pub(crate) fn change_who_value(t: T, constitution: &Constitution) -> String {
+/// The rule of who may accept a change to who may change the rules, as a value (the approvals as [`change_rules_value`] says).
+pub(crate) fn change_who_value(t: T, constitution: &Constitution, floor: u8) -> String {
     let need = constitution.constitution_change();
     t.msg(Key::PolicyValueChangeWho)
         .with("role", role_label(t, need.rung))
-        .n(u64::from(need.approvals))
+        .n(u64::from(need.approvals.max(floor)))
         .text()
 }
 
-/// The rules of `constitution`, one fact each.
-pub(crate) fn constitution_facts(t: T, constitution: &Constitution) -> Vec<Fact> {
+/// The rules of `constitution`, one fact each; `floor` is the policy's `acceptance.approvals`, which a change to the rules needs
+/// too ([`change_rules_value`]); a comparison of two constitutions asks for none (0).
+pub(crate) fn constitution_facts(t: T, constitution: &Constitution, floor: u8) -> Vec<Fact> {
     vec![
         Fact {
             paths: &["policy_change.rung", "policy_change.approvals"],
             label: t.get(Key::PolicyLabelChangeRules),
-            value: change_rules_value(t, constitution),
+            value: change_rules_value(t, constitution, floor),
         },
         Fact {
             paths: &["constitution_change.approvals"],
             label: t.get(Key::PolicyLabelChangeWho),
-            value: change_who_value(t, constitution),
+            value: change_who_value(t, constitution, floor),
         },
     ]
 }

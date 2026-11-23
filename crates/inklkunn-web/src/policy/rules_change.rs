@@ -150,8 +150,8 @@ pub(crate) fn constitution_lines(
     };
     Compared::Lines(differing(
         t,
-        &constitution_facts(t, &before),
-        &constitution_facts(t, &after),
+        &constitution_facts(t, &before, 0),
+        &constitution_facts(t, &after, 0),
     ))
 }
 

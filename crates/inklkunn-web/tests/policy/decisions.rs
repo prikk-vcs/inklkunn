@@ -174,7 +174,7 @@ async fn a_proposal_that_changes_the_rules_says_the_change_as_before_and_after_s
     for want in [
         "What this proposal changes in the rules",
         "Who may accept a proposal: maintainer or above → reviewer or above",
-        "Accepting this change takes: maintainer or above, with 0 approvals",
+        "Accepting this change takes: maintainer or above, with 5 approvals from people other than the proposer",
         // The approvals warning stays beside it.
         "not enough people can give them yet",
     ] {
@@ -246,7 +246,14 @@ async fn a_row_of_the_moderation_log_shows_the_role_and_the_rules_the_act_was_do
         )
         .await;
         assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
-        let comment = e.w.store.comments(&id, None).unwrap()[0].id.to_string();
+        let comment =
+            e.w.store
+                .comments(&id, None)
+                .unwrap()
+                .first()
+                .expect("a comment")
+                .id
+                .to_string();
         let a = post_form(
             &e.w,
             "/handbook/-/moderate",

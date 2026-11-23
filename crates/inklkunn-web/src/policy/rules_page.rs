@@ -180,10 +180,14 @@ fn sections(t: T, ctx: &Ctx, data: &RulesData) -> Vec<SectionView> {
             id: "change",
             heading: t.get(Key::PolicyChangeHeading),
             intro: None,
-            lines: phrases::constitution_facts(t, rules.constitution())
-                .into_iter()
-                .map(line)
-                .collect(),
+            lines: phrases::constitution_facts(
+                t,
+                rules.constitution(),
+                rules.policy().acceptance().approvals(),
+            )
+            .into_iter()
+            .map(line)
+            .collect(),
             notes: change_notes,
         },
         SectionView {

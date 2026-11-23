@@ -116,7 +116,14 @@ async fn lived_in() -> Cast {
     )
     .await;
     assert_eq!(said.status, StatusCode::SEE_OTHER, "{}", said.body());
-    let comment = c.w.store.comments(&id, None).unwrap()[0].id.to_string();
+    let comment =
+        c.w.store
+            .comments(&id, None)
+            .unwrap()
+            .first()
+            .expect("a comment")
+            .id
+            .to_string();
     let hid = post_form(
         &c.w,
         "/handbook/-/moderate",

@@ -82,11 +82,14 @@ pub(crate) fn view(ctx: &Ctx, t: T, content: &RevisionContent) -> Option<Governa
             .iter()
             .filter_map(|(file, _)| GovernanceChange::of_path(file.path()))
             .collect();
+        let floor = rules.policy().acceptance().approvals();
         for kind in [GovernanceChange::Policy, GovernanceChange::Constitution] {
             if kinds.contains(&kind) {
                 let rule = match kind {
-                    GovernanceChange::Policy => change_rules_value(t, rules.constitution()),
-                    GovernanceChange::Constitution => change_who_value(t, rules.constitution()),
+                    GovernanceChange::Policy => change_rules_value(t, rules.constitution(), floor),
+                    GovernanceChange::Constitution => {
+                        change_who_value(t, rules.constitution(), floor)
+                    }
                 };
                 notes.push(t.msg(Key::GovernanceNeeds).with("rule", rule).text());
             }
