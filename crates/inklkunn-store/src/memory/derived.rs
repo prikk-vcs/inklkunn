@@ -25,8 +25,10 @@ pub(super) struct Derived {
     searches: HashMap<(WikiId, String), Vec<SearchDoc>>,
     /// `(wiki, tip)` → the complete knowledge index.
     knowledge: HashMap<(WikiId, String), KnowledgeRows>,
-    /// `(wiki, tip)` → the governance snapshot.
-    governance: HashMap<(WikiId, String), GovernanceSnapshot>,
+    /// `(wiki, tip)` → the governance snapshot, with the order it was stored in (the newest has the highest).
+    governance: HashMap<(WikiId, String), (u64, GovernanceSnapshot)>,
+    /// How many governance snapshots were stored: the order of the next.
+    governance_stored: u64,
     /// `(wiki, block)` → when the block was first seen. Kept when the cache is cleared.
     seen: HashMap<(WikiId, String), i64>,
 }
@@ -194,7 +196,20 @@ impl GovernanceSnapshotStore for MemoryStore {
             .derived()
             .governance
             .get(&(wiki.clone(), tip.to_owned()))
-            .cloned())
+            .map(|(_, snapshot)| snapshot.clone()))
+    }
+
+    fn latest_governance_snapshot(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Option<(String, GovernanceSnapshot)>> {
+        Ok(self
+            .derived()
+            .governance
+            .iter()
+            .filter(|((w, _), _)| w == wiki)
+            .max_by_key(|(_, (order, _))| *order)
+            .map(|((_, tip), (_, snapshot))| (tip.clone(), snapshot.clone())))
     }
 
     fn put_governance_snapshot(
@@ -205,9 +220,12 @@ impl GovernanceSnapshotStore for MemoryStore {
         _built_at: i64,
     ) -> Result<()> {
         snapshot.validate()?;
-        self.derived()
+        let mut derived = self.derived();
+        derived.governance_stored += 1;
+        let order = derived.governance_stored;
+        derived
             .governance
-            .insert((wiki.clone(), tip.to_owned()), snapshot.clone());
+            .insert((wiki.clone(), tip.to_owned()), (order, snapshot.clone()));
         Ok(())
     }
 }

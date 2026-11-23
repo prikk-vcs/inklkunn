@@ -1852,6 +1852,46 @@ where
 
 // ------------------------------------------------------------------------------------------------ the snapshot
 
+fn the_latest_governance_snapshot_is_the_one_put_last_of_the_wiki_whatever_its_tip<S>(r: &Rig<S>)
+where
+    S: GovernanceSnapshotStore + DerivedStore,
+{
+    let (s, w) = (&r.store, &r.wiki);
+    assert_eq!(s.latest_governance_snapshot(w).unwrap(), None);
+    let snapshot = |n: u64| GovernanceSnapshot {
+        policy_block: Some(block(n)),
+        policy: Some(format!("entry: observer\n# {n}\n")),
+        ..GovernanceSnapshot::default()
+    };
+    // The order is the order they were put in, not the order of the tips' names, and the same second breaks to the later.
+    s.put_governance_snapshot(w, "tip-z", &snapshot(1), T0)
+        .unwrap();
+    s.put_governance_snapshot(w, "tip-a", &snapshot(2), T0)
+        .unwrap();
+    assert_eq!(
+        s.latest_governance_snapshot(w).unwrap(),
+        Some(("tip-a".to_owned(), snapshot(2)))
+    );
+    // A tip put again is the latest again.
+    s.put_governance_snapshot(w, "tip-z", &snapshot(3), T0)
+        .unwrap();
+    assert_eq!(
+        s.latest_governance_snapshot(w).unwrap(),
+        Some(("tip-z".to_owned(), snapshot(3)))
+    );
+    // Another wiki's snapshots are another wiki's.
+    let other = WikiId::new();
+    assert_eq!(s.latest_governance_snapshot(&other).unwrap(), None);
+    // Dropped with the rest of the derived rows: the older one when its tip is no longer kept, all of them when cleared.
+    assert_eq!(s.retain_tips(w, &["tip-a".to_owned()]).unwrap(), 1);
+    assert_eq!(
+        s.latest_governance_snapshot(w).unwrap(),
+        Some(("tip-a".to_owned(), snapshot(2)))
+    );
+    s.clear(w).unwrap();
+    assert_eq!(s.latest_governance_snapshot(w).unwrap(), None);
+}
+
 fn the_governance_snapshot_is_derived_one_row_per_tip_and_dropped_with_the_rest<S>(r: &Rig<S>)
 where
     S: GovernanceSnapshotStore + DerivedStore,
@@ -1985,4 +2025,5 @@ both_stores!(
     an_overturned_tombstone_and_protection_are_undone_with_the_decision,
     an_overturned_decline_names_the_proposal_logs_own_record,
     the_governance_snapshot_is_derived_one_row_per_tip_and_dropped_with_the_rest,
+    the_latest_governance_snapshot_is_the_one_put_last_of_the_wiki_whatever_its_tip,
 );

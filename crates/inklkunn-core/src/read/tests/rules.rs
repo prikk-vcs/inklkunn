@@ -412,6 +412,164 @@ fn a_walk_that_ends_before_it_finds_the_block_names_the_oldest_block_it_looked_a
     assert!(calls.change <= WALK_BLOCKS, "{calls:?}");
 }
 
+/// A new tip: a page changes, and the service is told, as the write path does after a seal.
+fn new_tip(w: &World, n: u64) {
+    w.fake().set(
+        "pages/Home.md",
+        &format!("---\ntitle: Home\n---\n\nTip {n}.\n"),
+    );
+    w.service.forget_wiki(&w.wiki);
+}
+
+/// A world whose policy is older than the walk's window by `extra` blocks, and the rules built once (a cold build).
+fn old_policy(extra: u64) -> (World, String, String) {
+    let w = world();
+    write(&w, &[("governance/policy.yaml", POLICY)]);
+    let first = w.fake().block_id();
+    for n in 0..(WALK_BLOCKS + extra) {
+        w.fake().set(
+            "pages/Home.md",
+            &format!("---\ntitle: Home\n---\n\nEdit {n}.\n"),
+        );
+    }
+    w.service.forget_wiki(&w.wiki);
+    let named = rules(&w).block().expect("a block").to_owned();
+    assert_ne!(
+        named, first,
+        "the window could not reach the policy's own block"
+    );
+    (w, first, named)
+}
+
+#[test]
+fn a_policy_older_than_the_window_names_the_same_block_at_every_new_tip() {
+    let (w, first, named) = old_policy(8);
+    for n in 0..10 {
+        new_tip(&w, n);
+        let (now, calls) = w.counted(|| rules(&w));
+        // The same rules, the same name: the walk looked at the new tip's block and met the previous tip's.
+        assert_eq!(now.block(), Some(named.as_str()), "tip {n}");
+        assert_eq!(now.policy().entry(), Entry::Contributor);
+        assert_eq!(calls.change, 1, "tip {n}: {calls:?}");
+        assert_ne!(now.block(), Some(first.as_str()));
+    }
+}
+
+#[test]
+fn a_governance_change_among_the_new_tips_names_its_own_block_and_the_next_tips_keep_it() {
+    let (w, _first, named) = old_policy(8);
+    for n in 0..3 {
+        new_tip(&w, n);
+        assert_eq!(rules(&w).block(), Some(named.as_str()));
+    }
+    write(&w, &[("governance/policy.yaml", "entry: observer\n")]);
+    let changed = w.fake().block_id();
+    let after = rules(&w);
+    assert_eq!(after.block(), Some(changed.as_str()));
+    assert_eq!(after.policy().entry(), Entry::Observer);
+    for n in 3..8 {
+        new_tip(&w, n);
+        let now = rules(&w);
+        assert_eq!(now.block(), Some(changed.as_str()), "tip {n}");
+        assert_eq!(now.policy().entry(), Entry::Observer);
+    }
+}
+
+#[test]
+fn a_cold_build_of_a_policy_older_than_the_window_still_builds_and_names_the_oldest_block_it_looked_at()
+ {
+    let (w, first, named) = old_policy(8);
+    for n in 0..3 {
+        new_tip(&w, n);
+        assert_eq!(rules(&w).block(), Some(named.as_str()));
+    }
+    // The derived store is cleared, in the store and in memory: nothing is left to inherit from.
+    w.service.clear_derived(&w.wiki).expect("cleared");
+    new_tip(&w, 50);
+    let (cold, calls) = w.counted(|| rules(&w));
+    assert_eq!(cold.policy().entry(), Entry::Contributor);
+    assert!(calls.change <= WALK_BLOCKS, "{calls:?}");
+    // The name is the oldest block of the window: the block WALK_BLOCKS - 1 behind the tip, and a later one than the one
+    // the rules were first named by (the tip moved on four blocks): the one thing only a cold build does.
+    let tip = u64::from_str_radix(&w.fake().block_id(), 16).expect("a block id") - 0xb10c_0000;
+    let oldest = crate::read::testing::block_id(tip - (WALK_BLOCKS - 1));
+    assert_eq!(cold.block(), Some(oldest.as_str()));
+    assert_ne!(cold.block(), Some(first.as_str()));
+    assert_ne!(cold.block(), Some(named.as_str()));
+    // And the next tip names the same one again.
+    new_tip(&w, 99);
+    assert_eq!(rules(&w).block(), Some(oldest.as_str()));
+}
+
+#[test]
+fn a_previous_snapshot_that_is_not_within_the_window_is_not_walked_to_and_the_build_is_cold() {
+    let (w, _first, named) = old_policy(8);
+    // The previous snapshot's tip is now further behind than the walk looks: it is never reached, and the build is bounded.
+    for n in 0..(WALK_BLOCKS + 4) {
+        new_tip(&w, n);
+    }
+    let (now, calls) = w.counted(|| rules(&w));
+    assert_eq!(now.policy().entry(), Entry::Contributor);
+    assert!(calls.change <= WALK_BLOCKS, "{calls:?}");
+    assert_ne!(
+        now.block(),
+        Some(named.as_str()),
+        "a later block of the window"
+    );
+}
+
+#[test]
+fn a_previous_snapshot_is_inherited_only_when_the_files_read_the_same() {
+    let (w, _first, named) = old_policy(8);
+    // The policy changes in a block whose recorded change does not say so (a history that lists no path): the walk meets the
+    // previous tip without finding a change, but the files are not the previous snapshot's, so nothing is inherited.
+    write(&w, &[("governance/policy.yaml", "entry: observer\n")]);
+    let tip = u64::from_str_radix(&w.fake().block_id(), 16).expect("a block id") - 0xb10c_0000;
+    w.fake().show(
+        tip,
+        Ok(inklkunn_prikk::Change {
+            schema_version: "show-report-v1".to_owned(),
+            patches: Vec::new(),
+        }),
+    );
+    w.service.forget_wiki(&w.wiki);
+    let now = rules(&w);
+    assert_eq!(now.policy().entry(), Entry::Observer);
+    assert_ne!(
+        now.block(),
+        Some(named.as_str()),
+        "the name of rules that were not these"
+    );
+}
+
+#[test]
+fn a_service_that_starts_inherits_the_name_from_the_newest_row_the_derived_store_holds() {
+    let w = world();
+    write(&w, &[("governance/policy.yaml", POLICY)]);
+    for n in 0..(WALK_BLOCKS + 8) {
+        w.fake().set(
+            "pages/Home.md",
+            &format!("---\ntitle: Home\n---\n\nEdit {n}.\n"),
+        );
+    }
+    let first = World::service_over(&w.counting, &w.store, &w.layout, config())
+        .with_governance_snapshots(w.store.clone());
+    let named = first
+        .rules_of(&w.wiki)
+        .expect("built")
+        .block()
+        .map(str::to_owned);
+    assert!(named.is_some());
+    // The wiki moves on while the server is down; the new process has nothing in memory, and the row is in the store.
+    w.fake()
+        .set("pages/Home.md", "---\ntitle: Home\n---\n\nWhile down.\n");
+    let second = World::service_over(&w.counting, &w.store, &w.layout, config())
+        .with_governance_snapshots(w.store.clone());
+    let (again, calls) = w.counted(|| second.rules_of(&w.wiki).expect("built"));
+    assert_eq!(again.block().map(str::to_owned), named);
+    assert_eq!(calls.change, 1, "{calls:?}");
+}
+
 #[test]
 fn a_repository_that_cannot_be_asked_is_could_not_be_read_now_and_never_the_defaults() {
     let w = world();

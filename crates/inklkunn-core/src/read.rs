@@ -567,6 +567,7 @@ impl ReadService {
     /// Clear everything derived for a wiki, in the store and in memory (ENF-5: the next reads rebuild it).
     pub fn clear_derived(&self, wiki: &WikiRecord) -> Result<u64, ReadError> {
         self.forget_wiki(wiki);
+        self.rules.clear(&wiki.id);
         self.derived
             .clear(&wiki.id)
             .map_err(|e| ReadError::CouldNotBeReadNow(Cause::Store(e)))

@@ -1031,6 +1031,14 @@ pub trait GovernanceSnapshotStore: Send + Sync {
     /// The snapshot of `wiki` at `tip`, if one was stored. **A row that cannot be read back is a miss**, as every derived
     /// row is: the right answer to a damaged row is to derive it again.
     fn governance_snapshot(&self, wiki: &WikiId, tip: &str) -> Result<Option<GovernanceSnapshot>>;
+    /// **The snapshot stored last for `wiki`**, whatever its tip, with the tip it is of (the order is the order they were
+    /// put in; the same second breaks to the later). What the rules of a new tip are compared with, so that the block that set
+    /// them is not named anew while the files are the same (handoff G-T1 correction C-6). `None` when the wiki has none, and
+    /// **a row that cannot be read back is a miss**, as it is for [`GovernanceSnapshotStore::governance_snapshot`].
+    fn latest_governance_snapshot(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Option<(String, GovernanceSnapshot)>>;
     /// Store the snapshot of `wiki` at `tip`, replacing what was there. A wiki with no governance files is a snapshot of
     /// nothing, stored all the same, so that it is not derived again on every read.
     fn put_governance_snapshot(

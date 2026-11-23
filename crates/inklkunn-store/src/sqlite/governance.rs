@@ -904,6 +904,40 @@ fn active_protections_sql(extra: &str) -> String {
     )
 }
 
+/// A stored row of the derived snapshot as columns: the block, the two files, and the fault's file, line and rule.
+type SnapshotRow = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+    Option<String>,
+);
+
+/// The snapshot a row says, or `None` when it does not decode (a fault with a half of its columns, a line that is no line).
+fn decoded(
+    (policy_block, constitution, policy, file, line, rule): SnapshotRow,
+) -> Option<GovernanceSnapshot> {
+    let fault = match (file, rule) {
+        (None, None) => None,
+        (Some(file), Some(rule)) => Some(GovernanceFault {
+            file,
+            line: match line {
+                None => None,
+                Some(n) => Some(u32::try_from(n).ok()?),
+            },
+            rule,
+        }),
+        _ => return None,
+    };
+    Some(GovernanceSnapshot {
+        policy_block,
+        constitution,
+        policy,
+        fault,
+    })
+}
+
 impl GovernanceSnapshotStore for SqliteStore {
     fn governance_snapshot(&self, wiki: &WikiId, tip: &str) -> Result<Option<GovernanceSnapshot>> {
         self.with(|conn| {
@@ -926,28 +960,39 @@ impl GovernanceSnapshotStore for SqliteStore {
                 .optional()
                 .map_err(backend)?;
             // A row that does not decode is a miss: the snapshot is derived, so it is derived again.
-            Ok(
-                found.and_then(|(policy_block, constitution, policy, file, line, rule)| {
-                    let fault = match (file, rule) {
-                        (None, None) => None,
-                        (Some(file), Some(rule)) => Some(GovernanceFault {
-                            file,
-                            line: match line {
-                                None => None,
-                                Some(n) => Some(u32::try_from(n).ok()?),
-                            },
-                            rule,
-                        }),
-                        _ => return None,
-                    };
-                    Some(GovernanceSnapshot {
-                        policy_block,
-                        constitution,
-                        policy,
-                        fault,
-                    })
-                }),
-            )
+            Ok(found.and_then(decoded))
+        })
+    }
+
+    fn latest_governance_snapshot(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Option<(String, GovernanceSnapshot)>> {
+        self.with(|conn| {
+            let found = conn
+                .query_row(
+                    "SELECT policy_block, constitution, policy, fault_file, fault_line, fault_rule, tip \
+                     FROM governance_derived WHERE wiki_id = ?1 ORDER BY built_at DESC, rowid DESC LIMIT 1",
+                    params![wiki.as_str()],
+                    |r| {
+                        Ok((
+                            (
+                                r.get::<_, Option<String>>(0)?,
+                                r.get::<_, Option<String>>(1)?,
+                                r.get::<_, Option<String>>(2)?,
+                                r.get::<_, Option<String>>(3)?,
+                                r.get::<_, Option<i64>>(4)?,
+                                r.get::<_, Option<String>>(5)?,
+                            ),
+                            r.get::<_, String>(6)?,
+                        ))
+                    },
+                )
+                .optional()
+                .map_err(backend)?;
+            // The newest row that does not decode is a miss, and no older one stands in for it: what the newest said is what
+            // is not known.
+            Ok(found.and_then(|(row, tip)| decoded(row).map(|snapshot| (tip, snapshot))))
         })
     }
 

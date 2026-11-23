@@ -22,14 +22,21 @@
 //! **What a read costs.** A decision that the rules cannot change (a read, an anonymous caller, an absent wiki) does not ask
 //! for them. For the others: nothing while the tip is held; one `branch list` and one `log` at a new tip; and at a tip whose
 //! rules are not stored, one `tree` and, where a file is there, one `cat` of it and the walk for its block. The walk looks
-//! at the newest [`WALK_BLOCKS`] blocks of the view, one `show` each until a block that changed a governance file is found
-//! (what a block changed never changes, so each block is asked about once per process). **A tip with no governance file has
-//! the defaults and no walk**: that is every wiki that has never written one.
+//! at the newest [`WALK_BLOCKS`] blocks of the view, one `show` each, until it finds a block that changed a governance file
+//! or meets the tip of the previous snapshot (what a block changed never changes, so each block is asked about once per
+//! process). **A tip with no governance file has the defaults and no walk**: that is every wiki that has never written one.
 //!
-//! **The block.** [`Rules::block`] is the block that last changed one of the two files. When the walk's window ends before
-//! it found one (a policy older than the window), the block is the **oldest block the walk looked at**: no block since it
-//! changed a governance file, so the rules are the same *as of* it, and the name stays true and stable. A tip with no
-//! governance file names no block (the defaults), even for a wiki that once had one and removed it.
+//! **The block.** [`Rules::block`] is the block that last changed one of the two files, and **it does not move while the
+//! rules do not**. The rules of a new tip are built by walking back from the tip only until the walk meets a block that
+//! changed a governance file or the tip of the wiki's *previous* snapshot (the one this process built or read last, else the
+//! newest row of the derived store): in the second case no block since changed a governance file, and when the two read the
+//! same the new rules name the block the previous ones did, however many blocks of pages came between and however old the
+//! policy is. **Only a cold build can name a later block than the one that set the rules**: when there is no previous
+//! snapshot (the derived store was cleared), or its tip is not behind this one within the window (a view put back, a wiki not
+//! looked at for more than [`WALK_BLOCKS`] blocks), the walk of the newest [`WALK_BLOCKS`] blocks that finds no block that
+//! changed a governance file names the **oldest block it looked at**: no block since it changed one, so the rules are the
+//! same *as of* it, and the name is true, and the next tip, inheriting it, names the same one again. A tip with no governance
+//! file names no block (the defaults), even for a wiki that once had one and removed it.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -52,21 +59,50 @@ pub const WALK_BLOCKS: u64 = 256;
 /// The most blocks whose answer *did this block change a governance file?* is remembered, over all wikis.
 const MAX_REMEMBERED_BLOCKS: usize = 20_000;
 
-/// What the service remembers about the rules: the rules at each wiki's last-seen tip, the lock of each wiki's build, and the
-/// blocks known not to have changed a governance file.
+/// What the service remembers about the rules: the rules at each wiki's last-seen tip, the snapshot built or read last for
+/// each wiki (the row a new tip's rules are compared with), the lock of each wiki's build, and the blocks known not to have
+/// changed a governance file.
 #[derive(Default)]
 pub(super) struct RulesState {
     held: Mutex<HashMap<WikiId, (String, Arc<Rules>)>>,
+    previous: Mutex<HashMap<WikiId, (String, GovernanceSnapshot)>>,
     builds: Mutex<HashMap<WikiId, Arc<Mutex<()>>>>,
     touching: Mutex<HashMap<(WikiId, String), bool>>,
 }
 
 impl RulesState {
+    /// Forget the rules held for the tip (a write path calls it after a seal). **The last snapshot is kept**: it is what the
+    /// next tip's rules are compared with.
     pub(super) fn forget(&self, wiki: &WikiId) {
         self.held
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(wiki);
+    }
+
+    /// Forget everything derived in memory for the wiki, the last snapshot included (the derived store is cleared with it).
+    pub(super) fn clear(&self, wiki: &WikiId) {
+        self.forget(wiki);
+        self.previous
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(wiki);
+    }
+
+    /// The snapshot built or read last for the wiki, with the state it is of.
+    fn previous(&self, wiki: &WikiId) -> Option<(String, GovernanceSnapshot)> {
+        self.previous
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(wiki)
+            .cloned()
+    }
+
+    fn remember(&self, wiki: &WikiId, state: &str, snapshot: &GovernanceSnapshot) {
+        self.previous
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(wiki.clone(), (state.to_owned(), snapshot.clone()));
     }
 
     fn held(&self, wiki: &WikiId, tip: &str) -> Option<Arc<Rules>> {
@@ -181,6 +217,7 @@ impl ReadService {
                 "the governance files just read could not be read again".to_owned(),
             ))
         })?);
+        self.rules.remember(&wiki.id, &tip.state_id, &snapshot);
         self.rules.hold(&wiki.id, &tip.state_id, &rules);
         Ok(rules)
     }
@@ -190,7 +227,11 @@ impl ReadService {
     fn stored_rules(&self, wiki: &WikiRecord, tip: &Tip) -> Option<Arc<Rules>> {
         let store = self.governance.as_ref()?;
         match store.governance_snapshot(&wiki.id, &tip.state_id) {
-            Ok(Some(snapshot)) => rules_from(&snapshot, &self.limits).map(Arc::new),
+            Ok(Some(snapshot)) => {
+                let rules = rules_from(&snapshot, &self.limits).map(Arc::new)?;
+                self.rules.remember(&wiki.id, &tip.state_id, &snapshot);
+                Some(rules)
+            }
             Ok(None) => None,
             Err(_) => {
                 self.store_failures
@@ -248,9 +289,82 @@ impl ReadService {
             snapshot.policy = None;
         }
         if present {
-            snapshot.policy_block = Some(self.last_governance_block(wiki, tip)?);
+            snapshot.policy_block = Some(self.governance_block(wiki, tip, &snapshot)?);
         }
         Ok(snapshot)
+    }
+
+    /// The snapshot built for the wiki last, with the state it is of, **other than the one the tip's own state would be**: the
+    /// one in memory (what this process built or read last) or, when it has none, the newest the derived store holds. A row
+    /// the store cannot answer or read back is none.
+    fn previous_snapshot(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+    ) -> Option<(String, GovernanceSnapshot)> {
+        let found = match self.rules.previous(&wiki.id) {
+            Some(held) => Some(held),
+            None => match self
+                .governance
+                .as_ref()?
+                .latest_governance_snapshot(&wiki.id)
+            {
+                Ok(row) => row,
+                Err(_) => {
+                    self.store_failures
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    None
+                }
+            },
+        };
+        found.filter(|(state, _)| *state != tip.state_id)
+    }
+
+    /// The block that last changed a governance file, for the rules at `tip` that were just read as `snapshot`.
+    ///
+    /// **It walks back from the tip only until it meets a block that changed a governance file or the tip of the wiki's
+    /// previous snapshot** ([`ReadService::previous_snapshot`]); when it meets the latter, no block since changed a governance
+    /// file, and when the two read the same (the files and the fault) the answer is the one the previous snapshot already
+    /// gave. The name of the block therefore does not move while the rules do not (two decisions under one policy name one
+    /// block, however many blocks of pages came between), whatever the policy's age. What cannot be answered so (no previous
+    /// snapshot, or the tip it is of is not behind this one in the window: a view put back, or a wiki that was not looked at
+    /// for more than the window) is the **cold** walk of the newest [`WALK_BLOCKS`] blocks, which names the oldest block it
+    /// looked at when the window ends before it found one: **only a cold build can name a later block than the one that set
+    /// the rules**, and it names the same one again at the next tip.
+    fn governance_block(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+        snapshot: &GovernanceSnapshot,
+    ) -> Result<String, ReadError> {
+        // A previous snapshot of a wiki with no governance names no block, and has nothing to inherit.
+        let previous = self
+            .previous_snapshot(wiki, tip)
+            .filter(|(_, previous)| previous.policy_block.is_some());
+        let stop = previous.as_ref().map(|(state, _)| state.as_str());
+        let walked = self.walk_for_block(wiki, tip, stop)?;
+        if let Some(block) = walked.changed {
+            return Ok(block);
+        }
+        if !walked.met_previous {
+            return Ok(walked.oldest);
+        }
+        match previous {
+            Some((_, previous))
+                if previous.constitution == snapshot.constitution
+                    && previous.policy == snapshot.policy
+                    && previous.fault == snapshot.fault =>
+            {
+                if let Some(block) = previous.policy_block {
+                    return Ok(block);
+                }
+            }
+            _ => {}
+        }
+        // The files differ though no block of the walk changed one (a view put back, a block whose change the history does
+        // not list): the previous snapshot says nothing about these rules, and the walk is a cold one.
+        let cold = self.walk_for_block(wiki, tip, None)?;
+        Ok(cold.changed.unwrap_or(cold.oldest))
     }
 
     /// One governance file at the block: read, and judged. `Ok(Err(_))` is a file that cannot be read as rules; an `Err` is a
@@ -281,9 +395,15 @@ impl ReadService {
         })
     }
 
-    /// The block that last changed a governance file, by the walk of the default view's newest [`WALK_BLOCKS`] blocks (see the
-    /// module's account of what is named when the window ends first).
-    fn last_governance_block(&self, wiki: &WikiRecord, tip: &Tip) -> Result<String, ReadError> {
+    /// Walk back from the tip through the default view's newest [`WALK_BLOCKS`] blocks, one block at a time, until a block that
+    /// changed a governance file is found (the tip's own block is looked at first) or, when `stop` names a state, the block
+    /// that state is of is met: the blocks before it are not looked at. See [`Walked`].
+    fn walk_for_block(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+        stop: Option<&str>,
+    ) -> Result<Walked, ReadError> {
         let repo = self.layout.repo_dir(&wiki.id);
         let history = self
             .storage
@@ -299,14 +419,25 @@ impl ReadService {
                 "the view moved while its governance files were read".to_owned(),
             )));
         };
-        let mut oldest = tip.block_id.clone();
-        for block in history.blocks.iter().skip(start) {
-            oldest.clone_from(&block.block_id);
+        let mut walked = Walked {
+            changed: None,
+            met_previous: false,
+            oldest: tip.block_id.clone(),
+        };
+        for (n, block) in history.blocks.iter().enumerate().skip(start) {
+            // The block the previous snapshot is of: what changed in it is what that snapshot already says. (Never the tip's
+            // own block: the walk is for a state that has no snapshot yet.)
+            if n > start && stop == Some(block.ref_state_id.as_str()) {
+                walked.met_previous = true;
+                return Ok(walked);
+            }
+            walked.oldest.clone_from(&block.block_id);
             if self.changed_governance(wiki, &repo, &block.block_id)? {
-                return Ok(block.block_id.clone());
+                walked.changed = Some(block.block_id.clone());
+                return Ok(walked);
             }
         }
-        Ok(oldest)
+        Ok(walked)
     }
 
     /// Did this block change one of the two governance files? A block never changes, so each is asked about once.
@@ -333,6 +464,17 @@ impl ReadService {
         self.rules.remember_touching(&wiki.id, block, touches);
         Ok(touches)
     }
+}
+
+/// What the walk for the block that set the rules found.
+struct Walked {
+    /// The block that changed a governance file, when the walk met one first.
+    changed: Option<String>,
+    /// The walk met the block of the previous snapshot's tip before any block that changed a governance file: no block since
+    /// changed one.
+    met_previous: bool,
+    /// The oldest block the walk looked at (the tip's own when it looked at no other): what the window names when it ends first.
+    oldest: String,
 }
 
 /// What a listing of `governance/` has at the place of one of the two files.
