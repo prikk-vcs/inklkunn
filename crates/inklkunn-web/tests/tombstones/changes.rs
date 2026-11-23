@@ -117,6 +117,15 @@ async fn seen() -> Seen {
     add_person(&w, &author, AUTHOR, Some(Role::Contributor));
     add_person(&w, &reader, "Olu Reader", Some(Role::Observer));
     let proposal = propose(&w, &author, TEXT_ONE, FIRST).await;
+    // The proposer comments on their own proposal while it is open: *Why is this here?* reviews it with the change.
+    let a = post_form(
+        &w,
+        &format!("/handbook/-/proposals/{proposal}/comment"),
+        Some(&author),
+        &[("body", STAND)],
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
     let principal = Principal::session(&IdentityAuthority::for_tests(), author.clone());
     w.services
         .proposals
@@ -282,4 +291,102 @@ async fn the_content_and_the_summary_of_a_revision_that_was_not_sealed_hide_noth
         after.push(read_as(&s, &uri, None).await.bytes);
     }
     assert_eq!(before, after);
+}
+
+// ------------------------------------------------------------------------------------ H-3: the other sentences
+
+const STAND: &str = "I stand by this paragraph.";
+const WITHDRAWN: &str = "No longer needed.";
+/// The word that stands for a person that is hidden.
+const HIDDEN_PERSON: &str = "(hidden)";
+
+/// An open proposal of the author's (revision 1), a comment of theirs on it, and then withdrawn by them.
+async fn withdrawn() -> Seen {
+    let w = with_accounts(World::new(
+        "handbook",
+        "The Handbook",
+        &[("pages/Home.md", HOME)],
+    ));
+    let (maintainer, author, reader) = (person(4), person(1), person(6));
+    add_person(&w, &maintainer, "Mika Ito", Some(Role::Maintainer));
+    add_person(&w, &author, AUTHOR, Some(Role::Contributor));
+    add_person(&w, &reader, "Olu Reader", Some(Role::Observer));
+    let proposal = propose(&w, &author, TEXT_ONE, FIRST).await;
+    let a = post_form(
+        &w,
+        &format!("/handbook/-/proposals/{proposal}/comment"),
+        Some(&author),
+        &[("body", STAND)],
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
+    let a = post_form(
+        &w,
+        &format!("/handbook/-/proposals/{proposal}/withdraw"),
+        Some(&author),
+        &[("reason", WITHDRAWN)],
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
+    Seen {
+        w,
+        maintainer,
+        author,
+        reader,
+        proposal,
+    }
+}
+
+#[tokio::test]
+async fn a_hidden_proposer_is_not_named_by_the_sentence_that_says_they_withdrew_or_by_their_own_comments()
+ {
+    let s = withdrawn().await;
+    let page = format!("/handbook/-/proposals/{}", s.proposal);
+    // Before: the page names the proposer in the withdrawal and on the comment (so the fixture is not vacuous).
+    let before = get_as(&s.w, &page, Some(&s.reader)).await.body();
+    assert!(
+        before.contains(&format!(
+            "{AUTHOR} withdrew this proposal. Reason: {WITHDRAWN}"
+        )),
+        "{before}"
+    );
+    assert!(before.contains(STAND), "{before}");
+    let named = before.matches(AUTHOR).count();
+    assert!(named >= 3, "{named} places name the proposer: {before}");
+    let a = s.hide(1, &["part_author"]).await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    for who in s.viewers() {
+        let a = get_as(&s.w, &page, who.as_ref()).await;
+        assert_eq!(a.status, StatusCode::OK, "as {who:?}: {}", a.body());
+        let body = a.body();
+        assert!(
+            !body.contains(AUTHOR) && !body.contains("Zed"),
+            "as {who:?}: {body}"
+        );
+        // What was said is still said: the withdrawal, its reason and the comment, in the tombstone's word for the person.
+        assert!(body.contains(WITHDRAWN), "as {who:?}: {body}");
+        assert!(body.contains(STAND), "as {who:?}: {body}");
+        assert!(
+            body.contains(&format!(
+                "{HIDDEN_PERSON} withdrew this proposal. Reason: {WITHDRAWN}"
+            )),
+            "as {who:?}: {body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn why_is_this_here_does_not_name_a_hidden_proposer_in_the_review_of_their_change() {
+    let s = seen().await;
+    let why = get_as(&s.w, "/handbook/-/why/Home", None).await.body();
+    assert!(why.contains(STAND), "{why}");
+    assert!(why.contains(AUTHOR), "{why}");
+    s.hide(1, &["part_author"]).await;
+    for who in s.viewers() {
+        let a = get_as(&s.w, "/handbook/-/why/Home", who.as_ref()).await;
+        assert_eq!(a.status, StatusCode::OK);
+        let body = a.body();
+        assert!(!body.contains(AUTHOR) && !body.contains("Zed"), "{body}");
+        assert!(body.contains(STAND), "{body}");
+    }
 }

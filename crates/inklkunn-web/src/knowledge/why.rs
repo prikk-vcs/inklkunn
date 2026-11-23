@@ -271,6 +271,20 @@ impl Reading<'_> {
         let comments = service.comments(self.principal, self.wiki, id).ok()?;
         // What moderation hides of a comment is asked now; a review whose hidden comments cannot be read is not shown.
         let marks = service.comment_marks(self.principal, self.wiki, id).ok()?;
+        // A hidden author of the proposal is named nowhere: not as the one who decided or commented either (RFC 006 D-8).
+        let hidden_proposer = match service.hidden_of(self.principal, self.wiki, id).ok()? {
+            hidden if hidden.author.is_some() => {
+                Some(service.get(self.principal, self.wiki, id).ok()?.author)
+            }
+            _ => None,
+        };
+        let who = |account: &inklkunn_store::AccountId| {
+            if hidden_proposer.as_ref() == Some(account) {
+                crate::tombstone::author_word(t)
+            } else {
+                person(self.services, t, account)
+            }
+        };
         let total = decisions.len() + comments.len();
         let decided = decisions.iter().map(|d| {
             let sentence = t
@@ -278,7 +292,7 @@ impl Reading<'_> {
                     DecisionKind::Approve => Key::DecisionApproved,
                     DecisionKind::RequestChanges => Key::DecisionRequested,
                 })
-                .with("reviewer", person(self.services, t, &d.reviewer))
+                .with("reviewer", who(&d.reviewer))
                 .with("number", d.revision)
                 .text();
             let words = shortened(&d.body);
@@ -302,7 +316,7 @@ impl Reading<'_> {
             t.msg(Key::WhyComment)
                 .with(
                     "author",
-                    crate::tombstone::author_of(t, || person(self.services, t, &c.author), hidden),
+                    crate::tombstone::author_of(t, || who(&c.author), hidden),
                 )
                 .with("number", c.revision)
                 .with("text", text)

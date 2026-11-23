@@ -149,10 +149,16 @@ struct Cast<'a> {
     /// May the person hide or restore a comment? Offered to the `moderate` rung alone.
     may_moderate: bool,
     proposal: &'a ProposalId,
+    /// The proposer, when the proposal's author is hidden (RFC 006 D-8): **the person is named nowhere**, not as the one who
+    /// comments, withdraws or decides either.
+    hidden_proposer: Option<&'a inklkunn_store::AccountId>,
 }
 
 impl Cast<'_> {
     fn name(&self, id: &inklkunn_store::AccountId) -> String {
+        if self.hidden_proposer == Some(id) {
+            return crate::tombstone::author_word(self.t);
+        }
         self.ctx.person(self.t, id)
     }
 
@@ -476,6 +482,7 @@ pub(crate) fn draw(
         hidden: &r.comment_marks,
         may_moderate,
         proposal: id,
+        hidden_proposer: r.hidden.author.is_some().then_some(&r.record.author),
     };
     // The name of the proposer: **a hidden author is named nowhere** (RFC 006 D-8).
     let proposer = if r.hidden.author.is_some() {
@@ -616,7 +623,7 @@ pub(crate) fn draw(
         if let Some(reason) = &tr.reason {
             notes.push(
                 t.msg(key)
-                    .with("person", ctx.person(t, &tr.actor))
+                    .with("person", cast.name(&tr.actor))
                     .with("reason", reason)
                     .html(),
             );
@@ -968,7 +975,7 @@ pub(crate) fn draw(
                     DecisionKind::Approve => Key::DecisionApproved,
                     DecisionKind::RequestChanges => Key::DecisionRequested,
                 })
-                .with("reviewer", ctx.person(t, &d.reviewer))
+                .with("reviewer", cast.name(&d.reviewer))
                 .with("number", d.revision)
                 .text(),
             authority: match d.reviewer_rung {
