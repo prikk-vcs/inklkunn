@@ -132,7 +132,8 @@ fn the_plan_of_an_edit_restores_the_text_before_it_exactly_and_names_the_undone_
     assert_eq!(plan.undoes, block_id(v));
     assert_eq!(plan.number, v);
     assert_eq!(plan.undone_summary, "Rewrite the home page");
-    assert_eq!(plan.summary, "Undo: Rewrite the home page");
+    // It names the change by its number and quotes nothing of its summary (H-7).
+    assert_eq!(plan.summary, format!("Undo: change {v}"));
     // Written against the undone block itself: its state and its id.
     assert_eq!(plan.base.block_id, block_id(v));
     assert_eq!(plan.base.state_id, state_id(v));
@@ -234,7 +235,7 @@ fn a_rollback_of_a_rollback_restores_the_change() {
         }]
     );
     assert_eq!(again.undoes, block_id(rolled_back));
-    assert_eq!(again.summary, "Undo: Undo: Change the home page");
+    assert_eq!(again.summary, format!("Undo: change {rolled_back}"));
 }
 
 #[test]
@@ -336,7 +337,7 @@ fn a_summary_is_one_line_by_the_one_definition_of_a_line() {
 }
 
 #[test]
-fn a_long_summary_is_cut_to_a_line_the_message_allows() {
+fn a_long_summary_is_not_quoted_so_the_rollbacks_own_is_always_a_line_the_message_allows() {
     let w = world();
     let long = "A".repeat(300);
     let v = seal(
@@ -347,7 +348,7 @@ fn a_long_summary_is_cut_to_a_line_the_message_allows() {
         vec![op("edit-text", &["pages/Home.md"])],
     );
     let plan = the_plan(plan(&w, v));
-    assert_eq!(plan.summary.chars().count(), 120);
-    assert!(plan.summary.starts_with("Undo: AAAA") && plan.summary.ends_with('…'));
+    assert_eq!(plan.summary, format!("Undo: change {v}"));
+    assert!(!plan.summary.contains("AAAA"));
     assert!(crate::message::Summary::new(&plan.summary).is_ok());
 }

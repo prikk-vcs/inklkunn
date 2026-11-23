@@ -597,10 +597,11 @@ impl GovernanceStore for MemoryStore {
             .collect())
     }
 
-    fn content_hidden_ids(
+    fn hidden_ids(
         &self,
         wiki: &WikiId,
         kind: crate::governance::HiddenItemKind,
+        part: crate::governance::HiddenPart,
         limit: usize,
     ) -> Result<Vec<String>> {
         let mut out: Vec<String> = Vec::new();
@@ -608,13 +609,13 @@ impl GovernanceStore for MemoryStore {
             t.wiki == *wiki
                 && t.item.kind == kind
                 && t.act == crate::governance::TombstoneAct::Hide
-                && t.parts.content
+                && part.in_parts(t.parts)
         }) {
             if !out.contains(&t.item.id) {
                 out.push(t.item.id.clone());
             }
         }
-        out.truncate(limit.clamp(1, crate::governance::MAX_CONTENT_HIDDEN_IDS + 1));
+        out.truncate(limit.clamp(1, crate::governance::MAX_HIDDEN_IDS + 1));
         Ok(out)
     }
 

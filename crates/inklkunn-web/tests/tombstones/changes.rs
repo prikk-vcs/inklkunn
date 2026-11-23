@@ -527,3 +527,104 @@ async fn the_sources_a_hidden_change_attached_are_not_read_or_quoted_and_the_lin
 
 /// A line of the tombstone the page draws for a hidden text (the part, the reason, the role, the date).
 const HIDING_FACT: &str = "personal data";
+
+// ------------------------------------------------------------------------------------ H-7: a rollback quotes no hidden summary
+
+const QUOTED: &str = "ZEBRASUMMARY fix the contact";
+
+/// A wiki whose change 2 has the summary `QUOTED`, whose change 3 is a rollback made before H-7 (*Undo: * and those words), whose
+/// change 4 says something else after *Undo: * and whose change 5 is the tip.
+fn undone() -> (World, AccountId) {
+    let w = with_accounts(World::new(
+        "handbook",
+        "The Handbook",
+        &[("pages/Home.md", HOME)],
+    ));
+    let maintainer = person(4);
+    add_person(&w, &maintainer, "Mika Ito", Some(Role::Maintainer));
+    w.fake.say(1, "Create the handbook");
+    w.fake
+        .show(1, shown(vec![op("create-file", &["pages/Home.md"])]));
+    let lines = [
+        (2, QUOTED.to_owned()),
+        (3, format!("Undo: {QUOTED}")),
+        (4, "Undo: a different line".to_owned()),
+        (5, "Tidy the home page".to_owned()),
+    ];
+    for (n, summary) in lines {
+        w.fake.set(
+            "pages/Home.md",
+            &format!("---\ntitle: Home\n---\n\nVersion {n}.\n"),
+        );
+        w.fake.say(n, &service_text(&summary));
+        w.fake
+            .show(n, shown(vec![op("edit-text", &["pages/Home.md"])]));
+    }
+    (w, maintainer)
+}
+
+#[tokio::test]
+async fn a_rollback_made_before_quotes_a_summary_that_is_hidden_now_and_is_masked_with_it() {
+    let (w, maintainer) = undone();
+    let surfaces = [
+        "/handbook/-/history/Home".to_owned(),
+        format!("/handbook/-/change/{}", block_id(3)),
+        "/handbook/-/changes".to_owned(),
+        "/handbook/-/api/v1/history/Home".to_owned(),
+        "/handbook/-/api/v1/changes".to_owned(),
+        format!("/handbook/-/api/v1/revisions/{}", block_id(3)),
+    ];
+    for uri in &surfaces {
+        let a = get_as(&w, uri, None).await;
+        assert_eq!(a.status, StatusCode::OK, "{uri}: {}", a.body());
+        assert!(a.body().contains(QUOTED), "{uri}");
+    }
+    let a = post_form(
+        &w,
+        "/handbook/-/moderate",
+        Some(&maintainer),
+        &[
+            ("kind", "page-revision"),
+            ("block", block_id(2).as_str()),
+            ("part_summary", "1"),
+            ("category", "personal-data"),
+            ("note", ""),
+        ],
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    for uri in &surfaces {
+        for who in [None, Some(&maintainer)] {
+            let a = get_as(&w, uri, who).await;
+            assert_eq!(a.status, StatusCode::OK, "{uri}: {}", a.body());
+            nothing_hidden_in(&a, uri);
+        }
+    }
+    // A line that only begins as a rollback's does is untouched, and so is the tip's.
+    let history = get_as(&w, "/handbook/-/history/Home", None).await.body();
+    assert!(history.contains("Undo: a different line"), "{history}");
+    assert!(history.contains("Tidy the home page"), "{history}");
+    // The rollback's own line is the tombstone's, as a hidden summary is.
+    let change = get_as(&w, &surfaces[1], None).await.body();
+    assert!(change.contains(HIDING), "{change}");
+    // An unhide gives the line back.
+    let log = inklkunn_store::GovernanceStore::tombstone_log(&*w.store, &w.wiki.id, None, 50)
+        .expect("the log");
+    for hide in log
+        .iter()
+        .filter(|e| e.act == inklkunn_store::TombstoneAct::Hide)
+    {
+        let a = post_form(
+            &w,
+            "/handbook/-/moderate/unhide",
+            Some(&maintainer),
+            &[("hide", hide.id.as_str())],
+        )
+        .await;
+        assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
+    }
+    for uri in &surfaces {
+        let a = get_as(&w, uri, None).await;
+        assert!(a.body().contains(QUOTED), "{uri}");
+    }
+}

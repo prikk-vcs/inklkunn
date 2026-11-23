@@ -50,7 +50,7 @@ pub struct RollbackPlan {
     /// The pages, in path order: the text they had before the change, or their removal when the change
     /// created them.
     pub files: Vec<FileChange>,
-    /// The proposal's summary line (at most 120 characters): *Undo: …* and the undone change's summary.
+    /// The proposal's summary line: *Undo: change {number}*, which quotes nothing of the undone change (H-7).
     pub summary: String,
 }
 
@@ -164,12 +164,17 @@ pub(super) fn fit(text: &str) -> String {
     cut
 }
 
+/// The summary of a rollback: **it names the change by its number and quotes nothing** (RFC 006 D-8; H-7). The summary is
+/// written into the rollback's own message, and what prikk holds is never taken back (RR-15), so a summary that is hidden
+/// later must not have been copied there. (Rollbacks made before this keep the words they quoted; see [`quoted_summary`].)
 fn summary_of(info: &ChangeInfo) -> String {
-    if info.summary.trim().is_empty() {
-        format!("Undo change {}", info.number)
-    } else {
-        fit(&format!("Undo: {}", info.summary))
-    }
+    format!("Undo: change {}", info.number)
+}
+
+/// Is `summary` what a rollback made before H-7 wrote for a change whose summary was `hidden`: *Undo: * and those words, cut to the
+/// line the message allows?
+pub(super) fn quoted_summary(summary: &str, hidden: &str) -> bool {
+    !hidden.trim().is_empty() && summary == fit(&format!("Undo: {hidden}"))
 }
 
 impl ReadService {

@@ -752,7 +752,7 @@ fn inv_13_a_rollback_never_writes_hidden_text_again_and_a_hidden_summary_is_a_to
     let RollbackOutcome::Plan(plan) = w.reads.rollback_plan(&w.wiki, None, &undoes).unwrap() else {
         panic!("a plan");
     };
-    assert_eq!(plan.summary, format!("Undo change {}", plan.number));
+    assert_eq!(plan.summary, format!("Undo: change {}", plan.number));
     assert!(!format!("{plan:?}").contains("out of date"), "{plan:?}");
 }
 

@@ -357,13 +357,7 @@ async fn the_restore_form_makes_a_draft_rollback_when_the_change_merges_cleanly(
     let shown = get_as(&w, &at, Some(&contributor)).await;
     assert_eq!(shown.status, 200, "{}", shown.body());
     assert!(shown.body().contains("Draft"), "{}", shown.body());
-    assert!(
-        shown
-            .body()
-            .contains("Undo: Remove the guide: it is out of date"),
-        "{}",
-        shown.body()
-    );
+    assert!(shown.body().contains("Undo: change 3"), "{}", shown.body());
     assert!(shown.body().contains("Guide"), "{}", shown.body());
 }
 

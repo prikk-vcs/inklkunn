@@ -70,8 +70,8 @@ pub use derived::{
 pub use governance::{
     Actor, AppealDecision, AppealOutcome, AppealRecord, AppealState, AppealedAction, AppealedKind,
     Decided, GovernanceFault, GovernanceSnapshot, GovernanceSnapshotStore, GovernanceStore,
-    GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenParts, MAX_CONTENT_HIDDEN_IDS,
-    MAX_FAULT_FOUND, MeasureEvent, ProtectionEvent, ProtectionKind, ProtectionRequirement,
+    GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenPart, HiddenParts, MAX_FAULT_FOUND,
+    MAX_HIDDEN_IDS, MeasureEvent, ProtectionEvent, ProtectionKind, ProtectionRequirement,
     ReasonCategory, RestrictionEvent, Reversal, TombstoneAct, TombstoneEvent, TombstoneReversal,
     hidden_parts,
 };

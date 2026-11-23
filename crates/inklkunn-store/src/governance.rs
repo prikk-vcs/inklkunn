@@ -46,8 +46,39 @@ pub const MAX_TARGET_BYTES: usize = 1024;
 pub const MAX_SNAPSHOT_FILE_BYTES: usize = 1024 * 1024;
 /// The most rows a list read returns, whatever is asked for.
 pub const MAX_PAGE: usize = 200;
-/// The most identifiers [`GovernanceStore::content_hidden_ids`] returns, whatever is asked for.
-pub const MAX_CONTENT_HIDDEN_IDS: usize = 1000;
+/// A part of an item a tombstone can hide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HiddenPart {
+    /// The content.
+    Content,
+    /// The summary.
+    Summary,
+    /// The author.
+    Author,
+}
+
+impl HiddenPart {
+    /// Does a hide of these parts cover this one?
+    pub const fn in_parts(self, parts: HiddenParts) -> bool {
+        match self {
+            HiddenPart::Content => parts.content,
+            HiddenPart::Summary => parts.summary,
+            HiddenPart::Author => parts.author,
+        }
+    }
+
+    /// The column of the records that says it (a fixed word of the store, never a caller's text).
+    pub const fn column(self) -> &'static str {
+        match self {
+            HiddenPart::Content => "hides_content",
+            HiddenPart::Summary => "hides_summary",
+            HiddenPart::Author => "hides_author",
+        }
+    }
+}
+
+/// The most identifiers [`GovernanceStore::hidden_ids`] returns, whatever is asked for.
+pub const MAX_HIDDEN_IDS: usize = 1000;
 
 fn refuse<T>(what: &str) -> Result<T> {
     Err(StoreError::Backend(what.to_owned()))
@@ -1067,15 +1098,16 @@ pub trait GovernanceStore: Send + Sync {
         kind: HiddenItemKind,
         id: &str,
     ) -> Result<Vec<TombstoneEvent>>;
-    /// The identifiers of the wiki's items of this kind that have **a hide that covers the content recorded**, hidden still or
-    /// since restored, each once, oldest first, at most `limit` (never more than [`MAX_CONTENT_HIDDEN_IDS`] plus one, so that a reader of that many can tell that there are more; at least one). What
+    /// The identifiers of the wiki's items of this kind that have **a hide that covers `part` recorded**, hidden still or
+    /// since restored, each once, oldest first, at most `limit` (never more than [`MAX_HIDDEN_IDS`] plus one, so that a reader of that many can tell that there are more; at least one). What
     /// a reader that must know whether anything of the kind has its content hidden asks first: an item that is not in this list
     /// has never had its content hidden, so nothing more is asked of it. Whether an item is hidden *now* is
     /// [`GovernanceStore::tombstone_events_of_id`] read with [`hidden_parts`]: this list is a superset, never the answer.
-    fn content_hidden_ids(
+    fn hidden_ids(
         &self,
         wiki: &WikiId,
         kind: HiddenItemKind,
+        part: HiddenPart,
         limit: usize,
     ) -> Result<Vec<String>>;
     /// The wiki's moderation log: at most `limit` events (never more than [`MAX_PAGE`], at least one), newest first,

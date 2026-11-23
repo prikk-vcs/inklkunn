@@ -561,6 +561,7 @@ impl ReadService {
                 &c.block.block_id,
                 head.proposal.as_ref().map(ProposalId::as_str),
             )?;
+            let hidden = self.with_quoted_summary(wiki, &head.summary, hidden)?;
             let (mut summary, mut proposed_by, mut accepted_by) =
                 (head.summary, head.proposed_by, head.accepted_by);
             if hidden.summary().is_some() {

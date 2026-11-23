@@ -80,7 +80,7 @@ fn a_rollback_proposal_is_a_rollback_from_its_creation_and_names_the_block_it_un
             )
             .expect("a rollback proposal");
         assert_eq!(held.state, ProposalState::HeldForReview);
-        assert_eq!(held.summary, "Undo: Change the home page");
+        assert_eq!(held.summary, format!("Undo: change {v}"));
         assert_eq!(held.author, env.author.id);
 
         // It is a rollback, and names the block: for the proposer and for a reviewer alike.

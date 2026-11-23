@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceStore, CommentId, GovernanceStore, HiddenItem, HiddenItemKind,
-    HiddenParts, ProposalId, StoreError, WikiId,
+    HiddenPart, HiddenParts, ProposalId, StoreError, WikiId,
 };
 
 use super::model::{Hidden, Mark, ProposalHidden};
@@ -151,16 +151,17 @@ impl Tombstones {
     /// **The changes of the wiki whose content is hidden now**, each with the mark of the hiding that covers it (the newest):
     /// what the one reader of a page's text at a block compares a file with ([`crate::read::ReadService::text_at`]). Asked at
     /// every read: an unhide is in force at once. Empty when nothing has had its content hidden, which costs one query. A
-    /// wiki with more changes that ever had their content hidden than [`inklkunn_store::MAX_CONTENT_HIDDEN_IDS`] is an error,
+    /// wiki with more changes that ever had their content hidden than [`inklkunn_store::MAX_HIDDEN_IDS`] is an error,
     /// never a list cut short: a reader that cannot tell what is hidden shows nothing.
     pub fn content_hidden_revisions(
         &self,
         wiki: &WikiId,
     ) -> Result<Vec<(String, Mark)>, Unreadable> {
-        let limit = inklkunn_store::MAX_CONTENT_HIDDEN_IDS;
-        let ids = self.governance.content_hidden_ids(
+        let limit = inklkunn_store::MAX_HIDDEN_IDS;
+        let ids = self.governance.hidden_ids(
             wiki,
             HiddenItemKind::PageRevision,
+            HiddenPart::Content,
             limit.saturating_add(1),
         )?;
         if ids.len() > limit {
@@ -235,6 +236,33 @@ impl Tombstones {
             }
         }
         Ok(hidden)
+    }
+
+    /// **The changes of the wiki whose summary is hidden now**, each with the mark of the hiding that covers it. What a rollback that
+    /// quoted a summary is read against (H-7): a surface that prints a summary asks whether it is one of these.
+    pub fn summary_hidden_revisions(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Vec<(String, Mark)>, Unreadable> {
+        let limit = inklkunn_store::MAX_HIDDEN_IDS;
+        let ids = self.governance.hidden_ids(
+            wiki,
+            HiddenItemKind::PageRevision,
+            HiddenPart::Summary,
+            limit.saturating_add(1),
+        )?;
+        if ids.len() > limit {
+            return Err(Unreadable(format!(
+                "more than {limit} changes have had their summary hidden"
+            )));
+        }
+        let mut out = Vec::new();
+        for id in ids {
+            if let Some(mark) = self.of_change(wiki, &id)?.summary().cloned() {
+                out.push((id, mark));
+            }
+        }
+        Ok(out)
     }
 
     /// What is hidden of revision `seq` of the proposal: what is recorded on it, and, when it was accepted, what is recorded

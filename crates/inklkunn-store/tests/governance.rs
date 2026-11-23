@@ -12,12 +12,12 @@ use inklkunn_store::{
     AccountId, AccountStore, Actor, AppealDecision, AppealId, AppealOutcome, AppealRecord,
     AppealState, AppealedAction, AppealedKind, Decided, DerivedStore, GovernanceFault,
     GovernanceSnapshot, GovernanceSnapshotStore, GovernanceStore, GrantDecisionId,
-    GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenParts, MeasureEvent, MemoryStore,
-    ProposalChange, ProposalId, ProposalOp, ProposalState, ProposalStore, ProtectionEvent,
-    ProtectionEventId, ProtectionKind, ProtectionRequirement, ReasonCategory, RestrictionEvent,
-    RestrictionEventId, Reversal, Role, RoleStore, SqliteStore, StoreError, TombstoneAct,
-    TombstoneActId, TombstoneEvent, TombstoneEventId, TombstoneReversal, WikiId, WikiStore,
-    hidden_parts,
+    GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenPart, HiddenParts, MeasureEvent,
+    MemoryStore, ProposalChange, ProposalId, ProposalOp, ProposalState, ProposalStore,
+    ProtectionEvent, ProtectionEventId, ProtectionKind, ProtectionRequirement, ReasonCategory,
+    RestrictionEvent, RestrictionEventId, Reversal, Role, RoleStore, SqliteStore, StoreError,
+    TombstoneAct, TombstoneActId, TombstoneEvent, TombstoneEventId, TombstoneReversal, WikiId,
+    WikiStore, hidden_parts,
 };
 use support::{account, mv, open_draft, step, submit, wiki};
 
@@ -1100,7 +1100,7 @@ fn the_items_whose_content_was_ever_hidden_are_listed_once_each_in_the_order_the
         reference: reference.map(str::to_owned),
     };
     let ids = |limit: usize| {
-        s.content_hidden_ids(w, HiddenItemKind::PageRevision, limit)
+        s.hidden_ids(w, HiddenItemKind::PageRevision, HiddenPart::Content, limit)
             .unwrap()
     };
     assert!(ids(10).is_empty(), "nothing hidden: nothing listed");
@@ -1125,10 +1125,22 @@ fn the_items_whose_content_was_ever_hidden_are_listed_once_each_in_the_order_the
     s.record_tombstone_event(&hide(w, &comment_item(), CONTENT, by, T0 + 4))
         .unwrap();
     assert_eq!(ids(10), vec![block(7), block(5)]);
-    assert!(
-        s.content_hidden_ids(&WikiId::new(), HiddenItemKind::PageRevision, 10)
+    // The other parts are asked for by their own name: the summary of block 9 and the author of block 5.
+    let of = |part| {
+        s.hidden_ids(w, HiddenItemKind::PageRevision, part, 10)
             .unwrap()
-            .is_empty()
+    };
+    assert_eq!(of(HiddenPart::Summary), vec![block(9)]);
+    assert_eq!(of(HiddenPart::Author), vec![block(5)]);
+    assert!(
+        s.hidden_ids(
+            &WikiId::new(),
+            HiddenItemKind::PageRevision,
+            HiddenPart::Content,
+            10,
+        )
+        .unwrap()
+        .is_empty()
     );
     // An unhide does not take an item off the list: the list is a superset, what is hidden now is read from the events.
     s.record_tombstone_event(&unhide(&five, by, T0 + 5))

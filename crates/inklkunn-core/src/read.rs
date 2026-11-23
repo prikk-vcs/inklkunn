@@ -572,6 +572,47 @@ impl ReadService {
             })
     }
 
+    /// **A rollback made before H-7 quotes the summary of the change it undid** (*Undo: {summary}*), and its own message holds the
+    /// words for good. When the summary it quotes is hidden now, it is hidden here too: `hidden` is given the mark of that hiding
+    /// for the summary, so every surface masks the line as it masks any hidden summary. Matched exactly, on the first line, against
+    /// the summary of each change of the wiki whose summary is hidden (a rollback made now quotes nothing).
+    pub fn with_quoted_summary(
+        &self,
+        wiki: &WikiRecord,
+        summary: &str,
+        hidden: crate::tombstone::Hidden,
+    ) -> Result<crate::tombstone::Hidden, ReadError> {
+        let (Some(tombstones), true) = (&self.tombstones, summary.starts_with("Undo: ")) else {
+            return Ok(hidden);
+        };
+        if hidden.summary().is_some() {
+            return Ok(hidden);
+        }
+        let marks = tombstones.summary_hidden_revisions(&wiki.id).map_err(|e| {
+            self.store_failures
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            ReadError::CouldNotBeReadNow(Cause::Store(StoreError::Backend(e.0)))
+        })?;
+        for (block, mark) in marks {
+            let Some(raw) = self.change_info_raw(wiki, None, &block)? else {
+                continue;
+            };
+            if rollback::quoted_summary(summary, &raw.summary) {
+                return Ok(hidden.with(crate::tombstone::Hidden::from_marks([
+                    crate::tombstone::Mark {
+                        parts: inklkunn_store::HiddenParts {
+                            content: false,
+                            summary: true,
+                            author: false,
+                        },
+                        ..mark
+                    },
+                ])));
+            }
+        }
+        Ok(hidden)
+    }
+
     /// The sanitizer every page passes through, for a surface that has other HTML of its own to clean (a diff,
     /// a search snippet) under the same policy.
     pub fn sanitizer(&self) -> &Sanitizer {

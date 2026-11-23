@@ -473,7 +473,7 @@ async fn summary_and_author_do_not_refuse_and_a_parent_that_wrote_another_page_d
 #[tokio::test]
 async fn the_restoring_draft_copies_no_hidden_summary() {
     for (shape, mode, summary) in [
-        (Shape::Clean, "rollback", "Undo change 4"),
+        (Shape::Clean, "rollback", "Undo: change 4"),
         (Shape::Blocked, "last-text", "Restore: Guide"),
     ] {
         let g = gone(shape);
