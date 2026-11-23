@@ -28,6 +28,7 @@
 //! anything is written; the database's own `CHECK`s say the same again.
 
 use crate::access::Role;
+use crate::proposal::{ProposalChange, ProposalOp, ProposalState};
 use crate::record::{
     AccountId, AppealId, GrantDecisionId, ProtectionEventId, RestrictionEventId, TombstoneEventId,
     WikiId,
@@ -743,6 +744,32 @@ impl AppealRecord {
     }
 }
 
+/// What an overturned hiding writes, **all of it in the decision's own transaction** (A-1): the unhide of the hide the appeal
+/// names, the unhides of every other hide still in force that the same act made, and the reopening of the proposal that act
+/// declined. All or none: a record that cannot be written (someone unhid one of them a moment ago, the proposal moved on)
+/// refuses the whole decision with [`StoreError::StateChanged`] or [`StoreError::AlreadyRecorded`], and nothing is left half
+/// done.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TombstoneReversal {
+    /// The unhide of the hide the appeal is against: the record the decision names.
+    pub main: TombstoneEvent,
+    /// The unhides of the other hides of the same act, each naming this appeal.
+    pub siblings: Vec<TombstoneEvent>,
+    /// The reopening of the proposal that act declined ([`ProposalOp::Reopen`]), when it is to be reopened.
+    pub reopen: Option<ProposalChange>,
+}
+
+impl TombstoneReversal {
+    /// The unhide of one hide, and nothing beside it.
+    pub fn of(main: TombstoneEvent) -> Self {
+        TombstoneReversal {
+            main,
+            siblings: Vec::new(),
+            reopen: None,
+        }
+    }
+}
+
 /// The record that reverses the action an appeal overturned, written **in the same step** as the decision. The record names
 /// the appeal and is made by the person who decided.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -753,13 +780,14 @@ pub enum Reversal {
     Restriction(RestrictionEvent),
     /// A [`MeasureEvent::Reversed`] event of a protection.
     Protection(ProtectionEvent),
-    /// An unhide.
-    Tombstone(TombstoneEvent),
-    /// A decline undone by another store's act (the proposal log's position, `proposal_transitions.seq`): the proposals
-    /// store made its own transition, and this names it.
+    /// An unhide, with the unhides of the rest of its act and the reopening of the proposal it declined.
+    Tombstone(Box<TombstoneReversal>),
+    /// A decline undone: the proposal's [`ProposalOp::Reopen`] step, written by the proposals records **in this same
+    /// transaction** (both stores are one database). The appeal then names the step's position in the proposal log
+    /// (`proposal_transitions.seq`), which the store learns only when it writes it.
     Decline {
-        /// The position in the proposal log of the transition that undid the decline.
-        transition: i64,
+        /// The reopening: of the proposal whose decline is appealed, by the decider.
+        reopen: Box<ProposalChange>,
     },
 }
 
@@ -811,17 +839,30 @@ impl AppealDecision {
                 }
                 Some(&e.by.account)
             }
-            Reversal::Tombstone(e) => {
-                e.validate()?;
-                if e.act != TombstoneAct::Unhide {
-                    return refuse("the reversal of a tombstone is an unhide");
+            Reversal::Tombstone(r) => {
+                for e in std::iter::once(&r.main).chain(&r.siblings) {
+                    e.validate()?;
+                    if e.act != TombstoneAct::Unhide {
+                        return refuse("the reversal of a tombstone is an unhide");
+                    }
+                    if e.by.account != self.by {
+                        return refuse(
+                            "the record that reverses an action is made by the person who decided the appeal",
+                        );
+                    }
+                    if e.appeal != r.main.appeal || e.wiki != r.main.wiki {
+                        return refuse(
+                            "every unhide of an overturned act names the one appeal, in the one wiki",
+                        );
+                    }
                 }
-                Some(&e.by.account)
+                if let Some(reopen) = &r.reopen {
+                    check_reopen(reopen, &self.by)?;
+                }
+                Some(&r.main.by.account)
             }
-            Reversal::Decline { transition } => {
-                if *transition < 1 {
-                    return refuse("a decline is undone by a position in the proposal log, from 1");
-                }
+            Reversal::Decline { reopen } => {
+                check_reopen(reopen, &self.by)?;
                 return Ok(());
             }
         };
@@ -832,6 +873,25 @@ impl AppealDecision {
         }
         Ok(())
     }
+}
+
+/// A reopening is the proposal's [`ProposalOp::Reopen`] step, out of *declined*, by the person who decided, and nothing else.
+fn check_reopen(reopen: &ProposalChange, decider: &AccountId) -> Result<()> {
+    let t = &reopen.transition;
+    if t.op != ProposalOp::Reopen
+        || t.from != Some(ProposalState::Declined)
+        || reopen.revision.is_some()
+        || reopen.text.is_some()
+        || reopen.superseded_by.is_some()
+    {
+        return refuse("an overturn reopens a declined proposal and changes nothing else of it");
+    }
+    if t.actor != *decider {
+        return refuse(
+            "the record that reverses an action is made by the person who decided the appeal",
+        );
+    }
+    Ok(())
 }
 
 impl Reversal {
@@ -852,19 +912,40 @@ impl Reversal {
             Reversal::Grant(d) => d.appeal.as_ref().map(|a| (a, &d.wiki)),
             Reversal::Restriction(e) => e.appeal.as_ref().map(|a| (a, &e.wiki)),
             Reversal::Protection(e) => e.appeal.as_ref().map(|a| (a, &e.wiki)),
-            Reversal::Tombstone(e) => e.appeal.as_ref().map(|a| (a, &e.wiki)),
+            Reversal::Tombstone(r) => r.main.appeal.as_ref().map(|a| (a, &r.main.wiki)),
             Reversal::Decline { .. } => None,
         }
     }
 
-    /// The text of the record's id, as an appeal keeps it.
-    pub(crate) fn record_id(&self) -> String {
+    /// Does every other record this one writes (the unhides of the rest of its act) name this appeal, in this wiki?
+    pub(crate) fn companions_name(&self, appeal: &AppealId, wiki: &WikiId) -> bool {
         match self {
-            Reversal::Grant(d) => d.id.to_string(),
-            Reversal::Restriction(e) => e.id.to_string(),
-            Reversal::Protection(e) => e.id.to_string(),
-            Reversal::Tombstone(e) => e.id.to_string(),
-            Reversal::Decline { transition } => transition.to_string(),
+            Reversal::Tombstone(r) => r
+                .siblings
+                .iter()
+                .all(|e| e.appeal.as_ref() == Some(appeal) && e.wiki == *wiki),
+            _ => true,
+        }
+    }
+
+    /// The reopening of a proposal this record carries, if it has one.
+    pub fn reopening(&self) -> Option<&ProposalChange> {
+        match self {
+            Reversal::Tombstone(r) => r.reopen.as_ref(),
+            Reversal::Decline { reopen } => Some(reopen),
+            _ => None,
+        }
+    }
+
+    /// The text of the record's id, as an appeal keeps it, **when it is known before the record is written**: every kind but a
+    /// decline, whose record is a position in the proposal log that the store learns by writing it.
+    pub(crate) fn record_id(&self) -> Option<String> {
+        match self {
+            Reversal::Grant(d) => Some(d.id.to_string()),
+            Reversal::Restriction(e) => Some(e.id.to_string()),
+            Reversal::Protection(e) => Some(e.id.to_string()),
+            Reversal::Tombstone(r) => Some(r.main.id.to_string()),
+            Reversal::Decline { .. } => None,
         }
     }
 }
@@ -991,9 +1072,11 @@ pub trait GovernanceStore: Send + Sync {
     /// The appeal with this id.
     fn appeal(&self, id: &AppealId) -> Result<Option<AppealRecord>>;
     /// Decide an open appeal, once ([`StoreError::StateChanged`] when it is not open any more), and, when it is overturned,
-    /// write the record that reverses the action **in the same step**. The decider is neither the appellant nor the one who
-    /// took the action; the reversal is of the appealed kind, in the appeal's wiki, names this appeal and is made by the
-    /// decider.
+    /// write **every record of the reversal in the same step** (A-1): the record that reverses the action, the unhides of the
+    /// rest of its act, and the reopening of a proposal ([`Reversal`]). **All or none**: when any of them is refused (a hide
+    /// was unhid a moment ago, the proposal moved on) the decision is refused and nothing is written. The decider is neither
+    /// the appellant nor the one who took the action; the reversal is of the appealed kind, in the appeal's wiki, names this
+    /// appeal and is made by the decider. The proposals' records are the same store's, so the reopening is one with the rest.
     fn decide_appeal(&self, id: &AppealId, decision: &AppealDecision) -> Result<()>;
     /// The wiki's open appeals, oldest first, at most `limit` (never more than [`MAX_PAGE`], at least one).
     fn open_appeals(&self, wiki: &WikiId, limit: usize) -> Result<Vec<AppealRecord>>;

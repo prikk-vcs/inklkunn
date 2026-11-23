@@ -13,12 +13,12 @@ use inklkunn_store::{
     AppealState, AppealedAction, AppealedKind, Decided, DerivedStore, GovernanceFault,
     GovernanceSnapshot, GovernanceSnapshotStore, GovernanceStore, GrantDecisionId,
     GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenParts, MeasureEvent, MemoryStore,
-    ProposalId, ProposalOp, ProposalState, ProposalStore, ProtectionEvent, ProtectionEventId,
-    ProtectionKind, ProtectionRequirement, ReasonCategory, RestrictionEvent, RestrictionEventId,
-    Reversal, Role, RoleStore, SqliteStore, StoreError, TombstoneAct, TombstoneEvent,
-    TombstoneEventId, WikiId, WikiStore, hidden_parts,
+    ProposalChange, ProposalId, ProposalOp, ProposalState, ProposalStore, ProtectionEvent,
+    ProtectionEventId, ProtectionKind, ProtectionRequirement, ReasonCategory, RestrictionEvent,
+    RestrictionEventId, Reversal, Role, RoleStore, SqliteStore, StoreError, TombstoneAct,
+    TombstoneEvent, TombstoneEventId, TombstoneReversal, WikiId, WikiStore, hidden_parts,
 };
-use support::{account, mv, open_draft, submit, wiki};
+use support::{account, mv, open_draft, step, submit, wiki};
 
 const T0: i64 = 1_000;
 
@@ -209,6 +209,11 @@ fn decision(by: &AccountId, at: i64, outcome: AppealOutcome) -> AppealDecision {
         reason: "Looked at it again.".to_owned(),
         outcome,
     }
+}
+
+/// The reversal of a hiding.
+fn tombstone(r: TombstoneReversal) -> Reversal {
+    Reversal::Tombstone(Box::new(r))
 }
 
 fn overturn(reversal: Reversal) -> AppealOutcome {
@@ -1543,7 +1548,11 @@ where
         &decision(
             &r.admin,
             T0 + 5,
-            overturn(Reversal::Tombstone(unhide(&wrong_kind, admin, T0 + 5))),
+            overturn(tombstone(TombstoneReversal::of(unhide(
+                &wrong_kind,
+                admin,
+                T0 + 5,
+            )))),
         ),
     ));
     let not_by_decider = reversal(&set, Some(&filed.id));
@@ -1783,7 +1792,7 @@ where
         &decision(
             &r.admin,
             T0 + 2,
-            overturn(Reversal::Tombstone(restore.clone())),
+            overturn(tombstone(TombstoneReversal::of(restore.clone()))),
         ),
     )
     .unwrap();
@@ -1841,14 +1850,32 @@ where
     assert!(s.active_protections(w, T0 + 6).unwrap().is_empty());
 }
 
-fn an_overturned_decline_names_the_proposal_logs_own_record<S>(r: &Rig<S>)
+/// The reopening of a declined proposal, by `by`.
+fn reopening(p: &ProposalId, from: ProposalState, by: &AccountId, at: i64) -> ProposalChange {
+    ProposalChange {
+        transition: step(
+            p,
+            ProposalOp::Reopen,
+            Some(from),
+            ProposalState::HeldForReview,
+            by,
+            Some("Looked at it again."),
+            at,
+        ),
+        text: None,
+        revision: None,
+        superseded_by: None,
+    }
+}
+
+fn an_overturned_decline_reopens_the_proposal_and_names_the_proposal_logs_own_record<S>(r: &Rig<S>)
 where
     S: GovernanceStore + ProposalStore,
 {
     let (s, w) = (&r.store, &r.wiki);
     let p = open_draft(s, w, &r.person, T0);
     let p = submit(s, &p, T0 + 1);
-    // The proposal log: create (1), submit (2), decline (3); the reopening is its own transition (4).
+    // The proposal log: create (1), submit (2), decline (3); the reopening is its own transition (4), written by the decision.
     mv(
         s,
         &p.id,
@@ -1867,33 +1894,61 @@ where
         T0 + 3,
     );
     s.file_appeal(&filed).unwrap();
-    // A position that is not in the log, or is another wiki's, is not a reversal.
-    assert_eq!(
+    let decide = |change: ProposalChange| {
         s.decide_appeal(
             &filed.id,
             &decision(
                 &r.admin,
                 T0 + 4,
-                overturn(Reversal::Decline { transition: 99 })
-            )
-        ),
+                overturn(Reversal::Decline {
+                    reopen: Box::new(change),
+                }),
+            ),
+        )
+    };
+    let untouched = |why: &str, steps: usize| {
+        assert_eq!(
+            s.appeal(&filed.id).unwrap().unwrap().state,
+            AppealState::Open,
+            "{why}"
+        );
+        assert_eq!(
+            s.proposal(&p.id, None).unwrap().unwrap().state,
+            ProposalState::Declined,
+            "{why}"
+        );
+        assert_eq!(s.transitions(&p.id, None).unwrap().len(), steps, "{why}");
+    };
+    // The reopening is of a proposal of this wiki.
+    let elsewhere = ProposalId::new();
+    assert_eq!(
+        decide(reopening(
+            &elsewhere,
+            ProposalState::Declined,
+            &r.admin,
+            T0 + 4
+        )),
         Err(StoreError::NotFound)
     );
+    untouched("a proposal that is not there", 3);
+    // It is the decider's, a reopening, out of declined, and nothing else.
     assert!(
-        backend(s.decide_appeal(
-            &filed.id,
-            &decision(
-                &r.admin,
-                T0 + 4,
-                overturn(Reversal::Decline { transition: 0 })
-            )
-        ))
-        .contains("from 1")
+        backend(decide(reopening(
+            &p.id,
+            ProposalState::Declined,
+            &r.maintainer,
+            T0 + 4
+        )))
+        .contains("made by the person who decided")
     );
-    assert_eq!(
-        s.appeal(&filed.id).unwrap().unwrap().state,
-        AppealState::Open
-    );
+    let mut with_text = reopening(&p.id, ProposalState::Declined, &r.admin, T0 + 4);
+    with_text.text = Some(("Another summary".to_owned(), Vec::new()));
+    assert!(backend(decide(with_text)).contains("changes nothing else"));
+    let mut not_a_reopening = reopening(&p.id, ProposalState::Declined, &r.admin, T0 + 4);
+    not_a_reopening.transition.op = ProposalOp::Decide;
+    assert!(backend(decide(not_a_reopening)).contains("reopens a declined proposal"));
+    untouched("a malformed reopening", 3);
+    // A proposal that is not declined any more is the proposal's own StateChanged: nothing is decided.
     mv(
         s,
         &p.id,
@@ -1903,18 +1958,240 @@ where
         &r.admin,
         T0 + 4,
     );
-    s.decide_appeal(
+    assert_eq!(
+        decide(reopening(&p.id, ProposalState::Declined, &r.admin, T0 + 4)),
+        Err(StoreError::StateChanged)
+    );
+    mv(
+        s,
+        &p.id,
+        ProposalOp::Decline,
+        ProposalState::HeldForReview,
+        ProposalState::Declined,
+        &r.maintainer,
+        T0 + 4,
+    );
+    untouched("a proposal that moved on", 5);
+    // A decline is undone by reopening the proposal that it declined.
+    let other = open_draft(s, w, &r.person, T0);
+    let other = submit(s, &other, T0 + 1);
+    mv(
+        s,
+        &other.id,
+        ProposalOp::Decline,
+        ProposalState::HeldForReview,
+        ProposalState::Declined,
+        &r.maintainer,
+        T0 + 2,
+    );
+    assert!(
+        backend(decide(reopening(
+            &other.id,
+            ProposalState::Declined,
+            &r.admin,
+            T0 + 4
+        )))
+        .contains("reopening the proposal it declined")
+    );
+    untouched("another proposal's reopening", 5);
+    // The decision itself is the last record, and refused (the decider is the one who declined): the reopening is not kept.
+    backend(s.decide_appeal(
         &filed.id,
         &decision(
-            &r.admin,
+            &r.maintainer,
             T0 + 4,
-            overturn(Reversal::Decline { transition: 4 }),
+            overturn(Reversal::Decline {
+                reopen: Box::new(reopening(
+                    &p.id,
+                    ProposalState::Declined,
+                    &r.maintainer,
+                    T0 + 4,
+                )),
+            }),
         ),
-    )
-    .unwrap();
+    ));
+    untouched("a decision refused after the reopening", 5);
+    decide(reopening(&p.id, ProposalState::Declined, &r.admin, T0 + 4)).unwrap();
+    let after = s.proposal(&p.id, None).unwrap().unwrap();
+    assert_eq!(after.state, ProposalState::HeldForReview);
+    assert_eq!(after.closed_at, None);
+    let log = s.transitions(&p.id, None).unwrap();
+    assert_eq!(log.last().map(|t| t.op), Some(ProposalOp::Reopen));
+    let position = s.last_transition_position(&p.id).unwrap().unwrap();
     assert!(matches!(
         s.appeal(&filed.id).unwrap().unwrap().state,
-        AppealState::Overturned(_, ref record) if record == "4"
+        AppealState::Overturned(_, ref record) if *record == position.to_string()
+    ));
+}
+
+/// **An overturn and its decision are one transaction** (A-1): the unhide the appeal names, the unhides of the rest of its act and the
+/// proposal's reopening land together or not at all.
+fn an_overturned_hiding_writes_its_unhides_and_the_reopening_in_the_decision_or_not_at_all<S>(
+    r: &Rig<S>,
+) where
+    S: GovernanceStore + ProposalStore,
+{
+    let (s, w) = (&r.store, &r.wiki);
+    let by = (&r.maintainer, Role::Maintainer);
+    let admin = (&r.admin, Role::Admin);
+    let p = open_draft(s, w, &r.person, T0);
+    let p = submit(s, &p, T0 + 1);
+    mv(
+        s,
+        &p.id,
+        ProposalOp::Decline,
+        ProposalState::HeldForReview,
+        ProposalState::Declined,
+        &r.maintainer,
+        T0 + 2,
+    );
+    let (first, second, third) = (comment_item(), comment_item(), comment_item());
+    let mut hides = Vec::new();
+    for item in [&first, &second, &third] {
+        let mut h = hide(w, item, CONTENT, by, T0 + 2);
+        h.affected = Some(r.person.clone());
+        s.record_tombstone_event(&h).unwrap();
+        hides.push(h);
+    }
+    let [main, sibling, last] = hides.as_slice() else {
+        panic!("three hides");
+    };
+    let filed = appeal(
+        w,
+        AppealedKind::Tombstone,
+        main.id.as_str(),
+        Some(&r.maintainer),
+        &r.person,
+        T0 + 3,
+    );
+    s.file_appeal(&filed).unwrap();
+    let named = |e: TombstoneEvent| {
+        let mut e = unhide(&e, admin, T0 + 4);
+        e.appeal = Some(filed.id.clone());
+        e
+    };
+    let reversal = |unhid_last: bool, reopen: ProposalChange| {
+        let mut siblings = vec![named(sibling.clone())];
+        if unhid_last {
+            siblings.push(named(last.clone()));
+        }
+        overturn(tombstone(TombstoneReversal {
+            main: named(main.clone()),
+            siblings,
+            reopen: Some(reopen),
+        }))
+    };
+    let still_hidden = |what: &TombstoneEvent| {
+        hidden_parts(&s.tombstone_events_of(w, &what.item).unwrap()) == CONTENT
+    };
+    let nothing_written = |why: &str, steps: usize| {
+        assert!(
+            still_hidden(main) && still_hidden(sibling) && still_hidden(last),
+            "{why}"
+        );
+        assert_eq!(
+            s.appeal(&filed.id).unwrap().unwrap().state,
+            AppealState::Open,
+            "{why}"
+        );
+        assert_eq!(
+            s.proposal(&p.id, None).unwrap().unwrap().state,
+            ProposalState::Declined,
+            "{why}"
+        );
+        assert_eq!(s.transitions(&p.id, None).unwrap().len(), steps, "{why}");
+    };
+    let reopen = |at: i64| reopening(&p.id, ProposalState::Declined, &r.admin, at);
+
+    // The last record refused (the proposal is not declined any more): the unhides before it are not left written.
+    mv(
+        s,
+        &p.id,
+        ProposalOp::Decide,
+        ProposalState::Declined,
+        ProposalState::HeldForReview,
+        &r.admin,
+        T0 + 3,
+    );
+    assert_eq!(
+        s.decide_appeal(
+            &filed.id,
+            &decision(&r.admin, T0 + 4, reversal(false, reopen(T0 + 4)))
+        ),
+        Err(StoreError::StateChanged)
+    );
+    mv(
+        s,
+        &p.id,
+        ProposalOp::Decline,
+        ProposalState::HeldForReview,
+        ProposalState::Declined,
+        &r.maintainer,
+        T0 + 3,
+    );
+    nothing_written("the reopening refused", 5);
+
+    // A moderator unhid one of the act's hides a moment ago: the decision is refused whole, and the main unhide is not written.
+    let by_hand = unhide(last, by, T0 + 3);
+    s.record_tombstone_event(&by_hand).unwrap();
+    assert_eq!(
+        s.decide_appeal(
+            &filed.id,
+            &decision(&r.admin, T0 + 4, reversal(true, reopen(T0 + 4)))
+        ),
+        Err(StoreError::AlreadyRecorded)
+    );
+    assert!(still_hidden(main) && still_hidden(sibling));
+    assert_eq!(
+        s.appeal(&filed.id).unwrap().unwrap().state,
+        AppealState::Open
+    );
+    assert_eq!(
+        s.proposal(&p.id, None).unwrap().unwrap().state,
+        ProposalState::Declined
+    );
+    assert_eq!(s.transitions(&p.id, None).unwrap().len(), 5);
+
+    // An unhide among them that does not name this appeal, or is not the decider's, is refused before anything is written.
+    let mut unnamed = named(sibling.clone());
+    unnamed.appeal = None;
+    let mixed = overturn(tombstone(TombstoneReversal {
+        main: named(main.clone()),
+        siblings: vec![unnamed],
+        reopen: Some(reopen(T0 + 4)),
+    }));
+    assert!(
+        backend(s.decide_appeal(&filed.id, &decision(&r.admin, T0 + 4, mixed)))
+            .contains("one appeal")
+    );
+    let mut by_someone_else = named(sibling.clone());
+    by_someone_else.by = actor(&r.maintainer, Role::Maintainer);
+    let theirs = overturn(tombstone(TombstoneReversal {
+        main: named(main.clone()),
+        siblings: vec![by_someone_else],
+        reopen: None,
+    }));
+    assert!(
+        backend(s.decide_appeal(&filed.id, &decision(&r.admin, T0 + 4, theirs)))
+            .contains("made by the person who decided")
+    );
+    assert!(still_hidden(main) && still_hidden(sibling));
+
+    // All of it, together.
+    s.decide_appeal(
+        &filed.id,
+        &decision(&r.admin, T0 + 4, reversal(false, reopen(T0 + 4))),
+    )
+    .unwrap();
+    assert!(!still_hidden(main) && !still_hidden(sibling));
+    assert_eq!(
+        s.proposal(&p.id, None).unwrap().unwrap().state,
+        ProposalState::HeldForReview
+    );
+    assert_eq!(s.transitions(&p.id, None).unwrap().len(), 6);
+    assert!(matches!(
+        s.appeal(&filed.id).unwrap().unwrap().state,
+        AppealState::Overturned(..)
     ));
 }
 
@@ -2130,7 +2407,8 @@ both_stores!(
     an_overturned_restriction_is_reversed_in_the_same_step,
     an_overturned_grant_restores_the_rung_and_a_stale_one_changes_nothing,
     an_overturned_tombstone_and_protection_are_undone_with_the_decision,
-    an_overturned_decline_names_the_proposal_logs_own_record,
+    an_overturned_decline_reopens_the_proposal_and_names_the_proposal_logs_own_record,
+    an_overturned_hiding_writes_its_unhides_and_the_reopening_in_the_decision_or_not_at_all,
     the_governance_snapshot_is_derived_one_row_per_tip_and_dropped_with_the_rest,
     the_latest_governance_snapshot_is_the_one_put_last_of_the_wiki_whatever_its_tip,
 );

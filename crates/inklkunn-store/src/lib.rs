@@ -72,7 +72,7 @@ pub use governance::{
     Decided, GovernanceFault, GovernanceSnapshot, GovernanceSnapshotStore, GovernanceStore,
     GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenParts, MAX_FAULT_FOUND, MeasureEvent,
     ProtectionEvent, ProtectionKind, ProtectionRequirement, ReasonCategory, RestrictionEvent,
-    Reversal, TombstoneAct, TombstoneEvent, hidden_parts,
+    Reversal, TombstoneAct, TombstoneEvent, TombstoneReversal, hidden_parts,
 };
 pub use identity::{
     Account, AccountStore, CredentialStore, ExternalIdentity, ExternalIdentityError,

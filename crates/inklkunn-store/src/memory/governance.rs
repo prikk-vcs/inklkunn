@@ -654,47 +654,49 @@ impl GovernanceStore for MemoryStore {
         if !self.has_account(&decision.by) {
             return Err(StoreError::AccountNotFound);
         }
-        // Work on copies, and keep them only when every step has been taken: the decision is one step.
+        // Work on copies, and keep them only when every step has been taken: the decision is one step, with every record of
+        // its reversal (A-1).
         let (mut work, mut work_grants) = (g.clone(), grants.clone());
-        let overturn = match &decision.outcome {
-            AppealOutcome::Upheld => None,
-            AppealOutcome::Overturned(reversal) => {
-                if reversal.kind() != appeal.action.kind {
-                    return broken("an overturn reverses an action of the kind that was appealed");
+        let mut record_id = None;
+        let mut reopening = None;
+        let mut overturned = false;
+        if let AppealOutcome::Overturned(reversal) = &decision.outcome {
+            overturned = true;
+            if reversal.kind() != appeal.action.kind {
+                return broken("an overturn reverses an action of the kind that was appealed");
+            }
+            if let Some((named, wiki)) = reversal.names()
+                && (named != id || *wiki != appeal.wiki)
+            {
+                return broken("the record that reverses an action names the appeal it overturns");
+            }
+            if !reversal.companions_name(id, &appeal.wiki) {
+                return broken("the record that reverses an action names the appeal it overturns");
+            }
+            match &**reversal {
+                Reversal::Grant(d) => {
+                    self.grant_refs(d)?;
+                    work.add_grant(&mut work_grants, d)?;
                 }
-                if let Some((named, wiki)) = reversal.names()
-                    && (named != id || *wiki != appeal.wiki)
-                {
-                    return broken(
-                        "the record that reverses an action names the appeal it overturns",
-                    );
+                Reversal::Restriction(e) => {
+                    self.restriction_refs(e)?;
+                    work.add_restriction(e)?;
                 }
-                match &**reversal {
-                    Reversal::Grant(d) => {
-                        self.grant_refs(d)?;
-                        work.add_grant(&mut work_grants, d)?;
-                    }
-                    Reversal::Restriction(e) => {
-                        self.restriction_refs(e)?;
-                        work.add_restriction(e)?;
-                    }
-                    Reversal::Protection(e) => {
-                        self.protection_refs(e)?;
-                        work.add_protection(e)?;
-                    }
-                    Reversal::Tombstone(e) => {
+                Reversal::Protection(e) => {
+                    self.protection_refs(e)?;
+                    work.add_protection(e)?;
+                }
+                Reversal::Tombstone(r) => {
+                    for e in std::iter::once(&r.main).chain(&r.siblings) {
                         self.tombstone_refs(e)?;
                         work.add_tombstone(e)?;
                     }
-                    Reversal::Decline { transition } => {
-                        if self.transition_wiki(*transition).as_ref() != Some(&appeal.wiki) {
-                            return Err(StoreError::NotFound);
-                        }
-                    }
                 }
-                Some(reversal.record_id())
+                Reversal::Decline { .. } => {}
             }
-        };
+            record_id = reversal.record_id();
+            reopening = reversal.reopening();
+        }
         if decision.by == appeal.appellant || appeal.action_actor.as_ref() == Some(&decision.by) {
             return broken(
                 "the database refuses the record: an appeal is decided by neither the appellant nor the one who took the action",
@@ -713,9 +715,26 @@ impl GovernanceStore for MemoryStore {
         let Some(slot) = work.appeals.iter_mut().find(|a| a.id == *id) else {
             return Err(StoreError::NotFound);
         };
-        slot.state = match overturn {
-            None => AppealState::Upheld(decided),
-            Some(record) => AppealState::Overturned(decided, record),
+        // The proposal's reopening is the one record that is not in the copy (the proposals have their own lock): it is checked
+        // and written last, when nothing else can refuse the decision, and the copies are kept only if it was written.
+        if let Some(change) = reopening {
+            let known = self.has_account(&change.transition.actor);
+            let mut proposals = self.proposals_lock();
+            if proposals.wiki_of(&change.transition.proposal).as_ref() != Some(&appeal.wiki) {
+                return Err(StoreError::NotFound);
+            }
+            let declines = record_id.is_none();
+            if declines && !proposals.is_step_of(&appeal.action.id, &change.transition.proposal) {
+                return broken("a decline is undone by reopening the proposal it declined");
+            }
+            proposals.apply(change, known)?;
+            if declines {
+                record_id = Some(proposals.last_position().to_string());
+            }
+        }
+        slot.state = match (overturned, record_id) {
+            (true, Some(record)) => AppealState::Overturned(decided, record),
+            _ => AppealState::Upheld(decided),
         };
         *g = work;
         *grants = work_grants;

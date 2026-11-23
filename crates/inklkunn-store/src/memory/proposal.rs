@@ -32,6 +32,87 @@ pub(super) struct Proposals {
 }
 
 impl Proposals {
+    /// **One step of a proposal, with its log entry**: [`ProposalStore::change_proposal`] under the proposals' lock, and what an
+    /// overturned appeal writes in the one step of its decision (A-1). Every check comes before the first write, so a refused
+    /// step changes nothing. `actor_known` is whether the actor is an account.
+    pub(super) fn apply(
+        &mut self,
+        change: &ProposalChange,
+        actor_known: bool,
+    ) -> Result<ProposalRecord> {
+        let t = &change.transition;
+        if self.find(&t.proposal).is_none() {
+            return Err(StoreError::NotFound);
+        }
+        if !actor_known {
+            return Err(StoreError::AccountNotFound);
+        }
+        let Some(current) = self.find(&t.proposal) else {
+            return Err(StoreError::NotFound);
+        };
+        if Some(current.state) != t.from {
+            return Err(StoreError::StateChanged);
+        }
+        if let Some(r) = &change.revision
+            && (r.proposal != t.proposal || r.seq != self.latest_revision(&t.proposal) + 1)
+        {
+            return Err(StoreError::StateChanged);
+        }
+        if let Some(by) = &change.superseded_by
+            && self.find(by).is_none()
+        {
+            return Err(StoreError::NotFound);
+        }
+        if let Some(r) = &change.revision {
+            self.revisions.push(r.clone());
+        }
+        if t.op == ProposalOp::Submit {
+            self.drafts.remove(&t.proposal);
+        }
+        self.transitions.push(t.clone());
+        let Some(p) = self.proposals.iter_mut().find(|p| p.id == t.proposal) else {
+            return Err(StoreError::NotFound);
+        };
+        if let Some((summary, sources)) = &change.text {
+            p.summary.clone_from(summary);
+            p.sources.clone_from(sources);
+        }
+        p.state = t.to;
+        p.updated_at = t.at;
+        if t.op == ProposalOp::Submit {
+            p.submitted_at.get_or_insert(t.at);
+        }
+        if !t.to.is_open() {
+            p.closed_at = Some(t.at);
+        } else if t.op == ProposalOp::Reopen {
+            // A proposal brought back is not closed any more.
+            p.closed_at = None;
+        }
+        if change.superseded_by.is_some() {
+            p.superseded_by.clone_from(&change.superseded_by);
+        }
+        Ok(p.clone())
+    }
+
+    /// The wiki of the proposal.
+    pub(super) fn wiki_of(&self, id: &ProposalId) -> Option<WikiId> {
+        self.find(id).map(|p| p.wiki.clone())
+    }
+
+    /// Is the proposal-log position `seq` (in decimal) a step of this proposal?
+    pub(super) fn is_step_of(&self, seq: &str, proposal: &ProposalId) -> bool {
+        seq.parse::<usize>()
+            .ok()
+            .and_then(|n| n.checked_sub(1))
+            .and_then(|index| self.transitions.get(index))
+            .is_some_and(|t| t.proposal == *proposal)
+    }
+
+    /// The position in the proposal log (from 1) of the last step written.
+    pub(super) fn last_position(&self) -> usize {
+        self.transitions.len()
+    }
+
     fn find(&self, id: &ProposalId) -> Option<&ProposalRecord> {
         self.proposals.iter().find(|p| p.id == *id)
     }
@@ -400,60 +481,12 @@ impl ProposalStore for MemoryStore {
     }
 
     fn change_proposal(&self, change: &ProposalChange) -> Result<ProposalRecord> {
-        let t = &change.transition;
         // The proposal is looked for first, then the actor, as the SQLite store answers.
-        if !self.proposal_exists(&t.proposal) {
+        if !self.proposal_exists(&change.transition.proposal) {
             return Err(StoreError::NotFound);
         }
-        if !self.has_account(&t.actor) {
-            return Err(StoreError::AccountNotFound);
-        }
-        let mut d = self.proposals_lock();
-        let Some(current) = d.find(&t.proposal) else {
-            return Err(StoreError::NotFound);
-        };
-        if Some(current.state) != t.from {
-            return Err(StoreError::StateChanged);
-        }
-        if let Some(r) = &change.revision
-            && (r.proposal != t.proposal || r.seq != d.latest_revision(&t.proposal) + 1)
-        {
-            return Err(StoreError::StateChanged);
-        }
-        if let Some(by) = &change.superseded_by
-            && d.find(by).is_none()
-        {
-            return Err(StoreError::NotFound);
-        }
-        if let Some(r) = &change.revision {
-            d.revisions.push(r.clone());
-        }
-        if t.op == ProposalOp::Submit {
-            d.drafts.remove(&t.proposal);
-        }
-        d.transitions.push(t.clone());
-        let Some(p) = d.proposals.iter_mut().find(|p| p.id == t.proposal) else {
-            return Err(StoreError::NotFound);
-        };
-        if let Some((summary, sources)) = &change.text {
-            p.summary.clone_from(summary);
-            p.sources.clone_from(sources);
-        }
-        p.state = t.to;
-        p.updated_at = t.at;
-        if t.op == ProposalOp::Submit {
-            p.submitted_at.get_or_insert(t.at);
-        }
-        if !t.to.is_open() {
-            p.closed_at = Some(t.at);
-        } else if t.op == ProposalOp::Reopen {
-            // A proposal brought back is not closed any more.
-            p.closed_at = None;
-        }
-        if change.superseded_by.is_some() {
-            p.superseded_by.clone_from(&change.superseded_by);
-        }
-        Ok(p.clone())
+        let known = self.has_account(&change.transition.actor);
+        self.proposals_lock().apply(change, known)
     }
 
     fn revisions(

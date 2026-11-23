@@ -221,6 +221,74 @@ fn insert_transition(conn: &Connection, t: &ProposalTransition) -> Result<()> {
     .map_err(write_refusal)
 }
 
+/// **One step of a proposal, with its log entry** (and what the act carries: its text, its revision, its superseder), inside
+/// the caller's transaction: [`ProposalStore::change_proposal`] is this in a transaction of its own, and an overturned appeal
+/// writes it in the transaction of its decision (A-1).
+pub(super) fn apply_change(tx: &Connection, change: &ProposalChange) -> Result<ProposalRecord> {
+    let t = &change.transition;
+    if !account_known(tx, &t.actor)? {
+        // The proposal is looked for first, as every store answers.
+        state_of(tx, &t.proposal)?;
+        return Err(StoreError::AccountNotFound);
+    }
+    let state = state_of(tx, &t.proposal)?;
+    if Some(state) != t.from {
+        return Err(StoreError::StateChanged);
+    }
+    if let Some(r) = &change.revision
+        && (r.proposal != t.proposal || r.seq != latest_revision(tx, &t.proposal)? + 1)
+    {
+        return Err(StoreError::StateChanged);
+    }
+    if let Some(by) = &change.superseded_by
+        && !SqliteStore::proposal_known(tx, by)?
+    {
+        return Err(StoreError::NotFound);
+    }
+    if let Some(r) = &change.revision {
+        insert_revision(tx, r)?;
+    }
+    if t.op == ProposalOp::Submit {
+        tx.execute(
+            "DELETE FROM proposal_drafts WHERE proposal_id = ?1",
+            params![t.proposal.as_str()],
+        )
+        .map_err(backend)?;
+    }
+    insert_transition(tx, t)?;
+    if let Some((summary, sources)) = &change.text {
+        tx.execute(
+            "UPDATE proposals SET summary = ?1, sources = ?2 WHERE id = ?3",
+            params![summary, to_json(sources)?, t.proposal.as_str()],
+        )
+        .map_err(backend)?;
+    }
+    tx.execute(
+        "UPDATE proposals SET state = ?1, updated_at = ?2, \
+         submitted_at = CASE WHEN ?3 THEN COALESCE(submitted_at, ?2) ELSE submitted_at END, \
+         closed_at = CASE WHEN ?4 THEN ?2 WHEN ?7 THEN NULL ELSE closed_at END, \
+         superseded_by = COALESCE(?5, superseded_by) WHERE id = ?6",
+        params![
+            t.to.as_str(),
+            t.at,
+            t.op == ProposalOp::Submit,
+            !t.to.is_open(),
+            change.superseded_by.as_ref().map(ProposalId::as_str),
+            t.proposal.as_str(),
+            t.op == ProposalOp::Reopen,
+        ],
+    )
+    .map_err(backend)?;
+    let record = tx
+        .query_row(
+            &format!("SELECT {PROPOSAL_COLUMNS} FROM proposals WHERE id = ?1"),
+            params![t.proposal.as_str()],
+            row_to_proposal,
+        )
+        .map_err(backend)?;
+    Ok(record)
+}
+
 /// Is `id` a block id as prikk prints it: 64 lower-case hex characters?
 fn is_block_id(id: &str) -> bool {
     id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
@@ -627,71 +695,11 @@ impl ProposalStore for SqliteStore {
     }
 
     fn change_proposal(&self, change: &ProposalChange) -> Result<ProposalRecord> {
-        let t = &change.transition;
         self.with(|conn| {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
-            if !account_known(&tx, &t.actor)? {
-                // The proposal is looked for first, as every store answers.
-                state_of(&tx, &t.proposal)?;
-                return Err(StoreError::AccountNotFound);
-            }
-            let state = state_of(&tx, &t.proposal)?;
-            if Some(state) != t.from {
-                return Err(StoreError::StateChanged);
-            }
-            if let Some(r) = &change.revision
-                && (r.proposal != t.proposal || r.seq != latest_revision(&tx, &t.proposal)? + 1)
-            {
-                return Err(StoreError::StateChanged);
-            }
-            if let Some(by) = &change.superseded_by
-                && !Self::proposal_known(&tx, by)?
-            {
-                return Err(StoreError::NotFound);
-            }
-            if let Some(r) = &change.revision {
-                insert_revision(&tx, r)?;
-            }
-            if t.op == ProposalOp::Submit {
-                tx.execute(
-                    "DELETE FROM proposal_drafts WHERE proposal_id = ?1",
-                    params![t.proposal.as_str()],
-                )
-                .map_err(backend)?;
-            }
-            insert_transition(&tx, t)?;
-            if let Some((summary, sources)) = &change.text {
-                tx.execute(
-                    "UPDATE proposals SET summary = ?1, sources = ?2 WHERE id = ?3",
-                    params![summary, to_json(sources)?, t.proposal.as_str()],
-                )
-                .map_err(backend)?;
-            }
-            tx.execute(
-                "UPDATE proposals SET state = ?1, updated_at = ?2, \
-                 submitted_at = CASE WHEN ?3 THEN COALESCE(submitted_at, ?2) ELSE submitted_at END, \
-                 closed_at = CASE WHEN ?4 THEN ?2 WHEN ?7 THEN NULL ELSE closed_at END, \
-                 superseded_by = COALESCE(?5, superseded_by) WHERE id = ?6",
-                params![
-                    t.to.as_str(),
-                    t.at,
-                    t.op == ProposalOp::Submit,
-                    !t.to.is_open(),
-                    change.superseded_by.as_ref().map(ProposalId::as_str),
-                    t.proposal.as_str(),
-                    t.op == ProposalOp::Reopen,
-                ],
-            )
-            .map_err(backend)?;
-            let record = tx
-                .query_row(
-                    &format!("SELECT {PROPOSAL_COLUMNS} FROM proposals WHERE id = ?1"),
-                    params![t.proposal.as_str()],
-                    row_to_proposal,
-                )
-                .map_err(backend)?;
+            let record = apply_change(&tx, change)?;
             tx.commit().map_err(backend)?;
             Ok(record)
         })

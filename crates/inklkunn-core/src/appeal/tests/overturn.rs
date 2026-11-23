@@ -171,7 +171,7 @@ fn an_overturned_decline_is_refused_by_name_when_the_proposal_moved_on_or_its_te
 
 /// A hiding of the content of the proposal's first revision, by `by` about `author`, as one act that declined the proposal at
 /// `declined` when it is one (the position of the decline in the proposal log).
-fn hide_revision(
+pub(super) fn hide_revision(
     w: &World,
     by: &super::support::Person,
     author: &super::support::Person,
@@ -260,7 +260,7 @@ fn an_overturned_tombstone_is_unhidden_by_an_unhide_that_names_the_appeal() {
 }
 
 /// A hiding of the content of one page of a change (the block), recorded at `at`: a change's text is recorded once for each page it wrote.
-fn hide_page(
+pub(super) fn hide_page(
     w: &World,
     by: &super::support::Person,
     author: &super::support::Person,

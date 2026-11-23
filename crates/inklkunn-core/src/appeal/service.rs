@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use inklkunn_store::{
     AccountId, AccountStore, AppealDecision, AppealId, AppealOutcome, AppealRecord, AppealState,
     AppealedKind, AuditEvent, AuditOutcome, AuditSink, GovernanceStore, ProposalId, ProposalStore,
-    Role, RoleStore, StoreError, WikiRecord,
+    Reversal, Role, RoleStore, StoreError, WikiRecord,
 };
 
 use super::limits::AppealLimits;
@@ -136,7 +136,9 @@ pub(super) fn store_failure(e: StoreError) -> AppealError {
 /// The one word the trail's *failed* event gives for why a record was not made.
 fn failure_word(e: &AppealError) -> &'static str {
     match e {
-        AppealError::Changed => "state-changed",
+        AppealError::Changed | AppealError::Overturn(OverturnRefusal::ProposalMovedOn) => {
+            "state-changed"
+        }
         AppealError::AlreadyOpen { .. } => "already-open",
         AppealError::AlreadyDecided => "already-decided",
         AppealError::NoSuchAppeal => "no-such-appeal",
@@ -190,7 +192,9 @@ pub struct AppealService {
     pub(super) limits: AppealLimits,
     /// Filing is one step: the quotas are read, and the record is made, under this lock.
     admission: Arc<Mutex<()>>,
-    /// The two deciders whose reversal is more than the store's own record (a decline's, a hiding's) go one at a time.
+    /// The decisions on a decline and on a hiding go one at a time, so that the checks of a decision (the proposal's log, the hides
+    /// in force) are read before another decision writes. **It is not what keeps the records whole**: the decision and every record of
+    /// its reversal are one transaction of the store (A-1), which a moderator's unhide, taking no lock, cannot split.
     pub(super) deciding: Arc<Mutex<()>>,
 }
 
@@ -524,10 +528,9 @@ impl AppealService {
         let reason = clean_reason(reason)
             .map_err(AppealError::Reason)?
             .ok_or(AppealError::Reason(ReasonFault::Missing))?;
-        // A decline's and a hiding's reversal are records of other stores, so **every** decision on these two kinds, upheld or
-        // overturned, goes one at a time: an upholding that landed between the reopening and the decision would leave a proposal
-        // reopened under a decision that says the decline stands. Every check that can refuse is made before the first of those
-        // records is written.
+        // Every decision on a decline or a hiding, upheld or overturned, goes one at a time, so that what is checked is what the next
+        // decision finds. Every check that can refuse is made before the first record is written, and the records are written in
+        // one transaction.
         let serial = matches!(
             record.action.kind,
             AppealedKind::Decline | AppealedKind::Tombstone
@@ -544,7 +547,7 @@ impl AppealService {
                 return Err(AppealError::AlreadyDecided);
             }
         }
-        let prepared = match outcome {
+        let reversal = match outcome {
             Outcome::Upheld => None,
             Outcome::Overturned => Some(
                 self.prepare(wiki, &acting, rung, &record, &reason)
@@ -569,12 +572,15 @@ impl AppealService {
             &detail,
         )?;
         self.recording(principal, wiki, &acting, "appeal-decided", appeal, || {
-            let (outcome_record, reopened) = match prepared {
-                None => (AppealOutcome::Upheld, None),
-                Some(prepared) => {
-                    let (reversal, reopened) = self.perform(prepared)?;
-                    (AppealOutcome::Overturned(Box::new(reversal)), reopened)
-                }
+            // The proposal an overturn brings back to review: the reopening is written by the store, in the decision's own
+            // transaction, with the rest of the reversal (A-1).
+            let reopened = reversal
+                .as_ref()
+                .and_then(Reversal::reopening)
+                .map(|change| change.transition.proposal.clone());
+            let outcome_record = match reversal {
+                None => AppealOutcome::Upheld,
+                Some(reversal) => AppealOutcome::Overturned(Box::new(reversal)),
             };
             self.governance
                 .decide_appeal(
@@ -591,6 +597,11 @@ impl AppealService {
                     StoreError::StateChanged => match self.governance.appeal(appeal) {
                         Ok(Some(now)) if now.state != AppealState::Open => {
                             AppealError::AlreadyDecided
+                        }
+                        // The one other record of an overturned decline is the proposal's reopening: the proposal is not as the
+                        // decline left it any more, and nothing was written.
+                        _ if record.action.kind == AppealedKind::Decline => {
+                            AppealError::Overturn(OverturnRefusal::ProposalMovedOn)
                         }
                         _ => AppealError::Changed,
                     },

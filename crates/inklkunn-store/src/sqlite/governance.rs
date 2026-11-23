@@ -6,7 +6,7 @@
 
 use rusqlite::{OptionalExtension, Row, Transaction, TransactionBehavior, params};
 
-use super::proposal::{count, invalid, probe};
+use super::proposal::{apply_change, count, invalid, probe};
 use super::{SqliteStore, backend};
 use crate::access::Role;
 use crate::governance::{
@@ -891,23 +891,57 @@ impl GovernanceStore for SqliteStore {
                             "the record that reverses an action names the appeal it overturns".to_owned(),
                         ));
                     }
+                    if !reversal.companions_name(id, &appeal.wiki) {
+                        return Err(StoreError::Backend(
+                            "the record that reverses an action names the appeal it overturns".to_owned(),
+                        ));
+                    }
+                    // **Every record of the overturn is written here, in this transaction** (A-1): the one that reverses the
+                    // action, the unhides of the rest of its act, and the proposal's reopening. Any of them refused, and the
+                    // transaction is dropped with none of them written.
                     match &**reversal {
                         Reversal::Grant(d) => insert_grant_decision(tx, d)?,
                         Reversal::Restriction(e) => insert_restriction(tx, e)?,
                         Reversal::Protection(e) => insert_protection(tx, e)?,
-                        Reversal::Tombstone(e) => insert_tombstone(tx, e)?,
-                        Reversal::Decline { transition } => {
+                        Reversal::Tombstone(r) => {
+                            insert_tombstone(tx, &r.main)?;
+                            for sibling in &r.siblings {
+                                insert_tombstone(tx, sibling)?;
+                            }
+                        }
+                        Reversal::Decline { .. } => {}
+                    }
+                    let reopened = match reversal.reopening() {
+                        Some(change) => {
                             if !probe(
                                 tx,
-                                "SELECT 1 FROM proposal_transitions t JOIN proposals p ON p.id = t.proposal_id \
-                                 WHERE t.seq = ?1 AND p.wiki_id = ?2",
-                                &[&transition.to_string(), appeal.wiki.as_str()],
+                                "SELECT 1 FROM proposals WHERE id = ?1 AND wiki_id = ?2",
+                                &[change.transition.proposal.as_str(), appeal.wiki.as_str()],
                             )? {
                                 return Err(StoreError::NotFound);
                             }
+                            if matches!(**reversal, Reversal::Decline { .. }) {
+                                // The decline appealed is a step of this proposal's log.
+                                if !probe(
+                                    tx,
+                                    "SELECT 1 FROM proposal_transitions WHERE CAST(seq AS TEXT) = ?1 AND proposal_id = ?2",
+                                    &[&appeal.action.id, change.transition.proposal.as_str()],
+                                )? {
+                                    return Err(StoreError::Backend(
+                                        "a decline is undone by reopening the proposal it declined".to_owned(),
+                                    ));
+                                }
+                            }
+                            apply_change(tx, change)?;
+                            Some(tx.last_insert_rowid())
                         }
+                        None => None,
+                    };
+                    match (reversal.record_id(), reopened) {
+                        (Some(record), _) => Some(record),
+                        (None, Some(position)) => Some(position.to_string()),
+                        (None, None) => None,
                     }
-                    Some(reversal.record_id())
                 }
             };
             let changed = tx

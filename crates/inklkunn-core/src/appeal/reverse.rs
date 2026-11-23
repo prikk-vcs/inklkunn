@@ -5,12 +5,13 @@
 //! | grant | a grant decision restoring the rung before, **only if** the person still holds the rung the decision gave them, and the decider may grant it (a maintainer's reach is `rungs.grant_up_to`, [`check_grant`]'s own rule) | in the decision's transaction (the store) |
 //! | restriction | a *reversed* event after the restriction's last event, if it is still in force | in the decision's transaction |
 //! | protection | the same, for the protection | in the decision's transaction |
-//! | tombstone | an *unhide* of the hide, with an unhide (naming the appeal too) of every hide **the same act** made | the hide's in the decision's transaction; its siblings and the proposal beside it just before |
-//! | decline | a [`ProposalOp::Reopen`] step of the proposal's log, which the decision names | just before the decision |
+//! | tombstone | an *unhide* of the hide, with an unhide (naming the appeal too) of every hide **the same act** made, and the reopening of the proposal the act declined | all in the decision's transaction |
+//! | decline | a [`ProposalOp::Reopen`] step of the proposal's log, which the decision names | in the decision's transaction |
 //!
 //! **Every check that can refuse is made first** ([`AppealService::prepare`]): a later change that made the overturn moot, the
-//! decider's reach, a proposal nobody could read. Then the writes of the other stores are made ([`AppealService::perform`]) under the
-//! decider lock, and the decision, with its own reversing record where the store writes it, last.
+//! decider's reach, a proposal nobody could read. Then the decision is made, **with every record of the reversal in the one
+//! transaction of the store's `decide_appeal`** (A-1): the reversing record, the unhides of the rest of the hide's act, and the
+//! proposal's reopening, all or none. A hide unhid by a moderator while the decision was made makes the decision fail whole.
 //!
 //! **What *the same act* is.** One hide of a change's content is one record for each page it wrote, and one for its summary and
 //! author; the store has no act id, so the siblings of a hide are the hides in force on the same change, made by the same account
@@ -24,34 +25,15 @@ use inklkunn_store::{
     Actor, AppealRecord, GrantDecisionId, GrantDecisionRecord, MeasureEvent, ProposalChange,
     ProposalId, ProposalOp, ProposalState, ProposalTransition, ProtectionEvent, ProtectionEventId,
     RestrictionEvent, RestrictionEventId, Reversal, Role, TombstoneAct, TombstoneEvent,
-    TombstoneEventId, WikiRecord,
+    TombstoneEventId, TombstoneReversal, WikiRecord,
 };
 
-use super::service::{
-    Acting, AppealError, AppealService, OverturnRefusal, store_failure, unavailable,
-};
+use super::service::{Acting, AppealError, AppealService, OverturnRefusal, unavailable};
 use crate::people::{GrantCheck, GrantRefusal, check_grant};
 use crate::proposal::machine;
 
 /// How far apart, in seconds, the hides of one act may be recorded.
 pub(super) const SAME_ACT_SECS: i64 = 2;
-
-/// What an overturn will write, all of it checked.
-pub(super) enum Prepared {
-    /// A record the store writes in the decision's own transaction.
-    Direct(Reversal),
-    /// The reopening of a declined proposal, which the decision names.
-    Decline {
-        proposal: ProposalId,
-        reopen: ProposalChange,
-    },
-    /// A hide's unhide, the unhides of the hides of the same act, and the reopening of the proposal that act declined.
-    Tombstone {
-        main: Box<TombstoneEvent>,
-        siblings: Vec<TombstoneEvent>,
-        reopen: Option<(ProposalId, ProposalChange)>,
-    },
-}
 
 fn moot(why: OverturnRefusal) -> AppealError {
     AppealError::Overturn(why)
@@ -91,7 +73,7 @@ impl AppealService {
         rung: Role,
         appeal: &AppealRecord,
         reason: &str,
-    ) -> Result<Prepared, AppealError> {
+    ) -> Result<Reversal, AppealError> {
         let now = self.authorizer.now();
         let by = Actor {
             account: acting.account.clone(),
@@ -125,7 +107,7 @@ impl AppealService {
         appeal: &AppealRecord,
         reason: &str,
         now: i64,
-    ) -> Result<Prepared, AppealError> {
+    ) -> Result<Reversal, AppealError> {
         let decision = GrantDecisionId::parse(&appeal.action.id)
             .and_then(|id| self.governance.grant_decision(&id).transpose())
             .transpose()
@@ -157,7 +139,7 @@ impl AppealService {
                 moot(OverturnRefusal::RoleChanged)
             }
         })?;
-        Ok(Prepared::Direct(Reversal::Grant(GrantDecisionRecord {
+        Ok(Reversal::Grant(GrantDecisionRecord {
             id: GrantDecisionId::new(),
             wiki: wiki.id.clone(),
             at: now,
@@ -171,7 +153,7 @@ impl AppealService {
             after: decision.before,
             reason: Some(reason.to_owned()),
             appeal: Some(appeal.id.clone()),
-        })))
+        }))
     }
 
     fn prepare_restriction(
@@ -182,7 +164,7 @@ impl AppealService {
         block: Option<String>,
         reason: &str,
         now: i64,
-    ) -> Result<Prepared, AppealError> {
+    ) -> Result<Reversal, AppealError> {
         let first = RestrictionEventId::parse(&appeal.action.id)
             .and_then(|id| self.governance.restriction_event(&id).transpose())
             .transpose()
@@ -210,7 +192,7 @@ impl AppealService {
         if !in_force {
             return Err(moot(OverturnRefusal::RestrictionEnded));
         }
-        Ok(Prepared::Direct(Reversal::Restriction(RestrictionEvent {
+        Ok(Reversal::Restriction(RestrictionEvent {
             id: RestrictionEventId::new(),
             wiki: wiki.id.clone(),
             at: now,
@@ -222,7 +204,7 @@ impl AppealService {
             expires_at: None,
             of_event: Some(tail),
             appeal: Some(appeal.id.clone()),
-        })))
+        }))
     }
 
     fn prepare_protection(
@@ -233,7 +215,7 @@ impl AppealService {
         block: Option<String>,
         reason: &str,
         now: i64,
-    ) -> Result<Prepared, AppealError> {
+    ) -> Result<Reversal, AppealError> {
         let first = ProtectionEventId::parse(&appeal.action.id)
             .and_then(|id| self.governance.protection_event(&id).transpose())
             .transpose()
@@ -260,7 +242,7 @@ impl AppealService {
         if !in_force {
             return Err(moot(OverturnRefusal::ProtectionEnded));
         }
-        Ok(Prepared::Direct(Reversal::Protection(ProtectionEvent {
+        Ok(Reversal::Protection(ProtectionEvent {
             id: ProtectionEventId::new(),
             wiki: wiki.id.clone(),
             at: now,
@@ -274,7 +256,7 @@ impl AppealService {
             expires_at: None,
             of_event: Some(tail),
             appeal: Some(appeal.id.clone()),
-        })))
+        }))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -287,7 +269,7 @@ impl AppealService {
         block: Option<String>,
         reason: &str,
         now: i64,
-    ) -> Result<Prepared, AppealError> {
+    ) -> Result<Reversal, AppealError> {
         // Still in force: nobody unhid it meanwhile.
         if self.find(wiki, &appeal.action)?.is_none() {
             return Err(moot(OverturnRefusal::HidingEnded));
@@ -344,14 +326,14 @@ impl AppealService {
             }
             None => None,
         };
-        Ok(Prepared::Tombstone {
-            main: Box::new(unhide(&hide, TombstoneEventId::new())),
+        Ok(Reversal::Tombstone(Box::new(TombstoneReversal {
+            main: unhide(&hide, TombstoneEventId::new()),
             siblings: siblings
                 .into_iter()
                 .map(|s| unhide(s, TombstoneEventId::new()))
                 .collect(),
-            reopen,
-        })
+            reopen: reopen.map(|(_, change)| change),
+        })))
     }
 
     /// The reopening of the proposal a hide declined, **if** it is still as the hide left it and nothing but the hides being
@@ -430,7 +412,7 @@ impl AppealService {
         appeal: &AppealRecord,
         reason: &str,
         now: i64,
-    ) -> Result<Prepared, AppealError> {
+    ) -> Result<Reversal, AppealError> {
         let found = self
             .find(wiki, &appeal.action)?
             .and_then(|f| f.proposal)
@@ -439,65 +421,8 @@ impl AppealService {
         if self.latest_content_hidden_beyond(wiki, &found, &[])? {
             return Err(moot(OverturnRefusal::StillHidden));
         }
-        Ok(Prepared::Decline {
-            reopen: reopening(&found, &acting.account, reason, now)?,
-            proposal: found,
+        Ok(Reversal::Decline {
+            reopen: Box::new(reopening(&found, &acting.account, reason, now)?),
         })
-    }
-
-    /// Write what an overturn writes **outside the decision's transaction**, and return the record the decision carries (and the
-    /// proposal it brought back, if it did). Called with the decider lock held for the two kinds that need it.
-    pub(super) fn perform(
-        &self,
-        prepared: Prepared,
-    ) -> Result<(Reversal, Option<ProposalId>), AppealError> {
-        match prepared {
-            Prepared::Direct(reversal) => Ok((reversal, None)),
-            Prepared::Decline { proposal, reopen } => {
-                self.proposals
-                    .change_proposal(&reopen)
-                    .map_err(|e| match e {
-                        inklkunn_store::StoreError::StateChanged => {
-                            moot(OverturnRefusal::ProposalMovedOn)
-                        }
-                        other => store_failure(other),
-                    })?;
-                let position = self
-                    .proposals
-                    .last_transition_position(&proposal)
-                    .map_err(unavailable)?
-                    .ok_or(AppealError::Changed)?;
-                Ok((
-                    Reversal::Decline {
-                        transition: position,
-                    },
-                    Some(proposal),
-                ))
-            }
-            Prepared::Tombstone {
-                main,
-                siblings,
-                reopen,
-            } => {
-                for sibling in &siblings {
-                    self.governance
-                        .record_tombstone_event(sibling)
-                        .map_err(store_failure)?;
-                }
-                let reopened = match reopen {
-                    Some((proposal, change)) => {
-                        match self.proposals.change_proposal(&change) {
-                            Ok(_) => Some(proposal),
-                            // Moved on since it was checked (it cannot, under the decider lock, but the answer is plain): the
-                            // hiding is reversed all the same.
-                            Err(inklkunn_store::StoreError::StateChanged) => None,
-                            Err(other) => return Err(store_failure(other)),
-                        }
-                    }
-                    None => None,
-                };
-                Ok((Reversal::Tombstone(*main), reopened))
-            }
-        }
     }
 }
