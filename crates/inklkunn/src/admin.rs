@@ -898,7 +898,8 @@ fn export(
     // The claim threads and the views' creation records are the service's (RFC 005 part 2 D-11, D-12): the bundle's
     // knowledge extension. Read before the export is begun in the trail, so a failure to read them leaves nothing begun.
     let records = if bundle.is_some() {
-        knowledge_records(&*store, &*store, &*store, &record.id).map_err(|e| e.to_string())?
+        knowledge_records(&*store, &*store, &*store, &*store, &*store, &record.id)
+            .map_err(|e| e.to_string())?
     } else {
         inklkunn_core::export::KnowledgeRecords::default()
     };

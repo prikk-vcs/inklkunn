@@ -673,27 +673,44 @@ enum Extension {
 /// The most bytes of a manifest the import reads.
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
-/// Read the folder's `wiki-bundle.yaml`, if it has one, through the folder's handle, for `extensions_used`. Anything
-/// that cannot be read as a manifest declares nothing.
-fn declared_extension(root: &OwnedFd, top: &[(OsString, Result<FileType, Errno>)]) -> Extension {
+/// The folder's `wiki-bundle.yaml` as the map it is, read through the folder's handle (at most [`MAX_MANIFEST_BYTES`]).
+/// `None` for anything that cannot be read as a manifest: it declares nothing.
+fn manifest_of(
+    root: &OwnedFd,
+    top: &[(OsString, Result<FileType, Errno>)],
+) -> Option<Vec<(String, inklkunn_markup::Value)>> {
     use inklkunn_markup::Value;
     let manifest = OsStr::new(crate::bundle::MANIFEST);
     if !top
         .iter()
         .any(|(name, kind)| name == manifest && matches!(kind, Ok(FileType::RegularFile)))
     {
-        return Extension::Absent;
+        return None;
     }
-    let Ok(opened) = open_regular(root, manifest) else {
-        return Extension::Absent;
+    let opened = open_regular(root, manifest).ok()?;
+    let bytes = read_all(opened.file, MAX_MANIFEST_BYTES).ok()?;
+    let text = String::from_utf8(bytes).ok()?;
+    match inklkunn_markup::frontmatter::parse_yaml(&text) {
+        Ok(Value::Map(pairs)) => Some(pairs),
+        _ => None,
+    }
+}
+
+/// Does the manifest declare **tombstones** (RFC 006 D-13): entries of the bundle whose content, summary or author was hidden
+/// by moderation, omitted and marked `suppressed`? Any `inklkunn.tombstones` member declares it, whatever it holds.
+fn declares_tombstones(manifest: Option<&[(String, inklkunn_markup::Value)]>) -> bool {
+    use inklkunn_markup::Value;
+    let Some((_, Value::Map(own))) = manifest.and_then(|m| m.iter().find(|(k, _)| k == "inklkunn"))
+    else {
+        return false;
     };
-    let Ok(bytes) = read_all(opened.file, MAX_MANIFEST_BYTES) else {
-        return Extension::Absent;
-    };
-    let Ok(text) = String::from_utf8(bytes) else {
-        return Extension::Absent;
-    };
-    let Ok(Value::Map(pairs)) = inklkunn_markup::frontmatter::parse_yaml(&text) else {
+    own.iter().any(|(k, _)| k == "tombstones")
+}
+
+/// What the folder's manifest declares of the knowledge extension, from its `extensions_used`.
+fn declared_extension(manifest: Option<&[(String, inklkunn_markup::Value)]>) -> Extension {
+    use inklkunn_markup::Value;
+    let Some(pairs) = manifest else {
         return Extension::Absent;
     };
     let Some((_, Value::Seq(declared))) = pairs.iter().find(|(k, _)| k == "extensions_used") else {
@@ -1094,7 +1111,17 @@ pub fn plan_folder(
     }
     let mut top = listing.entries;
     top.sort_by(|a, b| a.0.cmp(&b.0));
-    let extension = declared_extension(&root, &top);
+    let manifest = manifest_of(&root, &top);
+    let extension = declared_extension(manifest.as_deref());
+    if declares_tombstones(manifest.as_deref()) {
+        // Fail closed (RFC 006 D-13): a bundle that carries what moderation hid, as marks and not as content, is not a bundle
+        // this import can honour. Its pages are the tip's and complete, but the import would write them into a wiki that has
+        // no record of what was hidden and would look whole. Importing a tombstone is RFC 007's.
+        walk.refuse(
+            crate::bundle::MANIFEST,
+            "declares tombstones: entries of the bundle had content, a summary or an author hidden by moderation and are marked `suppressed`; tombstones are not imported yet (bundle import is RFC 007's), so nothing of this bundle is imported",
+        );
+    }
     for (name, kind) in top {
         let shown_name = lossy(&name);
         match (name.to_str(), kind.ok()) {

@@ -139,6 +139,7 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_th
                 histories_not_written: 2,
                 knowledge_extension: false,
                 records_read: true,
+                suppressed_entries: 0,
             }),
         },
     );

@@ -38,6 +38,7 @@ fn facts() -> ManifestFacts {
             histories_not_written: 1,
             knowledge_extension: true,
             records_read: true,
+            suppressed_entries: 0,
         }),
     }
 }

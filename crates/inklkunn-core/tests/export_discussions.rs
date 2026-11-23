@@ -10,7 +10,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use inklkunn_core::export::{
-    KnowledgeRecords, claim_discussions, export_bundle, export_bundle_with, knowledge_records,
+    KnowledgeRecords, Suppressions, claim_discussions, export_bundle, export_bundle_with,
+    knowledge_records,
 };
 use inklkunn_prikk::storage::{
     Change, Diff, Entry, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
@@ -365,7 +366,8 @@ fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_c
         None,
     );
 
-    let records = knowledge_records(&r.store, &r.store, &r.store, &r.wiki.id).unwrap();
+    let records =
+        knowledge_records(&r.store, &r.store, &r.store, &r.store, &r.store, &r.wiki.id).unwrap();
     assert_eq!(
         records
             .threads
@@ -518,7 +520,8 @@ fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_c
 #[test]
 fn a_wiki_with_no_thread_and_no_view_carries_the_extension_only_for_its_knowledge_files() {
     let r = rig("none");
-    let records = knowledge_records(&r.store, &r.store, &r.store, &r.wiki.id).unwrap();
+    let records =
+        knowledge_records(&r.store, &r.store, &r.store, &r.store, &r.store, &r.wiki.id).unwrap();
     assert_eq!(records, KnowledgeRecords::default());
     // With claim files: `knowledge/` is exported as it is stored, and the manifest declares what gives it meaning.
     let stand = repository();
@@ -632,15 +635,25 @@ fn the_names_of_the_people_are_the_names_they_have_and_a_person_the_service_lost
     let r = rig("names");
     let ann = person(&r.store, "Ann");
     say(&r, C1, &ann, None, "Hello", 5);
-    let discussions = claim_discussions(&r.store, &r.store, &r.wiki.id).unwrap();
+    let discussions =
+        claim_discussions(&r.store, &r.store, &Suppressions::default(), &r.wiki.id).unwrap();
     let comment = discussions.first().unwrap().comments.first().unwrap();
-    assert_eq!(comment.author_id, ann.as_str());
-    assert_eq!(comment.author_name, "Ann");
+    let author = comment.author.as_ref().unwrap();
+    assert_eq!(author.id, ann.as_str());
+    assert_eq!(author.name, "Ann");
     // Another store, where the account is not known: the comment is still carried, the name empty.
     let empty = MemoryStore::new();
-    let none = claim_discussions(&r.store, &empty, &r.wiki.id).unwrap();
+    let none = claim_discussions(&r.store, &empty, &Suppressions::default(), &r.wiki.id).unwrap();
     assert_eq!(
-        none.first().unwrap().comments.first().unwrap().author_name,
+        none.first()
+            .unwrap()
+            .comments
+            .first()
+            .unwrap()
+            .author
+            .as_ref()
+            .unwrap()
+            .name,
         ""
     );
 }

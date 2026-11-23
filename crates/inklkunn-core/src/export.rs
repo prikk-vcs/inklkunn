@@ -20,6 +20,10 @@
 //!   is under `discussions/` and the manifest's `discussions` stays a statement about page discussions. A thread never
 //!   changes a claim: the bundle carries it beside the claim's file, not instead of it. All are listed in `SHA256SUMS`
 //!   like every other file. (Comments on proposals are not exported here.)
+//! - **What moderation hides is not in it** (RFC 006 D-13; [`suppression`]): an entry with a hidden part is marked
+//!   `suppressed` with its `reasons` and omits that part (a history line's `summary` or `authors`, a thread comment's `body`
+//!   or `author`), the manifest declares that the bundle carries such entries, and `users.yaml` lists a person only for what
+//!   is not hidden. An export with nothing hidden is the bundle it was before this existed, byte for byte.
 //! - **`users.yaml`**: the accounts that appear in those messages and in those threads, with the names they had.
 //! - **`wiki-bundle.yaml`**: the manifest, with the fidelity, the real counts, the block it is as of, the
 //!   interwiki map and, in `checksums`, the name of the file below (wiki-commons' shape).
@@ -41,14 +45,18 @@ use inklkunn_prikk::storage::Entry;
 use inklkunn_prikk::{ExtractBounds, Materialized, Point, Storage, StorageError};
 use inklkunn_signer::message::{Actor, Message};
 use inklkunn_store::{
-    AccountStore, ActStore, ClaimCommentRow, ClaimThreadStore, RootLayout, ViewActOutcome, WikiId,
-    WikiRecord,
+    AcceptanceStore, AccountStore, ActStore, ClaimCommentRow, ClaimThreadStore, GovernanceStore,
+    RootLayout, ViewActOutcome, WikiId, WikiRecord,
 };
 use sha2::{Digest, Sha256};
 
 use crate::bundle::{self, ExportFacts, ManifestFacts, markdown_text, yaml_quote};
 use crate::knowledge::ClaimId;
 use crate::read::scratch::{Extract, Partial, partial_name_too_long_by};
+
+mod suppression;
+
+pub use suppression::{Suppressed, Suppressions};
 
 /// How many blocks of history an export reads (`log --limit`). A history longer than this is refused rather than
 /// cut short: an export that silently lacks its oldest changes would be a lie about the wiki.
@@ -101,7 +109,18 @@ pub fn is_checkpoint_not_recorded(e: &StorageError) -> bool {
     )
 }
 
-/// One comment of a claim's thread, as the bundle's knowledge extension carries it.
+/// The person who wrote a comment, as the bundle carries them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommentAuthor {
+    /// The account id.
+    pub id: String,
+    /// The name as the account has it now.
+    pub name: String,
+}
+
+/// One comment of a claim's thread, as the bundle's knowledge extension carries it. **What moderation hides is not held
+/// here at all:** a hidden body or author is `None` and the comment says what is [`suppressed`](Self::suppressed), so no
+/// later step can write what it was never given.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscussionComment {
     /// The comment's id.
@@ -110,12 +129,12 @@ pub struct DiscussionComment {
     pub parent: Option<String>,
     /// Unix seconds.
     pub at: i64,
-    /// The author's account id.
-    pub author_id: String,
-    /// The author's name as the account has it now.
-    pub author_name: String,
-    /// The text, as it was written (the bundle carries it as a fenced text block).
-    pub body: String,
+    /// The author; `None` when the author is hidden.
+    pub author: Option<CommentAuthor>,
+    /// The text, as it was written (the bundle carries it as a fenced text block); `None` when the content is hidden.
+    pub body: Option<String>,
+    /// What moderation hides of this comment, with the reasons.
+    pub suppressed: Suppressed,
 }
 
 /// One claim's thread, whole, for the bundle.
@@ -157,6 +176,8 @@ pub struct KnowledgeRecords {
     pub threads: Vec<ClaimDiscussion>,
     /// Every alternative view that was created, oldest first.
     pub views: Vec<ViewCreation>,
+    /// What moderation hides of the wiki's page revisions: the history lines are written without it.
+    pub suppressions: Suppressions,
 }
 
 /// The names accounts have, remembered for the people of one export.
@@ -183,10 +204,12 @@ impl Names<'_> {
 
 /// Every claim thread of the wiki, whole and in order, with the names of the people who wrote: what an export carries as
 /// the knowledge extension's threads. Read from the service's records; nothing is read from a repository. A record whose
-/// claim id is not the spelling of one is an error, never a path.
+/// claim id is not the spelling of one is an error, never a path. **A comment whose body or author is hidden by moderation
+/// is returned without it** (RFC 006 D-13), and the person is not looked up.
 pub fn claim_discussions(
     threads: &dyn ClaimThreadStore,
     accounts: &dyn AccountStore,
+    suppressions: &Suppressions,
     wiki: &WikiId,
 ) -> Result<Vec<ClaimDiscussion>, ExportError> {
     let rows = threads
@@ -203,13 +226,23 @@ pub fn claim_discussions(
                 "a claim thread is recorded under an id that is not a claim's".to_owned(),
             )
         })?;
+        let id = comment.id.to_string();
+        let suppressed = suppressions.of_claim_comment(&id);
+        let author = if suppressed.author.is_some() {
+            None
+        } else {
+            Some(CommentAuthor {
+                name: names.of(&comment.author)?,
+                id: comment.author.to_string(),
+            })
+        };
         let line = DiscussionComment {
-            id: comment.id.to_string(),
             parent: comment.parent.as_ref().map(ToString::to_string),
             at: comment.created_at,
-            author_name: names.of(&comment.author)?,
-            author_id: comment.author.to_string(),
-            body: comment.body,
+            author,
+            body: suppressed.content.is_none().then_some(comment.body),
+            suppressed,
+            id,
         };
         match out.last_mut() {
             Some(d) if d.claim == claim => d.comments.push(line),
@@ -259,16 +292,22 @@ pub fn view_creations(
     Ok(out)
 }
 
-/// The service's records an export carries in the knowledge extension: the claim threads and the views' creation records.
+/// The service's records an export carries in the knowledge extension: the claim threads and the views' creation records,
+/// and what moderation hides ([`Suppressions::read`] reads every hide and unhide of the wiki, `acceptances` to find the
+/// block a proposal's accepted revision became). A hide that cannot be read fails the read: no export is made without it.
 pub fn knowledge_records(
     threads: &dyn ClaimThreadStore,
     acts: &dyn ActStore,
     accounts: &dyn AccountStore,
+    governance: &dyn GovernanceStore,
+    acceptances: &dyn AcceptanceStore,
     wiki: &WikiId,
 ) -> Result<KnowledgeRecords, ExportError> {
+    let suppressions = Suppressions::read(governance, acceptances, wiki)?;
     Ok(KnowledgeRecords {
-        threads: claim_discussions(threads, accounts, wiki)?,
+        threads: claim_discussions(threads, accounts, &suppressions, wiki)?,
         views: view_creations(acts, accounts, wiki)?,
+        suppressions,
     })
 }
 
@@ -295,6 +334,9 @@ pub struct Exported {
     pub threads: usize,
     /// Views whose creation was written to `extensions/inklkunn-knowledge/views.jsonl`.
     pub views: usize,
+    /// Entries (history lines and thread comments) written with a hidden part omitted and marked `suppressed`; the manifest
+    /// declares them when there are any.
+    pub suppressed: usize,
     /// Claim and source files of `knowledge/`, carried as they are stored.
     pub knowledge_files: usize,
     /// Pages whose history file was not written because the page id in its frontmatter cannot name a file
@@ -432,8 +474,11 @@ struct Histories {
     lines: BTreeMap<String, Vec<String>>,
     /// Changes to paths that are not pages of the tip.
     unattributed: usize,
-    /// Accounts seen in messages: id → the names they had, in order of first sight.
+    /// Accounts seen in messages: id → the names they had, in order of first sight. **Only for what is not hidden:** a person
+    /// whose name moderation hides on a change is not remembered for it.
     accounts: BTreeMap<String, Vec<String>>,
+    /// page id → how many of its lines have a part hidden.
+    suppressed: BTreeMap<String, usize>,
 }
 
 fn histories(
@@ -442,6 +487,7 @@ fn histories(
     view: &str,
     tip: &str,
     page_ids: &HashMap<String, String>,
+    suppressions: &Suppressions,
 ) -> Result<Histories, ExportError> {
     let history = storage
         .history(
@@ -465,11 +511,15 @@ fn histories(
         lines: BTreeMap::new(),
         unattributed: 0,
         accounts: BTreeMap::new(),
+        suppressed: BTreeMap::new(),
     };
     for block in history.blocks.iter().skip(from).rev() {
         let change = storage
             .change(repo, &block.block_id)
             .map_err(ExportError::Storage)?;
+        // The people and the summary of a change are one text for every page it touched: what is hidden of them is hidden
+        // for the whole block, and a person hidden here is not a person of this bundle for it.
+        let of_change = suppressions.of_change(&block.block_id);
         for patch in &change.patches {
             let message = block
                 .patch_messages
@@ -479,6 +529,9 @@ fn histories(
             let (kind, summary, authors, source) = match &message {
                 Some(m) => {
                     for a in [m.proposed_by(), m.accepted_by()] {
+                        if of_change.author.is_some() {
+                            continue;
+                        }
                         if let Actor::Account { id, name } = a {
                             let names = out.accounts.entry(id.as_str().to_owned()).or_default();
                             if !names.iter().any(|n| n == name.as_str()) {
@@ -505,7 +558,8 @@ fn histories(
                         out.unattributed += 1;
                         continue;
                     };
-                    let line = serde_json::json!({
+                    let hidden = suppressions.of_revision(&block.block_id, path);
+                    let mut line = serde_json::json!({
                         "block": block.block_id,
                         "seq": block.update_seq,
                         "operation": op.kind,
@@ -516,6 +570,20 @@ fn histories(
                         "imported_from": source,
                         "message_readable": message.is_some(),
                     });
+                    // What is hidden is left out, not blanked, and the line says what and why (RFC 006 D-13). A page
+                    // revision's text is in no history line, so a hidden `content` is the marker alone.
+                    if let Some(members) = line.as_object_mut() {
+                        if hidden.summary.is_some() {
+                            members.remove("summary");
+                        }
+                        if hidden.author.is_some() {
+                            members.remove("authors");
+                        }
+                        hidden.mark(members);
+                    }
+                    if !hidden.is_empty() {
+                        *out.suppressed.entry(id.clone()).or_default() += 1;
+                    }
                     out.lines
                         .entry(id.clone())
                         .or_default()
@@ -530,7 +598,8 @@ fn histories(
 /// Export the wiki as a bundle directory `dest` (absolute; must not exist; its directory must). `now` is the
 /// time written in the manifest. The wiki's scratch directory is where the tip is extracted (and removed from). The
 /// bundle carries none of the service's records (claim threads, views), and its manifest says so in `fidelity.dropped`:
-/// see [`export_bundle_with`].
+/// see [`export_bundle_with`]. **It is not told what moderation hides either**, so its history lines are written whole: a
+/// wiki that has hidden anything is exported with [`export_bundle_with`] and the records [`knowledge_records`] reads.
 pub fn export_bundle(
     storage: &dyn Storage,
     layout: &RootLayout,
@@ -717,6 +786,8 @@ fn build(
     now: i64,
     records: Option<&KnowledgeRecords>,
 ) -> Result<Exported, ExportError> {
+    let no_suppressions = Suppressions::default();
+    let suppressions = records.map_or(&no_suppressions, |r| &r.suppressions);
     // The bundle is of the files the tip has: a tree with a file missing (or one more, or one of another size) is not that
     // tree, and a bundle of it, with checksums that match what it holds, would be a false statement about the wiki. The
     // witness is the listing of the tip's files, path by path with their sizes (the totals alone pass a missing file and an
@@ -789,7 +860,8 @@ fn build(
             knowledge_files += 1;
         }
     }
-    let h = histories(storage, repo, view, tip, &page_ids)?;
+    let h = histories(storage, repo, view, tip, &page_ids, suppressions)?;
+    let mut suppressed_entries = 0;
     let mut history_entries = 0;
     // How many pages carry each id: an id two pages share cannot say whose history a file holds.
     let mut carriers: HashMap<&str, usize> = HashMap::new();
@@ -810,6 +882,7 @@ fn build(
         let hash = write_new(&partial.join(&rel), text.as_bytes())?;
         checksums.push((rel, hash));
         history_entries += lines.len();
+        suppressed_entries += h.suppressed.get(id).copied().unwrap_or(0);
     }
     // The knowledge extension's records (RFC 005 part 2 D-11, D-12), not under `discussions/`: a claim's thread is not a
     // page's discussion. The people who wrote or created join the accounts of users.yaml.
@@ -824,18 +897,30 @@ fn build(
     for thread in records.map_or(&[][..], |r| r.threads.as_slice()) {
         let mut text = String::new();
         for c in &thread.comments {
-            remember(&c.author_id, &c.author_name);
-            text.push_str(
-                &serde_json::json!({
-                    "id": c.id,
-                    "parent": c.parent,
-                    "at": inklkunn_store::record::rfc3339(c.at),
-                    "author": {"id": c.author_id, "name": c.author_name},
+            let mut line = serde_json::json!({
+                "id": c.id,
+                "parent": c.parent,
+                "at": inklkunn_store::record::rfc3339(c.at),
+            });
+            if let Some(members) = line.as_object_mut() {
+                // What is hidden was never given to this function (`claim_discussions`), and what is not given is not written.
+                if let Some(author) = &c.author {
+                    remember(&author.id, &author.name);
+                    members.insert(
+                        "author".to_owned(),
+                        serde_json::json!({"id": author.id, "name": author.name}),
+                    );
+                }
+                if let Some(body) = &c.body {
                     // A fenced text block that shows the plain text it was written as.
-                    "body": markdown_text(&c.body),
-                })
-                .to_string(),
-            );
+                    members.insert("body".to_owned(), markdown_text(body).into());
+                }
+                c.suppressed.mark(members);
+            }
+            if !c.suppressed.is_empty() {
+                suppressed_entries += 1;
+            }
+            text.push_str(&line.to_string());
             text.push('\n');
         }
         let rel = format!("{}/{}.jsonl", bundle::KNOWLEDGE_THREADS_DIR, thread.claim);
@@ -912,6 +997,7 @@ fn build(
                     || threads_written > 0
                     || views_written > 0,
                 records_read: records.is_some(),
+                suppressed_entries,
             }),
         },
     );
@@ -927,6 +1013,7 @@ fn build(
         users: accounts,
         threads: threads_written,
         views: views_written,
+        suppressed: suppressed_entries,
         knowledge_files,
         histories_not_written,
     })

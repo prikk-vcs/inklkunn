@@ -71,6 +71,10 @@ pub struct ExportFacts {
     /// The export was given the service's records (claim threads and view-creation records, possibly none). `false`: it
     /// was not, and the manifest says in `fidelity.dropped` that they are not in it.
     pub records_read: bool,
+    /// Entries (history lines, thread comments) of the bundle with a part hidden by moderation, omitted and marked
+    /// `suppressed` (RFC 006 D-13). Above zero, the manifest declares it ([`manifest_with`]); zero writes nothing of it, so a
+    /// bundle with nothing hidden is the manifest it always was.
+    pub suppressed_entries: usize,
 }
 
 /// `text` as portable Markdown that shows exactly that text and nothing else (RFC 005 part 2 D-11, amended): a fenced
@@ -157,21 +161,36 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
         }
     }
     let unread = facts.exported.as_ref().is_some_and(|e| !e.records_read);
+    let suppressed = facts.exported.as_ref().map_or(0, |e| e.suppressed_entries);
+    // What the bundle leaves out, as wiki-commons' `fidelity.dropped` says it (a construct, how many, and how).
+    let mut dropped: Vec<String> = Vec::new();
+    if unread {
+        // An export that was not given the service's records says so, rather than look complete.
+        dropped.push(format!(
+            "{{construct: {}, how: {}}}",
+            yaml_str("claim threads and view-creation records"),
+            yaml_str(
+                "this export was not given the service's records, so they are not in the bundle"
+            ),
+        ));
+    }
+    if suppressed > 0 {
+        dropped.push(format!(
+            "{{construct: {}, count: {suppressed}, how: {}}}",
+            yaml_str("content, summaries and authors hidden by moderation"),
+            yaml_str(
+                "left out; each entry that had a part hidden is marked `suppressed` with its `reasons`, and none carries what was hidden"
+            ),
+        ));
+    }
     lines.extend([
         "fidelity:".to_owned(),
         "  level: 3".to_owned(),
         "  degraded: []".to_owned(),
-        if unread {
-            // An export that was not given the service's records says so, rather than look complete.
-            format!(
-                "  dropped: [{{construct: {}, how: {}}}]",
-                yaml_str("claim threads and view-creation records"),
-                yaml_str(
-                    "this export was not given the service's records, so they are not in the bundle"
-                ),
-            )
-        } else {
+        if dropped.is_empty() {
             "  dropped: []".to_owned()
+        } else {
+            format!("  dropped: [{}]", dropped.join(", "))
         },
         "  note: native; nothing was converted".to_owned(),
     ]);
@@ -224,6 +243,17 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
             "  histories_not_written: {}",
             e.histories_not_written
         ));
+        if e.suppressed_entries > 0 {
+            // The declaration of RFC 006 D-13, in inklkunn's own key (wiki-commons' schema allows members there, and a reader
+            // that does not know it still finds the loss in `fidelity.dropped`).
+            lines.extend([
+                "  tombstones:".to_owned(),
+                format!("    entries: {}", e.suppressed_entries),
+                "    marked_by: suppressed".to_owned(),
+                "    reasons_in: reasons".to_owned(),
+                "    hidden_content: omitted".to_owned(),
+            ]);
+        }
     }
     let mut out = lines.join("\n");
     out.push('\n');

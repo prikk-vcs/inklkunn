@@ -1041,3 +1041,4 @@ fn a_folder_the_wiki_already_has_is_nothing_changed_and_a_mixed_one_writes_only_
 
 mod knowledge;
 mod page_cap;
+mod tombstones;
