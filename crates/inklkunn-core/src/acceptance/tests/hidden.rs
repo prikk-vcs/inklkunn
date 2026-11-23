@@ -6,7 +6,7 @@
 
 use inklkunn_store::{
     Actor, GovernanceStore, HiddenItem, HiddenItemKind, HiddenParts, ProposalState, ReasonCategory,
-    TombstoneAct, TombstoneEvent, TombstoneEventId,
+    TombstoneAct, TombstoneActId, TombstoneEvent, TombstoneEventId,
 };
 
 use super::super::testing::{HOME, Rig};
@@ -71,6 +71,7 @@ impl Scene {
                     id: TombstoneEventId::new(),
                     wiki: wiki.clone(),
                     at: inklkunn_store::record::now_secs(),
+                    act_id: TombstoneActId::new(),
                     act: TombstoneAct::Hide,
                     item: item.clone(),
                     parts,
