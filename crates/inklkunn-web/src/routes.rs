@@ -20,8 +20,8 @@ use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
-    account, api, changes, csrf, discover, health, history, inbox, knowledge, people, probe, proposals,
-    protections, raw, search, signin, style, views, watch, wiki,
+    account, api, changes, csrf, discover, health, history, inbox, knowledge, people, probe,
+    proposals, protections, raw, search, signin, style, views, watch, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
