@@ -527,3 +527,146 @@ fn a_wiki_whose_rules_cannot_be_read_refuses_to_file_and_to_decide_like_every_wr
         assert!(w.store.open_appeals(&w.wiki.id, 10).unwrap().is_empty());
     }
 }
+
+#[test]
+fn everyone_who_set_or_renewed_a_restriction_is_barred_from_deciding_its_appeal_and_a_third_person_is_not()
+ {
+    for kind in KINDS {
+        // The appeal is against the renewal in force: the person who set it and the person who renewed it are both barred.
+        let w = World::under(kind, MAINTAINERS_DECIDE);
+        let setter = w.person("Max", Some(Role::Maintainer));
+        let renewer = w.person("Ren", Some(Role::Maintainer));
+        let third = w.person("Tia", Some(Role::Maintainer));
+        let pat = w.person("Pat", Some(Role::Contributor));
+        let set = w.restrict(&setter, &pat, 3);
+        let renewal = w.renew(&renewer, &pat, &set, 5);
+        let filed = w
+            .appeals
+            .file(&pat.principal, &w.wiki, &renewal, WORDS)
+            .unwrap();
+        for barred in [&setter, &renewer] {
+            assert_eq!(
+                w.appeals
+                    .decide(&barred.principal, &w.wiki, &filed.id, Outcome::Upheld, WHY)
+                    .unwrap_err(),
+                AppealError::Decider(DeciderRefusal::TheActor),
+                "{kind:?}"
+            );
+            let queue = w.appeals.appeals(&barred.principal, &w.wiki).unwrap();
+            assert_eq!(
+                queue.open.first().map(|q| q.blocked),
+                Some(Some(DeciderRefusal::TheActor)),
+                "{kind:?}: the queue says so"
+            );
+        }
+        assert_eq!(w.appeal(&filed.id).state, AppealState::Open);
+        w.appeals
+            .decide(
+                &third.principal,
+                &w.wiki,
+                &filed.id,
+                Outcome::Overturned,
+                WHY,
+            )
+            .expect("a third person decides");
+        assert!(!w.restricted(&pat), "{kind:?}");
+
+        // The appeal is against the setting, and the restriction is renewed after it was filed: the renewer is barred as well.
+        let w = World::under(kind, MAINTAINERS_DECIDE);
+        let setter = w.person("Max", Some(Role::Maintainer));
+        let renewer = w.person("Ren", Some(Role::Maintainer));
+        let third = w.person("Tia", Some(Role::Maintainer));
+        let pat = w.person("Pat", Some(Role::Contributor));
+        let set = w.restrict(&setter, &pat, 3);
+        let filed = w
+            .appeals
+            .file(&pat.principal, &w.wiki, &set, WORDS)
+            .unwrap();
+        w.renew(&renewer, &pat, &set, 5);
+        for barred in [&setter, &renewer] {
+            assert_eq!(
+                w.appeals
+                    .decide(
+                        &barred.principal,
+                        &w.wiki,
+                        &filed.id,
+                        Outcome::Overturned,
+                        WHY
+                    )
+                    .unwrap_err(),
+                AppealError::Decider(DeciderRefusal::TheActor),
+                "{kind:?}"
+            );
+        }
+        assert!(w.restricted(&pat), "{kind:?}: nothing was reversed");
+        w.appeals
+            .decide(
+                &third.principal,
+                &w.wiki,
+                &filed.id,
+                Outcome::Overturned,
+                WHY,
+            )
+            .expect("a third person decides");
+        assert!(!w.restricted(&pat), "{kind:?}");
+    }
+}
+
+#[test]
+fn everyone_who_set_or_renewed_a_protection_is_barred_from_deciding_its_appeal() {
+    use inklkunn_store::{
+        MeasureEvent, ProtectionEvent, ProtectionEventId, ProtectionKind, ProtectionRequirement,
+    };
+    for kind in KINDS {
+        let w = World::under(kind, MAINTAINERS_DECIDE);
+        let setter = w.person("Max", Some(Role::Maintainer));
+        let renewer = w.person("Ren", Some(Role::Maintainer));
+        let third = w.person("Tia", Some(Role::Maintainer));
+        let pat = w.person("Pat", Some(Role::Contributor));
+        w.proposal(&pat, "Home");
+        let set = w.protect(&setter, "Home", 3);
+        let filed = w
+            .appeals
+            .file(&pat.principal, &w.wiki, &set, WORDS)
+            .unwrap();
+        w.store
+            .record_protection_event(&ProtectionEvent {
+                id: ProtectionEventId::new(),
+                wiki: w.wiki.id.clone(),
+                at: T0,
+                event: MeasureEvent::Renewed,
+                kind: ProtectionKind::Page,
+                target: "Home".to_owned(),
+                requirement: Some(ProtectionRequirement::Review),
+                by: inklkunn_store::Actor {
+                    account: renewer.id.clone(),
+                    rung: Role::Maintainer,
+                },
+                policy_block: None,
+                reason: Some("Still vandalism.".to_owned()),
+                expires_at: Some(T0 + 5 * 86_400),
+                of_event: ProtectionEventId::parse(&set.id),
+                appeal: None,
+            })
+            .unwrap();
+        for barred in [&setter, &renewer] {
+            assert_eq!(
+                w.appeals
+                    .decide(&barred.principal, &w.wiki, &filed.id, Outcome::Upheld, WHY)
+                    .unwrap_err(),
+                AppealError::Decider(DeciderRefusal::TheActor),
+                "{kind:?}"
+            );
+        }
+        w.appeals
+            .decide(
+                &third.principal,
+                &w.wiki,
+                &filed.id,
+                Outcome::Overturned,
+                WHY,
+            )
+            .expect("a third person decides");
+        assert!(!w.protected(), "{kind:?}");
+    }
+}

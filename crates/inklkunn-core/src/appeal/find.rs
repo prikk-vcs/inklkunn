@@ -33,6 +33,45 @@ pub(super) struct Found {
     pub(super) proposal: Option<ProposalId>,
 }
 
+/// One event of a measure's chain, as far as who acted goes.
+struct Link {
+    id: String,
+    follows: Option<String>,
+    by: AccountId,
+}
+
+/// The people who acted on the chain **through** the event `named`: who set it and everyone who renewed it, before or after the
+/// event the appeal names. A line, so it is walked back to its first event and forward to its last.
+fn chain_actors(links: &[Link], named: &str) -> Vec<AccountId> {
+    let mut first = named;
+    for _ in 0..links.len() {
+        match links
+            .iter()
+            .find(|l| l.id == first)
+            .and_then(|l| l.follows.as_deref())
+        {
+            Some(before) => first = before,
+            None => break,
+        }
+    }
+    let mut out = Vec::new();
+    let mut at = Some(first);
+    for _ in 0..=links.len() {
+        let Some(id) = at else { break };
+        let Some(link) = links.iter().find(|l| l.id == id) else {
+            break;
+        };
+        if !out.contains(&link.by) {
+            out.push(link.by.clone());
+        }
+        at = links
+            .iter()
+            .find(|l| l.follows.as_deref() == Some(id))
+            .map(|l| l.id.as_str());
+    }
+    out
+}
+
 /// The position of a step of the proposal log, from its spelling: **decimal, from 1, no sign, no leading zero** (so that the
 /// spelling is the one the appeal records).
 pub(super) fn position_of(id: &str) -> Option<i64> {
@@ -53,6 +92,57 @@ impl AppealService {
             AppealedKind::Restriction => self.find_restriction(wiki, &action.id),
             AppealedKind::Protection => self.find_protection(wiki, &action.id),
             AppealedKind::Grant => self.find_grant(wiki, &action.id),
+        }
+    }
+
+    /// **Everyone who took the action** an appeal names (A-5): the person the appeal recorded as its actor, and, for a restriction
+    /// or a temporary protection, everyone who set or renewed the chain it is a link of, since a renewal is also an act on it.
+    /// Nobody of them decides the appeal. (The database refuses the first; the rest is this check.)
+    pub(super) fn actors_of(
+        &self,
+        wiki: &WikiRecord,
+        action: &AppealedAction,
+    ) -> Result<Vec<AccountId>, AppealError> {
+        match action.kind {
+            AppealedKind::Restriction => {
+                let Some(event) = RestrictionEventId::parse(&action.id)
+                    .and_then(|id| self.governance.restriction_event(&id).transpose())
+                    .transpose()
+                    .map_err(unavailable)?
+                    .filter(|e| e.wiki == wiki.id)
+                else {
+                    return Ok(Vec::new());
+                };
+                let links: Vec<Link> = self
+                    .governance
+                    .restriction_events(&wiki.id, &event.account)
+                    .map_err(unavailable)?
+                    .into_iter()
+                    .filter(|e| e.event.puts_in_place())
+                    .map(|e| Link {
+                        id: e.id.to_string(),
+                        follows: e.of_event.map(|o| o.to_string()),
+                        by: e.by.account,
+                    })
+                    .collect();
+                Ok(chain_actors(&links, &action.id))
+            }
+            AppealedKind::Protection => {
+                let links: Vec<Link> = self
+                    .governance
+                    .protection_events(&wiki.id, inklkunn_store::governance::MAX_PAGE)
+                    .map_err(unavailable)?
+                    .into_iter()
+                    .filter(|e| e.event.puts_in_place())
+                    .map(|e| Link {
+                        id: e.id.to_string(),
+                        follows: e.of_event.map(|o| o.to_string()),
+                        by: e.by.account,
+                    })
+                    .collect();
+                Ok(chain_actors(&links, &action.id))
+            }
+            _ => Ok(Vec::new()),
         }
     }
 

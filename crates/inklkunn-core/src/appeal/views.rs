@@ -174,7 +174,11 @@ impl AppealService {
             if record.state == AppealState::Open {
                 let blocked = if record.appellant == acting.account {
                     Some(DeciderRefusal::TheAppellant)
-                } else if record.action_actor.as_ref() == Some(&acting.account) {
+                } else if record.action_actor.as_ref() == Some(&acting.account)
+                    || self
+                        .actors_of(wiki, &record.action)?
+                        .contains(&acting.account)
+                {
                     Some(DeciderRefusal::TheActor)
                 } else {
                     None

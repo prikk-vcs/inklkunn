@@ -522,7 +522,11 @@ impl AppealService {
         if record.appellant == acting.account {
             return Err(AppealError::Decider(DeciderRefusal::TheAppellant));
         }
-        if record.action_actor.as_ref() == Some(&acting.account) {
+        if record.action_actor.as_ref() == Some(&acting.account)
+            || self
+                .actors_of(wiki, &record.action)?
+                .contains(&acting.account)
+        {
             return Err(AppealError::Decider(DeciderRefusal::TheActor));
         }
         let reason = clean_reason(reason)
