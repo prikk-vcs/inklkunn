@@ -336,3 +336,13 @@ mod common_claim {
             .to_string()
     }
 }
+
+#[tokio::test]
+async fn surface_removed_page() {
+    super::removed::surface_removed_page().await;
+}
+
+#[tokio::test]
+async fn surface_restore_offer() {
+    super::removed::surface_restore_offer().await;
+}

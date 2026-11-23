@@ -12,6 +12,7 @@ mod common;
 mod acts;
 mod appeals;
 mod gate;
+mod removed;
 mod surfaces;
 
 use axum::http::StatusCode;

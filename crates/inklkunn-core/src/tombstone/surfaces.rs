@@ -161,6 +161,31 @@ pub const SURFACES: &[Surface] = &[
         test: "surface_claim_thread",
     },
     Surface {
+        // A title that leads to no page may be a page that was removed: the answer is `410 Gone` and says by which change and
+        // why, the removing change's summary (G-T6). The HTML page, the raw source on the content origin (a fixed sentence: it
+        // reads none of the change) and the API's `page-gone` problem are the same fact asked three ways; the page at the tip
+        // is the part that cannot be hidden, and is not what this row is about. The author is never named by the answer.
+        id: "removed-page",
+        shows: Shows::new(false, true, false),
+        routes: &["/{slug}/{*title}", "/{slug}/-/raw/{*title}"],
+        api: &[
+            "/{slug}/-/api/v1/pages/{*title}",
+            "/{slug}/-/api/v1/raw/{*title}",
+            "/{slug}/-/api/v1/fragment/{*title}",
+        ],
+        test: "surface_removed_page",
+    },
+    Surface {
+        // The offer to restore a removed page: a rollback of the removing change or a draft with the page's last text. It copies
+        // the text that would come back (never from a revision whose content is hidden) and the removal's summary (the rollback
+        // draft's own, which is the masked one).
+        id: "restore-offer",
+        shows: Shows::new(true, true, false),
+        routes: &["/{slug}/-/restore/{*title}"],
+        api: &[],
+        test: "surface_restore_offer",
+    },
+    Surface {
         id: "inbox",
         shows: Shows::new(false, true, true),
         routes: &["/-/inbox"],
@@ -173,18 +198,11 @@ pub const SURFACES: &[Surface] = &[
 /// when it reads the tip (whose content cannot be hidden, and whose summary and author the surfaces above replace where the
 /// page names its last change), names no proposal and no comment, or writes and answers with a surface above.
 pub const SHOWS_NONE: &[(&str, &str)] = &[
-    // The tip's own pages: the content of a view's tip cannot be hidden (D-8).
-    (
-        "/{slug}/{*title}",
-        "the page at the view's tip, whose content cannot be hidden",
-    ),
+    // The tip's own pages: the content of a view's tip cannot be hidden (D-8). (The page route and the raw route also answer
+    // for a title that is no page, `410` with the removal's words: they are the surface `removed-page`.)
     (
         "/{slug}",
         "the wiki's front page: a page at the tip, and the wiki's own facts",
-    ),
-    (
-        "/{slug}/-/raw/{*title}",
-        "the tip's file as stored; the content of a view's tip cannot be hidden",
     ),
     ("/{slug}/-/search", "searches the tip's text only"),
     (
@@ -277,20 +295,14 @@ pub const SHOWS_NONE: &[(&str, &str)] = &[
         "/{slug}/-/moderate/unhide",
         "restores what a hide hid, and answers with a redirect",
     ),
-    // The API's own: the tip, or the description of the API.
+    // The knowledge files that cannot be read: the form is aimed at one file as the tip holds it.
+    (
+        "/{slug}/-/knowledge/replace",
+        "a form aimed at one unreadable knowledge file as the view's tip holds it, which shows the file's name and the person's own text and reads no earlier revision; the content of a tip cannot be hidden",
+    ),
+    // The API's own: the tip, or the description of the API. (The members of a page and its raw and fragment also answer
+    // `page-gone` for a removed page: they are the surface `removed-page`.)
     ("/{slug}/-/api/v1/pages", "the list of the tip's pages"),
-    (
-        "/{slug}/-/api/v1/pages/{*title}",
-        "the page at the tip, whose content cannot be hidden",
-    ),
-    (
-        "/{slug}/-/api/v1/raw/{*title}",
-        "the tip's file as stored; the content of a view's tip cannot be hidden",
-    ),
-    (
-        "/{slug}/-/api/v1/fragment/{*title}",
-        "a part of the page at the tip, whose content cannot be hidden",
-    ),
     (
         "/{slug}/-/api/v1/backlinks/{*title}",
         "the links of the tip",
