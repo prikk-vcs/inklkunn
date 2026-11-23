@@ -571,6 +571,21 @@ impl GovernanceStore for MemoryStore {
             .collect())
     }
 
+    fn tombstone_events_of_id(
+        &self,
+        wiki: &WikiId,
+        kind: crate::governance::HiddenItemKind,
+        id: &str,
+    ) -> Result<Vec<TombstoneEvent>> {
+        Ok(self
+            .governance_lock()
+            .tombstones
+            .iter()
+            .filter(|t| t.wiki == *wiki && t.item.kind == kind && t.item.id == id)
+            .cloned()
+            .collect())
+    }
+
     fn tombstone_log(
         &self,
         wiki: &WikiId,

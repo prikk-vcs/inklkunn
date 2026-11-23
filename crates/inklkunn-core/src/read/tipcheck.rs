@@ -100,6 +100,19 @@ impl ReadService {
         Ok(Some(Revealed { info, files }))
     }
 
+    /// The repository paths the change wrote (not the ones it deleted): `None` when it is too large to list. What a hiding of
+    /// the change's content is recorded against, one path at a time (the export names the page by it).
+    pub fn written_paths_of(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+    ) -> Result<Option<Vec<String>>, ReadError> {
+        Ok(match self.written_paths(wiki, block_id)? {
+            TouchesOf::Paths(paths) => Some(paths),
+            TouchesOf::TooLarge => None,
+        })
+    }
+
     fn bytes_at(
         &self,
         wiki: &WikiRecord,

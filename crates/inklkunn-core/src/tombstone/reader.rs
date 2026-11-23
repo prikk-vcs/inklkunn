@@ -134,7 +134,18 @@ impl Tombstones {
 
     /// What is hidden of the change `block` (a page revision): its content, its summary, its author.
     pub fn page_revision(&self, wiki: &WikiId, block: &str) -> Result<Hidden, Unreadable> {
-        self.of_item(wiki, &page_item(block))
+        self.of_change(wiki, block)
+    }
+
+    /// Every hiding of the change, **whatever its reference**: the content is hidden per page (the reference is the page's
+    /// repository path, which the export reads), the summary and the author for the change as a whole. A hiding of any page's
+    /// content hides the change's content from every surface (a surface cannot tell the pages apart without reading them).
+    pub fn of_change(&self, wiki: &WikiId, block: &str) -> Result<Hidden, Unreadable> {
+        let events =
+            self.governance
+                .tombstone_events_of_id(wiki, HiddenItemKind::PageRevision, block)?;
+        // An unhide follows its hide in the same item (same reference); the chains are read together.
+        Ok(Hidden::of_events(&events))
     }
 
     /// What is hidden of revision `seq` of the proposal: what is recorded on it, and, when it was accepted, what is recorded

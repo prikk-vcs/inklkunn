@@ -650,23 +650,69 @@ impl ModerationService {
     fn hidden_of(
         &self,
         wiki: &WikiRecord,
-        canonical: &HiddenItem,
+        _canonical: &HiddenItem,
         item: &Item,
     ) -> Result<Hidden, ModerationError> {
-        let events = self
-            .governance
-            .tombstone_events_of(&wiki.id, canonical)
-            .map_err(unavailable)?;
-        let own = Hidden::of_events(&events);
-        // A proposal's revision answers with the page revision it became as well.
-        Ok(match item {
-            Item::ProposalRevision { proposal, seq } => own.with(
-                self.tombstones
-                    .proposal_revision(&wiki.id, proposal, *seq)
-                    .map_err(unavailable)?,
-            ),
-            _ => own,
-        })
+        let read = match item {
+            // A proposal's revision answers with the page revision it became as well.
+            Item::ProposalRevision { proposal, seq } => {
+                self.tombstones.proposal_revision(&wiki.id, proposal, *seq)
+            }
+            Item::PageRevision { block, .. } => self.tombstones.of_change(&wiki.id, block),
+            Item::ProposalComment { comment, .. } => {
+                self.tombstones.proposal_comment(&wiki.id, comment)
+            }
+            Item::ClaimComment { comment, .. } => self.tombstones.claim_comment(&wiki.id, comment),
+        };
+        read.map_err(unavailable)
+    }
+
+    /// What to record for a hide: **the content of a change is recorded against each page the change wrote** (the reference is
+    /// the page's repository path, which the export names the page by), and what is of the change as a whole (its summary
+    /// and its author) once, with no reference. Everything else is one record.
+    fn records_of(
+        &self,
+        wiki: &WikiRecord,
+        canonical: &HiddenItem,
+        parts: HiddenParts,
+    ) -> Result<Vec<(HiddenItem, HiddenParts)>, ModerationError> {
+        if canonical.kind != HiddenItemKind::PageRevision || !parts.content {
+            return Ok(vec![(canonical.clone(), parts)]);
+        }
+        let paths = self
+            .read
+            .written_paths_of(wiki, &canonical.id)
+            .map_err(read_failure)?
+            .unwrap_or_default();
+        let content = HiddenParts {
+            content: true,
+            summary: false,
+            author: false,
+        };
+        let mut out: Vec<(HiddenItem, HiddenParts)> = if paths.is_empty() {
+            vec![(canonical.clone(), content)]
+        } else {
+            paths
+                .into_iter()
+                .map(|path| {
+                    (
+                        HiddenItem {
+                            reference: Some(path),
+                            ..canonical.clone()
+                        },
+                        content,
+                    )
+                })
+                .collect()
+        };
+        let rest = HiddenParts {
+            content: false,
+            ..parts
+        };
+        if !rest.is_empty() {
+            out.push((canonical.clone(), rest));
+        }
+        Ok(out)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -716,27 +762,35 @@ impl ModerationService {
                 notifier.declined(wiki, &after, &acting.account);
             }
         }
-        self.governance
-            .record_tombstone_event(&TombstoneEvent {
-                id: id.clone(),
-                wiki: wiki.id.clone(),
-                at: self.authorizer.now(),
-                act: TombstoneAct::Hide,
-                item: found.canonical.clone(),
-                parts,
-                category: Some(category),
-                note,
-                affected: found.affected.clone(),
-                by: Actor {
-                    account: acting.account.clone(),
-                    rung,
-                },
-                policy_block: acting.rules.block().map(str::to_owned),
-                of_event: None,
-                appeal: None,
-                declined_transition,
-            })
-            .map_err(store_failure)
+        let records = self.records_of(wiki, &found.canonical, parts)?;
+        for (n, (item, these)) in records.into_iter().enumerate() {
+            self.governance
+                .record_tombstone_event(&TombstoneEvent {
+                    id: if n == 0 {
+                        id.clone()
+                    } else {
+                        TombstoneEventId::new()
+                    },
+                    wiki: wiki.id.clone(),
+                    at: self.authorizer.now(),
+                    act: TombstoneAct::Hide,
+                    item,
+                    parts: these,
+                    category: Some(category),
+                    note: note.clone(),
+                    affected: found.affected.clone(),
+                    by: Actor {
+                        account: acting.account.clone(),
+                        rung,
+                    },
+                    policy_block: acting.rules.block().map(str::to_owned),
+                    of_event: None,
+                    appeal: None,
+                    declined_transition: if n == 0 { declined_transition } else { None },
+                })
+                .map_err(store_failure)?;
+        }
+        Ok(())
     }
 
     // ----------------------------------------------------------------------------------------------- unhide
@@ -852,7 +906,7 @@ impl ModerationService {
         self.authorize(principal, wiki)?;
         let event = self.in_force(wiki, hide)?;
         let found = self.find(wiki, item)?;
-        if found.canonical != event.item {
+        if found.canonical.kind != event.item.kind || found.canonical.id != event.item.id {
             return Err(ModerationError::NoSuchHiding);
         }
         self.audit_act(

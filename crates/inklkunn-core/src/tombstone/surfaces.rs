@@ -125,6 +125,7 @@ pub const SURFACES: &[Surface] = &[
             "/{slug}/-/proposals/{id}/withdraw",
         ],
         api: &[
+            "/{slug}/-/api/v1/proposals",
             "/{slug}/-/api/v1/proposals/{id}",
             "/{slug}/-/api/v1/proposals/{id}/draft",
             "/{slug}/-/api/v1/proposals/{id}/submission",
@@ -249,16 +250,31 @@ pub const SHOWS_NONE: &[(&str, &str)] = &[
         "/{slug}/-/protect",
         "the form that protects a page: titles and reasons",
     ),
+    (
+        "/{slug}/-/moderation",
+        "the moderation log: the item's address, the category, the role and the date, never the hidden content and never a name",
+    ),
+    (
+        "/{slug}/-/moderate",
+        "the form that hides: it names the item by its address and says what is hidden of it, never the content",
+    ),
+    (
+        "/{slug}/-/moderate/unhide",
+        "restores what a hide hid, and answers with a redirect",
+    ),
     // The API's own: the tip, or the description of the API.
     ("/{slug}/-/api/v1/pages", "the list of the tip's pages"),
-    ("/{slug}/-/api/v1/pages/{*title}", "the tip's page"),
+    (
+        "/{slug}/-/api/v1/pages/{*title}",
+        "the page at the tip, whose content cannot be hidden",
+    ),
     (
         "/{slug}/-/api/v1/raw/{*title}",
         "the tip's file as stored; the content of a view's tip cannot be hidden",
     ),
     (
         "/{slug}/-/api/v1/fragment/{*title}",
-        "a part of the tip's page",
+        "a part of the page at the tip, whose content cannot be hidden",
     ),
     (
         "/{slug}/-/api/v1/backlinks/{*title}",
@@ -284,6 +300,39 @@ pub const SHOWS_NONE: &[(&str, &str)] = &[
         "an address under the API that is not an endpoint",
     ),
 ];
+
+/// The one place hidden content is served: to the `moderate` rung, by an explicit act that is audited, never to anyone else
+/// (INV-13, Q-5).
+pub const REVEALS: &[(&str, &str)] = &[(
+    "/{slug}/-/moderate/show",
+    "shows the hidden parts of one item to the `moderate` rung, after an event of the audit trail (one line, never content), as the answer of a POST that no cache stores",
+)];
+
+/// What a route is, for the gate that holds every route to this list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Class {
+    /// A surface of the table: it shows a hidden item's tombstone in place of the hidden part.
+    Surface,
+    /// It shows no revision text, summary or author, for the stated reason.
+    ShowsNone,
+    /// The one act that shows hidden content to the `moderate` rung.
+    Reveals,
+    /// In no list: **a route that shows revision content and is not in the table fails the gate** (INV-13).
+    Unlisted,
+}
+
+/// Which list a route is in.
+pub fn classify(path: &str) -> Class {
+    if is_surface_route(path) {
+        Class::Surface
+    } else if shows_none(path).is_some() {
+        Class::ShowsNone
+    } else if REVEALS.iter().any(|(p, _)| *p == path) {
+        Class::Reveals
+    } else {
+        Class::Unlisted
+    }
+}
 
 /// The surface with this id.
 pub fn surface(id: &str) -> Option<&'static Surface> {

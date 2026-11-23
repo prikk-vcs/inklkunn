@@ -968,6 +968,15 @@ pub trait GovernanceStore: Send + Sync {
     fn tombstone_event(&self, id: &TombstoneEventId) -> Result<Option<TombstoneEvent>>;
     /// Every event of the item, oldest first; [`hidden_parts`] reads what is hidden now from them.
     fn tombstone_events_of(&self, wiki: &WikiId, item: &HiddenItem) -> Result<Vec<TombstoneEvent>>;
+    /// Every event of every item of this kind and identifier, **whatever its reference**, oldest first: the hidings of a change
+    /// are kept per page (the reference is the page's repository path) and for the change as a whole (no reference), and a
+    /// reader of a change asks for all of them at once.
+    fn tombstone_events_of_id(
+        &self,
+        wiki: &WikiId,
+        kind: HiddenItemKind,
+        id: &str,
+    ) -> Result<Vec<TombstoneEvent>>;
     /// The wiki's moderation log: at most `limit` events (never more than [`MAX_PAGE`], at least one), newest first,
     /// older than the event `before` when one is named ([`StoreError::NotFound`] when that is not an event of the wiki).
     fn tombstone_log(

@@ -766,6 +766,22 @@ impl GovernanceStore for SqliteStore {
         )
     }
 
+    fn tombstone_events_of_id(
+        &self,
+        wiki: &WikiId,
+        kind: HiddenItemKind,
+        id: &str,
+    ) -> Result<Vec<TombstoneEvent>> {
+        self.governance_rows(
+            &format!(
+                "SELECT {TOMBSTONE_COLUMNS} FROM tombstones WHERE wiki_id = ?1 AND item_kind = ?2 AND item_id = ?3 \
+                 ORDER BY seq"
+            ),
+            params![wiki.as_str(), kind.as_str(), id],
+            tombstone_of,
+        )
+    }
+
     fn tombstone_log(
         &self,
         wiki: &WikiId,

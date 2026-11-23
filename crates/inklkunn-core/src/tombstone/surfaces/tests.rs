@@ -56,3 +56,18 @@ fn each_part_of_a_revision_is_shown_by_some_surface() {
     assert!(shows_none("/{slug}/{*title}").is_some());
     assert_eq!(shows_none("/nowhere"), None);
 }
+
+#[test]
+fn a_route_is_classified_by_the_list_it_is_in_and_a_stranger_is_unlisted() {
+    assert_eq!(classify("/{slug}/-/history/{*title}"), Class::Surface);
+    assert_eq!(
+        classify("/{slug}/-/api/v1/history/{*title}"),
+        Class::Surface
+    );
+    assert_eq!(classify("/{slug}/-/search"), Class::ShowsNone);
+    assert_eq!(classify("/{slug}/-/moderate/show"), Class::Reveals);
+    assert_eq!(
+        classify("/{slug}/-/a-new-place-that-shows-text"),
+        Class::Unlisted
+    );
+}
