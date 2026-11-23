@@ -67,6 +67,10 @@ pub struct RestrictedRow {
     pub reason: String,
     /// When it ends, in Unix seconds.
     pub until: i64,
+    /// The rung of the person who set it, and the block of the rules in force when they did (RFC 006 D-5; never a name).
+    pub by_rung: Role,
+    /// The block of the rules in force when it was set, `None` for the defaults.
+    pub policy_block: Option<String>,
     /// May the person who is looking renew or lift it?
     pub may_act: bool,
 }
@@ -228,6 +232,8 @@ impl PeopleService {
                 name: name_of(&r.account)?,
                 reason: r.reason.clone().unwrap_or_default(),
                 until: r.expires_at.unwrap_or(i64::MAX),
+                by_rung: r.by.rung,
+                policy_block: r.policy_block.clone(),
                 may_act: check_restrict(
                     viewer_rung.unwrap_or(Role::Observer),
                     moderate,

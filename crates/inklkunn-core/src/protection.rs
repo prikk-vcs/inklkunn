@@ -56,6 +56,17 @@ pub enum Kind {
     },
 }
 
+/// Who put a temporary protection in place, as a surface names the decision (RFC 006 D-5, criterion 12: every decision shows the
+/// rung and the policy block): the rung the person held, and the block of the rules in force then. **No name**: the record has
+/// the person, and a surface says the role.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SetBy {
+    /// The rung the person held.
+    pub rung: Role,
+    /// The block that set the rules in force, `None` for the defaults.
+    pub block: Option<String>,
+}
+
 /// One protection in force on a page, as every surface shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Notice {
@@ -63,6 +74,7 @@ pub struct Notice {
     target: Target,
     require: Require,
     reason: String,
+    set_by: Option<SetBy>,
 }
 
 impl Notice {
@@ -73,6 +85,7 @@ impl Notice {
             target,
             require,
             reason: reason.to_owned(),
+            set_by: None,
         }
     }
 
@@ -83,6 +96,7 @@ impl Notice {
             target,
             require,
             reason: reason.to_owned(),
+            set_by: None,
         }
     }
 
@@ -102,12 +116,23 @@ impl Notice {
             ProtectionKind::Page => Target::Path(event.target.clone()),
             ProtectionKind::Namespace => Target::Namespace(event.target.clone()),
         };
-        Some(Notice::temporary(
+        let mut notice = Notice::temporary(
             target,
             require,
             event.reason.as_deref().unwrap_or_default(),
             until,
-        ))
+        );
+        notice.set_by = Some(SetBy {
+            rung: event.by.rung,
+            block: event.policy_block.clone(),
+        });
+        Some(notice)
+    }
+
+    /// Who put it in place, for a temporary protection: the rung and the block of the rules (never a name). A standing one is the
+    /// policy's, whose block is the policy's own.
+    pub fn set_by(&self) -> Option<&SetBy> {
+        self.set_by.as_ref()
     }
 
     /// Which kind it is.
@@ -178,6 +203,25 @@ pub fn notices_for(
     let mut out: Vec<Notice> = Vec::new();
     for notice in standing.chain(temporary) {
         if titles.iter().any(|title| notice.covers_title(title)) && !out.contains(&notice) {
+            out.push(notice);
+        }
+    }
+    out
+}
+
+/// **Every** protection in force at `at`, standing first and then temporary, each once: what the policy page and the API list
+/// (`temporary` is what the store holds for the wiki, each judged against `at` again).
+pub fn notices_in_force(policy: &Policy, temporary: &[ProtectionEvent], at: i64) -> Vec<Notice> {
+    let standing = policy
+        .protections()
+        .iter()
+        .map(|p| Notice::standing(p.target().clone(), p.require(), p.reason()));
+    let temporary = temporary
+        .iter()
+        .filter_map(|event| Notice::of_record(event, at));
+    let mut out: Vec<Notice> = Vec::new();
+    for notice in standing.chain(temporary) {
+        if !out.contains(&notice) {
             out.push(notice);
         }
     }

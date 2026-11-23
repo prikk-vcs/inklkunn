@@ -94,6 +94,7 @@
 mod chars;
 mod constitution;
 pub mod defaults;
+pub mod draft;
 mod fault;
 mod limits;
 mod locate;

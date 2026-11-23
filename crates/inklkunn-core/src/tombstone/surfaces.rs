@@ -192,6 +192,16 @@ pub const SURFACES: &[Surface] = &[
         api: &[],
         test: "surface_inbox",
     },
+    Surface {
+        // The page of the rules names, for each change of them, the proposal that made it by its summary (RFC 006 D-11, G-T7):
+        // a hidden summary is the tombstone's words there, and no author is named. The sentences of what a change did are the
+        // rules' own, said from the files; the API's members of the rules name no proposal.
+        id: "rules-history",
+        shows: Shows::new(false, true, false),
+        routes: &["/{slug}/-/policy"],
+        api: &[],
+        test: "surface_rules_history",
+    },
 ];
 
 /// The routes and API members that show **no** revision text, summary or author, each with the reason: a route is here only
@@ -294,6 +304,28 @@ pub const SHOWS_NONE: &[(&str, &str)] = &[
     (
         "/{slug}/-/moderate/unhide",
         "restores what a hide hid, and answers with a redirect",
+    ),
+    // The rules of the wiki (RFC 006 D-11, D-12; handoff G-T7): sentences of the rules in force, never a revision. (The page of the
+    // rules also names the proposals that changed them: it is the surface `rules-history`.)
+    (
+        "/{slug}/-/policy/edit",
+        "the form that proposes a change to the rules: the rules in force, in controls, and the person's own text",
+    ),
+    (
+        "/{slug}/-/api/v1/policy",
+        "the rules in force as data: no revision, no comment, no proposal",
+    ),
+    (
+        "/{slug}/-/api/v1/protections",
+        "the protections in force: titles, reasons and ends",
+    ),
+    (
+        "/{slug}/-/api/v1/moderation-log",
+        "the moderation log as data: the item's identifier, the category, the role and the date, never the hidden content and never a name",
+    ),
+    (
+        "/{slug}/-/api/v1/appeals/mine",
+        "the caller's own appeals, and nobody else's",
     ),
     // The knowledge files that cannot be read: the form is aimed at one file as the tip holds it.
     (

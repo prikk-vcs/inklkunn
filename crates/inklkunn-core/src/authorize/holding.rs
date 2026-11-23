@@ -27,6 +27,10 @@ pub struct RestrictionNotice {
     pub reason: String,
     /// When it ends, in Unix seconds: from that second on it no longer applies.
     pub until: i64,
+    /// The rung of the person who set it (never a name).
+    pub by_rung: Role,
+    /// The block that set the rules in force when it was set, `None` for the defaults (RFC 006 D-5).
+    pub policy_block: Option<String>,
 }
 
 impl RestrictionNotice {
@@ -36,6 +40,8 @@ impl RestrictionNotice {
             reason: event.reason.clone().unwrap_or_default(),
             // A restriction in force always has an end; the store's own check says so.
             until: event.expires_at.unwrap_or(i64::MAX),
+            by_rung: event.by.rung,
+            policy_block: event.policy_block.clone(),
         }
     }
 }

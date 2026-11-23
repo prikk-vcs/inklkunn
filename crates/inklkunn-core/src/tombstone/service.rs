@@ -197,6 +197,9 @@ pub struct LogRow {
     pub category: Option<ReasonCategory>,
     /// The rung that acted.
     pub rung: Role,
+    /// The block that set the rules in force when it was done, `None` for the defaults (RFC 006 D-5: every decision shows the rung
+    /// and the policy block).
+    pub policy_block: Option<String>,
     /// The note, **for the `moderate` rung only**.
     pub note: Option<String>,
     /// For a hide that is in force now: it can still be unhidden.
@@ -1098,6 +1101,7 @@ impl ModerationService {
                 parts: e.parts,
                 category: hide.as_ref().and_then(|h| h.category),
                 rung: e.by.rung,
+                policy_block: e.policy_block.clone(),
                 note: if may_note {
                     hide.as_ref().and_then(|h| h.note.clone())
                 } else {

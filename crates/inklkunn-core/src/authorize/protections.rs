@@ -29,7 +29,7 @@ use super::{
 use crate::governance::{
     PlatformLimits, Require, Rules, Target, is_canonical_title, is_valid_reason,
 };
-use crate::protection::{Notice, notices_for, titles_of};
+use crate::protection::{Notice, notices_for, notices_in_force, titles_of};
 
 /// Where an [`Authorizer`] keeps and reads temporary protections: the governance store, and the platform's limit on how long
 /// one may last.
@@ -244,6 +244,28 @@ impl Authorizer {
         };
         self.protections_for_titles(wiki, titles, &rules, (self.clock)())
             .unwrap_or_default()
+    }
+
+    /// **Every** protection in force in the wiki, the policy's first and then the temporary ones that have not ended (the policy page
+    /// and the read API: one display for both kinds). Only to someone who may read the wiki: anyone else, and a wiki that is not there,
+    /// gets none, as for every read. `None` is *could not be read now* (the rules or the records could not be asked): a page says so
+    /// and does not list half of them.
+    pub fn protections_in_force(
+        &self,
+        principal: &Principal,
+        wiki: &WikiId,
+    ) -> Option<Vec<Notice>> {
+        let Ok(facts) = self.facts(principal, Action::Read, wiki) else {
+            return None;
+        };
+        if !decide_under(facts.snapshot, &facts.rules, principal, Action::Read, false).is_allowed()
+        {
+            return Some(Vec::new());
+        }
+        let rules = self.source.rules(wiki).ok()?;
+        let now = (self.clock)();
+        let temporary = self.temporary_protections(wiki, now).ok()?;
+        Some(notices_in_force(rules.policy(), &temporary, now))
     }
 
     /// Would a request to protect a page be heard? **A hint for what to show** (the link on a page, the form), decided as the

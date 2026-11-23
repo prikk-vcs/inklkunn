@@ -443,7 +443,7 @@ impl ReadService {
     }
 
     /// Did this block change one of the two governance files? A block never changes, so each is asked about once.
-    fn changed_governance(
+    pub(super) fn changed_governance(
         &self,
         wiki: &WikiRecord,
         repo: &std::path::Path,

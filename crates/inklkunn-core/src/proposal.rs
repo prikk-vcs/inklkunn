@@ -847,6 +847,20 @@ impl ProposalService {
         wiki: &WikiRecord,
         proposal: &ProposalRecord,
     ) -> Result<Option<ApprovalsWarning>> {
+        self.warning_without(wiki, Some(&proposal.author))
+    }
+
+    /// [`ProposalService::approvals_warning`] for **the rules as such**, as the policy page and the read API say it: no proposer is
+    /// left out of the people who could give the approvals (RFC 006 D-4).
+    pub fn rules_approvals_warning(&self, wiki: &WikiRecord) -> Result<Option<ApprovalsWarning>> {
+        self.warning_without(wiki, None)
+    }
+
+    fn warning_without(
+        &self,
+        wiki: &WikiRecord,
+        proposer: Option<&AccountId>,
+    ) -> Result<Option<ApprovalsWarning>> {
         let Some(roles) = &self.roles else {
             return Ok(None);
         };
@@ -864,7 +878,7 @@ impl ProposalService {
         let holders = roles
             .grants_in(&wiki.id)?
             .iter()
-            .filter(|g| g.role >= review && g.account != proposal.author)
+            .filter(|g| g.role >= review && Some(&g.account) != proposer)
             .count();
         Ok(approvals_warning(policy, holders))
     }
