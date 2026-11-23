@@ -38,6 +38,7 @@ pub(crate) fn rule_key(rule: Rule) -> Key {
         Rule::PlatformLimit(Limit::LimitDays) => Key::GovernanceRulePlatformLimitLimitDays,
         Rule::OutsideDefaultView => Key::GovernanceRuleOutsideDefaultView,
         Rule::UnknownFile => Key::GovernanceRuleUnknownFile,
+        Rule::NotAFile => Key::GovernanceRuleNotAFile,
     }
 }
 

@@ -15,6 +15,10 @@
 //! **Only the default view's tip** is ever read (D-1; threat model C-3e). A proposal in another view that touches
 //! `governance/` is refused at acceptance, and a governance file that is in another view is read by nobody.
 //!
+//! **Fail closed on every shape.** A governance file that is not there has its defaults; anything else at its place (a
+//! directory, a link, a device, or a file whose mode says it is none) is a read fault naming the path
+//! ([`Refusal::NotAFile`]), as a file that cannot be read is, and never the defaults ([`shape_at`]).
+//!
 //! **What a read costs.** A decision that the rules cannot change (a read, an anonymous caller, an absent wiki) does not ask
 //! for them. For the others: nothing while the tip is held; one `branch list` and one `log` at a new tip; and at a tip whose
 //! rules are not stored, one `tree` and, where a file is there, one `cat` of it and the walk for its block. The walk looks
@@ -211,12 +215,17 @@ impl ReadService {
         let mut snapshot = GovernanceSnapshot::default();
         let mut present = false;
         for file in GovernanceFile::ALL {
-            let Some(entry) = listing
-                .entries
-                .iter()
-                .find(|e| e.kind == "file" && e.path == file.path())
-            else {
-                continue;
+            let entry = match shape_at(&listing.entries, file) {
+                Shape::Absent => continue,
+                Shape::NotAFile => {
+                    // Something that is not an ordinary file is where the file belongs: read as no file, it would be read as the
+                    // defaults, and the rules would say less than the repository does. It is a fault, as an unreadable file is.
+                    present = true;
+                    let fault = ReadFault::from_stored(file, None, Refusal::NotAFile);
+                    snapshot.fault.get_or_insert_with(|| stored_fault(&fault));
+                    continue;
+                }
+                Shape::File(entry) => entry,
             };
             present = true;
             let read = match self.read_governance_file(wiki, &point, file, entry)? {
@@ -320,10 +329,48 @@ impl ReadService {
             .flat_map(|patch| &patch.operations)
             .flat_map(|op| &op.paths)
             .filter_map(|p| p.path.as_deref())
-            .any(|path| GovernanceFile::of_path(path).is_some());
+            .any(|path| GovernanceFile::at_or_below(path).is_some());
         self.rules.remember_touching(&wiki.id, block, touches);
         Ok(touches)
     }
+}
+
+/// What a listing of `governance/` has at the place of one of the two files.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Shape<'a> {
+    /// Nothing at the place, and nothing below it: the file is not there (its defaults).
+    Absent,
+    /// An ordinary file.
+    File(&'a Entry),
+    /// Anything else: an entry of the path that is not an ordinary file (a directory, a link, a device: by its kind or by
+    /// the type bits of its mode), or anything below the path (the listing names files, so a directory is told by what is in
+    /// it). **Never skipped**: the wiki fails closed on it.
+    NotAFile,
+}
+
+/// The `S_IFMT` bits of a POSIX mode, and the one an ordinary file has.
+const MODE_TYPE_MASK: u32 = 0o170_000;
+const MODE_REGULAR: u32 = 0o100_000;
+
+/// What the listing has at the place of `file`. Bounded by the listing, which is read whole already: one pass over it.
+pub(super) fn shape_at(entries: &[Entry], file: GovernanceFile) -> Shape<'_> {
+    let below = format!("{}/", file.path());
+    let mut found = Shape::Absent;
+    for entry in entries {
+        if entry.path.starts_with(&below) {
+            return Shape::NotAFile;
+        }
+        if entry.path != file.path() {
+            continue;
+        }
+        // A mode that carries no type bits says nothing about the type (the kind decides); one that does must be a file's.
+        let typed = entry.mode.map(|mode| mode & MODE_TYPE_MASK);
+        if entry.kind != "file" || typed.is_some_and(|t| t != 0 && t != MODE_REGULAR) {
+            return Shape::NotAFile;
+        }
+        found = Shape::File(entry);
+    }
+    found
 }
 
 /// A governance file as it was read.

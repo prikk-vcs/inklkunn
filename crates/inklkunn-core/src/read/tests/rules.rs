@@ -194,6 +194,120 @@ fn a_governance_file_that_cannot_be_read_is_a_fault_with_its_file_and_line_and_t
 }
 
 #[test]
+fn a_directory_where_a_governance_file_belongs_is_a_fault_naming_the_path_and_never_the_defaults() {
+    for (file, nested) in [
+        ("governance/policy.yaml", "governance/policy.yaml/inner.txt"),
+        (
+            "governance/constitution.yaml",
+            "governance/constitution.yaml/a/b.txt",
+        ),
+    ] {
+        let w = world();
+        // The listing names files, so a directory at the file's place is told by what is in it.
+        write(&w, &[(nested, "x\n")]);
+        let block = w.fake().block_id();
+        let rules = rules(&w);
+        let fault = rules.fault().expect("a fault, not the defaults");
+        assert_eq!(fault.file().path(), file);
+        assert_eq!(fault.refusal(), Refusal::NotAFile);
+        assert_eq!(fault.line(), None);
+        assert!(
+            fault.to_string().starts_with(file),
+            "names the path: {fault}"
+        );
+        // The block that made it is named, as for any change of a governance file.
+        assert_eq!(rules.block(), Some(block.as_str()));
+        // Kept in the row and read back whole, as every fault is.
+        let service = World::service_over(&w.counting, &w.store, &w.layout, config())
+            .with_governance_snapshots(w.store.clone());
+        service.rules_of(&w.wiki).expect("built");
+        let restarted = World::service_over(&w.counting, &w.store, &w.layout, config())
+            .with_governance_snapshots(w.store.clone());
+        let again = restarted.rules_of(&w.wiki).expect("stored");
+        assert_eq!(again.fault().map(|f| f.refusal()), Some(Refusal::NotAFile));
+        // A sound file beside it changes nothing: the rules stay the fault, and no half of them decides.
+        let beside = if file == "governance/policy.yaml" {
+            ("governance/constitution.yaml", CONSTITUTION)
+        } else {
+            ("governance/policy.yaml", POLICY)
+        };
+        write(&w, &[beside]);
+        let still = self::rules(&w);
+        assert_eq!(still.fault().map(|f| f.file().path()), Some(file));
+        assert_eq!(*still.policy(), crate::governance::Policy::default());
+    }
+}
+
+#[test]
+fn the_shape_at_the_place_of_a_governance_file_is_a_file_or_nothing_and_every_other_entry_is_not_a_file()
+ {
+    use crate::governance::GovernanceFile::{Constitution, Policy};
+    use crate::read::rules::{Shape, shape_at};
+    let entry = |path: &str, kind: &str, mode: Option<u32>| inklkunn_prikk::Entry {
+        path: path.to_owned(),
+        kind: kind.to_owned(),
+        encoding: None,
+        mode,
+        size: Some(1),
+    };
+    let policy = "governance/policy.yaml";
+    // Nothing, and what is only alike: the file is absent (its defaults).
+    assert_eq!(shape_at(&[], Policy), Shape::Absent);
+    for path in [
+        "governance/constitution.yaml",
+        "governance/policy.yaml.bak",
+        "governance/policy.yam",
+        "governance/policy-yaml/x",
+        "pages/policy.yaml",
+    ] {
+        assert_eq!(
+            shape_at(&[entry(path, "file", None)], Policy),
+            Shape::Absent,
+            "{path}"
+        );
+    }
+    // An ordinary file, whatever its permission bits.
+    for mode in [None, Some(0o100_644), Some(0o100_755), Some(0o644)] {
+        let listed = [entry(policy, "file", mode)];
+        assert_eq!(
+            shape_at(&listed, Policy),
+            Shape::File(&entry(policy, "file", mode)),
+            "{mode:?}"
+        );
+        assert_eq!(shape_at(&listed, Constitution), Shape::Absent);
+    }
+    // Everything else: a directory by its kind, a link, a device, a socket by their mode, anything below the path.
+    assert_eq!(
+        shape_at(&[entry(policy, "dir", None)], Policy),
+        Shape::NotAFile
+    );
+    assert_eq!(
+        shape_at(&[entry(policy, "symlink", None)], Policy),
+        Shape::NotAFile
+    );
+    for mode in [
+        0o120_777, 0o060_000, 0o020_000, 0o140_000, 0o010_000, 0o040_755,
+    ] {
+        assert_eq!(
+            shape_at(&[entry(policy, "file", Some(mode))], Policy),
+            Shape::NotAFile,
+            "{mode:o}"
+        );
+    }
+    assert_eq!(
+        shape_at(&[entry("governance/policy.yaml/x", "file", None)], Policy),
+        Shape::NotAFile
+    );
+    // Wherever it is in the listing, and whatever else is beside it.
+    let mixed = [
+        entry("governance/constitution.yaml", "file", Some(0o100_644)),
+        entry("governance/policy.yaml/x", "file", None),
+    ];
+    assert_eq!(shape_at(&mixed, Policy), Shape::NotAFile);
+    assert!(matches!(shape_at(&mixed, Constitution), Shape::File(_)));
+}
+
+#[test]
 fn the_fault_is_kept_in_the_row_and_read_back_whole() {
     let w = world();
     write(

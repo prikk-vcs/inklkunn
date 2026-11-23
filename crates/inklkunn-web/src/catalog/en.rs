@@ -3316,6 +3316,10 @@ pub const CATALOG: &[Entry] = &[
         "Under governance/ there are exactly two files, constitution.yaml and policy.yaml, and this change is to another.",
     ),
     msg(
+        "governance.rule_not_a_file",
+        "Where this file belongs there is something that is not an ordinary file.",
+    ),
+    msg(
         "outcome.governance_rung",
         "Not signed: this change to the rules of this wiki needs a higher role",
     ),

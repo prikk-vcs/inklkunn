@@ -3377,6 +3377,10 @@ pub const CATALOG: &[Entry] = &[
         "governance/ にあるのは constitution.yaml と policy.yaml の 2 つのファイルだけで、この変更は別のファイルについてです。",
     ),
     msg(
+        "governance.rule_not_a_file",
+        "このファイルがあるべき場所に、通常のファイルではないものがあります。",
+    ),
+    msg(
         "outcome.governance_rung",
         "署名されませんでした: このウィキのルールの変更には、より上の役割が必要です",
     ),

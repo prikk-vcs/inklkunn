@@ -270,6 +270,7 @@ mod governance_pages {
         let en = T::new(EN);
         for (rule, key) in [
             (Refusal::UnknownFile, Key::GovernanceRuleUnknownFile),
+            (Refusal::NotAFile, Key::GovernanceRuleNotAFile),
             (
                 Refusal::OutsideDefaultView,
                 Key::GovernanceRuleOutsideDefaultView,

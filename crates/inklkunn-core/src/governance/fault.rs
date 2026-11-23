@@ -43,6 +43,17 @@ impl GovernanceFile {
     pub fn of_path(path: &str) -> Option<GovernanceFile> {
         GovernanceFile::ALL.into_iter().find(|f| f.path() == path)
     }
+
+    /// The file a repository path is, **or whose place it is below** (a directory made where a file belongs): what a block
+    /// that changed the shape of one of the two paths is recognized by (handoff G-T1 correction C-5).
+    pub fn at_or_below(path: &str) -> Option<GovernanceFile> {
+        GovernanceFile::ALL.into_iter().find(|f| {
+            path == f.path()
+                || path
+                    .strip_prefix(f.path())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    }
 }
 
 /// Which two rungs of the ordering rule (RFC 006 D-2: `propose` ≤ `review` ≤ `accept`, and `moderate` ≥ `reviewer`)
@@ -115,12 +126,16 @@ pub enum Refusal {
     /// (exactly `governance/constitution.yaml` and `governance/policy.yaml`), and no other file there is part of the
     /// rules of a wiki.
     UnknownFile,
+    /// Where one of the two governance files belongs there is something that is not an ordinary file (a directory, a link,
+    /// anything else): the rules of a wiki are read from files, so the wiki refuses every write until it is put right. (Found
+    /// in a repository, never written by a proposal; handoff G-T1 correction C-5.)
+    NotAFile,
 }
 
 impl Refusal {
     /// Every refusal, in the order of the declaration. [`Refusal::from_name`] reads this list, and a test holds that it
     /// is complete (a refusal that is not here is one the stored name of a snapshot could not be read back as).
-    pub const ALL: [Refusal; 18] = [
+    pub const ALL: [Refusal; 19] = [
         Refusal::NotText,
         Refusal::TooLong,
         Refusal::WrongShape,
@@ -139,6 +154,7 @@ impl Refusal {
         Refusal::PlatformLimit(Limit::LimitDays),
         Refusal::OutsideDefaultView,
         Refusal::UnknownFile,
+        Refusal::NotAFile,
     ];
 
     /// The refusal a stable [`name`](Refusal::name) is of.
@@ -169,6 +185,7 @@ impl Refusal {
             Refusal::PlatformLimit(Limit::LimitDays) => "platform-limit-limit-days",
             Refusal::OutsideDefaultView => "outside-default-view",
             Refusal::UnknownFile => "unknown-file",
+            Refusal::NotAFile => "not-a-file",
         }
     }
 
@@ -211,6 +228,9 @@ impl Refusal {
             }
             Refusal::UnknownFile => {
                 "governance/ holds exactly two files, constitution.yaml and policy.yaml, and this is neither"
+            }
+            Refusal::NotAFile => {
+                "there is something at the file's place that is not an ordinary file"
             }
         }
     }

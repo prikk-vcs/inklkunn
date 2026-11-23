@@ -1714,6 +1714,7 @@ keys! {
     GovernanceRulePlatformLimitLimitDays => "governance.rule_platform_limit_limit_days",
     GovernanceRuleOutsideDefaultView => "governance.rule_outside_default_view",
     GovernanceRuleUnknownFile => "governance.rule_unknown_file",
+    GovernanceRuleNotAFile => "governance.rule_not_a_file",
     OutcomeGovernanceRung => "outcome.governance_rung",
     OutcomeNoteGovernanceRungMaintainer => "outcome_note.governance_rung_maintainer",
     OutcomeNoteGovernanceRungAdmin => "outcome_note.governance_rung_admin",

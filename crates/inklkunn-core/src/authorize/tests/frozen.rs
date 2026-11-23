@@ -35,6 +35,36 @@ pub(super) mod v0_3_0 {
         pub role: Option<Role>,
     }
 
+    /// 0.3.0's roles, lowest first, **written out**: the order the rule's `>=` means. (Not `Role::ALL`, and not the product's
+    /// own `Ord`: a drift of either must not move this side of the comparison with the other.)
+    pub const ROLES: [Role; 6] = [
+        Role::Observer,
+        Role::Questioner,
+        Role::Contributor,
+        Role::Reviewer,
+        Role::Maintainer,
+        Role::Admin,
+    ];
+
+    /// 0.3.0's credential scopes, narrowest first, written out for the same reason.
+    pub const SCOPES: [Scope; 5] = [
+        Scope::Read,
+        Scope::Propose,
+        Scope::Review,
+        Scope::Accept,
+        Scope::Admin,
+    ];
+
+    /// A role's place in [`ROLES`].
+    fn role_rank(role: Role) -> usize {
+        ROLES.iter().position(|r| *r == role).unwrap()
+    }
+
+    /// A scope's place in [`SCOPES`].
+    fn scope_rank(scope: Scope) -> usize {
+        SCOPES.iter().position(|s| *s == scope).unwrap()
+    }
+
     /// 0.3.0's `Action::minimum_role`.
     pub const fn minimum_role(action: Action) -> Role {
         match action {
@@ -70,9 +100,9 @@ pub(super) mod v0_3_0 {
             Principal::Anonymous => action == Action::Read && visibility == Visibility::Public,
             Principal::Account(a) => {
                 let scope = a.scope();
-                scope >= required_scope(action)
+                scope_rank(scope) >= scope_rank(required_scope(action))
                     && match snapshot.role {
-                        Some(role) => role >= minimum_role(action),
+                        Some(role) => role_rank(role) >= role_rank(minimum_role(action)),
                         None => action == Action::Read && visibility != Visibility::Restricted,
                     }
             }
@@ -93,11 +123,29 @@ pub(super) mod v0_3_0 {
     }
 }
 
+/// No grant, then each of 0.3.0's six roles, in the frozen order.
 fn grants() -> Vec<Option<Role>> {
     std::iter::once(None)
-        .chain(Role::ALL.into_iter().map(Some))
+        .chain(v0_3_0::ROLES.into_iter().map(Some))
         .collect()
 }
+
+/// What the table decides about: the product's resource kinds and, beside them, **each governance file as a page** (a wiki
+/// with no governance decides a page there as it decides any other, and 0.3.0 had no rule for the path).
+fn frozen_resources(wiki: &WikiId) -> Vec<Resource> {
+    let mut all = resources(wiki);
+    for path in ["governance/policy.yaml", "governance/constitution.yaml"] {
+        all.push(Resource::Page {
+            wiki: wiki.clone(),
+            path: path.into(),
+        });
+    }
+    all
+}
+
+/// 4 wikis (3 visibilities and one that is absent) x (anonymous + system + 7 grants x 5 scopes) x 10 actions x 8 resources
+/// (six kinds and the two governance files as pages). Written as the numbers it is, so that a table that shrinks fails.
+const COMPARED: usize = 4 * (2 + 7 * 5) * 10 * 8;
 
 /// A store with a wiki of each visibility and, in each, one account per grant (and one with none).
 struct Table {
@@ -158,7 +206,7 @@ fn principals(table: &Table) -> Vec<(Option<Role>, Principal)> {
     let mut out: Vec<(Option<Role>, Principal)> =
         vec![(None, Principal::Anonymous), (None, v0_3_0::system())];
     for (role, id) in &table.accounts {
-        for scope in Scope::ALL {
+        for scope in v0_3_0::SCOPES {
             out.push((*role, Principal::token(&authority, id.clone(), scope)));
         }
     }
@@ -192,7 +240,7 @@ fn every_decision_is_0_3_0s(authorizer: &Authorizer, table: &Table) -> usize {
                     &principal,
                     action,
                 );
-                for resource in resources(&wiki) {
+                for resource in frozen_resources(&wiki) {
                     let got = authorizer.authorize(&principal, action, &resource);
                     assert_eq!(
                         got.is_allowed(),
@@ -215,8 +263,22 @@ fn criterion_1_a_wiki_with_no_governance_decides_every_action_as_0_3_0_does() {
     let source = StoreAuthz::new(table.store.clone(), table.store.clone());
     let authorizer = Authorizer::new(Arc::new(source), audit).with_clock(super::clock);
     let compared = every_decision_is_0_3_0s(&authorizer, &table);
-    // 4 wikis (3 visibilities and one that is absent) x (anonymous + system + 7 grants x 5 scopes) x 10 actions x 6 resources.
-    assert_eq!(compared, 4 * (2 + 7 * 5) * 10 * 6);
+    assert_eq!(compared, COMPARED);
+}
+
+#[test]
+fn the_inputs_of_the_table_are_0_3_0s_and_the_product_orders_them_as_it_did() {
+    // The frozen side's lists are literals; the product's own lists and orders must be the same, or this fails loudly.
+    assert_eq!(Role::ALL, v0_3_0::ROLES);
+    assert_eq!(Scope::ALL, v0_3_0::SCOPES);
+    for (lower, higher) in v0_3_0::ROLES.iter().zip(v0_3_0::ROLES.iter().skip(1)) {
+        assert!(lower < higher, "{lower:?} below {higher:?}");
+    }
+    for (lower, higher) in v0_3_0::SCOPES.iter().zip(v0_3_0::SCOPES.iter().skip(1)) {
+        assert!(lower < higher, "{lower:?} below {higher:?}");
+    }
+    assert_eq!(Action::ALL.len(), 10);
+    assert_eq!(VISIBILITIES.len(), 3);
 }
 
 #[test]
@@ -250,7 +312,7 @@ fn the_default_policy_and_the_defaults_of_the_rule_are_0_3_0s_table() {
 fn the_pure_rule_with_no_governance_is_0_3_0s_for_every_snapshot() {
     for visibility in std::iter::once(None).chain(VISIBILITIES.into_iter().map(Some)) {
         for role in grants() {
-            for scope in Scope::ALL {
+            for scope in v0_3_0::SCOPES {
                 for principal in [
                     Principal::Anonymous,
                     v0_3_0::system(),
@@ -303,5 +365,5 @@ fn criterion_1_holds_through_the_loader_over_a_repository_with_no_governance() {
     let audit = Arc::new(MemoryAudit::new());
     let authorizer = Authorizer::new(Arc::new(source), audit).with_clock(super::clock);
     let compared = every_decision_is_0_3_0s(&authorizer, &table);
-    assert_eq!(compared, 4 * (2 + 7 * 5) * 10 * 6);
+    assert_eq!(compared, COMPARED);
 }

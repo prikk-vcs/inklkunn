@@ -828,6 +828,43 @@ fn criterion_5_the_repair_by_an_admin_works_end_to_end_and_nothing_else_does() {
 }
 
 #[test]
+fn criterion_5_a_directory_where_a_governance_file_belongs_refuses_every_write_naming_the_path() {
+    let Some(w) = World::new("crit5-dir", PlatformLimits::default()) else {
+        return;
+    };
+    let open = w.propose(
+        "Say it in Spanish",
+        &[("pages/Home.md", Some(&home_changed()))],
+    );
+    // A directory is where `governance/policy.yaml` belongs: written outside inklkunn, as an import or a hand edit would.
+    // (prikk keeps no links, so a directory is the one non-file a repository holds there.) It is no file, so it was read as
+    // the defaults before this check.
+    let broke = w.write_outside(&[("governance/policy.yaml/inner.txt", "x\n")]);
+    let rules = w.reads.rules_of(&w.wiki).unwrap();
+    let fault = rules.fault().expect("the wiki's governance cannot be read");
+    assert_eq!(fault.file().path(), "governance/policy.yaml");
+    assert_eq!(
+        fault.refusal(),
+        inklkunn_core::governance::Refusal::NotAFile
+    );
+    assert!(
+        fault.to_string().starts_with("governance/policy.yaml: "),
+        "{fault}"
+    );
+    assert_eq!(rules.block(), Some(broke.as_str()));
+    // Every write refuses, naming the path; a read works.
+    let before = (w.tip(), w.history_len());
+    for who in [&w.admin, &w.maintainer] {
+        let e = w.accept(who, &open.id).unwrap_err();
+        assert!(matches!(e, AcceptFailure::RulesUnreadable(_)), "{e:?}");
+        assert!(e.to_string().contains("governance/policy.yaml"), "{e}");
+    }
+    assert_eq!((w.tip(), w.history_len()), before, "nothing was written");
+    assert_eq!(w.state(&open.id), ProposalState::HeldForReview);
+    assert!(w.file("pages/Home.md").unwrap().contains("One."));
+}
+
+#[test]
 fn a_wiki_whose_files_are_fine_has_no_such_state_and_the_repair_is_not_the_hatch_of_a_good_wiki() {
     let Some(w) = World::new("crit5-fine", PlatformLimits::default()) else {
         return;
