@@ -193,3 +193,27 @@ admin's repair can clear something that stands at or below a governance path (C-
 Hand back as `006-governance-g-t1-d1-review-request.md`, alone or with G-T2 – G-T3's request
 (`006-governance-g-t2-g-t3-review-request.md`).
 
+## D-1, G-T2 and G-T3 reviewed: corrections F-1 – F-7 and E-1; G-T4 – G-T6 assignable (2026-11-23)
+
+All three are **Conditionally Approved** (`.git-exclude/reviewed/006-governance-g-t1-d1-review-result.md`,
+`.git-exclude/reviewed/006-governance-g-t2-g-t3-review-result.md`) and pushed. The details and tests are in the results.
+In short:
+- **F-1 (Medium, first).** Under the lease, `judge` refuses unless the acceptor holds `rungs.accept` (the hatch
+  excepted). The refusal is `restricted` when a restriction is the cause, otherwise `not-allowed`, and it comes before
+  the protection check.
+- **F-2.** The in-force checks for a restriction and a protection, and the last-admin guard, are one transaction with
+  their write, and *lift* ends every record in force.
+- **F-3.** The unreachable protection branch in `authorize()` is removed. Protections are enforced by `judge` at
+  acceptance, and only acceptance is limited.
+- **F-4.** A record that fails after its audit event gets a `failed` follow-up event.
+- **F-5.** `is_valid_reason` checks every reason; the typed target goes in the `moderate` audit detail; the store's
+  rustdoc says *title*.
+- **F-6.** A test for a restricted reviewer's approval.
+- **F-7.** A maintainer's grant depends on `maintainer` and `grant_up_to` alone, never on `rungs.moderate`.
+- **E-1.** For `not-a-file`, the page and the problem list what stands below the path (up to 50), with the repair's
+  sentence.
+
+Hand back as `006-governance-g-t2-g-t3-corrections-review-request.md` (F-1 may come first). **G-T4 – G-T6 are
+assignable now, beside the round** (one request for the group, `006-governance-g-t4-g-t6-review-request.md`). F-1 changes
+`judge`: merge it before G-T5's overturns touch acceptance.
+

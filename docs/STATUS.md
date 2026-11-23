@@ -691,6 +691,25 @@
   - **D-1** (beside G-T2 – G-T3): a repair can delete what stands where a governance file belongs. Otherwise a wiki in
     that state could never be repaired, since only the signer holds the key.
 
+- **2026-11-23 — D-1, G-T2 and G-T3 Conditionally Approved** (`175acb6`, pushed). An independent security review ran
+  beside the architect's.
+  - **G-T2:** role grants within a maintainer's reach, `entry`, and restrictions that cap an account at observer until
+    they expire, with the people page.
+  - **G-T3:** standing and temporary protections, enforced at acceptance.
+  - **D-1:** a repair can remove what stands where a governance file belongs.
+  - **Corrections, one round, F-1 first:**
+    - **F-1 (Medium):** under the lease, the acceptor's rung was not re-checked. A maintainer restricted while their
+      acceptance waited would still land it. This is G-T1's gap, missed in its review.
+    - **F-2:** the in-force checks are atomic with their writes.
+    - **F-3:** an unreachable protection branch is removed.
+    - **F-4:** a failed act leaves a `failed` audit event.
+    - **F-5:** one rule for reasons.
+    - **F-6:** a test for a restricted reviewer's approval.
+    - **F-7:** a maintainer's grant does not depend on `rungs.moderate`.
+    - **E-1:** the broken-rules page names what to remove.
+  - **For the owner at readiness:** 165 new Japanese messages, with two term questions (閲覧者; 管理者 for both the
+    wiki role and the server's operator).
+
 ## Pending on the owner
 
 - **Nothing now.** Next: the 0.4.0 cut, when the architect proposes it (target 2026-12-10).
@@ -712,7 +731,7 @@ M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and h
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **0.3.0 released 2026-11-19.** **The dev team's order now:**
-**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). Now: G-T2 – G-T3 (grants, restrictions, protections) beside G-T1's D-1; then G-T2 – G-T7. The test by a person using
+**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). G-T2 – G-T3 and D-1 conditionally approved (2026-11-23). Now: their corrections F-1 – F-7 and E-1, beside G-T4 – G-T6 (tombstones, appeals, soft deletion); then G-T2 – G-T7. The test by a person using
 assistive technology is planned before 1.0 or the first public deployment (owner, 2026-11-18).
 
 ## Issue register
