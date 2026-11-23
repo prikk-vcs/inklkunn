@@ -133,6 +133,9 @@ pub mod words {
     pub const GOVERNANCE_RUNG: &str = "governance-rung";
     /// The rules of this wiki ask for more approvals than the revision has (RFC 006 D-2, D-4).
     pub const APPROVALS_MISSING: &str = "approvals-missing";
+    /// The summary of the proposal's latest revision is hidden by moderation (RFC 006 D-8): it would be written into the change's
+    /// message, so the proposer revises it first.
+    pub const SUMMARY_HIDDEN: &str = "summary-hidden";
     /// A protection of a page the change touches asks what the acceptance lacks (RFC 006 D-7): a higher rung, or a review.
     pub const PROTECTED: &str = "protected";
     /// A governance file of this wiki cannot be read, so every write refuses until it is repaired (RFC 006 D-1).
@@ -351,6 +354,11 @@ pub enum AcceptFailure {
         /// What the latest revision has.
         have: usize,
     },
+    /// **The summary of the proposal's latest revision is hidden by moderation** (RFC 006 D-8; handoff G-T4 correction H-2): it
+    /// would be signed into the history as the change's message, so the proposer revises it first (a revision whose summary is not
+    /// hidden makes acceptance possible again). A hidden *author* does not refuse: the message names the proposer for attribution,
+    /// and the name is masked wherever the change is shown. Nothing was done.
+    SummaryHidden,
     /// **A protection** of a page the change touches asks what this acceptance lacks (RFC 006 D-7; threat model C-3g): a higher
     /// rung of the acceptor, or one approval of the latest revision from someone other than the proposer. Every protection that
     /// applies is carried, each once, with its kind, its reason and its end, so that the refusal can say what stopped the change
@@ -415,6 +423,7 @@ impl AcceptFailure {
             AcceptFailure::GovernanceInvalid(_) => words::GOVERNANCE_INVALID,
             AcceptFailure::GovernanceRung(_) => words::GOVERNANCE_RUNG,
             AcceptFailure::ApprovalsMissing { .. } => words::APPROVALS_MISSING,
+            AcceptFailure::SummaryHidden => words::SUMMARY_HIDDEN,
             AcceptFailure::Protected { .. } => words::PROTECTED,
             AcceptFailure::RulesUnreadable(_) => words::RULES_UNREADABLE,
             AcceptFailure::Failed { word, .. } => word,
@@ -497,6 +506,9 @@ impl std::fmt::Display for AcceptFailure {
             AcceptFailure::ApprovalsMissing { needed, have } => write!(
                 f,
                 "refused: the rules of this wiki ask for {needed} approval(s) of the latest revision, and it has {have}"
+            ),
+            AcceptFailure::SummaryHidden => f.write_str(
+                "refused: the summary of the proposal's latest revision is hidden by moderation, so it would be written into the change; the proposer revises it first",
             ),
             AcceptFailure::Protected { notices, lack } => write!(
                 f,
@@ -771,6 +783,7 @@ impl ProposalAcceptor {
             return Ok(done);
         }
         self.check_revision(principal, wiki, &proposal, revision)?;
+        self.check_summary_shown(principal, wiki, id)?;
         // The rung, the approvals and the proposer's own acceptance, judged by the rules of the wiki, from what the revision
         // writes (an early refusal; the one that counts is made again under the lease, from what is about to be signed).
         let touched = self.revision_paths(principal, wiki, id, revision)?;
@@ -1050,6 +1063,24 @@ impl ProposalAcceptor {
         })
     }
 
+    /// Refuse while the summary of the latest revision is hidden: the message of the change is built from the record's own
+    /// summary (RFC 006 D-8; H-2), so a hidden summary would be signed into the history.
+    fn check_summary_shown(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+    ) -> Result<(), AcceptFailure> {
+        if self
+            .parts
+            .proposals
+            .latest_summary_hidden(principal, wiki, id)?
+        {
+            return Err(AcceptFailure::SummaryHidden);
+        }
+        Ok(())
+    }
+
     fn message(
         &self,
         proposal: &ProposalRecord,
@@ -1101,6 +1132,8 @@ impl ProposalAcceptor {
             });
         }
         self.check_revision(principal, wiki, &proposal, revision)?;
+        // Hidden words are never written into a new block: asked again, now that the lease is held (a hide made while it waited).
+        self.check_summary_shown(principal, wiki, id)?;
         let content = self
             .parts
             .proposals

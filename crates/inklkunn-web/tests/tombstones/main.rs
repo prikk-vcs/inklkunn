@@ -11,6 +11,7 @@ mod common;
 
 mod acts;
 mod appeals;
+mod changes;
 mod gate;
 mod removed;
 mod surfaces;

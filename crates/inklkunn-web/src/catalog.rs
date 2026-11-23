@@ -2219,6 +2219,8 @@ keys! {
     PolicyEditLabelChangeApprovals => "policy_edit.label_change_approvals",
     PolicyEditLabelChangeWhoApprovals => "policy_edit.label_change_who_approvals",
     PolicyEditRefusalTitle => "policy_edit.refusal_title",
+    OutcomeSummaryHidden => "outcome.summary_hidden",
+    OutcomeNoteSummaryHidden => "outcome_note.summary_hidden",
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

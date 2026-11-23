@@ -125,6 +125,9 @@ pub enum AcceptOutcome {
         /// What the latest revision has.
         have: usize,
     },
+    /// The summary of the proposal's latest revision is hidden by moderation (RFC 006 D-8; H-2): it would be written into the
+    /// change, so the proposer revises it first.
+    SummaryHidden,
     /// A protection of a page the change touches asks what the acceptance lacked (RFC 006 D-7): every protection that applies, and
     /// what was lacking.
     Protected {
@@ -235,6 +238,7 @@ pub(crate) fn outcome_of(
         Err(AcceptFailure::ApprovalsMissing { needed, have }) => {
             AcceptOutcome::ApprovalsMissing { needed, have }
         }
+        Err(AcceptFailure::SummaryHidden) => AcceptOutcome::SummaryHidden,
         Err(AcceptFailure::Protected { notices, lack }) => {
             AcceptOutcome::Protected { notices, lack }
         }
@@ -366,6 +370,11 @@ pub fn render_accept_outcome(
             StatusCode::CONFLICT,
             Key::OutcomeApprovalsMissing,
             vec![governance::approvals_note(t, *needed, *have)],
+        ),
+        AcceptOutcome::SummaryHidden => (
+            StatusCode::CONFLICT,
+            Key::OutcomeSummaryHidden,
+            vec![t.get(Key::OutcomeNoteSummaryHidden)],
         ),
         AcceptOutcome::Protected { notices, lack } => {
             // The sentence for what was lacking, then every protection that applies, once each, as the pages show them.

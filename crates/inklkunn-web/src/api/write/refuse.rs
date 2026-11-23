@@ -256,6 +256,11 @@ pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> 
             .named("reason", "approvals-missing")
             .member("needed", json!(needed))
             .member("have", json!(have)),
+        // The words of the proposal's summary are hidden by moderation and would be written into the change: the proposer revises
+        // it first (RFC 006 D-8; H-2).
+        AcceptFailure::SummaryHidden => {
+            Problem::new(Code::Forbidden).named("reason", "summary-hidden")
+        }
         AcceptFailure::Protected { notices, lack } => protected_problem(&notices, lack),
         AcceptFailure::RulesUnreadable(fault) => {
             log(&format!(

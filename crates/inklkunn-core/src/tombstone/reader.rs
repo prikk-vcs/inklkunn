@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceStore, CommentId, GovernanceStore, HiddenItem, HiddenItemKind,
-    ProposalId, StoreError, WikiId,
+    HiddenParts, ProposalId, StoreError, WikiId,
 };
 
 use super::model::{Hidden, Mark, ProposalHidden};
@@ -175,6 +175,66 @@ impl Tombstones {
             }
         }
         Ok(out)
+    }
+
+    /// **What is hidden of the change `block`, as the surfaces of a page change read it**: [`Tombstones::of_change`], and the hides of
+    /// every revision of the proposal the change came from, which the message names (`proposal`, a text as the message gives it, and
+    /// a name the wiki has no proposal by adds nothing). A proposal's revisions are one proposal and one person's:
+    ///
+    /// - **the author** hidden on *any* revision hides the name on the change (the proposer's name is the one name of the
+    ///   proposal, however many revisions it had before the one that was sealed);
+    /// - **the content and the summary** are those of the revision that was *sealed*, and it is read as the page revision it
+    ///   became ([`Tombstones::item_of_revision`]): the content of an earlier revision, which was not what the change wrote, hides
+    ///   nothing of the change, and neither does its summary.
+    pub fn of_change_from(
+        &self,
+        wiki: &WikiId,
+        block: &str,
+        proposal: Option<&str>,
+    ) -> Result<Hidden, Unreadable> {
+        let mut hidden = self.of_change(wiki, block)?;
+        let Some(proposal) = proposal.and_then(ProposalId::parse) else {
+            return Ok(hidden);
+        };
+        let events = self.governance.tombstone_events_of_id(
+            wiki,
+            HiddenItemKind::ProposalRevision,
+            proposal.as_str(),
+        )?;
+        let mut seqs: Vec<&str> = Vec::new();
+        for event in &events {
+            if let Some(seq) = event.item.reference.as_deref()
+                && !seqs.contains(&seq)
+            {
+                seqs.push(seq);
+            }
+        }
+        for seq in seqs {
+            let of_seq: Vec<_> = events
+                .iter()
+                .filter(|e| e.item.reference.as_deref() == Some(seq))
+                .cloned()
+                .collect();
+            let revision = Hidden::of_events(&of_seq);
+            let sealed = match seq.parse::<u32>() {
+                Ok(n) => self.accepted_block(&proposal, n)?.as_deref() == Some(block),
+                Err(_) => false,
+            };
+            if sealed {
+                // A hide made before the acceptance, on the revision that was sealed, is the content that was written.
+                hidden = hidden.with(revision);
+            } else if let Some(mark) = revision.author() {
+                hidden = hidden.with(Hidden::from_marks([Mark {
+                    parts: HiddenParts {
+                        content: false,
+                        summary: false,
+                        author: true,
+                    },
+                    ..mark.clone()
+                }]));
+            }
+        }
+        Ok(hidden)
     }
 
     /// What is hidden of revision `seq` of the proposal: what is recorded on it, and, when it was accepted, what is recorded

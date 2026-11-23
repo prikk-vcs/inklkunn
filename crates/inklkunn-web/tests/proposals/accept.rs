@@ -460,6 +460,19 @@ fn cases() -> Vec<Case> {
             ],
         },
         Case {
+            name: "the summary of the latest revision is hidden by moderation",
+            answer: || Err(AcceptFailure::SummaryHidden),
+            status: StatusCode::CONFLICT,
+            english: &[
+                "<h1>Not signed: its summary is hidden</h1>",
+                "The summary of this proposal is hidden; the proposer revises it first. Nothing was changed, and the proposal is still held for review.",
+            ],
+            japanese: &[
+                "<h1>署名されませんでした: 概要が非表示です</h1>",
+                "この提案の概要は非表示になっています。まず提案者が修正版を出してください。",
+            ],
+        },
+        Case {
             name: "a protection of a page the change touches asks a higher role",
             answer: || {
                 Err(AcceptFailure::Protected {

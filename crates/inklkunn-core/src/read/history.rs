@@ -952,7 +952,7 @@ impl ReadService {
         wiki: &WikiRecord,
         info: ChangeInfo,
     ) -> Result<ChangeInfo, ReadError> {
-        let hidden = self.hidden_block(&wiki.id, &info.block_id)?;
+        let hidden = self.hidden_block(&wiki.id, &info.block_id, info.proposal.as_deref())?;
         Ok(info.with_hidden(hidden))
     }
 

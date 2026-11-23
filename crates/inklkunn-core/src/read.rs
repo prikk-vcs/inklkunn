@@ -556,15 +556,18 @@ impl ReadService {
         &self,
         wiki: &WikiId,
         block: &str,
+        proposal: Option<&str>,
     ) -> Result<crate::tombstone::Hidden, ReadError> {
         let Some(tombstones) = &self.tombstones else {
             return Ok(crate::tombstone::Hidden::none());
         };
-        tombstones.page_revision(wiki, block).map_err(|e| {
-            self.store_failures
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            ReadError::CouldNotBeReadNow(Cause::Store(StoreError::Backend(e.0)))
-        })
+        tombstones
+            .of_change_from(wiki, block, proposal)
+            .map_err(|e| {
+                self.store_failures
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                ReadError::CouldNotBeReadNow(Cause::Store(StoreError::Backend(e.0)))
+            })
     }
 
     /// The sanitizer every page passes through, for a surface that has other HTML of its own to clean (a diff,

@@ -1045,7 +1045,7 @@ fn the_revision_of_an_accepted_proposal_is_the_revision_of_the_block_it_sealed()
     assert_eq!(*at(&line, "/reasons/summary"), "spam");
     assert!(!has_member(&line, "summary") && !has_member(&line, "authors"));
     assert!(!everything(&files).contains(SUMMARY_B3));
-    // The hide of a revision that was never accepted is a hide of something no bundle carries.
+    // The content and the summary of a revision that was never the one accepted are something no bundle carries.
     let r = extended("proposal-unaccepted");
     accepted(&r, P3, ANN, B3);
     plant(
@@ -1053,7 +1053,7 @@ fn the_revision_of_an_accepted_proposal_is_the_revision_of_the_block_it_sealed()
         HiddenItemKind::ProposalRevision,
         P3,
         Some("2"),
-        &["content", "summary", "author"],
+        &["content", "summary"],
         ReasonCategory::Spam,
     );
     plant(
@@ -1066,6 +1066,51 @@ fn the_revision_of_an_accepted_proposal_is_the_revision_of_the_block_it_sealed()
     );
     let untouched = export_as(&extended("proposal-none"), &stand_extended(), "bundle");
     assert_eq!(export_as(&r, &stand_extended(), "bundle"), untouched);
+}
+
+/// The author of a proposal is one person's (H-2): a hide of the author of a revision that was **not** the one accepted still
+/// hides the proposer's name on the change the proposal became, in the line, in `users.yaml` and in the manifest's declaration.
+#[test]
+fn the_author_hidden_on_another_revision_of_an_accepted_proposal_is_hidden_on_its_change() {
+    let r = extended("proposal-author-elsewhere");
+    accepted(&r, P3, ANN, B3);
+    plant(
+        &r,
+        HiddenItemKind::ProposalRevision,
+        P3,
+        Some("2"),
+        &["content", "summary", "author"],
+        ReasonCategory::Harassment,
+    );
+    let files = export_as(&r, &stand_extended(), "bundle");
+    let line = line_of(&files, "p1", B3);
+    // Only the author: what the revision's content and summary hid is not what the change wrote.
+    assert_eq!(*at(&line, "/suppressed"), serde_json::json!(["author"]));
+    assert_eq!(*at(&line, "/reasons/author"), "harassment");
+    assert!(!has_member(&line, "authors"));
+    assert!(
+        has_member(&line, "summary"),
+        "the change's summary is shown"
+    );
+    assert!(everything(&files).contains(SUMMARY_B3));
+    // An unhide gives the export back exactly.
+    let again = extended("proposal-author-elsewhere-unhidden");
+    accepted(&again, P3, ANN, B3);
+    let hide = plant(
+        &again,
+        HiddenItemKind::ProposalRevision,
+        P3,
+        Some("2"),
+        &["author"],
+        ReasonCategory::Harassment,
+    );
+    unhide(&again, &hide);
+    let plain = extended("proposal-author-elsewhere-none");
+    accepted(&plain, P3, ANN, B3);
+    assert_eq!(
+        export_as(&again, &stand_extended(), "bundle"),
+        export_as(&plain, &stand_extended(), "bundle")
+    );
 }
 
 #[test]

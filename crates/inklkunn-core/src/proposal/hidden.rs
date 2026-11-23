@@ -96,6 +96,21 @@ impl ProposalService {
         self.hidden_in(wiki, id, latest)
     }
 
+    /// **Is the summary of the proposal's latest revision hidden?** What the acceptance asks before it builds the message of the
+    /// change from the record: hidden words are never written into a new block (RFC 006 D-8, H-2). Raw, for the acceptance alone.
+    pub(crate) fn latest_summary_hidden(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+    ) -> Result<bool> {
+        let latest = self
+            .revisions_raw(principal, wiki, id)?
+            .last()
+            .map_or(0, |r| r.seq);
+        Ok(self.hidden_in(wiki, id, latest)?.summary.is_some())
+    }
+
     /// What is hidden of each revision, oldest first, for the proposal's page to draw the tombstone where a revision is.
     pub fn revision_marks(
         &self,

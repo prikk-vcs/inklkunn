@@ -20,7 +20,9 @@
 //! touched), so a hide of either on any page of a block hides it on every line of that block and keeps the person out of
 //! `users.yaml` for that block: a summary or a name that is hidden on one page and shown on its neighbour is not hidden.
 //! The revision of a proposal that was accepted is the page revision of the block that acceptance sealed (one content, RFC 006
-//! D-8), so a hide of it is read as a hide of that block.
+//! D-8), so a hide of it is read as a hide of that block. **The author of a proposal is one person's**: a hide of the author of
+//! any other revision of the proposal that was sealed hides the author of that block as well (its content and its summary were
+//! not what the block wrote, so they hide nothing of it).
 //!
 //! **An unhide** ends the hide it follows ([`hidden_parts`] reads that); an item with nothing hidden now writes exactly what
 //! it wrote before it was hidden.
@@ -194,9 +196,22 @@ impl Suppressions {
                 }
                 HiddenItemKind::ProposalRevision => {
                     let number = item.reference.unwrap_or_default();
-                    if let Some(block) = sealed.get(&(item.id, number)) {
+                    if let Some(block) = sealed.get(&(item.id.clone(), number)) {
                         let at = out.blocks.entry(block.clone()).or_default();
                         at.whole = at.whole.or(hidden);
+                    } else if hidden.author.is_some() {
+                        // A revision that was not the one sealed: its content and its summary are not what the change wrote, but
+                        // its author is the proposal's, and the proposer's name is on the change (H-2).
+                        let author = Suppressed {
+                            author: hidden.author,
+                            ..Suppressed::default()
+                        };
+                        for ((proposal, _), block) in &sealed {
+                            if *proposal == item.id {
+                                let at = out.blocks.entry(block.clone()).or_default();
+                                at.whole = at.whole.or(author);
+                            }
+                        }
                     }
                 }
                 HiddenItemKind::ClaimComment => {

@@ -556,7 +556,11 @@ impl ReadService {
                 break;
             }
             // What moderation hides of the change is asked now, at every request: the list is not held.
-            let hidden = self.hidden_block(&wiki.id, &c.block.block_id)?;
+            let hidden = self.hidden_block(
+                &wiki.id,
+                &c.block.block_id,
+                head.proposal.as_ref().map(ProposalId::as_str),
+            )?;
             let (mut summary, mut proposed_by, mut accepted_by) =
                 (head.summary, head.proposed_by, head.accepted_by);
             if hidden.summary().is_some() {

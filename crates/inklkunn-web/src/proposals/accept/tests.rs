@@ -320,6 +320,10 @@ mod governance_pages {
             ),
             AcceptOutcome::ApprovalsMissing { needed: 3, have: 1 }
         );
+        assert_eq!(
+            outcome_of(Err(AcceptFailure::SummaryHidden), &log),
+            AcceptOutcome::SummaryHidden
+        );
         let unreadable =
             ReadFault::from_stored(GovernanceFile::Policy, Some(4), Refusal::UnknownKey);
         assert_eq!(

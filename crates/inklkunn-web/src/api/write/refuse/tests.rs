@@ -227,6 +227,7 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
             Code::Forbidden,
             None,
         ),
+        (AcceptFailure::SummaryHidden, Code::Forbidden, None),
         (protected_failure(), Code::Forbidden, None),
         (
             AcceptFailure::RulesUnreadable(unreadable_rules()),
@@ -301,6 +302,8 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
     assert_eq!(at(&body(&approvals), "reason"), "approvals-missing");
     assert_eq!(at(&body(&approvals), "needed"), 2);
     assert_eq!(at(&body(&approvals), "have"), 1);
+    let (hidden, _) = failure_problem(AcceptFailure::SummaryHidden);
+    assert_eq!(at(&body(&hidden), "reason"), "summary-hidden");
     let (protected, _) = failure_problem(protected_failure());
     let protected = body(&protected);
     assert_eq!(at(&protected, "reason"), "protected");

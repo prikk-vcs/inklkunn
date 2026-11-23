@@ -296,7 +296,7 @@ fn components() -> Value {
                     "view": {"type": "string", "description": "`no-such-view`: the view asked for."},
                     "feature": {"type": "string", "description": "`not-available`: the filter that is not offered."},
                     "candidates": {"type": "array", "items": {"type": "string"}, "description": "`ambiguous-title`: the titles that match."},
-                    "reason": {"type": "string", "description": "`unacceptable` and `forbidden`, where there is one: the stable word that names what was wrong (for the rules of a wiki: `governance-path`, `governance-mixed`, `governance-invalid`, `governance-rung`, `approvals-missing`, `protected`, `rules-unreadable`, `author-not-allowed`; for an account that is restricted in the wiki: `restricted`). It does not change with the language."},
+                    "reason": {"type": "string", "description": "`unacceptable` and `forbidden`, where there is one: the stable word that names what was wrong (for the rules of a wiki: `governance-path`, `governance-mixed`, `governance-invalid`, `governance-rung`, `approvals-missing`, `summary-hidden`, `protected`, `rules-unreadable`, `author-not-allowed`; for an account that is restricted in the wiki: `restricted`). It does not change with the language."},
                     "refusals": {
                         "type": "array",
                         "description": "`governance-invalid`: what is wrong with each governance file the change writes. Never what a file said.",

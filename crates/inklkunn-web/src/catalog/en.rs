@@ -4616,4 +4616,12 @@ pub const CATALOG: &[Entry] = &[
         "policy_edit.refusal_title",
         "Write the title as the page is named: no slash at the start or the end, no empty part, and no part that is only a dot or two dots.",
     ),
+    msg(
+        "outcome.summary_hidden",
+        "Not signed: its summary is hidden",
+    ),
+    msg(
+        "outcome_note.summary_hidden",
+        "The summary of this proposal is hidden; the proposer revises it first. Nothing was changed, and the proposal is still held for review.",
+    ),
 ];

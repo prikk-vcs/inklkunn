@@ -392,6 +392,11 @@ impl Rig {
         let leases = WikiLeases::new(signer_leases, store.clone(), "test-process", lease);
         let audit = Arc::new(MemoryAudit::new());
         // The rules of the wiki are read from the repository's default view, as in service (RFC 006 D-5).
+        // What moderation hides is read from the store, as in service (RFC 006 D-8): nothing is hidden until a test records a hide.
+        let tombstones = Arc::new(crate::tombstone::Tombstones::new(
+            store.clone(),
+            store.clone(),
+        ));
         let reads = Arc::new(
             ReadService::new(
                 fake.clone(),
@@ -401,7 +406,8 @@ impl Rig {
                 ReadConfig::default(),
                 None,
             )
-            .with_governance_snapshots(store.clone()),
+            .with_governance_snapshots(store.clone())
+            .with_tombstones(tombstones.clone()),
         );
         let authorizer = Authorizer::new(
             Arc::new(
@@ -421,7 +427,8 @@ impl Rig {
                 Arc::new(FakeBase(fake.clone())),
                 quotas,
             )
-            .with_roles(store.clone()),
+            .with_roles(store.clone())
+            .with_tombstones(tombstones),
         );
         let notifier = Arc::new(Notifier::new(
             store.clone(),
