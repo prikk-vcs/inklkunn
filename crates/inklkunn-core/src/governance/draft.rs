@@ -8,7 +8,7 @@
 //! writes a candidate, and the one validator says whether it is one.
 //!
 //! **A word or a text a person typed is never written as YAML syntax.** Every word and every text is written as a
-//! double-quoted scalar ([`quoted`]), so no value can end its line, open a key or begin a comment; a value that is not one of
+//! double-quoted scalar (`quoted`), so no value can end its line, open a key or begin a comment; a value that is not one of
 //! the words its key allows is refused by the validator as [`Refusal::UnknownValue`](super::Refusal), and a text with a
 //! control character in it as [`Refusal::ForbiddenCharacter`](super::Refusal), at the key it was typed in. Numbers are whole
 //! numbers the caller has already read from what was typed.
