@@ -333,3 +333,116 @@ fn the_document_calls_the_review_setting_the_operators_and_says_claims_cite_a_so
     assert!(!text.contains("claims that rely"));
     assert!(!text.contains("claims rely"));
 }
+
+/// The description of the operation with this id.
+fn described(document: &Value, id: &str) -> String {
+    for item in document.at("/paths").as_object().unwrap().values() {
+        let op = item.at("/post");
+        if op.at("/operationId") == id {
+            return op.at("/description").as_str().unwrap().to_owned();
+        }
+    }
+    panic!("no operation {id}");
+}
+
+/// **A refusal's reason that is not described fails here** (handoff G-T1 correction C-7): the reasons are taken from what the
+/// server emits (the problems themselves, built from the real refusals), each must be said by the operation that can refuse
+/// with it, and each member of such a problem must be a member of the `Problem` schema.
+#[test]
+fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_and_its_members_by_the_problem()
+ {
+    use crate::api::write::refuse::{acceptance_problem, invalid_word};
+    use inklkunn_core::AcceptFailure;
+    use inklkunn_core::governance::{Fault, GovernanceFile, ReadFault, Refusal};
+    use inklkunn_core::proposal::Invalid;
+    use inklkunn_store::Role;
+
+    let document = document(&real_table(), &docs()).unwrap();
+    let problem = |failure: AcceptFailure| {
+        let problem = acceptance_problem(failure, &|_| {});
+        let body = problem.body(crate::catalog::T::new(crate::catalog::EN));
+        body.as_object().unwrap().clone()
+    };
+    let fault = Fault {
+        line: Some(4),
+        ..Fault::at(GovernanceFile::Policy, Refusal::UnknownKey, "rungs")
+    };
+    let unreadable = ReadFault::from_stored(GovernanceFile::Policy, Some(2), Refusal::NotAFile);
+    let at_acceptance = [
+        problem(AcceptFailure::GovernanceInvalid(vec![fault])),
+        problem(AcceptFailure::GovernanceRung(Role::Admin)),
+        problem(AcceptFailure::ApprovalsMissing { needed: 2, have: 1 }),
+        problem(AcceptFailure::RulesUnreadable(unreadable)),
+    ];
+    // What the acceptance refuses with, from the problems, and what a person proposing is refused with, from the words.
+    let accepting: Vec<String> = at_acceptance
+        .iter()
+        .map(|body| body["reason"].as_str().unwrap().to_owned())
+        .chain([invalid_word(Invalid::GovernanceMixed).to_owned()])
+        .collect();
+    assert_eq!(
+        accepting,
+        [
+            "governance-invalid",
+            "governance-rung",
+            "approvals-missing",
+            "rules-unreadable",
+            "governance-mixed"
+        ]
+    );
+    let accept = described(&document, "acceptProposal");
+    for reason in &accepting {
+        assert!(
+            accept.contains(&format!("`{reason}`")),
+            "acceptProposal does not describe `{reason}`"
+        );
+    }
+    let proposing = [
+        invalid_word(Invalid::GovernancePath),
+        invalid_word(Invalid::GovernanceMixed),
+    ];
+    for id in [
+        "createProposal",
+        "saveDraft",
+        "submitDraft",
+        "reviseProposal",
+    ] {
+        let text = described(&document, id);
+        for reason in proposing {
+            assert!(
+                text.contains(&format!("`{reason}`")),
+                "{id} does not describe `{reason}`"
+            );
+        }
+    }
+    // The writes that the unreadable rules refuse say so, and so does the introduction of the document.
+    assert!(described(&document, "declineProposal").contains("`rules-unreadable`"));
+    assert!(
+        document
+            .at("/info/description")
+            .as_str()
+            .unwrap()
+            .contains("`rules-unreadable`")
+    );
+    // Every member of such a problem is a member the schema names.
+    let members = document.at("/components/schemas/Problem/properties");
+    for body in &at_acceptance {
+        for member in body.keys() {
+            assert!(
+                members.get(member).is_some(),
+                "the problem member `{member}` is not described by the Problem schema"
+            );
+        }
+    }
+    // The entries of `refusals` are described as they are emitted.
+    let entry = at_acceptance
+        .first()
+        .and_then(|body| body.get("refusals"))
+        .and_then(|refusals| refusals.get(0))
+        .and_then(Value::as_object)
+        .unwrap();
+    let listed = document.at("/components/schemas/Problem/properties/refusals/items/properties");
+    for member in entry.keys() {
+        assert!(listed.get(member).is_some(), "refusals[].{member}");
+    }
+}

@@ -296,6 +296,27 @@ fn components() -> Value {
                     "view": {"type": "string", "description": "`no-such-view`: the view asked for."},
                     "feature": {"type": "string", "description": "`not-available`: the filter that is not offered."},
                     "candidates": {"type": "array", "items": {"type": "string"}, "description": "`ambiguous-title`: the titles that match."},
+                    "reason": {"type": "string", "description": "`unacceptable` and `forbidden`, where there is one: the stable word that names what was wrong (for the rules of a wiki: `governance-path`, `governance-mixed`, `governance-invalid`, `governance-rung`, `approvals-missing`, `rules-unreadable`). It does not change with the language."},
+                    "refusals": {
+                        "type": "array",
+                        "description": "`governance-invalid`: what is wrong with each governance file the change writes. Never what a file said.",
+                        "items": {
+                            "type": "object",
+                            "required": ["file", "rule", "field", "line"],
+                            "properties": {
+                                "file": {"type": "string", "description": "The file's fixed name (`governance/policy.yaml`, `governance/constitution.yaml`), or `governance/` when it is no file of the two."},
+                                "rule": {"type": "string", "description": "The rule's stable name (`unknown-key`, `wrong-shape`, `ordering-propose-above-review`, `platform-limit-entry-max`, `outside-default-view`, `unknown-file`, …)."},
+                                "field": {"type": "string", "description": "The schema's field the rule is about (a name of the schema, never read from the file); empty when the rule is about the whole file."},
+                                "line": {"type": ["integer", "null"], "description": "The line of the file, from 1, where it can be said."},
+                            },
+                        },
+                    },
+                    "needs": {"type": "string", "description": "`governance-rung`: the role the rules ask to change them."},
+                    "needed": {"type": "integer", "description": "`approvals-missing`: the approvals of the latest revision the rules ask for."},
+                    "have": {"type": "integer", "description": "`approvals-missing`: the people other than the proposer who approved the latest revision, who hold the review role now and whose account is not disabled."},
+                    "file": {"type": "string", "description": "`rules-unreadable`: the governance file that cannot be read."},
+                    "rule": {"type": "string", "description": "`rules-unreadable`: the rule it breaks, by its stable name (`not-a-file` where something that is not an ordinary file is at its place)."},
+                    "line": {"type": ["integer", "null"], "description": "`rules-unreadable`: the line, where it can be said."},
                 },
             },
             "Tip": tip,
@@ -415,7 +436,7 @@ fn problem_types() -> Value {
     )
 }
 
-const INTRO: &str = "The API of an inklkunn site: what the pages show, as JSON, and the writes that propose, review and accept changes. Every wiki's endpoints are under `/{slug}/-/api/v1/`, the version is in the path, and this description is generated from the server's route table. Every answer is a success of the stated shape or a problem detail (RFC 9457) whose `type` is stable (`x-inklkunn-problems` lists them) and whose `title`, `detail` and `hint` follow the language cookie or `Accept-Language`. A wiki that does not exist and a wiki you may not read answer the same `not-found`. Every success has an `ETag` and `304` answers a matching `If-None-Match`. HEAD is answered like GET without the body. There is no cross-origin access. The reads take the site's session or an API token; **a write takes a JSON body (`application/json`, bounded before it is parsed) and names its base in `If-Match`** — the proposal revision's `etag`, or for a new proposal the `state_id` of the view's tip — and a stale base is `409 stale-base`, which carries the current one. A write is authenticated by an API token (`Authorization: Bearer …`), whose scope (`propose`, `review`, `accept`) is intersected with the account's role in the wiki, or by the site's own session: **the session cookie together with the session's CSRF token in `X-CSRF-Token`** (a cookie alone is refused with `forbidden`; a request that carries a bearer token is judged by the token alone). Where waiting helps, a refusal carries `Retry-After`.";
+const INTRO: &str = "The API of an inklkunn site: what the pages show, as JSON, and the writes that propose, review and accept changes. Every wiki's endpoints are under `/{slug}/-/api/v1/`, the version is in the path, and this description is generated from the server's route table. Every answer is a success of the stated shape or a problem detail (RFC 9457) whose `type` is stable (`x-inklkunn-problems` lists them) and whose `title`, `detail` and `hint` follow the language cookie or `Accept-Language`. A wiki that does not exist and a wiki you may not read answer the same `not-found`. Every success has an `ETag` and `304` answers a matching `If-None-Match`. HEAD is answered like GET without the body. There is no cross-origin access. The reads take the site's session or an API token; **a write takes a JSON body (`application/json`, bounded before it is parsed) and names its base in `If-Match`** — the proposal revision's `etag`, or for a new proposal the `state_id` of the view's tip — and a stale base is `409 stale-base`, which carries the current one. A write is authenticated by an API token (`Authorization: Bearer …`), whose scope (`propose`, `review`, `accept`) is intersected with the account's role in the wiki, or by the site's own session: **the session cookie together with the session's CSRF token in `X-CSRF-Token`** (a cookie alone is refused with `forbidden`; a request that carries a bearer token is judged by the token alone). Where waiting helps, a refusal carries `Retry-After`. A wiki whose rules (its `governance/` files) cannot be read refuses every write, `forbidden` with `reason` `rules-unreadable`, until they are repaired; a read is never refused for it.";
 
 /// Build the document from the route `table` and the endpoints' `docs`.
 pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Value, Drift> {

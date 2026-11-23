@@ -37,7 +37,7 @@ pub(crate) const CREATE_PROPOSAL: Doc = Doc {
     operation_id: "createProposal",
     tag: "proposals",
     summary: "Open a proposal: a draft, or a proposal sent for review",
-    description: "Opens a proposal of changes to whole pages (each file is a page's full new text, or `null` to remove it; a page is named by its repository `path`, as `storage_path` of the raw endpoint gives it, or a new page by its `title`). `submit: false` keeps it a draft that only its author sees; `submit: true` sends it for review at once. The write names the view's tip it was written against in `If-Match`: the `state_id` of the `tip` the read endpoints give (a stale one is `stale-base`). The answer is the proposal, with the `etag` every later write sends back. Scope `propose`; the quotas of open proposals and of proposals per hour refuse by name (`refused-limit`, with `Retry-After` where waiting helps). A source file under `knowledge/` that this proposal moves to another `reference` and that still carries a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`) when the draft is sent and at every revision: a check of the new place is stated by the proposal, never taken from the old one. A hand-written file states one with `last_reviewed.proposal` set to the proposal's own id (the `id` of the draft, which a `submit: false` call returns) beside the day it looked at the new place, which may not be earlier than the old place's day nor a day that has not come (checked when the proposal is accepted); a curation proposal states it with `checked`.",
+    description: "Opens a proposal of changes to whole pages (each file is a page's full new text, or `null` to remove it; a page is named by its repository `path`, as `storage_path` of the raw endpoint gives it, or a new page by its `title`). `submit: false` keeps it a draft that only its author sees; `submit: true` sends it for review at once. The write names the view's tip it was written against in `If-Match`: the `state_id` of the `tip` the read endpoints give (a stale one is `stale-base`). The answer is the proposal, with the `etag` every later write sends back. Scope `propose`; the quotas of open proposals and of proposals per hour refuse by name (`refused-limit`, with `Retry-After` where waiting helps). A source file under `knowledge/` that this proposal moves to another `reference` and that still carries a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`) when the draft is sent and at every revision: a check of the new place is stated by the proposal, never taken from the old one. A hand-written file states one with `last_reviewed.proposal` set to the proposal's own id (the `id` of the draft, which a `submit: false` call returns) beside the day it looked at the new place, which may not be earlier than the old place's day nor a day that has not come (checked when the proposal is accepted); a curation proposal states it with `checked`. **A change to the rules of the wiki is its own proposal:** under `governance/` a file may be `governance/constitution.yaml` or `governance/policy.yaml` and nothing else (anything else there, and a rename of either file, is `unacceptable` with `reason` `governance-path`), and a proposal that names either of them names nothing else, no page and no rename (`unacceptable`, `governance-mixed`); the two files together are one change to the rules. The files' text is judged when the proposal is accepted.",
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -72,7 +72,7 @@ pub(crate) const SAVE_DRAFT: Doc = Doc {
     operation_id: "saveDraft",
     tag: "proposals",
     summary: "Save a draft's working copy",
-    description: "Replaces the draft's summary, sources, pages and renames with these (its base is kept). Only the author, and only while it is a draft. Scope `propose`. A draft is checked for what is wrong with it, not for what is missing: the summary and a change are required only to submit it.",
+    description: "Replaces the draft's summary, sources, pages and renames with these (its base is kept). Only the author, and only while it is a draft. Scope `propose`. A draft is checked for what is wrong with it, not for what is missing: the summary and a change are required only to submit it. The rules for `governance/` are `createProposal`'s: `governance-path`, and `governance-mixed` for a draft that names a governance file and anything else.",
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -90,7 +90,7 @@ pub(crate) const SUBMIT_DRAFT: Doc = Doc {
     operation_id: "submitDraft",
     tag: "proposals",
     summary: "Send a draft for review",
-    description: "The draft's working copy becomes revision 1 and the proposal is held for review. Only the author. The body is `{}`. Scope `propose`. A draft that moves a source to another `reference` and leaves a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`): a check of the new place is stated as `createProposal` says (`checked` in a curation; the proposal's own id in `last_reviewed.proposal` in a hand-written file).",
+    description: "The draft's working copy becomes revision 1 and the proposal is held for review. Only the author. The body is `{}`. Scope `propose`. A draft that moves a source to another `reference` and leaves a `last_reviewed` day or an `availability` answer this proposal does not state is `unacceptable` (`knowledge-check-unstated`): a check of the new place is stated as `createProposal` says (`checked` in a curation; the proposal's own id in `last_reviewed.proposal` in a hand-written file). The rules for `governance/` are `createProposal`'s too (`governance-path`, `governance-mixed`).",
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -108,7 +108,7 @@ pub(crate) const REVISE: Doc = Doc {
     operation_id: "reviseProposal",
     tag: "proposals",
     summary: "Add a revision to a proposal",
-    description: "A new revision of a proposal that is held for review or needs one: the proposal is held for review again, and decisions on earlier revisions no longer count towards acceptance (they stay recorded). Only the proposer, within the quota of revisions. Pages are as for a new proposal, held to the base the proposal already has, and a check of a source moved to another reference is stated as `createProposal` says (`knowledge-check-unstated`). Scope `propose`. The answer is the proposal, with the `etag` of the new revision.",
+    description: "A new revision of a proposal that is held for review or needs one: the proposal is held for review again, and decisions on earlier revisions no longer count towards acceptance (they stay recorded). Only the proposer, within the quota of revisions. Pages are as for a new proposal, held to the base the proposal already has, and a check of a source moved to another reference is stated as `createProposal` says (`knowledge-check-unstated`), and a change to the rules is its own proposal at every revision (`governance-path`, `governance-mixed`). Scope `propose`. The answer is the proposal, with the `etag` of the new revision.",
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -167,7 +167,7 @@ pub(crate) const ACCEPT: Doc = Doc {
     operation_id: "acceptProposal",
     tag: "review",
     summary: "Accept a revision into the history",
-    description: "Takes the revision named by `If-Match` into the wiki's history, signed by the service in the acceptor's name, under the wiki's write lease. A retry of an acceptance that finished answers `already-signed` and writes nothing. When the view has moved on and nothing overlaps, the change is re-authored and accepted (`reauthored`); an overlap stops with the proposal needing a revision (`overlap`). The wiki being busy is `busy` with how many acts are ahead, and `Retry-After`. Scope `accept`, and the account must hold the role to accept in this wiki; a token that carries less is `forbidden` whatever the account is.",
+    description: "Takes the revision named by `If-Match` into the wiki's history, signed by the service in the acceptor's name, under the wiki's write lease. A retry of an acceptance that finished answers `already-signed` and writes nothing. When the view has moved on and nothing overlaps, the change is re-authored and accepted (`reauthored`); an overlap stops with the proposal needing a revision (`overlap`). The wiki being busy is `busy` with how many acts are ahead, and `Retry-After`. Scope `accept`, and the account must hold the role to accept in this wiki; a token that carries less is `forbidden` whatever the account is. **The rules of the wiki** (its `governance/` files, read from the default view's tip) are applied before the signer is asked, and nothing is written when one refuses: a change that names a governance file and anything else is `unacceptable` with `reason` `governance-mixed`; a governance file that is not sound is `unacceptable` with `reason` `governance-invalid` and `refusals`, a list of `{file, rule, field, line}` (the file's fixed name, the rule's stable name, the schema's field, and the line or `null`; never what the file said); the constitution can ask a role above the acceptor's to change the rules, which is `forbidden` with `reason` `governance-rung` and `needs`, the role; the policy and the constitution can ask for approvals, which is `forbidden` with `reason` `approvals-missing`, `needed` the approvals they ask for and `have` how many people other than the proposer approved the latest revision, hold the review role now and have an account that is not disabled; and a governance file that cannot be read makes the wiki refuse every write (`forbidden`, `reason` `rules-unreadable`, with `file`, `rule` and `line`) until an admin repairs it with a change that touches the two governance files and nothing else.",
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
@@ -178,6 +178,7 @@ pub(crate) const ACCEPT: Doc = Doc {
         limit: EMPTY_BODY_LIMIT,
     }),
     problems: &[
+        Code::Unacceptable,
         Code::NotInThisState,
         Code::RefusedLimit,
         Code::Busy,
@@ -197,7 +198,7 @@ pub(crate) const DECLINE: Doc = Doc {
     operation_id: "declineProposal",
     tag: "review",
     summary: "Decline a proposal, with a reason",
-    description: "Ends a proposal that is held for review or needs a revision; the reason is required and the proposer is told. Scope `accept`.",
+    description: "Ends a proposal that is held for review or needs a revision; the reason is required and the proposer is told. Scope `accept`. While a governance file of the wiki cannot be read, only a proposal that changes the two governance files and nothing else can be declined; any other is `forbidden` with `reason` `rules-unreadable` (and `file`, `rule` and `line`, as `acceptProposal` says).",
     query: &[],
     answer: Answer::Schema("Proposal"),
     write: Some(Write {
