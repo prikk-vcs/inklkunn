@@ -8,6 +8,11 @@
 //! * **A rollback** of the change that removed the page (RFC 004 D-8), when it merges cleanly over the tip.
 //! * **The page again, with the text it had last**, a proposal like any new page, when later changes block that.
 //!
+//! * **Never hidden text** (INV-13; RFC 006 D-8): when moderation hid the text that either would write again (the page's last
+//!   revision, and for a rollback every page it writes), the form offers neither: it says so, names the pages by their titles,
+//!   and offers the empty new page. A request for either is refused (`409`) whatever mode it names, so a draft that carries the
+//!   hidden text is never made. A hidden summary or author of that revision leaves the text free to come back.
+//!
 //! Either way the result is a **draft**: the person's own until they send it for review, editable, with every check of a
 //! proposal (the `propose` rung on the page, the protections, the quotas) made by the service when it is made. **The order of
 //! a request is the order of every write form:** a form from this site, the session's token, a wiki the visitor may read, an
@@ -143,8 +148,45 @@ fn mode_of(restore: &Restore) -> Option<&'static str> {
     match restore {
         Restore::Rollback { .. } => Some(MODE_ROLLBACK),
         Restore::LastText { .. } => Some(MODE_LAST_TEXT),
-        Restore::NotOffered => None,
+        Restore::NotOffered | Restore::TextHidden { .. } => None,
     }
+}
+
+/// The sentence that says the text to be restored was hidden by moderation, with the titles of the pages it is the text of
+/// (titles only, never any of the text).
+pub(crate) fn text_hidden_words(t: T, titles: &[String]) -> String {
+    t.msg(Key::RestoreTextHidden)
+        .with("pages", titles.join(", "))
+        .text()
+}
+
+/// The answer when no mode can be offered: for hidden text, the page that says so (`status`) and the empty new page; else
+/// the way on is the new page.
+fn no_mode(page: &Page, ctx: &Ctx, subject: &Subject_, status: StatusCode) -> Response {
+    let t = page.t();
+    let removed = &subject.removed;
+    let Restore::TextHidden { titles } = &removed.restore else {
+        return see(&crate::proposals::paths::new_page(
+            ctx.slug(),
+            Some(&removed.title),
+        ));
+    };
+    notice(
+        page,
+        &ctx.wiki,
+        status,
+        Key::RemovedHeading,
+        vec![text_hidden_words(t, titles)],
+        vec![Choice {
+            label: t.get(Key::RestoreBack),
+            href: WikiLinks::new(t, ctx.slug(), subject.view_name.as_deref())
+                .page_href(&removed.title),
+        }],
+        Some(Choice {
+            label: t.get(Key::ProposeNewPageLink),
+            href: crate::proposals::paths::new_page(ctx.slug(), Some(&removed.title)),
+        }),
+    )
 }
 
 #[derive(Template)]
@@ -244,11 +286,8 @@ pub(crate) async fn restore_form(
         match find(&ctx, page.t(), &title, params.get(VIEW).map(String::as_str)) {
             Ok(Found::Removed(subject)) => match mode_of(&subject.removed.restore) {
                 Some(mode) => form_page(page, &ctx, &subject, mode, Vec::new(), StatusCode::OK),
-                // Nothing can restore it: the way on is the new page.
-                None => see(&crate::proposals::paths::new_page(
-                    ctx.slug(),
-                    Some(&subject.removed.title),
-                )),
+                // Nothing can restore it: the way on is the new page (and, for hidden text, the words that say why).
+                None => no_mode(page, &ctx, &subject, StatusCode::OK),
             },
             Ok(found) => other(page, &ctx, &title, found),
             Err(response) => *response,
@@ -289,11 +328,9 @@ pub(crate) async fn restore_post(
             Ok(found) => return other(page, &ctx, &title, found),
             Err(response) => return *response,
         };
+        // Whatever mode the form names: hidden text is refused before the mode is looked at.
         let Some(mode) = mode_of(&subject.removed.restore) else {
-            return see(&crate::proposals::paths::new_page(
-                ctx.slug(),
-                Some(&subject.removed.title),
-            ));
+            return no_mode(page, &ctx, &subject, StatusCode::CONFLICT);
         };
         if asked != mode {
             return form_page(
@@ -353,7 +390,7 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {
                 .proposals
                 .create(&ctx.principal, &ctx.wiki, view, edit)
         }
-        Restore::NotOffered => return changed(page, ctx, subject),
+        Restore::NotOffered | Restore::TextHidden { .. } => return changed(page, ctx, subject),
     };
     match made {
         Ok(record) => see(&crate::proposals::paths::proposal(
@@ -374,9 +411,6 @@ fn changed(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {
             vec![page.get(Key::RestoreChanged)],
             StatusCode::CONFLICT,
         ),
-        None => see(&crate::proposals::paths::new_page(
-            ctx.slug(),
-            Some(&subject.removed.title),
-        )),
+        None => no_mode(page, ctx, subject, StatusCode::CONFLICT),
     }
 }

@@ -13,12 +13,14 @@
 //! (the reason and the end of a restriction, told to the restricted person alone).
 //!
 //! **The reason is read in one place**, [`inklkunn_core::read::RemovedPage::reason`], which the tombstones of RFC 006 D-8
-//! wrap; this module never reads the change's summary itself.
+//! wrap; this module never reads the change's summary itself. A hidden summary is the tombstone's lines in its place. The page
+//! names no author: the proposal is a link, and the people of the change are on the change's own page. When the text that
+//! restoring would write again is hidden, the page says so and offers the empty new page only (INV-13).
 
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::proposal::ProposalError;
-use inklkunn_core::read::{ReadError, RemovedPage, Restore};
+use inklkunn_core::read::{ReadError, Reason, RemovedPage, Restore};
 use inklkunn_core::{Action, Resource};
 use inklkunn_store::WikiRecord;
 
@@ -144,15 +146,20 @@ pub(crate) fn present(page: &Page, gone: Gone) -> Response {
     if let Some(when) = &accepted_at {
         paragraphs.push(t.msg(Key::RemovedAcceptedAt).with("when", when).text());
     }
-    paragraphs.push(match removed.reason() {
-        Some(reason) => t.msg(Key::RemovedReason).with("reason", reason).text(),
-        None => t.get(Key::RemovedNoReason),
+    match removed.reason() {
+        Reason::Given(reason) => {
+            paragraphs.push(t.msg(Key::RemovedReason).with("reason", reason).text());
+        }
+        // A hidden summary is the tombstone, never the words.
+        Reason::Hidden(mark) => paragraphs.extend(crate::tombstone::mark_facts(t, mark)),
+        Reason::NotGiven => paragraphs.push(t.get(Key::RemovedNoReason)),
+    }
+    paragraphs.push(match &removed.restore {
+        Restore::Rollback { .. } => t.get(Key::RemovedRestoreRollback),
+        Restore::LastText { .. } => t.get(Key::RemovedRestoreLastText),
+        Restore::NotOffered => t.get(Key::RemovedRestoreNotOffered),
+        Restore::TextHidden { titles } => crate::restore::text_hidden_words(t, titles),
     });
-    paragraphs.push(t.get(match removed.restore {
-        Restore::Rollback { .. } => Key::RemovedRestoreRollback,
-        Restore::LastText { .. } => Key::RemovedRestoreLastText,
-        Restore::NotOffered => Key::RemovedRestoreNotOffered,
-    }));
     let mut choices = vec![
         Choice {
             label: t.msg(Key::RemovedLinkChange).with("number", number).text(),
@@ -182,7 +189,7 @@ pub(crate) fn present(page: &Page, gone: Gone) -> Response {
                 label: t.get(Key::RemovedRestoreLink),
                 href: crate::restore::path(slug, &removed.title, view),
             },
-            Restore::NotOffered => Choice {
+            Restore::NotOffered | Restore::TextHidden { .. } => Choice {
                 label: t.get(Key::ProposeNewPageLink),
                 href: proposal_paths::new_page(slug, Some(&removed.title)),
             },

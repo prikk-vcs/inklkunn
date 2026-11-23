@@ -616,3 +616,4 @@ exact :: words.rs :: after :: a placeholder name of a catalog message
 exact :: words.rs :: person :: a placeholder name of a catalog message
 exact :: page.rs :: appeal-{} :: the id of an element of a form, made from the appeal's id; no sentence a reader sees
 exact :: appeals.rs :: an appeal could not be handled now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: restore.rs :: pages :: a placeholder name of a catalog message

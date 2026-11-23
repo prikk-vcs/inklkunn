@@ -3886,6 +3886,10 @@ pub const CATALOG: &[Entry] = &[
         "This page changed after you opened this form, so what the proposal would be has changed too. Read what is offered now, and ask again.",
     ),
     msg("restore.back", "Back to the removed page"),
+    msg(
+        "restore.text_hidden",
+        "The last text of {pages} was hidden by moderation, so this form cannot restore it. You can propose a new page with this title instead.",
+    ),
     msg("problem.page_gone.title", "The page was removed"),
     msg(
         "problem.page_gone.detail",

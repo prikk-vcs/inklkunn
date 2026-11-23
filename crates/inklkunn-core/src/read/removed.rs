@@ -17,14 +17,24 @@
 //! than that is answered as before, *no such page*.
 //!
 //! **One place says why.** What the removal's reason is, is [`RemovedPage::reason`] and nothing else: the surfaces ask it,
-//! never the change's summary directly. The tombstones of RFC 006 D-8 (a hidden summary) wrap this one function.
+//! never the change's summary directly. It wraps the tombstones of RFC 006 D-8: a hidden summary is [`Reason::Hidden`] with
+//! the mark of the hiding (the surface shows the tombstone), never the words. The removing change is read through the same
+//! masked history as every other surface reads, so a hidden summary is already empty in it and a hidden author is already
+//! [`super::history::Who::Hidden`].
+//!
+//! **A removed page's old text can be hidden, and a way back never brings it back** (INV-13; D-8, D-10). The page's last text
+//! is not a tip, so moderation may hide it; the way back would copy it into a draft, then into the tip. So the way back is
+//! offered only when none of the revisions that wrote the text to be written again has hidden content: [`Restore::TextHidden`]
+//! says which pages, and the form that restores refuses. Only the *content* matters: a hidden summary or author of that
+//! revision leaves the text free to come back (the draft's own summary is the service's).
 
-use inklkunn_markup::path::title_to_path;
+use inklkunn_markup::path::{path_to_title, title_to_path};
 use inklkunn_store::{FileChange, WikiRecord};
 
 use super::history::{ChangeInfo, PageEvent};
 use super::{Lookup, ReadError, ReadService, RollbackOutcome, Tip};
 use crate::merge::{PageText, merge};
+use crate::tombstone::Mark;
 
 /// The most steps of a page's history read to find out that a title is a removed page. A step inspects at most
 /// [`super::MAX_INSPECTED_PER_REQUEST`] blocks and asks prikk for at most [`super::MAX_SHOWS_PER_REQUEST`] it does not
@@ -46,8 +56,27 @@ pub enum Restore {
         /// The block the text is read at (the removal's parent: the last state the page had).
         from: String,
     },
-    /// Neither can be made (the text is not text, or is larger than a page may be): the person starts the page anew.
+    /// Neither can be made (the text is not text, or is larger than a page may be, or the revision that wrote it cannot be
+    /// found within the history this reads): the person starts the page anew.
     NotOffered,
+    /// **The text that would come back was hidden by moderation** (RFC 006 D-8; INV-13): no way back is offered, and a request
+    /// for one is refused. The person starts the page anew. For a rollback of a change that wrote several pages, any one hidden
+    /// refuses the whole.
+    TextHidden {
+        /// The titles of the pages whose text is hidden: the titles only, never any of the text.
+        titles: Vec<String>,
+    },
+}
+
+/// **Why a page was removed**, as it may be shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reason<'a> {
+    /// The words of the removing change's summary.
+    Given(&'a str),
+    /// The summary is hidden by moderation: the surface shows the tombstone of this hiding in place of the words.
+    Hidden(&'a Mark),
+    /// The change gives none.
+    NotGiven,
 }
 
 /// A page whose history ends with its removal.
@@ -67,12 +96,28 @@ pub struct RemovedPage {
 
 impl RemovedPage {
     /// **The reason the page was removed**, as it is shown: the one-line summary of the removing change (the proposal's
-    /// summary, as the history shows it), or `None` when the change says none. This is the single accessor every surface
-    /// of a removed page reads, so that a tombstone over a hidden summary (RFC 006 D-8, G-T4a) wraps it here and no
-    /// surface has a second way to the words.
-    pub fn reason(&self) -> Option<&str> {
-        Some(self.removal.summary.as_str()).filter(|s| !s.is_empty())
+    /// summary, as the history shows it), the mark of the hiding when moderation hid that summary (the words are then never
+    /// given), or none when the change says none. This is the single accessor every surface of a removed page reads, so that
+    /// the tombstone over a hidden summary (RFC 006 D-8, G-T4) is made here and no surface has a second way to the words.
+    pub fn reason(&self) -> Reason<'_> {
+        if let Some(mark) = self.removal.hidden.summary() {
+            return Reason::Hidden(mark);
+        }
+        match Some(self.removal.summary.as_str()).filter(|s| !s.is_empty()) {
+            Some(words) => Reason::Given(words),
+            None => Reason::NotGiven,
+        }
     }
+}
+
+/// What the revisions behind a removal say of the text that would be written again.
+enum TextToReturn {
+    /// None of them has its content hidden.
+    Free,
+    /// The text of these pages (titles) is hidden.
+    Hidden(Vec<String>),
+    /// A revision could not be found within the history this reads.
+    Unknown,
 }
 
 impl ReadService {
@@ -122,7 +167,7 @@ impl ReadService {
     }
 
     /// The way back for the page at `path` that `removal` removed: a rollback when it merges cleanly over `tip`, else the
-    /// last text, else nothing.
+    /// last text, else nothing; and **nothing but a refusal when the text that would be written again is hidden**.
     fn restore_of(
         &self,
         wiki: &WikiRecord,
@@ -134,19 +179,113 @@ impl ReadService {
         if let RollbackOutcome::Plan(plan) = self.rollback_plan(wiki, view, &removal.block_id)?
             && self.merges_over(wiki, tip, &plan.undoes, &plan.files)?
         {
-            return Ok(Restore::Rollback {
-                undoes: plan.undoes,
-            });
+            // Only a file that is written (not one that is taken away) brings text back.
+            let written: Vec<&str> = plan
+                .files
+                .iter()
+                .filter(|file| file.text.is_some())
+                .map(|file| file.path.as_str())
+                .collect();
+            return Ok(
+                match self.text_to_return(wiki, tip, &removal.block_id, &written)? {
+                    TextToReturn::Free => Restore::Rollback {
+                        undoes: plan.undoes,
+                    },
+                    TextToReturn::Hidden(titles) => Restore::TextHidden { titles },
+                    TextToReturn::Unknown => Restore::NotOffered,
+                },
+            );
         }
         let Some(parent) = removal.parent.as_deref() else {
             return Ok(Restore::NotOffered);
         };
-        Ok(match self.text_at(wiki, parent, path)? {
-            Ok(Some(_)) => Restore::LastText {
-                from: parent.to_owned(),
+        if !matches!(self.text_at(wiki, parent, path)?, Ok(Some(_))) {
+            return Ok(Restore::NotOffered);
+        }
+        Ok(
+            match self.text_to_return(wiki, tip, &removal.block_id, &[path])? {
+                TextToReturn::Free => Restore::LastText {
+                    from: parent.to_owned(),
+                },
+                TextToReturn::Hidden(titles) => Restore::TextHidden { titles },
+                TextToReturn::Unknown => Restore::NotOffered,
             },
-            _ => Restore::NotOffered,
+        )
+    }
+
+    /// **Is the text that `paths` had before the change `removal` hidden?** For each path the revisions that wrote the text the
+    /// path held just before the removal are read from the path's own history (the same history, in the same bounded steps,
+    /// that found the removal): the newest change before the removal that touched the path and, while that one only moved the
+    /// page (no text of its own), the ones before it, up to the one that wrote the text. If **any** has its content hidden, the
+    /// text may not come back, and the titles say which pages. A revision that cannot be found within the bounds is not guessed
+    /// at: the way back is then not offered at all ([`TextToReturn::Unknown`]).
+    fn text_to_return(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+        removal: &str,
+        paths: &[&str],
+    ) -> Result<TextToReturn, ReadError> {
+        let mut hidden = Vec::new();
+        let mut unknown = false;
+        for path in paths {
+            let title = path_to_title(path).unwrap_or_else(|| (*path).to_owned());
+            match self.revisions_before(wiki, tip, path, &title, removal)? {
+                Some(behind) if behind.iter().any(|c| c.hidden.content().is_some()) => {
+                    hidden.push(title);
+                }
+                Some(_) => {}
+                None => unknown = true,
+            }
+        }
+        Ok(if !hidden.is_empty() {
+            TextToReturn::Hidden(hidden)
+        } else if unknown {
+            TextToReturn::Unknown
+        } else {
+            TextToReturn::Free
         })
+    }
+
+    /// The changes behind the change `removal` in the history of the page at `path`, newest first, up to and including the first
+    /// that wrote the page's text; `None` when `removal` is not found in the history within [`MAX_REMOVAL_STEPS`] steps.
+    fn revisions_before(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+        path: &str,
+        title: &str,
+        removal: &str,
+    ) -> Result<Option<Vec<ChangeInfo>>, ReadError> {
+        let (mut after, mut found, mut behind) = (None, false, Vec::new());
+        for _ in 0..MAX_REMOVAL_STEPS {
+            let step =
+                self.history_step(wiki, tip.clone(), path.to_owned(), title.to_owned(), after)?;
+            for row in step.rows {
+                if !found {
+                    found = row.change.block_id == removal;
+                    continue;
+                }
+                // A change that only moved the page wrote no text of its own: the text is an older change's.
+                let ends = row
+                    .events
+                    .iter()
+                    .any(|event| !matches!(event, PageEvent::MovedFrom { .. }));
+                behind.push(row.change);
+                if ends {
+                    return Ok(Some(behind));
+                }
+            }
+            match step.older {
+                Some(older) => after = Some(older),
+                // The history ends here: nothing older wrote anything.
+                None => {
+                    // Older than the log this service reads: nothing is known of what is there.
+                    return Ok((found && !step.beyond_window).then_some(behind));
+                }
+            }
+        }
+        Ok(None)
     }
 
     /// Would the pages of a rollback plan merge cleanly over the tip (RFC 004 D-5, the merge the acceptance runs): the base

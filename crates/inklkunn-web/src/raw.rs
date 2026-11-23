@@ -65,6 +65,8 @@ pub(crate) async fn raw_content(
         let wiki = open(&services, &request_headers, &slug)?;
         let raw = services.read.raw(&wiki, None, &title);
         // A title that leads to no page may be a page that was removed (RFC 006 D-10): the same answer as the page's own, `410`.
+        // Only the fact is asked: the answer is the one fixed sentence below, so no summary and no name of the removal (which
+        // moderation may hide, D-8) is read here, and a test holds it so.
         let gone = matches!(raw, Ok(None))
             && matches!(services.read.removed_page(&wiki, None, &title), Ok(Some(_)));
         Some((wiki, raw, gone))

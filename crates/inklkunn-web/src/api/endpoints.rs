@@ -12,7 +12,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
 use axum::routing::{get, post};
-use inklkunn_core::read::{Cursor, DEFAULT_PAGE_SIZE, PageFilter, PageOutcome, PageView};
+use inklkunn_core::read::{Cursor, DEFAULT_PAGE_SIZE, PageFilter, PageOutcome, PageView, Reason};
 use inklkunn_core::{Action, Guard};
 use inklkunn_store::{IndexEntry, WikiRecord};
 use serde_json::{Value, json};
@@ -187,18 +187,34 @@ fn missing(services: &Services, wiki: &WikiRecord, view: &View, title: &str) -> 
     else {
         return Problem::new(Code::PageNotFound);
     };
+    // `none` is also what a way back is when the text it would write again was hidden by moderation (INV-13): nothing is
+    // offered, and which pages it is never said here.
     let restore = match removed.restore {
         inklkunn_core::read::Restore::Rollback { .. } => "rollback",
         inklkunn_core::read::Restore::LastText { .. } => "last-text",
-        inklkunn_core::read::Restore::NotOffered => "none",
+        inklkunn_core::read::Restore::NotOffered
+        | inklkunn_core::read::Restore::TextHidden { .. } => "none",
     };
-    Problem::new(Code::PageGone)
+    // The reason is the words, or null and the tombstone of the hiding in place of them (never a name, never the note).
+    let reason = match removed.reason() {
+        Reason::Given(words) => json!(words),
+        Reason::Hidden(_) | Reason::NotGiven => Value::Null,
+    };
+    let mut problem = Problem::new(Code::PageGone)
         .named("page", &removed.title)
         .named("change", removed.removal.number.to_string())
         .member("change_id", json!(removed.removal.block_id))
         .member("proposal", json!(removed.removal.proposal))
-        .member("reason", json!(removed.reason()))
-        .member("restore", json!(restore))
+        .member("reason", reason)
+        .member("restore", json!(restore));
+    let mut tombstone = serde_json::Map::new();
+    shape::tombstones(&mut tombstone, &removed.removal.hidden);
+    for name in ["hidden", "tombstone", "tombstones"] {
+        if let Some(value) = tombstone.remove(name) {
+            problem = problem.member(name, value);
+        }
+    }
+    problem
 }
 
 /// The page a title leads to, or why not; a page the server could not ask for is the last one it has, labelled

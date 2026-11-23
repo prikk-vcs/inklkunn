@@ -126,7 +126,7 @@ pub use linediff::{DiffLine, Hunk, HunkView, LineKind, MAX_WORDS, Segment};
 pub use links::Presentation;
 pub use preview::Preview;
 pub use raw::RawPage;
-pub use removed::{MAX_REMOVAL_STEPS, RemovedPage, Restore};
+pub use removed::{MAX_REMOVAL_STEPS, Reason, RemovedPage, Restore};
 pub use rollback::{MAX_ROLLBACK_PAGES, NoRollback, RollbackOutcome, RollbackPlan};
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};

@@ -1953,6 +1953,7 @@ keys! {
     RestoreOpenDraft => "restore.open_draft",
     RestoreChanged => "restore.changed",
     RestoreBack => "restore.back",
+    RestoreTextHidden => "restore.text_hidden",
     ProblemPageGoneTitle => "problem.page_gone.title",
     ProblemPageGoneDetail => "problem.page_gone.detail",
     ProblemPageGoneHint => "problem.page_gone.hint",

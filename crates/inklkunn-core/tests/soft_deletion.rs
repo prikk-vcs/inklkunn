@@ -15,7 +15,7 @@ use inklkunn_core::governance::PlatformLimits;
 use inklkunn_core::message::SystemLabel;
 use inklkunn_core::proposal::rollback::restore_edit;
 use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalService, QuotaConfig};
-use inklkunn_core::read::{PageEvent, Restore, RollbackOutcome};
+use inklkunn_core::read::{PageEvent, Reason, Restore, RollbackOutcome};
 use inklkunn_core::{
     AcceptFailure, AcceptStep, AcceptanceParts, Accepted, Authorizer, IdentityAuthority,
     KeyAuthority, LeaseConfig, PreparedFile, Principal, ProposalAcceptor, ReadConfig, ReadService,
@@ -435,7 +435,7 @@ fn criterion_10_a_removed_page_is_found_by_its_history_and_is_restored_by_a_roll
     // The reason is the proposal's summary, read through the one accessor.
     assert_eq!(
         removed.reason(),
-        Some("Remove the guide: it is out of date")
+        Reason::Given("Remove the guide: it is out of date")
     );
     let Restore::Rollback { undoes } = removed.restore.clone() else {
         panic!("a clean rollback was expected: {:?}", removed.restore);
@@ -564,7 +564,7 @@ fn the_newest_change_that_touched_the_path_decides_whether_it_is_a_removed_page(
         .unwrap()
         .unwrap();
     assert_eq!(removed.removal.block_id, second);
-    assert_eq!(removed.reason(), Some("Remove the guide again"));
+    assert_eq!(removed.reason(), Reason::Given("Remove the guide again"));
 }
 
 // ------------------------------------------------------------------------------------ criterion 11: retiring

@@ -3926,6 +3926,10 @@ pub const CATALOG: &[Entry] = &[
         "このフォームを開いたあとにページの状況が変わり、提案の内容も変わりました。いま示されている内容を確認して、あらためて操作してください。",
     ),
     msg("restore.back", "削除されたページに戻る"),
+    msg(
+        "restore.text_hidden",
+        "{pages} の最後の本文はモデレーションにより非表示にされているため、このフォームでは復元できません。代わりに、同じタイトルで新しいページを提案できます。",
+    ),
     msg("problem.page_gone.title", "ページは削除されました"),
     msg(
         "problem.page_gone.detail",
