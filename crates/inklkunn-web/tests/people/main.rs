@@ -16,6 +16,9 @@ use inklkunn_store::{
 };
 
 const PEOPLE: &str = "/handbook/-/people";
+const RESTRICT: &str = "/handbook/-/people/restrict";
+const RENEW: &str = "/handbook/-/people/renew";
+const LIFT: &str = "/handbook/-/people/lift";
 const DAY: i64 = 86_400;
 
 struct Env {
@@ -118,6 +121,7 @@ fn restrict_form<'a>(who: &'a str, days: &'a str, reason: &'a str) -> Vec<(&'a s
 
 const POLICY: &str = "rungs:\n  grant_up_to: reviewer\npromotion:\n  contributor: \"A few edits that were accepted without a correction.\"\n  reviewer: \"A season of careful reading.\"\n";
 
+mod changed;
 mod forms;
 mod page;
 mod refusals;

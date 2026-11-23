@@ -1774,6 +1774,8 @@ keys! {
     ProtectProblemTooLong => "protect.problem_too_long",
     ProtectProblemInForce => "protect.problem_in_force",
     ProtectProblemNotInForce => "protect.problem_not_in_force",
+    ProtectProblemChanged => "protect.problem_changed",
+    PeopleChanged => "people.changed",
     ProtectNotAllowed => "protect.not_allowed",
     ProtectNotKept => "protect.not_kept",
     ProtectUnavailable => "protect.unavailable",

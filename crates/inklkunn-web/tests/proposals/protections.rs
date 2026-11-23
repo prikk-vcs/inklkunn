@@ -435,3 +435,123 @@ async fn a_form_that_is_not_from_this_site_does_nothing() {
     assert_eq!(foreign.status, StatusCode::FORBIDDEN);
     assert_eq!(records(&c), 0);
 }
+
+// ------------------------------------------------------------------------------------ N-1: a renewal or a lifting that lost
+
+/// A trail that runs `hook` on each event once it is kept: the moment between an act's event and its record.
+struct Hooked {
+    inner: std::sync::Arc<inklkunn_store::MemoryAudit>,
+    hook: Box<dyn Fn(&inklkunn_store::AuditEvent) + Send + Sync>,
+}
+
+impl inklkunn_store::AuditSink for Hooked {
+    fn record(&self, event: &inklkunn_store::AuditEvent) -> inklkunn_store::Result<()> {
+        self.inner.record(event)?;
+        (self.hook)(event);
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn a_renewal_and_a_lifting_of_a_protection_that_lost_to_another_say_it_changed_and_record_nothing()
+ {
+    use inklkunn_store::{
+        Actor, AuditOutcome, MeasureEvent, ProtectionEvent, ProtectionEventId, Role,
+    };
+    for (cookie, sentence) in [
+        (
+            "inklkunn_lang=en",
+            "It changed while you acted. Look again.",
+        ),
+        (
+            "inklkunn_lang=ja",
+            "操作している間に状態が変わりました。もう一度確認してください。",
+        ),
+    ] {
+        for act in ["protection-renewed", "protection-lifted"] {
+            let mut c = cast();
+            let set = protect(
+                &c,
+                &c.maintainer,
+                &fields("page", "Home", "review", "", "First.", "7", "set"),
+            )
+            .await;
+            assert_eq!(set.status, StatusCode::SEE_OTHER, "{}", set.body());
+            let current =
+                c.w.store
+                    .active_protections(&c.w.wiki.id, crate::common::NOW)
+                    .unwrap()
+                    .remove(0);
+            let ender = ProtectionEvent {
+                id: ProtectionEventId::new(),
+                event: MeasureEvent::Lifted,
+                requirement: None,
+                reason: None,
+                expires_at: None,
+                of_event: Some(current.id.clone()),
+                by: Actor {
+                    account: c.maintainer.clone(),
+                    rung: Role::Maintainer,
+                },
+                at: crate::common::NOW,
+                ..current
+            };
+            let store = c.w.store.clone();
+            let sink = Hooked {
+                inner: std::sync::Arc::new(inklkunn_store::MemoryAudit::new()),
+                hook: Box::new(move |event| {
+                    if event.action == act && event.outcome == AuditOutcome::Allowed {
+                        store.record_protection_event(&ender).unwrap();
+                    }
+                }),
+            };
+            let authorizer = inklkunn_core::Authorizer::new(
+                std::sync::Arc::new(
+                    inklkunn_core::StoreAuthz::new(c.w.store.clone(), c.w.store.clone())
+                        .with_restrictions(c.w.store.clone()),
+                ),
+                std::sync::Arc::new(sink),
+            )
+            .with_clock(|| crate::common::NOW)
+            .with_protections(
+                c.w.store.clone(),
+                inklkunn_core::governance::PlatformLimits::default(),
+            );
+            c.w.services = std::sync::Arc::new(inklkunn_web::Services {
+                authorizer: std::sync::Arc::new(authorizer),
+                ..(*c.w.services).clone()
+            });
+            let (title, require, role, reason, days, word) = if act == "protection-renewed" {
+                ("Home", "review", "", "Second.", "30", "renew")
+            } else {
+                ("Home", "review", "", "", "1", "lift")
+            };
+            let f = fields("page", title, require, role, reason, days, word);
+            let before = records(&c);
+            let body: String = f
+                .iter()
+                .map(|(k, v)| {
+                    format!(
+                        "{}={}",
+                        inklkunn_markup::percent_encode(k),
+                        inklkunn_markup::percent_encode(v)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("&");
+            let a = send_body(
+                &c.w,
+                "POST",
+                PROTECT,
+                Some(&c.maintainer),
+                &[("sec-fetch-site", "same-origin"), ("cookie", cookie)],
+                body,
+            )
+            .await;
+            assert_eq!(a.status, StatusCode::CONFLICT, "{act}: {}", a.body());
+            assert!(main_of(&a).contains(sentence), "{act}: {}", a.body());
+            // Only the other moderator's lifting was recorded.
+            assert_eq!(records(&c), before + 1, "{act}");
+        }
+    }
+}

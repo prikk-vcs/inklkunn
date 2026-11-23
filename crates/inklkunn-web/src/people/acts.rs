@@ -336,7 +336,7 @@ fn ended(page: &Page, ctx: &Ctx, error: &PeopleError) -> Response {
             ctx,
             StatusCode::CONFLICT,
             Key::RefusedNotNowHeading,
-            vec![t.get(Key::RefusedChanged)],
+            vec![t.get(Key::PeopleChanged)],
         ),
         PeopleError::Unavailable(cause) => {
             ctx.log(&format!("people could not be changed now: {cause}"));

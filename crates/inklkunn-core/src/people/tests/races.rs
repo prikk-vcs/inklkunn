@@ -7,10 +7,12 @@ use std::thread;
 
 use inklkunn_store::Role;
 
-use super::support::{Kind, Person, World, steady, steady_world};
-use crate::authorize::{ProtectError, Setting};
+use inklkunn_store::{AuditEvent, AuditOutcome, MemoryAudit};
+
+use super::support::{HookedAudit, Kind, Person, World, steady, steady_world};
+use crate::authorize::{Authorizer, ProtectError, Setting};
 use crate::governance::{Require, Target};
-use crate::people::{GrantRefusal, PeopleError, RestrictRefusal};
+use crate::people::{GrantRefusal, PeopleError, PeopleService, RestrictRefusal};
 
 const ROUNDS: usize = 60;
 
@@ -163,5 +165,196 @@ fn two_admins_demoting_each_other_at_once_leave_one_admin_and_the_late_one_is_to
             .filter(|p| w.grant_of(p) == Some(Role::Admin))
             .count();
         assert_eq!(admins, 1, "round {round}: an admin is left");
+    }
+}
+
+// ------------------------------------------------------------------------------------ N-1: renew and lift
+
+/// An act, by name, that both of two threads reach before either records: the trail's event of the act is written *allowed*
+/// after the record in force was read and before the record is made, so a barrier there makes the two read the same record.
+fn met_at(
+    action: &'static str,
+    gate: Arc<Barrier>,
+) -> impl Fn(&AuditEvent) + Send + Sync + 'static {
+    move |event| {
+        if event.action == action && event.outcome == AuditOutcome::Allowed {
+            gate.wait();
+        }
+    }
+}
+
+fn people_meeting(w: &World, action: &'static str) -> Arc<PeopleService> {
+    let sink = HookedAudit {
+        inner: Arc::new(MemoryAudit::new()),
+        hook: Box::new(met_at(action, Arc::new(Barrier::new(2)))),
+    };
+    Arc::new(PeopleService::new(
+        w.authorizer.clone(),
+        w.store.clone(),
+        w.store.clone(),
+        w.store.clone(),
+        Arc::new(sink),
+        w.limits,
+    ))
+}
+
+fn authorizer_meeting(w: &World, action: &'static str) -> Authorizer {
+    let sink = HookedAudit {
+        inner: Arc::new(MemoryAudit::new()),
+        hook: Box::new(met_at(action, Arc::new(Barrier::new(2)))),
+    };
+    Authorizer::new(w.source.clone(), Arc::new(sink))
+        .with_clock(w.clock)
+        .with_protections(w.store.clone(), w.limits)
+}
+
+/// Of two answers, exactly one succeeded and the other says **the record changed** by name.
+fn one_won_one_changed<T: std::fmt::Debug, E: std::fmt::Debug>(
+    round: usize,
+    results: &[Result<T, E>; 2],
+    changed: impl Fn(&E) -> bool,
+) {
+    assert_eq!(
+        results.iter().filter(|r| r.is_ok()).count(),
+        1,
+        "round {round}: exactly one wins, {results:?}"
+    );
+    assert!(
+        results
+            .iter()
+            .any(|r| r.as_ref().err().is_some_and(&changed)),
+        "round {round}: the other is told it changed, by name, {results:?}"
+    );
+}
+
+#[test]
+fn two_moderators_renewing_one_restriction_at_once_leave_one_renewal_and_the_late_one_is_told_it_changed()
+ {
+    let w = world();
+    let admin = w.person("Ada", Some(Role::Admin));
+    let admin_two = w.person("Ben", Some(Role::Admin));
+    for round in 0..ROUNDS {
+        let people = people_meeting(&w, "renew-restriction");
+        let person = w.person(&format!("Pat{round}"), Some(Role::Contributor));
+        w.people
+            .restrict(
+                &admin.principal,
+                &w.wiki,
+                &person.id.to_string(),
+                3,
+                "Edit-warring.",
+            )
+            .unwrap();
+        let act = |by: &Person| {
+            let (people, wiki, who, principal) = (
+                people.clone(),
+                w.wiki.clone(),
+                person.id.to_string(),
+                by.principal.clone(),
+            );
+            move || people.renew(&principal, &wiki, &who, 5, "Still at it.")
+        };
+        let (a, b) = together(act(&admin), act(&admin_two));
+        one_won_one_changed(round, &[a, b], |e| matches!(e, PeopleError::Changed));
+    }
+}
+
+#[test]
+fn two_moderators_lifting_one_restriction_at_once_leave_one_lifting_and_the_late_one_is_told_it_changed()
+ {
+    let w = world();
+    let admin = w.person("Ada", Some(Role::Admin));
+    let admin_two = w.person("Ben", Some(Role::Admin));
+    for round in 0..ROUNDS {
+        let people = people_meeting(&w, "lift-restriction");
+        let person = w.person(&format!("Pat{round}"), Some(Role::Contributor));
+        w.people
+            .restrict(
+                &admin.principal,
+                &w.wiki,
+                &person.id.to_string(),
+                3,
+                "Edit-warring.",
+            )
+            .unwrap();
+        let act = |by: &Person| {
+            let (people, wiki, who, principal) = (
+                people.clone(),
+                w.wiki.clone(),
+                person.id.to_string(),
+                by.principal.clone(),
+            );
+            move || people.lift(&principal, &wiki, &who, "Settled.")
+        };
+        let (a, b) = together(act(&admin), act(&admin_two));
+        one_won_one_changed(round, &[a, b], |e| matches!(e, PeopleError::Changed));
+    }
+}
+
+fn setting(title: &str) -> Setting {
+    Setting {
+        target: Target::path(title).expect("a title"),
+        require: Require::Review,
+        reason: "A dispute.".to_owned(),
+        days: 3,
+    }
+}
+
+#[test]
+fn two_moderators_renewing_one_protection_at_once_leave_one_renewal_and_the_late_one_is_told_it_changed()
+ {
+    let w = world();
+    let admin = w.person("Ada", Some(Role::Admin));
+    let admin_two = w.person("Ben", Some(Role::Admin));
+    for round in 0..ROUNDS {
+        let authorizer = authorizer_meeting(&w, "protection-renewed");
+        let title = format!("Page{round}");
+        w.authorizer
+            .protect(&admin.principal, &w.wiki.id, &setting(&title))
+            .unwrap();
+        let act = |by: &Person| {
+            let (authorizer, wiki, principal, title) = (
+                authorizer.clone(),
+                w.wiki.id.clone(),
+                by.principal.clone(),
+                title.clone(),
+            );
+            move || authorizer.renew_protection(&principal, &wiki, &setting(&title))
+        };
+        let (a, b) = together(act(&admin), act(&admin_two));
+        one_won_one_changed(round, &[a, b], |e| matches!(e, ProtectError::Changed));
+    }
+}
+
+#[test]
+fn two_moderators_lifting_one_protection_at_once_leave_one_lifting_and_the_late_one_is_told_it_changed()
+ {
+    let w = world();
+    let admin = w.person("Ada", Some(Role::Admin));
+    let admin_two = w.person("Ben", Some(Role::Admin));
+    for round in 0..ROUNDS {
+        let authorizer = authorizer_meeting(&w, "protection-lifted");
+        let title = format!("Page{round}");
+        w.authorizer
+            .protect(&admin.principal, &w.wiki.id, &setting(&title))
+            .unwrap();
+        let act = |by: &Person| {
+            let (authorizer, wiki, principal, title) = (
+                authorizer.clone(),
+                w.wiki.id.clone(),
+                by.principal.clone(),
+                title.clone(),
+            );
+            move || {
+                authorizer.lift_protection(
+                    &principal,
+                    &wiki,
+                    &Target::path(&title).expect("a title"),
+                    Some("Settled."),
+                )
+            }
+        };
+        let (a, b) = together(act(&admin), act(&admin_two));
+        one_won_one_changed(round, &[a, b], |e| matches!(e, ProtectError::Changed));
     }
 }

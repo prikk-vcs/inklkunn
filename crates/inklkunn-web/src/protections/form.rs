@@ -536,6 +536,10 @@ fn act_on(page: &Page, ctx: &Ctx, typed: &Typed, act: &str) -> Response {
             vec![t.get(Key::ProtectProblemNotInForce)],
             StatusCode::CONFLICT,
         ),
+        Err(ProtectError::Changed) => again(
+            vec![t.get(Key::ProtectProblemChanged)],
+            StatusCode::CONFLICT,
+        ),
         Err(ProtectError::Store(why)) => {
             ctx.log(&format!("a protection could not be recorded: {why}"));
             outcome_page(page, ctx, &Outcome::Unavailable)

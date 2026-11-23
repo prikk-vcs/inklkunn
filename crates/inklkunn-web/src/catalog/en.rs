@@ -3490,6 +3490,11 @@ pub const CATALOG: &[Entry] = &[
         "No temporary protection is in force here, so there is nothing to renew or lift.",
     ),
     msg(
+        "protect.problem_changed",
+        "It changed while you acted. Look again.",
+    ),
+    msg("people.changed", "It changed while you acted. Look again."),
+    msg(
         "protect.not_allowed",
         "Only people who hold the role that moderates in this wiki can protect a page. Nothing was changed.",
     ),

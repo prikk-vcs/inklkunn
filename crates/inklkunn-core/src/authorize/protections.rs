@@ -78,6 +78,9 @@ pub enum ProtectError {
     AlreadyInForce,
     /// No temporary protection of this page or namespace is in force: there is nothing to renew or to lift.
     NotInForce,
+    /// **The protection changed while the act was made** (a renewal or a lifting of the one in force that someone else made first):
+    /// nothing was recorded, and the person looks again (N-1).
+    Changed,
     /// The store failed (the text is for operators).
     Store(String),
 }
@@ -98,12 +101,22 @@ impl std::fmt::Display for ProtectError {
                 f.write_str("a temporary protection is in force there already")
             }
             ProtectError::NotInForce => f.write_str("no temporary protection is in force there"),
+            ProtectError::Changed => f.write_str("the protection changed while the act was made"),
             ProtectError::Store(why) => write!(f, "the protection could not be recorded: {why}"),
         }
     }
 }
 
 impl std::error::Error for ProtectError {}
+
+/// A renewal or a lifting that the store refused because someone else had already followed the record it names: the protection
+/// changed under the act (N-1), which is said by name; any other refusal is the store's.
+fn changed_or_failed(e: StoreError) -> ProtectError {
+    match e {
+        StoreError::StateChanged | StoreError::AlreadyRecorded => ProtectError::Changed,
+        other => other.into(),
+    }
+}
 
 impl From<StoreError> for ProtectError {
     fn from(e: StoreError) -> Self {
@@ -489,7 +502,7 @@ impl Authorizer {
             Act::Renew => book
                 .store
                 .record_protection_event(&event)
-                .map_err(Into::into),
+                .map_err(changed_or_failed),
             Act::Lift => {
                 // Every record in force ends, each by a lifting that names it: the first is the one this act is named by.
                 in_force
@@ -503,7 +516,7 @@ impl Authorizer {
                         })
                     })
                     .and_then(|()| book.store.record_protection_event(&event))
-                    .map_err(Into::into)
+                    .map_err(changed_or_failed)
             }
         };
         // The trail named the act before its record; where the record fails it says so, so that it never names an act that did
@@ -511,6 +524,7 @@ impl Authorizer {
         if let Err(e) = &recorded {
             let word = match e {
                 ProtectError::AlreadyInForce => "already-in-force",
+                ProtectError::Changed => "state-changed",
                 _ => "store-error",
             };
             let _ = self.audit.record(&AuditEvent::new(

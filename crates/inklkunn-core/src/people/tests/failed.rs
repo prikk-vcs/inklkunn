@@ -282,11 +282,8 @@ fn a_protection_renewal_and_lifting_that_lost_to_another_leave_the_allowed_event
                     None,
                 )
             };
-            assert!(
-                matches!(result, Err(ProtectError::Store(_))),
-                "{kind:?} {act}: {result:?}"
-            );
-            assert_allowed_then_failed(&of_act(&trail, act), "store-error");
+            assert_eq!(result, Err(ProtectError::Changed), "{kind:?} {act}");
+            assert_allowed_then_failed(&of_act(&trail, act), "state-changed");
         }
     }
 }
