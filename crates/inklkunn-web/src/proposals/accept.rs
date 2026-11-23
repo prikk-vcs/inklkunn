@@ -99,6 +99,12 @@ pub enum AcceptOutcome {
     NotAllowed,
     /// *Not allowed*, because the acceptor is restricted in this wiki (RFC 006 D-7): the reason and the end, told to them.
     Restricted(inklkunn_core::RestrictionNotice),
+    /// *Not allowed*, because the proposal replaces a file the wiki cannot read and its author no longer holds the rung that may
+    /// (G-T6 correction S-2); `restricted` says a restriction is the cause. The restriction's reason is the author's alone.
+    AuthorNotAllowed {
+        /// A restriction is the cause.
+        restricted: bool,
+    },
     /// *The wiki is busy*, with how many acts are ahead and how many seconds to wait before asking again.
     Busy {
         /// The queue's depth: the acts ahead of this one.
@@ -177,6 +183,9 @@ pub(crate) fn outcome_of(
         // A proposal that is not there is told like one the visitor may not accept: never a difference.
         Err(AcceptFailure::NotAllowed | AcceptFailure::NotFound) => AcceptOutcome::NotAllowed,
         Err(AcceptFailure::Restricted(notice)) => AcceptOutcome::Restricted(notice),
+        Err(AcceptFailure::AuthorNotAllowed { restricted }) => {
+            AcceptOutcome::AuthorNotAllowed { restricted }
+        }
         Err(AcceptFailure::Proposal(error)) => AcceptOutcome::Proposal(error),
         Err(AcceptFailure::Busy(busy)) => AcceptOutcome::Busy {
             waiting: busy.depth,
@@ -302,6 +311,15 @@ pub fn render_accept_outcome(
             StatusCode::FORBIDDEN,
             Key::OutcomeNotAllowed,
             crate::people::sentences::restriction_refusal(t, notice),
+        ),
+        AcceptOutcome::AuthorNotAllowed { restricted } => (
+            StatusCode::FORBIDDEN,
+            Key::OutcomeNotAllowed,
+            vec![t.get(if *restricted {
+                Key::OutcomeNoteAuthorRestricted
+            } else {
+                Key::OutcomeNoteAuthorNotAllowed
+            })],
         ),
         AcceptOutcome::Busy { waiting, .. } => {
             let mut paragraphs = vec![t.get(Key::OutcomeNoteBusy)];

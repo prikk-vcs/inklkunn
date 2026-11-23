@@ -1200,7 +1200,19 @@ pub struct Written<'a> {
     pub by_service: bool,
 }
 
-/// Judge a prepared change against the tip `tip_block`: `Ok(vec![])` when it is sound.
+/// What judging a prepared change found.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Checked {
+    /// The refusals: none when the change is sound.
+    pub refusals: Vec<Refusal>,
+    /// **The change writes over, takes away or moves a knowledge file the tip has and the wiki cannot read** (not UTF-8, over
+    /// what a knowledge file may be, or not parsing: [`crate::knowledge::readability`]). Only the `moderate` rung does that
+    /// (RFC 006 D-10), so the acceptance asks the rung of the proposal's author again under the lease (G-T6 correction S-2).
+    pub replaces_unreadable: bool,
+}
+
+/// Judge a prepared change against the tip `tip_block`: `Ok(vec![])` when it is sound. [`check_change_report`] says as well
+/// whether the change replaces a file the wiki cannot read.
 ///
 /// Free of cost for a wiki that has no knowledge layer: when neither the change nor the tip holds a path under
 /// `knowledge/`, one `tree` call answers and nothing is extracted. Otherwise the tip is extracted once (the read
@@ -1213,6 +1225,18 @@ pub fn check_change(
     tip_block: &str,
     change: &Written<'_>,
 ) -> Result<Vec<Refusal>, CheckError> {
+    check_change_report(reads, storage, repo, wiki, tip_block, change).map(|c| c.refusals)
+}
+
+/// [`check_change`], with what else the check found out about the change ([`Checked`]).
+pub fn check_change_report(
+    reads: &ReadService,
+    storage: &dyn Storage,
+    repo: &Path,
+    wiki: &WikiRecord,
+    tip_block: &str,
+    change: &Written<'_>,
+) -> Result<Checked, CheckError> {
     let Written {
         files,
         renames,
@@ -1239,12 +1263,12 @@ pub fn check_change(
             .iter()
             .any(|e| e.kind == "file" && !is_keep(&e.path))
         {
-            return Ok(Vec::new());
+            return Ok(Checked::default());
         }
     }
     reads
         .with_block_tree(wiki, tip_block, |root, config| {
-            judge(
+            judge_report(
                 root,
                 config.index_max_files,
                 config.page_max_bytes,
@@ -1257,6 +1281,8 @@ pub fn check_change(
         .map_err(CheckError::Read)?
 }
 
+/// [`judge_report`]'s refusals, for what asks nothing else.
+#[cfg(test)]
 pub(crate) fn judge(
     root: &Path,
     max_entries: u64,
@@ -1266,6 +1292,27 @@ pub(crate) fn judge(
     curation: Option<Stating<'_>>,
     by_service: bool,
 ) -> Result<Vec<Refusal>, CheckError> {
+    judge_report(
+        root,
+        max_entries,
+        page_max_bytes,
+        files,
+        renames,
+        curation,
+        by_service,
+    )
+    .map(|c| c.refusals)
+}
+
+pub(crate) fn judge_report(
+    root: &Path,
+    max_entries: u64,
+    page_max_bytes: u64,
+    files: &[PreparedFile],
+    renames: &[(PathBuf, PathBuf)],
+    curation: Option<Stating<'_>>,
+    by_service: bool,
+) -> Result<Checked, CheckError> {
     let path_text = |p: &Path| p.to_string_lossy().into_owned();
     // The knowledge files of the result: the tip's, the change on them.
     let mut knowledge: BTreeMap<String, Vec<u8>> = read_tree(root, max_entries)
@@ -1420,7 +1467,10 @@ pub(crate) fn judge(
         at,
         ids,
     };
-    Ok(validate(&knowledge, &touched, &pages, &tip))
+    Ok(Checked {
+        refusals: validate(&knowledge, &touched, &pages, &tip),
+        replaces_unreadable: !touched.unreadable_before.is_empty(),
+    })
 }
 
 impl From<ReadError> for CheckError {

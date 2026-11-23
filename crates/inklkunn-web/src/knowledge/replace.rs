@@ -26,7 +26,8 @@ use axum::response::Response;
 use inklkunn_core::Action;
 use inklkunn_core::knowledge::compose::clean_text;
 use inklkunn_core::knowledge::{
-    Claim, ClaimId, Family, Lifecycle, Source, SourceId, SourceLife, family_of, is_keep, read_file,
+    Claim, ClaimId, Family, Lifecycle, MAX_FILE_BYTES, Rule, Source, SourceId, SourceLife,
+    family_of, is_keep, read_file,
 };
 use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalError};
 use inklkunn_store::{Base, FileChange};
@@ -68,6 +69,8 @@ struct Typed {
 struct Subject_ {
     file: String,
     family: Family,
+    /// The rule the file breaks, as the index of the view says: the cause the form tells (never what the file held).
+    rule: Option<Rule>,
     view: Option<String>,
     base: Base,
 }
@@ -105,9 +108,10 @@ fn subject_of(ctx: &Ctx, file: &str, view: Option<&str>) -> Looked {
             return Looked::Unavailable;
         }
     };
-    if !index.invalid().iter().any(|row| row.path == file) {
+    let Some(row) = index.invalid().iter().find(|row| row.path == file) else {
         return Looked::Nothing;
-    }
+    };
+    let rule = Rule::from_code(&row.rule);
     let base = match ctx
         .services
         .proposals
@@ -122,6 +126,7 @@ fn subject_of(ctx: &Ctx, file: &str, view: Option<&str>) -> Looked {
     Looked::Found(Subject_ {
         file: file.to_owned(),
         family,
+        rule,
         view: view.filter(|v| !v.is_empty()).map(str::to_owned),
         base,
     })
@@ -149,6 +154,7 @@ struct FormTpl<'a> {
     heading: String,
     problems: Vec<String>,
     intro: String,
+    why: String,
     action: String,
     file_field: &'static str,
     file: String,
@@ -207,6 +213,7 @@ fn form_page(
         heading: t.get(Key::ReplaceHeading),
         problems,
         intro: t.msg(Key::ReplaceIntro).with("file", &subject.file).text(),
+        why: why(t, subject.rule),
         action: address(ctx.slug(), &subject.file, subject.view.as_deref()),
         file_field: fields::FILE,
         file: subject.file.clone(),
@@ -249,6 +256,22 @@ fn form_page(
     }
     .render();
     answer(status, &head, rendered)
+}
+
+/// Why the wiki cannot read the file, in the sentence of the rule it breaks: never a word of what the file said, and for a file that
+/// is not text nothing of its bytes. A file over the bound says the bound.
+fn why(t: crate::catalog::T, rule: Option<Rule>) -> String {
+    let cause = match rule {
+        Some(Rule::TooLong) => {
+            return t
+                .msg(Key::ReplaceWhyTooLong)
+                .with("limit", MAX_FILE_BYTES)
+                .text();
+        }
+        Some(rule) => t.get(crate::health::rule_key(rule)),
+        None => t.get(crate::health::rule_key(Rule::Syntax)),
+    };
+    t.msg(Key::ReplaceWhy).with("rule", cause).text()
 }
 
 /// The page that says the file is not one this form is for.

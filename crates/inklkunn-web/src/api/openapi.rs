@@ -296,7 +296,7 @@ fn components() -> Value {
                     "view": {"type": "string", "description": "`no-such-view`: the view asked for."},
                     "feature": {"type": "string", "description": "`not-available`: the filter that is not offered."},
                     "candidates": {"type": "array", "items": {"type": "string"}, "description": "`ambiguous-title`: the titles that match."},
-                    "reason": {"type": "string", "description": "`unacceptable` and `forbidden`, where there is one: the stable word that names what was wrong (for the rules of a wiki: `governance-path`, `governance-mixed`, `governance-invalid`, `governance-rung`, `approvals-missing`, `protected`, `rules-unreadable`; for an account that is restricted in the wiki: `restricted`). It does not change with the language."},
+                    "reason": {"type": "string", "description": "`unacceptable` and `forbidden`, where there is one: the stable word that names what was wrong (for the rules of a wiki: `governance-path`, `governance-mixed`, `governance-invalid`, `governance-rung`, `approvals-missing`, `protected`, `rules-unreadable`, `author-not-allowed`; for an account that is restricted in the wiki: `restricted`). It does not change with the language."},
                     "refusals": {
                         "type": "array",
                         "description": "`governance-invalid`: what is wrong with each governance file the change writes. Never what a file said.",
@@ -330,6 +330,7 @@ fn components() -> Value {
                             },
                         },
                     },
+                    "author_restricted": {"type": "boolean", "description": "`author-not-allowed`: a restriction is the reason the proposal's author no longer holds the role that may replace a file the wiki cannot read. Its reason and end are not given: they are the restricted person's alone."},
                     "needed": {"type": "integer", "description": "`approvals-missing`: the approvals of the latest revision the rules ask for."},
                     "have": {"type": "integer", "description": "`approvals-missing`: the people other than the proposer who approved the latest revision, who hold the review role now and whose account is not disabled."},
                     "file": {"type": "string", "description": "`rules-unreadable`: the governance file that cannot be read."},

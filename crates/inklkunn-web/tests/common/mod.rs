@@ -134,6 +134,15 @@ impl Fake {
         s.snapshots.insert(v, f);
     }
 
+    /// Write a file that need not be text (its bytes as they are): the tip moves once.
+    pub fn set_bytes(&self, path: &str, bytes: &[u8]) {
+        let mut s = self.state();
+        s.files.insert(path.to_owned(), bytes.to_vec());
+        s.version += 1;
+        let (v, f) = (s.version, s.files.clone());
+        s.snapshots.insert(v, f);
+    }
+
     /// Move a file to another path in one block: the tip moves once, and the text is the same.
     pub fn rename(&self, from: &str, to: &str) {
         let mut s = self.state();
@@ -426,7 +435,7 @@ impl Storage for Fake {
             })
     }
 
-    fn read(&self, _: &Path, point: &Point, path: &str, _: u64) -> Result<Vec<u8>> {
+    fn read(&self, _: &Path, point: &Point, path: &str, max_bytes: u64) -> Result<Vec<u8>> {
         let mut s = self.state();
         s.file_calls += 1;
         let files = match point {
@@ -437,12 +446,14 @@ impl Storage for Fake {
                 .map(|(_, f)| f),
             Point::View(_) => Some(&s.files),
         };
+        // As the real read is bounded: a file over the bound is refused, not cut.
         files
             .and_then(|f| f.get(path))
+            .filter(|bytes| bytes.len() as u64 <= max_bytes)
             .cloned()
             .ok_or_else(|| StorageError::Refused {
                 verb: "cat",
-                message: format!("no {path}"),
+                message: format!("no {path}, or it is over {max_bytes} bytes"),
                 kind: None,
                 reason: None,
             })

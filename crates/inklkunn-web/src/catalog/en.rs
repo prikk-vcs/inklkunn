@@ -3341,6 +3341,14 @@ pub const CATALOG: &[Entry] = &[
         "The rules of this wiki ask for {count} approvals of the latest revision from people other than the proposer who can review, and it has {have}. Nothing was changed, and the proposal is still held for review.",
     ),
     msg(
+        "outcome_note.author_restricted",
+        "This proposal replaces or takes away a knowledge file the wiki cannot read, which only someone who may moderate this wiki can propose, and its author is restricted for now. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
+        "outcome_note.author_not_allowed",
+        "This proposal replaces or takes away a knowledge file the wiki cannot read, which only someone who may moderate this wiki can propose, and its author no longer may. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
         "outcome.rules_unreadable",
         "Not changed: the rules of this wiki cannot be read",
     ),
@@ -3960,6 +3968,11 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "replace.intro",
         "The wiki cannot read the file {file}, so nothing is read from it, and what it held is not known. You can write it again as a file that can be read, or retire it. The proposal is judged as every change to the knowledge files is, and someone who may accept it decides.",
+    ),
+    msg("replace.why", "Why the wiki cannot read it: {rule}"),
+    msg(
+        "replace.why_too_long",
+        "The file is larger than the {limit} bytes a knowledge file may have.",
     ),
     msg("replace.choice_legend", "What to do with it"),
     msg("replace.choice_write", "Write the file again"),

@@ -314,6 +314,25 @@ impl BaseSource for FakeBase {
             Err(_) => Ok(None),
         }
     }
+
+    /// From the file's bytes, as the read service decides it (a file that is not text is a file, and unreadable).
+    fn knowledge_readability(
+        &self,
+        _: &WikiRecord,
+        base: &Base,
+        path: &str,
+    ) -> Result<Option<crate::knowledge::Readability>, BaseError> {
+        Ok(self
+            .0
+            .read(
+                std::path::Path::new(""),
+                &Point::Block(base.block_id.clone()),
+                path,
+                u64::MAX,
+            )
+            .ok()
+            .map(|bytes| crate::knowledge::readability(path, bytes.len() as u64, &bytes)))
+    }
 }
 
 /// The page every rig starts with, and a few more.

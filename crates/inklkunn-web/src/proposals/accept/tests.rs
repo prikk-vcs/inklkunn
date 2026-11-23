@@ -338,6 +338,25 @@ mod governance_pages {
     }
 
     #[test]
+    fn a_proposal_whose_author_may_no_longer_replace_a_file_the_wiki_cannot_read_says_so_in_both_languages_and_never_the_restrictions_reason()
+     {
+        let log = |_: &str| {};
+        for restricted in [true, false] {
+            assert_eq!(
+                outcome_of(Err(AcceptFailure::AuthorNotAllowed { restricted }), &log),
+                AcceptOutcome::AuthorNotAllowed { restricted }
+            );
+        }
+        for t in both() {
+            let restricted = t.get(Key::OutcomeNoteAuthorRestricted);
+            let not_allowed = t.get(Key::OutcomeNoteAuthorNotAllowed);
+            // Two sentences, each its own, and neither carries a restriction's reason or end: the outcome has nowhere to put one.
+            assert_ne!(restricted, not_allowed);
+            assert!(!restricted.is_empty() && !not_allowed.is_empty());
+        }
+    }
+
+    #[test]
     fn the_notes_say_which_role_and_how_many_approvals_and_the_unreadable_page_says_the_file_and_the_way_out()
      {
         for t in both() {

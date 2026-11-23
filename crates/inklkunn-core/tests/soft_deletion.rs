@@ -286,14 +286,23 @@ impl World {
     /// Write files into the default view **outside inklkunn's proposals**: a system act, as an import or a hand edit
     /// would. Nothing judges them.
     fn write_outside(&self, files: &[(&str, &str)]) -> String {
+        let bytes: Vec<(&str, &[u8])> = files
+            .iter()
+            .map(|(path, text)| (*path, text.as_bytes()))
+            .collect();
+        self.write_outside_bytes(&bytes)
+    }
+
+    /// [`World::write_outside`], for files that need not be text.
+    fn write_outside_bytes(&self, files: &[(&str, &[u8])]) -> String {
         let request = SystemRequest {
             kind: SystemActKind::System,
             summary: "Written outside the proposals".to_owned(),
             files: files
                 .iter()
-                .map(|(path, text)| PreparedFile {
+                .map(|(path, bytes)| PreparedFile {
                     path: PathBuf::from(path),
-                    content: Some(text.as_bytes().to_vec()),
+                    content: Some(bytes.to_vec()),
                 })
                 .collect(),
             renames: Vec::new(),
@@ -411,6 +420,44 @@ fn now() -> i64 {
 
 fn exists(w: &World, title: &str) -> bool {
     w.file(&format!("pages/{title}.md")).is_some()
+}
+
+/// **S-2 on a real history**: whether the wiki reads a file is decided from its size and its raw bytes. A file that is not UTF-8
+/// comes back from the real `cat` as its bytes (so it is judged, not mistaken for an absent file), one over the bound is judged
+/// from `stat` alone, and one that is not there is not a file. (The files are pages' paths: nothing but an import writes under
+/// `knowledge/`, and the wiki's reader says *no* to them for the path alone, which is itself an unreadable file.)
+#[test]
+fn s_2_a_file_is_judged_from_its_size_and_its_raw_bytes_on_a_real_prikk() {
+    use inklkunn_core::knowledge::{MAX_FILE_BYTES, Readability, Unreadable};
+    let Some(w) = World::new("soft-readability", PlatformLimits::default(), now) else {
+        return;
+    };
+    let big = vec![b'a'; MAX_FILE_BYTES + 10];
+    let block = w.write_outside_bytes(&[
+        ("pages/Binary.md", &[0xff, 0xfe, 0x00, b'x']),
+        ("pages/Big.md", &big),
+    ]);
+    let at = |path: &str| w.reads.knowledge_readability_at(&w.wiki, &block, path);
+    // The bytes of a file that is not UTF-8 are had from the real driver, whole.
+    let bytes = w
+        .storage
+        .read(
+            &w.repo,
+            &Point::Block(block.clone()),
+            "pages/Binary.md",
+            1 << 20,
+        )
+        .expect("the bytes of a file that is not UTF-8");
+    assert_eq!(bytes, [0xff, 0xfe, 0x00, b'x']);
+    assert!(matches!(
+        at("pages/Binary.md").unwrap(),
+        Some(Readability::Unreadable(_))
+    ));
+    assert_eq!(
+        at("pages/Big.md").unwrap(),
+        Some(Readability::Unreadable(Unreadable::TooLong))
+    );
+    assert_eq!(at("pages/Nothing.md").unwrap(), None);
 }
 
 #[test]

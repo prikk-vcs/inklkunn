@@ -209,6 +209,11 @@ pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> 
         AcceptFailure::Restricted(notice) => {
             restricted_members(Problem::new(Code::Forbidden), &notice)
         }
+        // The proposal replaces a file the wiki cannot read and its author no longer holds the rung that may (G-T6 correction
+        // S-2): the fact, and whether a restriction is the cause; the restriction's reason is the author's alone.
+        AcceptFailure::AuthorNotAllowed { restricted } => Problem::new(Code::Forbidden)
+            .named("reason", "author-not-allowed")
+            .member("author_restricted", json!(restricted)),
         AcceptFailure::NotFound => Problem::new(Code::NotFound),
         AcceptFailure::Busy(busy) => Problem::new(Code::Busy)
             .member("waiting", json!(busy.depth))

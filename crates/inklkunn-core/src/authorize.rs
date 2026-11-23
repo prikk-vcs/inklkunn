@@ -846,6 +846,40 @@ impl Authorizer {
             })
     }
 
+    /// **Why `account` may not do `action` to `resource`**, under the rules **given** (what the acceptance asks of the author of
+    /// the proposal it signs, under the lease): `None` when the account may; `Some(Some(notice))` when it may not and a
+    /// restriction is the cause (it would may without it); `Some(None)` when it may not for any other reason (a grant taken away or
+    /// lowered, a rule that now asks for more, an account the store does not know).
+    pub(crate) fn account_refusal_under(
+        &self,
+        account: &AccountId,
+        action: Action,
+        resource: &Resource,
+        rules: Option<&Arc<Rules>>,
+    ) -> Option<Option<RestrictionNotice>> {
+        let principal = Principal::Account(AccountPrincipal {
+            id: account.clone(),
+            scope: Scope::Admin,
+        });
+        // The rung is judged, not performed: nothing is recorded, so a consequential action is asked as any other (the act itself
+        // is the caller's, and recorded by it). The facts that cannot be read are a refusal: fails closed.
+        let Ok(facts) = self.facts_under(&principal, action, resource.wiki(), rules) else {
+            return Some(None);
+        };
+        let allowed = decide_under(
+            facts.snapshot,
+            &facts.rules,
+            &principal,
+            action,
+            is_governance_file(resource),
+        )
+        .is_allowed();
+        if allowed {
+            return None;
+        }
+        Some(self.restriction_refusal_under(&principal, action, resource, rules))
+    }
+
     /// May `principal` do `action` to `resource`? **Fails closed**: if the facts cannot be read the answer is
     /// deny. A consequential action is recorded whatever the answer, **with the rung the principal held and the block of
     /// the rules it was decided under** (`rung=<rung or none>; policy=<the block's first 12 characters, or defaults>`); an

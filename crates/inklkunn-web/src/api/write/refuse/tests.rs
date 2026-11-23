@@ -328,6 +328,16 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
     });
     assert_eq!(at(&body(&review), "lacks"), "approval");
     assert!(body(&review).get("needs").is_none());
+    // A proposal that replaces a file the wiki cannot read, whose author no longer may moderate (G-T6 correction S-2): the fact, and
+    // whether a restriction is the cause, and never the restriction's reason.
+    for restricted in [true, false] {
+        let (author, logged) = failure_problem(AcceptFailure::AuthorNotAllowed { restricted });
+        let author = body(&author);
+        assert_eq!(at(&author, "reason"), "author-not-allowed");
+        assert_eq!(at(&author, "author_restricted"), restricted);
+        assert!(author.get("restriction_reason").is_none());
+        assert!(logged.is_empty());
+    }
     let (unreadable, logged) = failure_problem(AcceptFailure::RulesUnreadable(unreadable_rules()));
     assert_eq!(at(&body(&unreadable), "reason"), "rules-unreadable");
     assert_eq!(

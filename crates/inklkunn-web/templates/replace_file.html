@@ -10,6 +10,7 @@
 {% endfor %}</ul>
 </div>
 {% endif %}<p>{{ intro }}</p>
+<p>{{ why }}</p>
 <form method="post" action="{{ action }}" class="proposal-form">
 {% include "csrf.html" %}
 <input type="hidden" name="{{ file_field }}" value="{{ file }}">

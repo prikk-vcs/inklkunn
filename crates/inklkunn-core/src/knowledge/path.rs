@@ -74,6 +74,61 @@ pub enum File {
     Source(Box<Source>),
 }
 
+/// Why the wiki cannot read a knowledge file. The three causes a person is told apart by: nothing else is ever said of what
+/// the file holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unreadable {
+    /// The bytes are not UTF-8 text ([`Rule::NotText`]).
+    NotText,
+    /// The file is larger than a knowledge file may be ([`MAX_FILE_BYTES`], [`Rule::TooLong`]).
+    TooLong,
+    /// It is text of the right size and the format does not read it, or its path is not a knowledge file's.
+    NotParsing,
+}
+
+impl Unreadable {
+    /// The kind a rule that refused a file is.
+    pub fn of_rule(rule: Rule) -> Unreadable {
+        match rule {
+            Rule::NotText => Unreadable::NotText,
+            Rule::TooLong => Unreadable::TooLong,
+            _ => Unreadable::NotParsing,
+        }
+    }
+}
+
+/// Whether the wiki reads a knowledge file: **the one decision, made from the file's size and its raw bytes**, never from text
+/// that a first step had to decode (G-T6 correction S-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Readability {
+    /// The wiki reads it.
+    Readable,
+    /// It does not, and why.
+    Unreadable(Unreadable),
+}
+
+impl Readability {
+    /// Is it a file the wiki cannot read?
+    pub fn is_unreadable(self) -> bool {
+        matches!(self, Readability::Unreadable(_))
+    }
+}
+
+/// Does the wiki read the knowledge file at `path`, which is `size` bytes and begins with `head`? **A file over
+/// [`MAX_FILE_BYTES`] is unreadable whatever `head` holds** (so a caller never reads more than that bound of a large file: `head`
+/// may be only its first [`MAX_FILE_BYTES`] bytes); under it `head` is the whole file, and the answer is [`read_file`]'s verdict
+/// on it. The index of the view, the health list, the proposal service and the form that replaces a file all decide by this
+/// rule, so that no two of them can disagree about a file.
+pub fn readability(path: &str, size: u64, head: &[u8]) -> Readability {
+    if size > MAX_FILE_BYTES as u64 {
+        return Readability::Unreadable(Unreadable::TooLong);
+    }
+    match read_file(path, head) {
+        Ok(_) => Readability::Readable,
+        Err(fault) => Readability::Unreadable(Unreadable::of_rule(fault.rule)),
+    }
+}
+
 /// Read the knowledge file at `path` with these `bytes`: the path must be a claim's or a source's with a well
 /// formed id, the bytes within [`MAX_FILE_BYTES`] and UTF-8, and the text the format. A file that is not wholly
 /// well formed is a [`Fault`]; **no claim is half-read from it**.

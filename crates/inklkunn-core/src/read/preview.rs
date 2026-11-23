@@ -13,6 +13,7 @@ use inklkunn_prikk::{Point, StorageError};
 use inklkunn_store::{DerivedHeading, IndexEntry, WikiRecord};
 
 use super::{ReadError, ReadService, SafeHtml, Tip};
+use crate::knowledge::{MAX_FILE_BYTES, Readability, Unreadable, readability};
 use crate::read::Presentation;
 
 /// A page drawn from text that is not in the repository.
@@ -48,6 +49,41 @@ impl ReadService {
                     Ok(_) => Err(self.storage_error(wiki, refused)),
                     Err(e) => Err(self.storage_error(wiki, e)),
                 }
+            }
+            Err(e) => Err(self.storage_error(wiki, e)),
+        }
+    }
+
+    /// **Does the wiki read the knowledge file at `path` at the block `block_id`?** Decided from the file's size (`stat`) and its raw
+    /// bytes, never from text that has to decode first ([`readability`]): a file that is not UTF-8, or over what a knowledge file
+    /// may be, is [`Readability::Unreadable`] here and not an error (G-T6 correction S-2; [`ReadService::source_at`] answers the
+    /// first with nothing and the second with an error, so a caller that asked it could not tell *absent* from *unreadable*). Only
+    /// the first [`MAX_FILE_BYTES`] of a file are ever read. `Ok(None)` when there was no such file then.
+    pub fn knowledge_readability_at(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+        path: &str,
+    ) -> Result<Option<Readability>, ReadError> {
+        let repo = self.layout.repo_dir(&wiki.id);
+        let point = Point::Block(block_id.to_owned());
+        let meta = match self.storage.stat(&repo, &point, path) {
+            Ok(meta) => meta,
+            Err(StorageError::Refused { .. }) => return Ok(None),
+            Err(e) => return Err(self.storage_error(wiki, e)),
+        };
+        if meta.size > MAX_FILE_BYTES as u64 {
+            return Ok(Some(Readability::Unreadable(Unreadable::TooLong)));
+        }
+        match self
+            .storage
+            .read(&repo, &point, path, MAX_FILE_BYTES as u64)
+        {
+            Ok(bytes) => Ok(Some(readability(path, meta.size, &bytes))),
+            // It is there (`stat` found it), is within the bound, and its bytes cannot be had: nothing is known of it, and a
+            // file nothing is known of is not one the wiki reads.
+            Err(StorageError::Refused { .. }) => {
+                Ok(Some(Readability::Unreadable(Unreadable::NotText)))
             }
             Err(e) => Err(self.storage_error(wiki, e)),
         }

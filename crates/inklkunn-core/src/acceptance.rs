@@ -294,6 +294,16 @@ pub enum AcceptFailure {
     /// **The person is restricted** in this wiki, and without the restriction they could have done this (RFC 006 D-7): the
     /// reason and the end, told to them alone. Nothing was done.
     Restricted(RestrictionNotice),
+    /// **The proposal replaces, or takes away, a knowledge file the wiki cannot read, and its author no longer holds the rung that
+    /// may** (RFC 006 D-10; G-T6 correction S-2): the `moderate` rung is asked of the proposal's author again under the lease, by
+    /// the rules of the state the change is signed on. `restricted` says that a restriction is the cause (the person would hold
+    /// the rung without it); its reason and its end are the restricted person's alone, so they are not here: when the acceptor is
+    /// the author, the failure is [`AcceptFailure::Restricted`] (their own restriction, told to them) or
+    /// [`AcceptFailure::NotAllowed`]. Nothing was signed, and the proposal is as it was.
+    AuthorNotAllowed {
+        /// A restriction is the cause.
+        restricted: bool,
+    },
     /// There is no such proposal in this wiki, or it is not the principal's to see. Nothing was done.
     NotFound,
     /// The proposal's state or revision does not allow it (the state machine's word). Nothing was done.
@@ -390,9 +400,10 @@ impl AcceptFailure {
     /// refusal.
     pub fn word(&self) -> &'static str {
         match self {
-            AcceptFailure::NotAllowed | AcceptFailure::Restricted(_) | AcceptFailure::NotFound => {
-                words::NOT_ALLOWED
-            }
+            AcceptFailure::NotAllowed
+            | AcceptFailure::Restricted(_)
+            | AcceptFailure::AuthorNotAllowed { .. }
+            | AcceptFailure::NotFound => words::NOT_ALLOWED,
             AcceptFailure::Busy(_) => words::BUSY,
             AcceptFailure::Refused(_) => words::REFUSED_LIMIT,
             AcceptFailure::NeedsRecovery(_) | AcceptFailure::Incomplete { .. } => {
@@ -425,6 +436,15 @@ impl std::fmt::Display for AcceptFailure {
             AcceptFailure::Restricted(notice) => {
                 write!(f, "restricted until {}: {}", notice.until, notice.reason)
             }
+            AcceptFailure::AuthorNotAllowed { restricted } => write!(
+                f,
+                "the proposal's author may no longer replace a file that cannot be read ({})",
+                if *restricted {
+                    "restricted"
+                } else {
+                    "not allowed"
+                }
+            ),
             AcceptFailure::NotFound => write!(f, "no such proposal"),
             AcceptFailure::Proposal(e) => write!(f, "{e}"),
             AcceptFailure::Busy(b) => write!(
@@ -931,9 +951,15 @@ impl ProposalAcceptor {
         tip: &str,
         files: &[PreparedFile],
         renames: &[(PathBuf, PathBuf)],
-        curation: Option<crate::knowledge::check::Stating<'_>>,
+        who: (
+            Option<crate::knowledge::check::Stating<'_>>,
+            &ProposalRecord,
+            &AccountId,
+            &Arc<Rules>,
+        ),
     ) -> Result<(), AcceptFailure> {
-        let refusals = crate::knowledge::check::check_change(
+        let (curation, proposal, acceptor, rules) = who;
+        let checked = crate::knowledge::check::check_change_report(
             &self.parts.reads,
             &*self.parts.storage,
             repo,
@@ -947,11 +973,30 @@ impl ProposalAcceptor {
             },
         )
         .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
-        if refusals.is_empty() {
-            Ok(())
-        } else {
-            Err(AcceptFailure::KnowledgeInvalid(refusals))
+        if !checked.refusals.is_empty() {
+            return Err(AcceptFailure::KnowledgeInvalid(checked.refusals));
         }
+        // **Replacing a file the wiki cannot read is the `moderate` rung's** (RFC 006 D-10), and the proposal was judged for it when it
+        // was sent: what has changed since (a restriction, a demotion, a rule that asks more) is asked again here, under the lease,
+        // of the proposal's author and by the rules of the state the change is signed on (G-T6 correction S-2, decision 17). A
+        // refusal signs nothing and leaves the proposal as it was.
+        if checked.replaces_unreadable
+            && let Err(restriction) =
+                self.parts
+                    .proposals
+                    .author_may_moderate_under(&proposal.author, wiki, rules)
+        {
+            // The reason and the end of a restriction are the restricted person's alone: told to the author when they are the one
+            // accepting, and said to anyone else only as a fact.
+            return Err(if proposal.author == *acceptor {
+                restriction.map_or(AcceptFailure::NotAllowed, AcceptFailure::Restricted)
+            } else {
+                AcceptFailure::AuthorNotAllowed {
+                    restricted: restriction.is_some(),
+                }
+            });
+        }
+        Ok(())
     }
 
     /// The view's tip block, read now, with the state it belongs to.
@@ -1131,7 +1176,14 @@ impl ProposalAcceptor {
             &governance::touched_paths(&files, &renames),
             &rules,
         )?;
-        self.check_knowledge(wiki, &repo, &tip, &files, &renames, stating)?;
+        self.check_knowledge(
+            wiki,
+            &repo,
+            &tip,
+            &files,
+            &renames,
+            (stating, &proposal, acceptor, &rules),
+        )?;
         self.observe(AcceptStep::Prepared);
         // CM-5: the blocks the proposal's comments are about carry their ids into the history.
         let comments = self.parts.proposals.comments(principal, wiki, id)?;

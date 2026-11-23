@@ -268,19 +268,39 @@ impl ProposalService {
         if given.is_empty() {
             return Ok(());
         }
+        // **What the base holds of each file is asked of its size and its bytes, never of text that has to decode first** (G-T6
+        // correction S-2): a file that is not UTF-8, or is over what a knowledge file may be (and over what a page read allows), is
+        // *unreadable* all the same, and is no error. Its text is not read at all: it is not known.
         let mut before: BTreeMap<&str, Option<String>> = BTreeMap::new();
+        let mut unreadable = false;
         for (path, _) in &given {
-            before.insert(path, self.bases.page_text(wiki, &content.base, path)?);
+            let readable = match self
+                .bases
+                .knowledge_readability(wiki, &content.base, path)?
+            {
+                None => {
+                    before.insert(path, None);
+                    continue;
+                }
+                Some(readability) => !readability.is_unreadable(),
+            };
+            unreadable |= !readable;
+            before.insert(
+                path,
+                if readable {
+                    self.bases.page_text(wiki, &content.base, path)?
+                } else {
+                    None
+                },
+            );
         }
         let was = |path: &str| before.get(path).cloned().flatten();
         // **A file the base has and the layer cannot read is replaced, or taken away, by the `moderate` rung** (RFC 006 D-10;
         // handoff G-T6): what it held is not known, so a person who only proposes may not say it again for the wiki. A restricted
         // account is capped below it, and a wiki whose rules ask more of that rung asks it here. Refused as any proposal is refused
-        // that a person may not make, before anything is judged of its files.
-        if given.iter().any(|(path, _)| {
-            was(path)
-                .is_some_and(|text| crate::knowledge::read_file(path, text.as_bytes()).is_err())
-        }) {
+        // that a person may not make, before anything is judged of its files. The acceptance asks it again, of the proposal's
+        // author, under the lease.
+        if unreadable {
             self.allow(
                 principal,
                 crate::authorize::Action::Moderate,
@@ -288,6 +308,10 @@ impl ProposalService {
                     wiki: wiki.id.clone(),
                 },
             )?;
+            // And only a curation proposal makes it: a page proposal that writes over such a file says what it cannot know.
+            if !crate::knowledge::curation::is_curation(content) {
+                return Err(Invalid::KnowledgeCurated.into());
+            }
         }
         let pages = ProposedPages::new(self.bases.as_ref(), wiki, content);
         let verdict = knowledge_verdict(

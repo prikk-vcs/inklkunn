@@ -405,3 +405,220 @@ async fn the_sentences_that_said_not_offered_in_this_version_are_gone_in_both_la
             .contains("propose to remove it")
     );
 }
+
+// ------------------------------------------------------------------------------------ the kinds of file (S-2)
+
+/// A file the wiki cannot read, by the way it cannot: its bytes, and the sentence the form says why in.
+struct Unreadable {
+    name: &'static str,
+    bytes: Vec<u8>,
+    why: &'static str,
+}
+
+/// Not UTF-8; over what a knowledge file may be; over even what a page read allows (the bound the old decision stumbled on: the
+/// read was an error, so not even a moderator could replace the file); and not in the format.
+fn kinds() -> Vec<Unreadable> {
+    vec![
+        Unreadable {
+            name: "not UTF-8",
+            bytes: [&[0xff, 0xfe, 0x00][..], b"SECRETBYTES"].concat(),
+            why: "Why the wiki cannot read it: The file is not UTF-8 text.",
+        },
+        Unreadable {
+            name: "over what a knowledge file may be",
+            bytes: vec![b'a'; inklkunn_core::knowledge::MAX_FILE_BYTES + 10],
+            why: "The file is larger than the 65536 bytes a knowledge file may have.",
+        },
+        Unreadable {
+            name: "over what a page read allows",
+            bytes: vec![b'a'; (1 << 20) + 10],
+            why: "The file is larger than the 65536 bytes a knowledge file may have.",
+        },
+        Unreadable {
+            name: "not in the format",
+            bytes: b"kind: observation\nsecret: words\n".to_vec(),
+            why: "Why the wiki cannot read it: The file has a key the format does not have.",
+        },
+    ]
+}
+
+fn with_unreadable(e: &Env, kind: &Unreadable) {
+    e.w.fake.set_bytes(&unreadable_path(), &kind.bytes);
+}
+
+const READABLE: &str = "kind: observation\nlifecycle: proposed\ncommunity_status:\n  status: unknown\nexpressions: []\nrelations: []\nsources: []\n";
+
+fn principal_of(who: &AccountId) -> Principal {
+    Principal::session(&IdentityAuthority::for_tests(), who.clone())
+}
+
+fn replace_edit(text: Option<&str>) -> inklkunn_core::proposal::ProposalEdit {
+    inklkunn_core::proposal::ProposalEdit {
+        summary: "Replace it".to_owned(),
+        files: vec![FileChange {
+            path: unreadable_path(),
+            text: text.map(str::to_owned),
+        }],
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn whoever_only_proposes_cannot_replace_or_remove_a_file_of_any_kind_the_wiki_cannot_read() {
+    for kind in kinds() {
+        let e = env();
+        with_unreadable(&e, &kind);
+        for edit in [replace_edit(Some(READABLE)), replace_edit(None)] {
+            let result = e.w.services.proposals.create_and_submit(
+                &principal_of(&e.contributor),
+                &e.w.wiki,
+                None,
+                edit,
+            );
+            assert!(
+                matches!(result, Err(ProposalError::NotAllowed)),
+                "{}: {result:?}",
+                kind.name
+            );
+        }
+        // And the people the rules hold below the rung are refused as the form refuses them.
+        let a = send(
+            &e,
+            &e.contributor,
+            &fields("retire", "", "A reason", "Retire it"),
+        )
+        .await;
+        assert_eq!(
+            a.status,
+            StatusCode::FORBIDDEN,
+            "{}: {}",
+            kind.name,
+            a.body()
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_moderator_replaces_or_retires_a_file_of_every_kind_and_the_form_says_why_and_never_what_it_held()
+ {
+    for kind in kinds() {
+        let e = env();
+        with_unreadable(&e, &kind);
+        let list = as_(&e, &e.maintainer, "/handbook/-/health/knowledge-files")
+            .await
+            .body();
+        assert!(list.contains(&unreadable_path()), "{}: {list}", kind.name);
+        let form = as_(&e, &e.maintainer, &form_uri()).await;
+        assert_eq!(
+            form.status,
+            StatusCode::OK,
+            "{}: {}",
+            kind.name,
+            form.body()
+        );
+        let body = form.body();
+        assert!(body.contains(&unreadable_path()), "{}: {body}", kind.name);
+        assert!(body.contains(kind.why), "{}: {body}", kind.name);
+        // Nothing of the bytes: not the readable words of a non-text file, not the key of a file that does not parse.
+        assert!(!body.contains("SECRETBYTES"), "{}", kind.name);
+        assert!(!body.contains("secret"), "{}", kind.name);
+        // The replacement is written as it always was, and retiring is too.
+        let a = send(
+            &e,
+            &e.maintainer,
+            &fields("write", READABLE, "", "Write it again"),
+        )
+        .await;
+        assert_eq!(
+            a.status,
+            StatusCode::SEE_OTHER,
+            "{}: {}",
+            kind.name,
+            a.body()
+        );
+        assert_eq!(
+            files_of(&e, a.header("location").expect("a location")),
+            [(unreadable_path(), Some(READABLE.to_owned()))],
+            "{}",
+            kind.name
+        );
+        let a = send(
+            &e,
+            &e.maintainer,
+            &fields("retire", "", "Nothing of it can be read", "Retire it"),
+        )
+        .await;
+        assert_eq!(
+            a.status,
+            StatusCode::SEE_OTHER,
+            "{}: {}",
+            kind.name,
+            a.body()
+        );
+        // The service takes the removal of such a file from the rung too; and a change that is not a curation proposal (a page
+        // beside the file) is not what the rung is for.
+        let removal = e.w.services.proposals.create_and_submit(
+            &principal_of(&e.maintainer),
+            &e.w.wiki,
+            None,
+            replace_edit(None),
+        );
+        assert!(removal.is_ok(), "{}: {removal:?}", kind.name);
+        let mut beside_a_page = replace_edit(Some(READABLE));
+        beside_a_page.files.push(FileChange {
+            path: "pages/Home.md".to_owned(),
+            text: Some(common::page(&["title: Home"], "Changed.\n")),
+        });
+        let result = e.w.services.proposals.create_and_submit(
+            &principal_of(&e.maintainer),
+            &e.w.wiki,
+            None,
+            beside_a_page,
+        );
+        assert!(
+            matches!(
+                result,
+                Err(ProposalError::Invalid(
+                    inklkunn_core::proposal::Invalid::KnowledgeCurated
+                ))
+            ),
+            "{}: {result:?}",
+            kind.name
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_maintainer_under_rules_that_hold_the_moderate_rung_at_admin_is_refused_for_every_kind() {
+    for kind in kinds() {
+        let e = env_under("rungs:\n  moderate: admin\n");
+        with_unreadable(&e, &kind);
+        let a = as_(&e, &e.maintainer, &form_uri()).await;
+        assert_eq!(
+            a.status,
+            StatusCode::FORBIDDEN,
+            "{}: {}",
+            kind.name,
+            a.body()
+        );
+        let result = e.w.services.proposals.create_and_submit(
+            &principal_of(&e.maintainer),
+            &e.w.wiki,
+            None,
+            replace_edit(Some(READABLE)),
+        );
+        assert!(
+            matches!(result, Err(ProposalError::NotAllowed)),
+            "{}: {result:?}",
+            kind.name
+        );
+        let a = send(&e, &e.admin, &fields("retire", "", "A reason", "Retire it")).await;
+        assert_eq!(
+            a.status,
+            StatusCode::SEE_OTHER,
+            "{}: {}",
+            kind.name,
+            a.body()
+        );
+    }
+}

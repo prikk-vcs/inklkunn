@@ -35,6 +35,7 @@ use crate::governance::{
     ApprovalsWarning, GovernanceFile, ReadFault, Rules, approvals_warning, is_below_governance,
     is_governance_path, mixes_rules_with_other_paths, only_governance_files,
 };
+use crate::knowledge::Readability;
 use crate::notify::Notifier;
 use crate::read::{ReadError, ReadService};
 
@@ -97,6 +98,22 @@ pub trait BaseSource: Send + Sync {
         path: &str,
     ) -> std::result::Result<Option<String>, BaseError>;
 
+    /// **Does the wiki read the knowledge file at `path` at `base`?** `None` when there was no such file then. Decided from the
+    /// file's size and raw bytes ([`crate::knowledge::readability`]), never from text that had to decode first, so a file that is
+    /// not UTF-8 or is over the bound is [`Readability::Unreadable`] and no error (G-T6 correction S-2). **The default derives it
+    /// from [`BaseSource::page_text`]**, which is right for a source that answers with text (a double); [`ReadService`] reads the
+    /// size and the first bytes.
+    fn knowledge_readability(
+        &self,
+        wiki: &WikiRecord,
+        base: &Base,
+        path: &str,
+    ) -> std::result::Result<Option<Readability>, BaseError> {
+        Ok(self
+            .page_text(wiki, base, path)?
+            .map(|text| crate::knowledge::readability(path, text.len() as u64, text.as_bytes())))
+    }
+
     /// The paths of the pages whose `id` is `id` at `base`: where an expression's page is when a new source link is
     /// judged on the wording of its paragraph (K25). **The default reads every page**, which is right and slow;
     /// [`ReadService`] answers from the title index of exactly that state.
@@ -154,6 +171,16 @@ impl BaseSource for ReadService {
         path: &str,
     ) -> std::result::Result<Option<String>, BaseError> {
         self.source_at(wiki, &base.block_id, path)
+            .map_err(|e| BaseError::Unavailable(e.to_string()))
+    }
+
+    fn knowledge_readability(
+        &self,
+        wiki: &WikiRecord,
+        base: &Base,
+        path: &str,
+    ) -> std::result::Result<Option<Readability>, BaseError> {
+        self.knowledge_readability_at(wiki, &base.block_id, path)
             .map_err(|e| BaseError::Unavailable(e.to_string()))
     }
 
@@ -899,6 +926,28 @@ impl ProposalService {
             &Self::proposal_resource(wiki, id),
             Some(rules),
         )
+    }
+
+    /// **Does the author of a proposal that replaces a file the wiki cannot read still hold the `moderate` rung?** Asked at
+    /// acceptance, under the lease, of the rung read now under `rules`, the rules of the state the change is signed on (G-T6
+    /// correction S-2, decision 17): `Ok(())` when they do, else `Err` with the restriction that is the cause, when one is.
+    pub(crate) fn author_may_moderate_under(
+        &self,
+        author: &AccountId,
+        wiki: &WikiRecord,
+        rules: &Arc<Rules>,
+    ) -> std::result::Result<(), Option<RestrictionNotice>> {
+        match self.authorizer.account_refusal_under(
+            author,
+            Action::Moderate,
+            &Resource::Wiki {
+                wiki: wiki.id.clone(),
+            },
+            Some(rules),
+        ) {
+            None => Ok(()),
+            Some(restriction) => Err(restriction),
+        }
     }
 
     fn proposal_resource(wiki: &WikiRecord, id: &ProposalId) -> Resource {

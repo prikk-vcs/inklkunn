@@ -385,6 +385,7 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
             lack: Lack::Rung(Role::Admin),
         }),
         problem(AcceptFailure::RulesUnreadable(unreadable)),
+        problem(AcceptFailure::AuthorNotAllowed { restricted: true }),
     ];
     // What the acceptance refuses with, from the problems, and what a person proposing is refused with, from the words.
     let accepting: Vec<String> = at_acceptance
@@ -400,6 +401,7 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
             "approvals-missing",
             "protected",
             "rules-unreadable",
+            "author-not-allowed",
             "governance-mixed"
         ]
     );
