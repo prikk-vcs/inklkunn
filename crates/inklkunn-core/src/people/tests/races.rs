@@ -7,26 +7,15 @@ use std::thread;
 
 use inklkunn_store::Role;
 
-use super::support::{Kind, Person, T0, World};
+use super::support::{Kind, Person, World, steady, steady_world};
 use crate::authorize::{ProtectError, Setting};
-use crate::governance::{PlatformLimits, Require, Target};
+use crate::governance::{Require, Target};
 use crate::people::{GrantRefusal, PeopleError, RestrictRefusal};
-
-/// A clock every thread reads alike.
-fn steady() -> i64 {
-    T0
-}
 
 const ROUNDS: usize = 60;
 
 fn world() -> World {
-    World::with_clock(
-        Kind::Sqlite,
-        inklkunn_store::Visibility::Public,
-        None,
-        PlatformLimits::default(),
-        steady,
-    )
+    steady_world(Kind::Sqlite)
 }
 
 /// Run `a` and `b` at the same moment and give what each answered.

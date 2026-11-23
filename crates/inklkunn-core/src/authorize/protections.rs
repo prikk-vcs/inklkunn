@@ -456,27 +456,50 @@ impl Authorizer {
         };
         let id = event.id.clone();
         // The check that nothing is in force and the record are one step in the store, so that two acts at once do not both set.
-        match act {
+        let recorded: Result<(), ProtectError> = match act {
             Act::Set => book
                 .store
                 .record_protection_event_if_none_in_force(&event)
                 .map_err(|e| match e {
                     StoreError::StateChanged => ProtectError::AlreadyInForce,
                     other => other.into(),
-                })?,
-            Act::Renew => book.store.record_protection_event(&event)?,
+                }),
+            Act::Renew => book
+                .store
+                .record_protection_event(&event)
+                .map_err(Into::into),
             Act::Lift => {
                 // Every record in force ends, each by a lifting that names it: the first is the one this act is named by.
-                for older in in_force.iter().skip(1) {
-                    book.store.record_protection_event(&ProtectionEvent {
-                        id: ProtectionEventId::new(),
-                        of_event: Some(older.id.clone()),
-                        ..event.clone()
-                    })?;
-                }
-                book.store.record_protection_event(&event)?;
+                in_force
+                    .iter()
+                    .skip(1)
+                    .try_for_each(|older| {
+                        book.store.record_protection_event(&ProtectionEvent {
+                            id: ProtectionEventId::new(),
+                            of_event: Some(older.id.clone()),
+                            ..event.clone()
+                        })
+                    })
+                    .and_then(|()| book.store.record_protection_event(&event))
+                    .map_err(Into::into)
             }
+        };
+        // The trail named the act before its record; where the record fails it says so, so that it never names an act that did
+        // not happen (F-4). A trail that cannot take this event changes nothing: the act failed whatever it says.
+        if let Err(e) = &recorded {
+            let word = match e {
+                ProtectError::AlreadyInForce => "already-in-force",
+                _ => "store-error",
+            };
+            let _ = self.audit.record(&AuditEvent::new(
+                now,
+                &principal.audit_name(),
+                act.operation(),
+                &resource.audit_name(),
+                AuditOutcome::Failed,
+                &format!("{}; failed={word}", authority_detail(principal, &facts)),
+            ));
         }
-        Ok(id)
+        recorded.map(|()| id)
     }
 }

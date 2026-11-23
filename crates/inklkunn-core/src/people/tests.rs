@@ -5,6 +5,7 @@
 
 mod atomic;
 mod entry;
+mod failed;
 mod grants;
 mod page;
 mod races;

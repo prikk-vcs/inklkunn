@@ -7,13 +7,14 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use inklkunn_store::{
-    AcceptanceStore, Account, AccountId, AccountStore, Base, ClaimThreadStore, DisplayName,
-    GovernanceStore, InboxStore, MemoryAudit, MemoryStore, NewWiki, ProposalStore, Role, RoleGrant,
-    RoleStore, Slug, SqliteStore, Visibility, WikiRecord, WikiStore,
+    AcceptanceStore, Account, AccountId, AccountStore, AuditEvent, AuditSink, Base,
+    ClaimThreadStore, DisplayName, GovernanceStore, InboxStore, MemoryAudit, MemoryStore, NewWiki,
+    ProposalStore, Role, RoleGrant, RoleStore, Slug, SqliteStore, Visibility, WikiRecord,
+    WikiStore,
 };
 
 use crate::authorize::{
-    Authorizer, IdentityAuthority, Principal, RulesSource, SourceError, StoreAuthz,
+    Authorizer, AuthzSource, IdentityAuthority, Principal, RulesSource, SourceError, StoreAuthz,
 };
 use crate::governance::{Constitution, PlatformLimits, Rules, read_policy};
 use crate::people::PeopleService;
@@ -110,6 +111,27 @@ pub(super) struct World {
     pub(super) store: Arc<dyn Everything>,
     pub(super) wiki: WikiRecord,
     pub(super) authority: IdentityAuthority,
+    /// What the authorizer reads its facts from, so that a test can build another authorizer over the same facts.
+    pub(super) source: Arc<dyn AuthzSource>,
+    /// The platform limits of the world.
+    pub(super) limits: PlatformLimits,
+    /// The clock of the world.
+    pub(super) clock: fn() -> i64,
+}
+
+/// An audit trail that tells a test **each event as it is written**, after it is kept: the moment between an act's event and
+/// its record, where a test makes the record fail.
+pub(super) struct HookedAudit {
+    pub(super) inner: Arc<MemoryAudit>,
+    pub(super) hook: Box<dyn Fn(&AuditEvent) + Send + Sync>,
+}
+
+impl AuditSink for HookedAudit {
+    fn record(&self, event: &AuditEvent) -> inklkunn_store::Result<()> {
+        self.inner.record(event)?;
+        (self.hook)(event);
+        Ok(())
+    }
 }
 
 /// Which store a world is built over.
@@ -199,7 +221,8 @@ impl World {
         let authz = StoreAuthz::new(store.clone(), store.clone())
             .with_rules(Arc::new(Fixed(rules)))
             .with_restrictions(store.clone());
-        let authorizer = Authorizer::new(Arc::new(authz), audit.clone())
+        let source: Arc<dyn AuthzSource> = Arc::new(authz);
+        let authorizer = Authorizer::new(source.clone(), audit.clone())
             .with_clock(clock)
             .with_protections(store.clone(), limits);
         let people = PeopleService::new(
@@ -227,6 +250,9 @@ impl World {
             store,
             wiki,
             authority: IdentityAuthority::for_tests(),
+            source,
+            limits,
+            clock,
         }
     }
 
@@ -278,5 +304,46 @@ impl World {
                 },
             )
             .is_allowed()
+    }
+}
+
+/// A clock every thread reads alike: the time every test starts at, which does not move.
+pub(super) fn steady() -> i64 {
+    T0
+}
+
+/// A public wiki under the default rules over `kind`, read by [`steady`].
+pub(super) fn steady_world(kind: Kind) -> World {
+    World::with_clock(
+        kind,
+        Visibility::Public,
+        None,
+        PlatformLimits::default(),
+        steady,
+    )
+}
+
+/// A restriction of `who` set by `by` at [`T0`] that ends at `ends`.
+pub(super) fn set_restriction(
+    w: &World,
+    by: &Person,
+    who: &Person,
+    ends: i64,
+) -> inklkunn_store::RestrictionEvent {
+    inklkunn_store::RestrictionEvent {
+        id: inklkunn_store::RestrictionEventId::new(),
+        wiki: w.wiki.id.clone(),
+        at: T0,
+        event: inklkunn_store::MeasureEvent::Set,
+        account: who.id.clone(),
+        by: inklkunn_store::Actor {
+            account: by.id.clone(),
+            rung: Role::Admin,
+        },
+        policy_block: None,
+        reason: Some("Edit-warring.".to_owned()),
+        expires_at: Some(ends),
+        of_event: None,
+        appeal: None,
     }
 }

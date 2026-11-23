@@ -4,46 +4,11 @@
 
 use inklkunn_store::{
     Actor, GrantDecisionId, GrantDecisionRecord, MeasureEvent, ProtectionEvent, ProtectionEventId,
-    ProtectionKind, ProtectionRequirement, RestrictionEvent, RestrictionEventId, Role, StoreError,
+    ProtectionKind, ProtectionRequirement, Role, StoreError,
 };
 
-use super::support::{DAY, KINDS, Kind, Person, T0, World};
-use crate::governance::PlatformLimits;
+use super::support::{DAY, KINDS, Person, T0, set_restriction, steady_world as world};
 use crate::people::{GrantRefusal, PeopleError};
-
-/// A clock every thread reads alike.
-fn steady() -> i64 {
-    T0
-}
-
-fn world(kind: Kind) -> World {
-    World::with_clock(
-        kind,
-        inklkunn_store::Visibility::Public,
-        None,
-        PlatformLimits::default(),
-        steady,
-    )
-}
-
-fn set_restriction(w: &World, by: &Person, who: &Person, ends: i64) -> RestrictionEvent {
-    RestrictionEvent {
-        id: RestrictionEventId::new(),
-        wiki: w.wiki.id.clone(),
-        at: T0,
-        event: MeasureEvent::Set,
-        account: who.id.clone(),
-        by: Actor {
-            account: by.id.clone(),
-            rung: Role::Admin,
-        },
-        policy_block: None,
-        reason: Some("Edit-warring.".to_owned()),
-        expires_at: Some(ends),
-        of_event: None,
-        appeal: None,
-    }
-}
 
 #[test]
 fn the_store_refuses_a_second_set_while_one_is_in_force_and_another_person_is_another_chain() {
