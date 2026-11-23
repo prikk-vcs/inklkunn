@@ -468,7 +468,11 @@ async fn every_health_list_shows_its_planted_case_with_what_would_resolve_it() {
             && r.get(3).unwrap().contains(is_path_rule),
         "{body}"
     );
-    assert!(body.contains("Propose a corrected file, or propose to remove it."));
+    assert!(
+        body.contains(
+            "Someone who may moderate this wiki can replace it with a file that can be read, or retire it."
+        )
+    );
     // Nothing a file said is on the page.
     assert!(!body.contains("score"), "{body}");
 

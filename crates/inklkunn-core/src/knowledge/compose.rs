@@ -20,8 +20,8 @@ use inklkunn_store::ProposalId;
 use super::yaml::{MAX_LINKS, MAX_TEXT_CHARS, is_day};
 use super::{
     AnchorState, Availability, Bearing, Claim, ClaimId, Expression, Lifecycle, Link, Reference,
-    ReferenceForm, Source, SourceId, SourceKind, SourceLink, Standing, StatementKind, anchor_state,
-    claim_path, source_path,
+    ReferenceForm, Source, SourceId, SourceKind, SourceLife, SourceLink, Standing, StatementKind,
+    anchor_state, claim_path, source_path,
 };
 
 /// Why a claim or a source could not be written from what a person gave. Each is one plain fact the surface words;
@@ -62,6 +62,8 @@ pub enum Mistake {
     SuccessorCycle,
     /// The check of a new reference was refused (K72): the place of its source among the edit's sources, and why.
     Check(usize, CheckFault),
+    /// A claim or a source is to be retired and no reason is given (RFC 006 D-10): a retirement says why.
+    ReasonMissing,
     /// What was made does not read back (a defect, not the person's doing).
     Unwritable,
 }
@@ -423,6 +425,8 @@ pub struct SourceEdit {
     /// and whether it can be had there. `None` states none. Given only with a reference that is another place than the
     /// source's now ([`CheckFault::NoNewReference`] otherwise).
     pub checked: Option<Checked>,
+    /// Retire the source, or take its retirement back (RFC 006 D-10).
+    pub retire: Retire,
 }
 
 impl SourceEdit {
@@ -479,6 +483,24 @@ pub enum CheckFault {
     OldAnswer,
 }
 
+/// What a curation does to whether a claim or a source is retired (RFC 006 D-10).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Retire {
+    /// Nothing: a form that says nothing of it, or leaves it as it was, changes nothing.
+    #[default]
+    Leave,
+    /// **Retire it, and say why**: one line. A retired thing keeps its file and its page; it is shown as retired, with the reason. A
+    /// thing that is retired already is given this reason.
+    Retire {
+        /// Why, as the person wrote it.
+        reason: String,
+    },
+    /// **Take the retirement back.** A claim comes back as *put forward* (the file does not remember what it was before it was
+    /// retired, and nothing here decides that it was taken up again); a source comes back as active. A thing that is not retired is
+    /// left as it is.
+    Reinstate,
+}
+
 /// The curation proposal's form, read: **no page text**.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Curation {
@@ -494,6 +516,8 @@ pub struct Curation {
     /// Judge the sources and the standing again on the wording the claim has now (the re-confirmation, as a
     /// proposal of its own).
     pub confirm: bool,
+    /// Retire the claim, or take its retirement back (RFC 006 D-10).
+    pub retire: Retire,
     /// The proposal these files are made for (K77): a check of a new reference is **stated by this proposal**, and the day of
     /// it names it (`last_reviewed.proposal`), which is how the one rule ([`super::check::Curated::unstated_check`]) tells it
     /// from the old reference's check that a file carries. `None` for a curation that states none (the reconfirm step has
@@ -540,6 +564,20 @@ pub fn curate(
     } else if edit.confirm && edit.status != Standing::Unknown && status.judged_on.as_ref() != now {
         status.proposal = None;
         status.judged_on = Some(judged(Mistake::NoWording)?.clone());
+    }
+    match &edit.retire {
+        Retire::Leave => {}
+        Retire::Retire { reason } => {
+            let reason = clean_text(reason, "retired_reason")?.ok_or(Mistake::ReasonMissing)?;
+            next.lifecycle = Lifecycle::Retired;
+            next.retired_reason = Some(reason);
+        }
+        Retire::Reinstate => {
+            if next.lifecycle == Lifecycle::Retired {
+                next.lifecycle = Lifecycle::Proposed;
+                next.retired_reason = None;
+            }
+        }
     }
     for e in &edit.links {
         if edit.removed.contains(&e.source) {
@@ -640,6 +678,20 @@ pub fn curate(
             }
             if stated.is_some() {
                 return Err(Mistake::Check(at, CheckFault::NoNewReference));
+            }
+        }
+        match &e.retire {
+            Retire::Leave => {}
+            Retire::Retire { reason } => {
+                let reason = clean_text(reason, "retired_reason")?.ok_or(Mistake::ReasonMissing)?;
+                source.lifecycle = SourceLife::Retired;
+                source.retired_reason = Some(reason);
+            }
+            Retire::Reinstate => {
+                if source.lifecycle == SourceLife::Retired {
+                    source.lifecycle = SourceLife::Active;
+                    source.retired_reason = None;
+                }
             }
         }
         if source != *old {

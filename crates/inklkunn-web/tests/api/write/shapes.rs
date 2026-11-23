@@ -213,6 +213,42 @@ fn curation_shapes() -> Vec<Shape> {
     vec![
         yes("the bare body", curation(json!({}))),
         yes("a status", curation(json!({"status": "accepted"}))),
+        yes(
+            "a retirement of the claim, with its reason",
+            curation(json!({"retired": {"reason": "Withdrawn."}})),
+        ),
+        yes(
+            "a retirement taken back",
+            curation(json!({"retired": false})),
+        ),
+        yes(
+            "a retirement of a source, with its reason",
+            source(json!({"source": one, "retired": {"reason": "Replaced."}})),
+        ),
+        yes(
+            "a source taken back into use",
+            source(json!({"source": one, "retired": false})),
+        ),
+        no(
+            "a retirement with no reason member",
+            curation(json!({"retired": {}})),
+        ),
+        no(
+            "a retirement with a member that is not the reason",
+            curation(json!({"retired": {"reason": "x", "why": "y"}})),
+        ),
+        no(
+            "a reason that is not text",
+            curation(json!({"retired": {"reason": 3}})),
+        ),
+        no(
+            "a source's retirement with a member that is not the reason",
+            source(json!({"source": one, "retired": {"reason": "x", "why": "y"}})),
+        ),
+        no(
+            "a claim that is retired: true",
+            curation(json!({"retired": true})),
+        ),
         yes("an empty summary", curation(json!({"summary": ""}))),
         yes(
             "a view and a confirmation",

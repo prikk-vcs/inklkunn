@@ -86,6 +86,15 @@ pub(crate) const C_SUPERSEDED: &str = "superseded_by";
 /// reference changes.
 pub(crate) const C_CHECKED_DAY: &str = "checked_day";
 pub(crate) const C_CHECKED_AVAILABILITY: &str = "checked_availability";
+/// Whether the claim, and each source, is retired (RFC 006 D-10): a choice and the reason that goes with retiring.
+pub(crate) const RETIRE: &str = "retire";
+pub(crate) const RETIRE_REASON: &str = "retire_reason";
+pub(crate) const C_RETIRE: &str = "retire";
+pub(crate) const C_RETIRE_REASON: &str = "retire_reason";
+/// The choice's values: leave it, retire it, take the retirement back.
+pub(crate) const RETIRE_LEAVE: &str = "leave";
+pub(crate) const RETIRE_NOW: &str = "retire";
+pub(crate) const RETIRE_BACK: &str = "reinstate";
 
 // --- query parameters of the entry points
 pub(crate) const Q_PAGE: &str = "page";

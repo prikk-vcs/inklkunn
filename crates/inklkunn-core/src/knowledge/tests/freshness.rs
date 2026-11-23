@@ -373,6 +373,8 @@ fn a_review_day_the_index_cannot_read_is_never_reviewed_not_trusted() {
     ] {
         let mut rows = inklkunn_store::KnowledgeRows::default();
         rows.sources.push(inklkunn_store::KnowledgeSourceRow {
+            lifecycle: "active".into(),
+            retired_reason: None,
             id: source_id(1).as_str().to_owned(),
             kind: "other".to_owned(),
             availability: "available".to_owned(),
@@ -464,6 +466,8 @@ fn crowded(sources: usize, per_source: usize) -> kix::KnowledgeIndex {
     let mut rows = inklkunn_store::KnowledgeRows::default();
     for s in 0..sources {
         rows.sources.push(inklkunn_store::KnowledgeSourceRow {
+            lifecycle: "active".into(),
+            retired_reason: None,
             id: format!("01930000-0000-7000-8000-{s:012x}"),
             kind: "other".to_owned(),
             availability: "available".to_owned(),

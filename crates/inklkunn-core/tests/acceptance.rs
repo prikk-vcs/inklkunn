@@ -1209,6 +1209,7 @@ fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_hi
         panic!("present");
     };
     let edit = Curation {
+        retire: Default::default(),
         status: Standing::Contested,
         links: vec![LinkEdit {
             source: source.id.clone(),
@@ -1217,6 +1218,7 @@ fn a_source_is_attached_and_a_status_curated_through_the_whole_path_on_a_real_hi
         }],
         removed: Vec::new(),
         sources: vec![SourceEdit {
+            retire: Default::default(),
             source: source.id.clone(),
             checked: None,
             reviewed: "2026-11-04".to_owned(),
@@ -1421,10 +1423,12 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
     let one = read_source(&first_file);
     let two = read_source(&second_file);
     let checking = Curation {
+        retire: Default::default(),
         status: Standing::Unknown,
         links: link_edits(&claim),
         removed: Vec::new(),
         sources: vec![SourceEdit {
+            retire: Default::default(),
             source: one.id.clone(),
             checked: None,
             reviewed: "2026-11-04".to_owned(),
@@ -1478,10 +1482,12 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
     // 1b. A source that was not checked is corrected by a curation proposal too (K60): the second source's title, with no
     //     review and no availability set.
     let corrected_title = Curation {
+        retire: Default::default(),
         status: Standing::Unknown,
         links: link_edits(&claim),
         removed: Vec::new(),
         sources: vec![SourceEdit {
+            retire: Default::default(),
             source: two.id.clone(),
             checked: None,
             reviewed: String::new(),
@@ -1524,10 +1530,12 @@ fn a_curation_removes_a_link_and_corrects_a_checked_source_through_the_whole_pat
     //    corrected title and reference and is marked as replaced by the second (whose file stays).
     let blocks = w.history().len();
     let edit = Curation {
+        retire: Default::default(),
         status: Standing::Unknown,
         links: link_edits(&claim),
         removed: vec![two.id.clone()],
         sources: vec![SourceEdit {
+            retire: Default::default(),
             source: one.id.clone(),
             checked: None,
             reviewed: "2026-11-04".to_owned(),
@@ -1655,6 +1663,7 @@ fn a_check_stated_by_the_proposal_that_moves_a_reference_is_accepted_and_a_carri
     let edit = |source: &Source, work: Option<Work>, checked, proposal| {
         let claim = read_claim(&claim_file);
         Curation {
+            retire: Default::default(),
             status: Standing::Unknown,
             links: claim
                 .sources
@@ -1667,6 +1676,7 @@ fn a_check_stated_by_the_proposal_that_moves_a_reference_is_accepted_and_a_carri
                 .collect(),
             removed: Vec::new(),
             sources: vec![SourceEdit {
+                retire: Default::default(),
                 source: source.id.clone(),
                 checked,
                 reviewed: source
@@ -1861,6 +1871,7 @@ fn two_curations_that_would_make_two_sources_replace_each_other_are_refused_at_t
     let (one, two) = (read_source(&first_file), read_source(&second_file));
     let replaced_by = |source: &Source, later: &Source| {
         let edit = Curation {
+            retire: Default::default(),
             status: Standing::Unknown,
             links: claim
                 .sources
@@ -1873,6 +1884,7 @@ fn two_curations_that_would_make_two_sources_replace_each_other_are_refused_at_t
                 .collect(),
             removed: Vec::new(),
             sources: vec![SourceEdit {
+                retire: Default::default(),
                 source: source.id.clone(),
                 checked: None,
                 reviewed: String::new(),
@@ -2087,6 +2099,7 @@ fn a_reconfirm_proposal_is_recorded_as_re_confirming_its_change_when_its_accepta
             panic!("present");
         };
         let edit = Curation {
+            retire: Default::default(),
             status: Standing::Unknown,
             links: claim
                 .sources

@@ -586,3 +586,12 @@ exact :: restore.rs :: number :: a placeholder name of a catalog message
 exact :: restore.rs :: a page could not be read now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: restore.rs :: a history could not be read now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: restore.rs :: a restoring proposal could not be made: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: curate.rs :: reason :: a placeholder name of a catalog message (G-T6: the reason a claim or a source is retired)
+exact :: replace.rs :: file :: a placeholder name of a catalog message
+exact :: replace.rs :: rule :: a placeholder name of a catalog message
+exact :: replace.rs :: limit :: a placeholder name of a catalog message
+exact :: replace.rs :: page :: a placeholder name of a catalog message
+exact :: replace.rs :: wiki :: a placeholder name of a catalog message
+exact :: replace.rs :: retired_reason :: the name of a key of a knowledge file, for the core's cleaning of a reason
+exact :: replace.rs :: the knowledge files could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: replace.rs :: a base could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it

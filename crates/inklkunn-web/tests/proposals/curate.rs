@@ -980,3 +980,164 @@ async fn a_status_alone_is_curated_without_touching_a_title_the_form_carried_bac
         Some("A new title")
     );
 }
+
+// ---------------------------------------------------------------------------------------------- retiring (RFC 006 D-10)
+
+#[tokio::test]
+async fn the_form_offers_to_retire_the_claim_and_each_source_and_a_retired_one_offers_the_way_back()
+{
+    let s = scene();
+    let body = open(&s, &claim_uri(&s), &s.writer).await.body();
+    for name in ["retire", "retire_reason", "c0_retire", "c0_retire_reason"] {
+        assert!(body.contains(&format!("name=\"{name}\"")), "{name}: {body}");
+    }
+    assert!(body.contains("Whether the claim is retired"), "{body}");
+    assert!(body.contains("Whether the source is retired"), "{body}");
+    assert!(
+        body.contains("<option value=\"retire\">Retire it</option>"),
+        "{body}"
+    );
+    assert!(!body.contains("Take the retirement back"), "{body}");
+    // The claim and its source are retired: the choice is the way back, and the reason is told.
+    let mut retired = s.claim.clone();
+    retired.lifecycle = inklkunn_core::knowledge::Lifecycle::Retired;
+    retired.retired_reason = Some("The survey was withdrawn.".to_owned());
+    s.w.fake.set(&claim_path(&retired.id), &retired.to_yaml());
+    let body = open(&s, &claim_uri(&s), &s.writer).await.body();
+    assert!(
+        body.contains("<option value=\"reinstate\">Take the retirement back</option>"),
+        "{body}"
+    );
+    assert!(
+        body.contains("It is retired: The survey was withdrawn."),
+        "{body}"
+    );
+    // The claim offers the way back, and its source (which is not retired) still offers the way to retire.
+    assert_eq!(
+        body.matches("Take the retirement back").count(),
+        1,
+        "{body}"
+    );
+    assert_eq!(body.matches(">Retire it<").count(), 1, "{body}");
+}
+
+#[tokio::test]
+async fn retiring_the_claim_is_proposed_as_a_change_of_its_file_with_the_reason() {
+    let s = scene();
+    let fields = with(
+        unchanged(&s, 1),
+        &[
+            ("retire", "retire"),
+            ("retire_reason", "  The survey was withdrawn.  "),
+        ],
+    );
+    let a = send(&s, FORM, &s.writer, &fields).await;
+    let to = location(&a);
+    let files = files_of(&s, &to);
+    assert_eq!(paths(&files), [claim_path(&s.claim.id).as_str()]);
+    let claims = claims_in(&files);
+    let [claim] = claims.as_slice() else {
+        panic!("{claims:?}")
+    };
+    assert_eq!(
+        claim.lifecycle,
+        inklkunn_core::knowledge::Lifecycle::Retired
+    );
+    assert_eq!(
+        claim.retired_reason.as_deref(),
+        Some("The survey was withdrawn.")
+    );
+    // The reviewer is told, in words, what it does and why.
+    let body = open(&s, &to, &s.writer).await.body();
+    assert!(
+        body.contains("Where it stands in its life becomes: retired."),
+        "{body}"
+    );
+    assert!(
+        body.contains("Why it is retired becomes: The survey was withdrawn."),
+        "{body}"
+    );
+    assert!(body.contains("This is a curation proposal"), "{body}");
+}
+
+#[tokio::test]
+async fn a_retirement_without_a_reason_is_refused_on_the_form_with_what_was_typed_still_in_it() {
+    let s = scene();
+    for fields in [
+        with(
+            unchanged(&s, 1),
+            &[
+                ("retire", "retire"),
+                ("retire_reason", ""),
+                ("summary", "Retire it"),
+            ],
+        ),
+        with(
+            unchanged(&s, 1),
+            &[
+                ("c0_retire", "retire"),
+                ("c0_retire_reason", "  "),
+                ("summary", "Retire it"),
+            ],
+        ),
+    ] {
+        let a = send(&s, FORM, &s.writer, &fields).await;
+        assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+        let body = a.body();
+        assert!(body.contains("Say why you are retiring it"), "{body}");
+        assert!(body.contains("value=\"Retire it\""), "{body}");
+    }
+}
+
+#[tokio::test]
+async fn retiring_a_source_changes_its_file_and_taking_it_back_restores_it() {
+    let s = scene();
+    let fields = with(
+        unchanged(&s, 1),
+        &[
+            ("c0_retire", "retire"),
+            ("c0_retire_reason", "A second edition replaced it."),
+        ],
+    );
+    let files = files_of(&s, &location(&send(&s, FORM, &s.writer, &fields).await));
+    let source_file = source_path(&s.claim.sources.first().unwrap().source);
+    assert_eq!(paths(&files), [source_file.as_str()]);
+    let sources = sources_in(&files);
+    let source = sources.first().expect("a source");
+    assert_eq!(
+        source.lifecycle,
+        inklkunn_core::knowledge::SourceLife::Retired
+    );
+    assert_eq!(
+        source.retired_reason.as_deref(),
+        Some("A second edition replaced it.")
+    );
+    // Retired at the tip: the form's choice is the way back, and it restores the source as a file that says nothing of it.
+    let mut retired = source.clone();
+    retired.id = s.claim.sources.first().unwrap().source.clone();
+    s.w.fake.set(&source_file, &retired.to_yaml());
+    let fields = with(unchanged(&s, 2), &[("c0_retire", "reinstate")]);
+    let files = files_of(&s, &location(&send(&s, FORM, &s.writer, &fields).await));
+    let back = sources_in(&files);
+    let back = back.first().expect("a source");
+    assert_eq!(back.lifecycle, inklkunn_core::knowledge::SourceLife::Active);
+    assert_eq!(back.retired_reason, None);
+    assert!(!file(&files, &source_file).contains("lifecycle"));
+}
+
+#[tokio::test]
+async fn a_form_that_says_nothing_of_retiring_changes_nothing_of_it() {
+    // An older form, or any client that leaves the choice out, leaves the claim as it is.
+    let s = scene();
+    let a = send(&s, FORM, &s.writer, &unchanged(&s, 1)).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        a.body().contains("Nothing in the form differs"),
+        "{}",
+        a.body()
+    );
+    // A choice the form does not offer is not a form of this site.
+    let fields = with(unchanged(&s, 1), &[("retire", "banish")]);
+    let a = send(&s, FORM, &s.writer, &fields).await;
+    assert_eq!(a.status, StatusCode::UNPROCESSABLE_ENTITY);
+}

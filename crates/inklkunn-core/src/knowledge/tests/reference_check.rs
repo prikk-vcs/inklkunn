@@ -51,6 +51,7 @@ fn edit(
     work: Option<Work>,
 ) -> Curation {
     Curation {
+        retire: Default::default(),
         status: Standing::Unknown,
         links: vec![LinkEdit {
             source: source.id.clone(),
@@ -59,6 +60,7 @@ fn edit(
         }],
         removed: Vec::new(),
         sources: vec![SourceEdit {
+            retire: Default::default(),
             source: source.id.clone(),
             checked: None,
             reviewed: reviewed.to_owned(),

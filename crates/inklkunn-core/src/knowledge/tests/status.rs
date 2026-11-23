@@ -740,8 +740,13 @@ fn a_removal_and_a_replaced_unreadable_file_are_refused_as_not_offered_and_a_dep
             assert!(text.contains(Rule::Status.sentence()), "{text}");
             assert!(!text.contains("not offered"), "{text}");
         } else {
-            assert!(text.contains("is not offered in this version"), "{text}");
-            assert!(!text.contains("curation proposal"), "{text}");
+            // A removal says it is not offered, and a file that cannot be read says who replaces it (RFC 006 D-10).
+            assert!(
+                text.contains("is not offered:") || text.contains("may moderate this wiki"),
+                "{text}"
+            );
+            assert!(!text.contains(Rule::Status.sentence()), "{text}");
+            assert!(!text.contains("in this version"), "{text}");
         }
     }
     assert_eq!(

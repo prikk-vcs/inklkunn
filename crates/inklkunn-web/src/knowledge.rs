@@ -15,6 +15,7 @@
 //! - `thread` (K-T10): *Discussion of this claim* on the claim's page and the form that adds a comment to it; a discussion
 //!   never changes a claim.
 //! - `curate` (K39): the link to the curation form, for those who may propose.
+//! - `replace` (RFC 006 D-10; handoff G-T6): the form that replaces a file that cannot be read, or retires it, for those who may moderate.
 //! - `others`: *Other views:* on a claim's page, each view where the claim reads differently (handoff K-T8).
 //! - `paths`: their addresses. `words`: what each word of a claim's file is called.
 
@@ -22,6 +23,7 @@ pub(crate) mod curate;
 pub(crate) mod marks;
 pub(crate) mod others;
 pub(crate) mod paths;
+pub(crate) mod replace;
 pub(crate) mod show;
 pub(crate) mod thread;
 pub(crate) mod why;

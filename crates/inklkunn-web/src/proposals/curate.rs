@@ -20,12 +20,13 @@ use axum::response::Response;
 use inklkunn_core::Action;
 use inklkunn_core::knowledge::check::SuccessorWalk;
 use inklkunn_core::knowledge::compose::{
-    Checked, Curation, LinkEdit, Mistake, SourceEdit, Work, curate, page_id_of,
+    Checked, Curation, LinkEdit, Mistake, Retire, SourceEdit, Work, curate, page_id_of,
 };
 use inklkunn_core::knowledge::marker::words_with_id;
 use inklkunn_core::knowledge::{
-    AnchorState, Availability, Bearing, Claim, ClaimId, Digest, File, Link, ReferenceForm, Source,
-    SourceId, Standing, anchor_state, claim_path, read_file, source_path,
+    AnchorState, Availability, Bearing, Claim, ClaimId, Digest, File, Lifecycle, Link,
+    ReferenceForm, Source, SourceId, SourceLife, Standing, anchor_state, claim_path, read_file,
+    source_path,
 };
 use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalError};
 use inklkunn_core::read::ReadError;
@@ -427,9 +428,66 @@ struct Submitted {
     sources: Vec<SourceEdit>,
     /// What a source is, as the form sent it, by source.
     works: Vec<(SourceId, WorkText)>,
+    /// Whether the claim is retired, as the form sent it (the choice and the reason typed).
+    retire: Pick,
+    /// Whether each source is retired, by source.
+    retires: Vec<(SourceId, Pick)>,
     confirm: bool,
     summary: String,
     op: Op,
+}
+
+/// A choice of the form that retires or takes a retirement back, with the reason typed beside it.
+#[derive(Clone, PartialEq, Eq, Default)]
+struct Pick {
+    choice: Chosen,
+    reason: String,
+}
+
+/// What the choice says.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum Chosen {
+    #[default]
+    Leave,
+    Retire,
+    Reinstate,
+}
+
+impl Chosen {
+    const fn value(self) -> &'static str {
+        match self {
+            Chosen::Leave => fields::RETIRE_LEAVE,
+            Chosen::Retire => fields::RETIRE_NOW,
+            Chosen::Reinstate => fields::RETIRE_BACK,
+        }
+    }
+}
+
+impl Pick {
+    /// What the fields say; `None` for a choice the form does not offer. A form that does not carry the choice leaves it alone.
+    fn read(choice: Option<&str>, reason: Option<&str>) -> Option<Pick> {
+        let choice = match choice {
+            None | Some("") | Some(fields::RETIRE_LEAVE) => Chosen::Leave,
+            Some(fields::RETIRE_NOW) => Chosen::Retire,
+            Some(fields::RETIRE_BACK) => Chosen::Reinstate,
+            Some(_) => return None,
+        };
+        Some(Pick {
+            choice,
+            reason: reason.unwrap_or("").trim().to_owned(),
+        })
+    }
+
+    /// The core's word for it.
+    fn retire(&self) -> Retire {
+        match self.choice {
+            Chosen::Leave => Retire::Leave,
+            Chosen::Retire => Retire::Retire {
+                reason: self.reason.clone(),
+            },
+            Chosen::Reinstate => Retire::Reinstate,
+        }
+    }
 }
 
 /// What a source is, where it is found and what replaces it, as the form carries it: texts, with the successor
@@ -508,6 +566,7 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
     let mut removed = Vec::new();
     let mut sources = Vec::new();
     let mut works = Vec::new();
+    let mut retires = Vec::new();
     for i in 0..count {
         let one = |what: &str| get(&fields::curated_field(i, what));
         let source = SourceId::parse(one(fields::C_SOURCE)?)?;
@@ -521,7 +580,9 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
         }
         // A source whose file the form could not show is not asked about.
         if let Some(availability) = one(fields::C_AVAILABILITY) {
+            let pick = Pick::read(one(fields::C_RETIRE), one(fields::C_RETIRE_REASON))?;
             sources.push(SourceEdit {
+                retire: pick.retire(),
                 source: source.clone(),
                 reviewed: one(fields::C_REVIEWED).unwrap_or("").trim().to_owned(),
                 availability: Availability::from_word(availability)?,
@@ -536,6 +597,7 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
                 })
                 .filter(Checked::is_stated),
             });
+            retires.push((source.clone(), pick));
         }
         // What a source is: offered for a source whose file could be read, checked or not (K60), so a form without it says nothing. The texts
         // are kept **as sent** (K59): the core compares each with what the source has and cleans only one that differs,
@@ -566,6 +628,8 @@ fn read(fields: &HashMap<String, String>) -> Option<Submitted> {
         removed,
         sources,
         works,
+        retire: Pick::read(get(fields::RETIRE), get(fields::RETIRE_REASON))?,
+        retires,
         confirm: get(fields::CONFIRM) == Some("1"),
         summary: get(fields::SUMMARY).unwrap_or("").trim().to_owned(),
         op: match get(fields::OP)? {
@@ -601,6 +665,22 @@ struct SourceView {
     availability_label: String,
     availability_hint: String,
     availabilities: Vec<OptionView>,
+    /// Whether the source is retired (RFC 006 D-10), for a source whose file could be read.
+    retire: Option<RetireView>,
+}
+
+/// The fields that retire a claim or a source, or take its retirement back (RFC 006 D-10).
+struct RetireView {
+    name: String,
+    label: String,
+    hint: String,
+    options: Vec<OptionView>,
+    reason_name: String,
+    reason_label: String,
+    reason_hint: String,
+    reason: String,
+    /// What is said of it now, when it is retired.
+    is: Option<String>,
 }
 
 /// The fields of what a source is (K44, K60).
@@ -655,6 +735,7 @@ struct CurateTpl<'a> {
     status_hint: String,
     statuses: Vec<OptionView>,
     status_earlier: Option<String>,
+    retire: RetireView,
     sources: Vec<SourceView>,
     confirm_name: &'static str,
     confirm_label: String,
@@ -684,6 +765,10 @@ struct Shown {
     removed: Vec<bool>,
     /// What each source is, by link; `None` for one whose file could not be read (the form does not offer it).
     works: Vec<Option<WorkText>>,
+    /// Whether the claim is retired, as chosen and typed.
+    retire: Pick,
+    /// Whether each source is, by link.
+    retires: Vec<Pick>,
     confirm: bool,
     summary: String,
 }
@@ -723,6 +808,8 @@ impl Shown {
                 .iter()
                 .map(|s| s.as_ref().map(WorkText::of))
                 .collect(),
+            retire: Pick::default(),
+            retires: vec![Pick::default(); subject.claim.sources.len()],
             confirm: false,
             summary: String::new(),
         }
@@ -770,6 +857,14 @@ impl Shown {
                 *slot = Some(sent.clone());
             }
         }
+        shown.retire = sub.retire.clone();
+        for (i, link) in subject.claim.sources.iter().enumerate() {
+            if let Some((_, sent)) = sub.retires.iter().find(|(s, _)| *s == link.source)
+                && let Some(slot) = shown.retires.get_mut(i)
+            {
+                *slot = sent.clone();
+            }
+        }
         shown.confirm = sub.confirm;
         shown.summary.clone_from(&sub.summary);
         shown
@@ -782,6 +877,46 @@ struct Draw<'a> {
     base: &'a Base,
     view: Option<&'a str>,
     shown: &'a Shown,
+}
+
+/// The fields that retire what the form is about, or take its retirement back. `retired` is `Some(the reason)` when it is retired
+/// now (`Some(None)`: no reason was recorded): the choice then offers the way back, else the way to retire.
+fn retire_view(
+    t: crate::catalog::T,
+    name: String,
+    reason_name: String,
+    label: Key,
+    hint: Key,
+    retired: Option<Option<&str>>,
+    typed: Pick,
+) -> RetireView {
+    let mut choices = vec![(Chosen::Leave, Key::CurateRetireLeave)];
+    choices.push(if retired.is_some() {
+        (Chosen::Reinstate, Key::CurateRetireBack)
+    } else {
+        (Chosen::Retire, Key::CurateRetireNow)
+    });
+    RetireView {
+        options: choices
+            .into_iter()
+            .map(|(choice, key)| OptionView {
+                value: choice.value(),
+                label: t.get(key),
+                selected: typed.choice == choice,
+            })
+            .collect(),
+        name,
+        label: t.get(label),
+        hint: t.get(hint),
+        reason_name,
+        reason_label: t.get(Key::CurateLabelRetireReason),
+        reason_hint: t.get(Key::CurateRetireReasonHint),
+        reason: typed.reason,
+        is: retired.map(|reason| match reason {
+            Some(reason) => t.msg(Key::CurateRetireIs).with("reason", reason).text(),
+            None => t.get(Key::CurateRetireIsNoReason),
+        }),
+    }
 }
 
 fn render(
@@ -847,7 +982,19 @@ fn render(
             .get(i)
             .copied()
             .unwrap_or((link.relation, link.bearing));
+        let retire = source.map(|s| {
+            retire_view(
+                t,
+                name(fields::C_RETIRE),
+                name(fields::C_RETIRE_REASON),
+                Key::CurateLabelRetireSource,
+                Key::CurateRetireSourceHint,
+                (s.lifecycle == SourceLife::Retired).then_some(s.retired_reason.as_deref()),
+                shown.retires.get(i).cloned().unwrap_or_default(),
+            )
+        });
         sources.push(SourceView {
+            retire,
             legend: t.msg(Key::CurateSourceLegend).with("title", title).text(),
             earlier: earlier(Some(&link.judged_on)),
             relation_name: name(fields::C_RELATION),
@@ -964,6 +1111,16 @@ fn render(
             label,
         ),
         status_earlier: earlier(subject.claim.community_status.judged_on.as_ref()),
+        retire: retire_view(
+            t,
+            fields::RETIRE.to_owned(),
+            fields::RETIRE_REASON.to_owned(),
+            Key::CurateLabelRetireClaim,
+            Key::CurateRetireClaimHint,
+            (subject.claim.lifecycle == Lifecycle::Retired)
+                .then_some(subject.claim.retired_reason.as_deref()),
+            shown.retire.clone(),
+        ),
         sources,
         confirm_name: fields::CONFIRM,
         confirm_label: t.get(Key::CurateConfirm),
@@ -1158,6 +1315,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         removed: sub.removed.clone(),
         sources,
         confirm: sub.confirm,
+        retire: sub.retire.retire(),
         proposal: Some(proposal.clone()),
     };
     let now = subject.wording.as_ref().map(|(_, d)| d);

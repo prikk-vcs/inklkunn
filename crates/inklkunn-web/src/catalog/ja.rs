@@ -842,7 +842,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.col_rule", "問題の内容"),
     msg(
         "health.knowledge_action",
-        "修正したファイルを提案するか、ファイルの削除を提案してください。",
+        "このウィキでモデレーションを行える役割を持つ人が、読み取れるファイルに置き換えるか、役目を終えたことにできます。",
     ),
     msg(
         "health.none_knowledge",
@@ -3202,7 +3202,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_by_form",
-        "主張や出典のファイルの削除と、読み取れないファイルの置き換えは、このバージョンでは提供されていません。",
+        "主張や出典のファイルを削除する操作は提供していません。頼らないようにするには、キュレーション提案で、理由を添えて役目を終えたことにしてください。",
     ),
     msg(
         "know.source_spacing_title",
@@ -3934,5 +3934,112 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "problem.page_gone.hint",
         "ページを元に戻すには、あらためて提案します。ウィキ上のこのアドレスのページが、削除の取り消し、または最後の本文でのページの作り直しを提案する手段を示します。",
+    ),
+    msg(
+        "claim.retired",
+        "この主張は役目を終えました。ページ、出典、履歴はここに残りますが、主張が書かれている段落のそばには示されなくなります。",
+    ),
+    msg("claim.retired_reason", "役目を終えた理由: {reason}"),
+    msg("claim.retired_no_reason", "理由は記録されていません。"),
+    msg(
+        "claim.source_retired",
+        "この出典は役目を終えました: {reason}",
+    ),
+    msg(
+        "claim.source_retired_no_reason",
+        "この出典は役目を終えました。理由は記録されていません。",
+    ),
+    msg(
+        "curate.label_retire_claim",
+        "主張が役目を終えているかどうか",
+    ),
+    msg(
+        "curate.label_retire_source",
+        "出典が役目を終えているかどうか",
+    ),
+    msg("curate.retire_leave", "そのままにする"),
+    msg("curate.retire_now", "役目を終えたことにする"),
+    msg("curate.retire_back", "役目を終えた状態を取り消す"),
+    msg(
+        "curate.retire_claim_hint",
+        "役目を終えた主張も、ページ、出典、履歴は残りますが、主張が書かれている段落のそばには示されなくなります。取り消すと、主張はあらためて提示された状態に戻ります。",
+    ),
+    msg(
+        "curate.retire_source_hint",
+        "役目を終えた出典も、ページは残り、その出典を引用している主張すべてに印が付きます。確認が必要な出典の一覧には載らなくなります。",
+    ),
+    msg("curate.label_retire_reason", "役目を終えた理由"),
+    msg(
+        "curate.retire_reason_hint",
+        "1 行で書きます。読む人全員に示されます。役目を終えたことにする場合は必須です。",
+    ),
+    msg("curate.retire_is", "役目を終えています: {reason}"),
+    msg(
+        "curate.retire_is_no_reason",
+        "役目を終えています。理由は記録されていません。",
+    ),
+    msg(
+        "curate.retire_reason_missing",
+        "役目を終えたことにする理由を書いてください。読む人全員に示されます。",
+    ),
+    msg(
+        "know.change_retired_reason",
+        "役目を終えた理由は次のとおりになります: {reason}",
+    ),
+    msg(
+        "know.change_retired_reason_cleared",
+        "役目を終えた理由は残らなくなります。",
+    ),
+    msg("know.made_retired_reason", "役目を終えた理由: {reason}"),
+    msg("know.source_life_active", "使われている"),
+    msg("know.source_life_retired", "役目を終えた"),
+    msg(
+        "invalid.knowledge_retired_unexplained",
+        "この提案が役目を終えたことにする主張または出典には、理由がありません。役目を終えたことには理由が必要なため、送信できません。",
+    ),
+    msg(
+        "know.unreadable_by_moderate",
+        "読み取れないファイルは、このウィキでモデレーションを行える役割を持つ人が、読み取れるファイルに置き換えるか、役目を終えたことにして対応します。",
+    ),
+    msg(
+        "health.knowledge_replace_link",
+        "置き換える、または役目を終えたことにする",
+    ),
+    msg("replace.heading", "読み取れないファイルを置き換える"),
+    msg(
+        "replace.intro",
+        "ウィキはファイル {file} を読み取れないため、そこからは何も読み込まれず、何が書かれていたかも分かりません。読み取れるファイルとして書き直すか、役目を終えたことにできます。提案は、知識ファイルへのほかの変更と同じ基準で判定され、受け入れられる人が決めます。",
+    ),
+    msg("replace.choice_legend", "どうするか"),
+    msg("replace.choice_write", "ファイルを書き直す"),
+    msg("replace.choice_retire", "役目を終えたことにする"),
+    msg(
+        "replace.label_text",
+        "ファイルの全文（ウィキが読み取る形式）",
+    ),
+    msg(
+        "replace.text_hint",
+        "ファイルの名前、つまり識別子は変わりません。主張または出典のキーだけを書いてください。読み取れない場合は、何が問題かをウィキが示します。",
+    ),
+    msg(
+        "replace.retire_hint",
+        "このように役目を終えたことにしたファイルは、読み取れなかったファイルに何が書かれていたかには触れません。識別子は同じで、あなたが書く理由とともに役目を終えます。",
+    ),
+    msg("replace.send", "レビューに送る"),
+    msg(
+        "replace.problem_choice",
+        "ファイルをどうするか選んでください。",
+    ),
+    msg(
+        "replace.problem_text",
+        "書かれたファイルも読み取れません: {rule}",
+    ),
+    msg(
+        "replace.problem_reason",
+        "役目を終えたことにする理由を書いてください。読む人全員に示されます。",
+    ),
+    msg(
+        "replace.problem_nothing",
+        "このファイルはウィキが読み取れるか、このウィキの知識ファイルではないため、置き換えるものはありません。",
     ),
 ];

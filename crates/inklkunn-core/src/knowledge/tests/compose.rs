@@ -316,6 +316,7 @@ fn cited_claim() -> (Claim, Source) {
 
 fn unchanged(claim: &Claim, source: &Source) -> Curation {
     Curation {
+        retire: Default::default(),
         status: claim.community_status.status,
         links: vec![LinkEdit {
             source: source.id.clone(),
@@ -324,6 +325,7 @@ fn unchanged(claim: &Claim, source: &Source) -> Curation {
         }],
         removed: Vec::new(),
         sources: vec![SourceEdit {
+            retire: Default::default(),
             source: source.id.clone(),
             checked: None,
             reviewed: String::new(),

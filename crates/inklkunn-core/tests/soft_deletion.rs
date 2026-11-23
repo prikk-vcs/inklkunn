@@ -1,4 +1,4 @@
-//! RFC 006 acceptance criterion 10 on a real prikk (handoff G-T6): **soft deletion**. A page is removed by an accepted proposal
+//! RFC 006 acceptance criteria 10 and 11 on a real prikk (handoff G-T6): **soft deletion** and **retiring knowledge** (the second part of this file). Soft deletion first: A page is removed by an accepted proposal
 //! and the read service says so from the page's own history ([`ReadService::removed_page`]): when (the change), which proposal and
 //! why. The way back is **a rollback of that change when it merges cleanly over the tip, and the page's last text when later
 //! changes block it**; each is a draft proposal, accepted like any other, and the page is back with the history showing both
@@ -14,7 +14,7 @@ use std::time::Duration;
 use inklkunn_core::governance::PlatformLimits;
 use inklkunn_core::message::SystemLabel;
 use inklkunn_core::proposal::rollback::restore_edit;
-use inklkunn_core::proposal::{ProposalEdit, ProposalService, QuotaConfig};
+use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalService, QuotaConfig};
 use inklkunn_core::read::{PageEvent, Restore, RollbackOutcome};
 use inklkunn_core::{
     AcceptFailure, AcceptStep, AcceptanceParts, Accepted, Authorizer, IdentityAuthority,
@@ -79,6 +79,7 @@ struct World {
     acts: SystemActs,
     wiki: inklkunn_store::WikiRecord,
     repo: PathBuf,
+    layout: inklkunn_store::RootLayout,
     admin: Person,
     maintainer: Person,
     reviewer: Person,
@@ -259,6 +260,7 @@ impl World {
             hook,
             acts,
             repo: created.repo,
+            layout: layout.clone(),
             wiki,
         };
         world.write_outside(&[("pages/Home.md", HOME)]);
@@ -563,4 +565,353 @@ fn the_newest_change_that_touched_the_path_decides_whether_it_is_a_removed_page(
         .unwrap();
     assert_eq!(removed.removal.block_id, second);
     assert_eq!(removed.reason(), Some("Remove the guide again"));
+}
+
+// ------------------------------------------------------------------------------------ criterion 11: retiring
+
+/// A page paragraph with a source attached, in one accepted proposal: the claim, the source and the page. Returns the claim file and
+/// the source file (paths and texts), the claim's id and the paragraph's block.
+struct Attached {
+    claim_path: String,
+    source_path: String,
+    claim: inklkunn_core::knowledge::ClaimId,
+    source: inklkunn_core::knowledge::SourceId,
+}
+
+fn attach_a_source(w: &World) -> Attached {
+    use inklkunn_core::knowledge::compose::{Attachment, SourceDraft, attach};
+    use inklkunn_core::knowledge::{Bearing, Link, SourceKind, StatementKind};
+    let start = HOME.find("One.").unwrap();
+    let attached = attach(
+        HOME,
+        &(start..start + "One.".len()),
+        None,
+        &Attachment {
+            source: SourceDraft {
+                kind: SourceKind::Secondary,
+                title: Some("A history".to_owned()),
+                author: None,
+                date: None,
+                reference: None,
+            },
+            relation: Link::Supports,
+            bearing: Bearing::Direct,
+            note: None,
+            kind: StatementKind::Observation,
+        },
+    )
+    .unwrap();
+    let [(claim_path, claim_text), (source_path, source_text)] = attached.files;
+    let p = w.propose(
+        "A source for the first paragraph",
+        &[
+            ("pages/Home.md", Some(&attached.page)),
+            (claim_path.as_str(), Some(&claim_text)),
+            (source_path.as_str(), Some(&source_text)),
+        ],
+    );
+    signed(w.accept(&w.maintainer, &p.id));
+    w.reads.forget_wiki(&w.wiki);
+    Attached {
+        claim_path,
+        source_path,
+        claim: attached.claim,
+        source: attached.source,
+    }
+}
+
+/// The curation `edit` of the claim and its source as the tip has them, made a proposal by the contributor.
+fn curate_with(
+    w: &World,
+    a: &Attached,
+    summary: &str,
+    retire: inklkunn_core::knowledge::compose::Retire,
+    source_retire: inklkunn_core::knowledge::compose::Retire,
+) -> Result<ProposalRecord, inklkunn_core::knowledge::compose::Mistake> {
+    use inklkunn_core::knowledge::compose::{Curation, LinkEdit, SourceEdit, curate};
+    use inklkunn_core::knowledge::{File, Standing, read_file};
+    let File::Claim(claim) =
+        read_file(&a.claim_path, w.file(&a.claim_path).unwrap().as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    let File::Source(source) =
+        read_file(&a.source_path, w.file(&a.source_path).unwrap().as_bytes()).unwrap()
+    else {
+        panic!("a source");
+    };
+    let links = claim
+        .sources
+        .iter()
+        .map(|l| LinkEdit {
+            source: l.source.clone(),
+            relation: l.relation,
+            bearing: l.bearing,
+        })
+        .collect();
+    let edit = Curation {
+        status: Standing::Unknown,
+        links,
+        removed: Vec::new(),
+        sources: vec![SourceEdit {
+            source: source.id.clone(),
+            reviewed: String::new(),
+            availability: source.availability,
+            work: None,
+            checked: None,
+            retire: source_retire,
+        }],
+        confirm: false,
+        retire,
+        proposal: None,
+    };
+    let files = curate(&claim, std::slice::from_ref(&source), None, &edit)?;
+    let refs: Vec<(&str, Option<&str>)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), Some(t.as_str())))
+        .collect();
+    Ok(w.propose(summary, &refs))
+}
+
+#[test]
+fn criterion_11_a_claim_is_retired_by_curation_with_a_reason_leaves_the_paragraph_and_is_taken_back()
+ {
+    use inklkunn_core::knowledge::compose::{Mistake, Retire};
+    use inklkunn_core::knowledge::index::RETIRED;
+    use inklkunn_core::knowledge::{File, Lifecycle, read_file};
+    let Some(w) = World::new("retire-claim", PlatformLimits::default(), now) else {
+        return;
+    };
+    let a = attach_a_source(&w);
+    let id = a.claim.to_string();
+    let offered = |w: &World| {
+        w.reads.forget_wiki(&w.wiki);
+        let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+        index.claims_on_page("p-home").count()
+    };
+    assert_eq!(offered(&w), 1, "a claim is offered beside its paragraph");
+
+    // A retirement says why: the core writes nothing without a reason, and nothing hand-written without one is accepted.
+    assert_eq!(
+        curate_with(
+            &w,
+            &a,
+            "Retire it",
+            Retire::Retire {
+                reason: "  ".to_owned()
+            },
+            Retire::Leave
+        )
+        .unwrap_err(),
+        Mistake::ReasonMissing
+    );
+    let refused_at_submit = |summary: &str, files: &[(&str, Option<&str>)]| {
+        let edit = ProposalEdit {
+            summary: summary.to_owned(),
+            files: files
+                .iter()
+                .map(|(path, text)| FileChange {
+                    path: (*path).to_owned(),
+                    text: text.map(str::to_owned),
+                })
+                .collect(),
+            ..ProposalEdit::default()
+        };
+        let draft = w
+            .proposals
+            .create(&w.author.principal, &w.wiki, None, edit)
+            .unwrap_or_else(|e| panic!("create: {e}"));
+        w.proposals
+            .submit(&w.author.principal, &w.wiki, &draft.id)
+            .expect_err("a proposal the acceptance would refuse is not sent")
+    };
+    let File::Claim(claim) =
+        read_file(&a.claim_path, w.file(&a.claim_path).unwrap().as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    let mut bare = claim.clone();
+    bare.lifecycle = Lifecycle::Retired;
+    assert!(matches!(
+        refused_at_submit(
+            "Retire it, with no reason",
+            &[(a.claim_path.as_str(), Some(&bare.to_yaml()))]
+        ),
+        inklkunn_core::ProposalError::Invalid(Invalid::KnowledgeRetiredUnexplained)
+    ));
+    // Nor beside a page edit: retiring is curation's, so a proposal that is not a curation proposal is refused for it.
+    let mut with_reason = claim.clone();
+    with_reason.lifecycle = Lifecycle::Retired;
+    with_reason.retired_reason = Some("It was withdrawn.".to_owned());
+    assert!(matches!(
+        refused_at_submit(
+            "Retire it, and reword the front page",
+            &[
+                (a.claim_path.as_str(), Some(&with_reason.to_yaml())),
+                ("pages/Home.md", Some(&HOME.replace("Two.", "Dos."))),
+            ]
+        ),
+        inklkunn_core::ProposalError::Invalid(Invalid::KnowledgeCurated)
+    ));
+    assert_eq!(offered(&w), 1);
+
+    // The curation proposal retires it, with its reason; it is accepted like any other.
+    let retire = curate_with(
+        &w,
+        &a,
+        "Retire the claim: the survey was withdrawn",
+        Retire::Retire {
+            reason: "The survey was withdrawn.".to_owned(),
+        },
+        Retire::Leave,
+    )
+    .unwrap();
+    signed(w.accept(&w.maintainer, &retire.id));
+    let File::Claim(retired) =
+        read_file(&a.claim_path, w.file(&a.claim_path).unwrap().as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    assert_eq!(retired.lifecycle, Lifecycle::Retired);
+    assert_eq!(
+        retired.retired_reason.as_deref(),
+        Some("The survey was withdrawn.")
+    );
+    w.reads.forget_wiki(&w.wiki);
+    let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+    let row = index.claim(&id).unwrap();
+    assert_eq!(row.lifecycle, RETIRED);
+    assert_eq!(
+        row.retired_reason.as_deref(),
+        Some("The survey was withdrawn.")
+    );
+    // It left the paragraph's link and kept its anchors, its page and its source.
+    assert_eq!(index.claims_on_page("p-home").count(), 0);
+    assert_eq!(index.anchors_of(&id).count(), 1);
+    assert_eq!(index.links_of(&id).count(), 1);
+
+    // Taking the retirement back is a curation proposal too: the claim is put forward again, and offered again.
+    let back = curate_with(
+        &w,
+        &a,
+        "Take the retirement back",
+        Retire::Reinstate,
+        Retire::Leave,
+    )
+    .unwrap();
+    signed(w.accept(&w.maintainer, &back.id));
+    let File::Claim(again) =
+        read_file(&a.claim_path, w.file(&a.claim_path).unwrap().as_bytes()).unwrap()
+    else {
+        panic!("a claim");
+    };
+    assert_eq!(again.lifecycle, Lifecycle::Proposed);
+    assert_eq!(again.retired_reason, None);
+    assert_eq!(offered(&w), 1);
+}
+
+#[test]
+fn criterion_11_a_source_is_retired_stays_on_the_claims_that_cite_it_and_leaves_the_sources_to_review()
+ {
+    use inklkunn_core::knowledge::compose::Retire;
+    use inklkunn_core::knowledge::freshness::sources_to_review;
+    use inklkunn_core::knowledge::index::RETIRED;
+    use inklkunn_core::knowledge::{File, SourceLife, read_file};
+    let Some(w) = World::new("retire-source", PlatformLimits::default(), now) else {
+        return;
+    };
+    let a = attach_a_source(&w);
+    let listed = |w: &World| {
+        w.reads.forget_wiki(&w.wiki);
+        let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+        sources_to_review(&index, now(), 1096)
+            .iter()
+            .any(|s| s.source.id == a.source.to_string())
+    };
+    // Never reviewed: it is listed.
+    assert!(listed(&w), "a source nobody checked is to be reviewed");
+
+    let retire = curate_with(
+        &w,
+        &a,
+        "Retire the source: a better edition is cited",
+        Retire::Leave,
+        Retire::Retire {
+            reason: "A better edition is cited.".to_owned(),
+        },
+    )
+    .unwrap();
+    signed(w.accept(&w.maintainer, &retire.id));
+    let File::Source(retired) =
+        read_file(&a.source_path, w.file(&a.source_path).unwrap().as_bytes()).unwrap()
+    else {
+        panic!("a source");
+    };
+    assert_eq!(retired.lifecycle, SourceLife::Retired);
+    assert_eq!(
+        retired.retired_reason.as_deref(),
+        Some("A better edition is cited.")
+    );
+    assert!(!listed(&w), "a retired source is not listed to be reviewed");
+    // It keeps its page's row and its link on the claim that cites it, marked.
+    let index = w.reads.knowledge_index(&w.wiki, None).unwrap();
+    let row = index.source(&a.source.to_string()).unwrap();
+    assert_eq!(row.lifecycle, RETIRED);
+    assert_eq!(
+        row.retired_reason.as_deref(),
+        Some("A better edition is cited.")
+    );
+    assert_eq!(index.links_of(&a.claim.to_string()).count(), 1);
+
+    // Taking it back: the source is active again, and is listed again.
+    let back = curate_with(
+        &w,
+        &a,
+        "Take the retirement back",
+        Retire::Leave,
+        Retire::Reinstate,
+    )
+    .unwrap();
+    signed(w.accept(&w.maintainer, &back.id));
+    assert!(listed(&w));
+}
+
+#[test]
+fn criterion_11_a_retired_claim_and_a_retired_source_stay_in_the_export() {
+    use inklkunn_core::knowledge::compose::Retire;
+    let Some(w) = World::new("retire-export", PlatformLimits::default(), now) else {
+        return;
+    };
+    let a = attach_a_source(&w);
+    let retire = curate_with(
+        &w,
+        &a,
+        "Retire both",
+        Retire::Retire {
+            reason: "The survey was withdrawn.".to_owned(),
+        },
+        Retire::Retire {
+            reason: "A second edition replaced it.".to_owned(),
+        },
+    )
+    .unwrap();
+    signed(w.accept(&w.maintainer, &retire.id));
+    let dest = w._tmp.0.join("bundle");
+    inklkunn_core::export::export_bundle(&*w.storage, &w.layout, &w.wiki, &dest, "0.0.0", now())
+        .unwrap_or_else(|e| panic!("{e}"));
+    // Both files are in the bundle as the repository has them: a retirement removes nothing.
+    for (path, words) in [
+        (&a.claim_path, "The survey was withdrawn."),
+        (&a.source_path, "A second edition replaced it."),
+    ] {
+        let text = std::fs::read_to_string(dest.join(path))
+            .unwrap_or_else(|e| panic!("the bundle has no {path}: {e}"));
+        assert!(text.contains("lifecycle: retired"), "{path}: {text}");
+        assert!(text.contains(words), "{path}: {text}");
+        assert_eq!(
+            Some(text),
+            w.file(path),
+            "{path} is as the repository has it"
+        );
+    }
 }

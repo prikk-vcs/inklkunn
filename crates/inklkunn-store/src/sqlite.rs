@@ -1214,6 +1214,21 @@ CREATE TABLE IF NOT EXISTS governance_derived (
     CHECK (fault_found IS NULL OR fault_file IS NOT NULL),
     CHECK (fault_more IS NULL OR fault_found IS NOT NULL)
 );
+
+-- A retired claim and a retired source say so in the derived knowledge index, with the reason (RFC 006 D-10; handoff G-T6). **Derived
+-- data only**, as version 17 did: the index of every tip is dropped here, so that none is read without the columns it now has, and
+-- each is rebuilt from the tip's files when it is next asked for (INV-5). A source of 0.3.0 has no `lifecycle` in its file: it is
+-- `active`.
+ALTER TABLE knowledge_claims ADD COLUMN retired_reason TEXT;
+ALTER TABLE knowledge_sources ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'active' CHECK (lifecycle IN ('active', 'retired'));
+ALTER TABLE knowledge_sources ADD COLUMN retired_reason TEXT;
+DELETE FROM knowledge_tips;
+DELETE FROM knowledge_claims;
+DELETE FROM knowledge_sources;
+DELETE FROM knowledge_relations;
+DELETE FROM knowledge_links;
+DELETE FROM knowledge_anchors;
+DELETE FROM knowledge_invalid;
 ";
 
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and

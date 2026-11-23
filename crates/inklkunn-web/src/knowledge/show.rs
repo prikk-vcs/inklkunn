@@ -80,6 +80,8 @@ struct ClaimTpl<'a> {
     heading: String,
     view_note: Option<String>,
     kind: String,
+    /// That the claim is retired, and why (RFC 006 D-10): the sentences, one paragraph each.
+    retired: Vec<String>,
     said_heading: String,
     said: Vec<Said>,
     said_nowhere: Option<String>,
@@ -310,7 +312,16 @@ fn source_lines(t: T, found: &Found) -> Vec<SourceLine> {
                 (link.judgement == index::EARLIER).then(|| t.get(Key::ClaimJudgedEarlier));
             Some(match found.index.source(&link.source) {
                 Some(source) => {
-                    let (name, details) = source_name(t, source);
+                    let (name, mut details) = source_name(t, source);
+                    // A retired source stays on every claim that cites it, marked, with its reason (RFC 006 D-10).
+                    if source.lifecycle == RETIRED {
+                        details.push(match source.retired_reason.as_deref() {
+                            Some(reason) => {
+                                t.msg(Key::ClaimSourceRetired).with("reason", reason).html()
+                            }
+                            None => t.msg(Key::ClaimSourceRetiredNoReason).html(),
+                        });
+                    }
                     SourceLine {
                         anchor: paths::source_fragment(&link.source),
                         line: t
@@ -364,6 +375,23 @@ fn status_line(t: T, found: &Found) -> StatusLine {
     }
 }
 
+/// The word the derived index gives a retired claim's `lifecycle` and a retired source's.
+const RETIRED: &str = index::RETIRED;
+
+/// What the page says when the claim is retired: that it is, and the reason the file gives, or that none was recorded.
+fn retired_lines(t: T, found: &Found) -> Vec<String> {
+    if found.claim.lifecycle != RETIRED {
+        return Vec::new();
+    }
+    vec![
+        t.get(Key::ClaimRetired),
+        match found.claim.retired_reason.as_deref() {
+            Some(reason) => t.msg(Key::ClaimRetiredReason).with("reason", reason).text(),
+            None => t.get(Key::ClaimRetiredNoReason),
+        },
+    ]
+}
+
 fn render(page: &Page, found: &Found, id: &str) -> Response {
     let t = page.t();
     let wiki = &found.wiki;
@@ -389,6 +417,7 @@ fn render(page: &Page, found: &Found, id: &str) -> Response {
             .msg(Key::ClaimKind)
             .with("kind", t.get(words::kind(&found.claim.kind)))
             .text(),
+        retired: retired_lines(t, found),
         said_heading: page.get(Key::ClaimSaidHeading),
         said_nowhere: said.is_empty().then(|| page.get(Key::ClaimSaidNowhere)),
         said,

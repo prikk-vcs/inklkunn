@@ -34,7 +34,7 @@ use inklkunn_store::RevisionContent;
 
 use super::labels::{
     availability_word, bearing_word, lifecycle_word, link_word, reference_option,
-    relation_type_word, source_word, standing_word, statement_word,
+    relation_type_word, source_life_word, source_word, standing_word, statement_word,
 };
 use crate::catalog::{Key, Rich, T, bdi, cite, code, code_link};
 use crate::health::rule_key;
@@ -313,6 +313,7 @@ fn claim_change(
             .msg(Key::KnowChangeLifecycle)
             .with("lifecycle", t.get(lifecycle_word(*l)))
             .html(),
+        ClaimChange::RetiredReason(reason) => retired_reason_line(t, reason.as_deref()),
         ClaimChange::Standing { from, to } => t
             .msg(Key::KnowChangeStanding)
             .with("from", t.get(standing_word(*from)))
@@ -479,6 +480,22 @@ fn source_change(t: T, know: &dyn Subjects, change: &SourceChange) -> Rich {
             .rich("source", source_subject(t, know, source, None, None))
             .html(),
         SourceChange::Superseded(None) => t.msg(Key::KnowSourceChangeUnsuperseded).html(),
+        SourceChange::Lifecycle(l) => t
+            .msg(Key::KnowChangeLifecycle)
+            .with("lifecycle", t.get(source_life_word(*l)))
+            .html(),
+        SourceChange::RetiredReason(reason) => retired_reason_line(t, reason.as_deref()),
+    }
+}
+
+/// The line that says why a claim or a source is retired now, or that no reason is kept (RFC 006 D-10); the reason is plain text.
+fn retired_reason_line(t: T, reason: Option<&str>) -> Rich {
+    match reason {
+        Some(reason) => t
+            .msg(Key::KnowChangeRetiredReason)
+            .with("reason", reason)
+            .html(),
+        None => t.msg(Key::KnowChangeRetiredReasonCleared).html(),
     }
 }
 
@@ -531,6 +548,7 @@ fn line(t: T, know: &dyn Subjects, item: &Item) -> Line {
             standing,
             judged_on,
             lifecycle,
+            retired_reason,
             said,
             relations,
             cites,
@@ -540,6 +558,13 @@ fn line(t: T, know: &dyn Subjects, item: &Item) -> Line {
                     .with("lifecycle", t.get(lifecycle_word(*lifecycle)))
                     .html(),
             ];
+            if let Some(reason) = retired_reason {
+                more.push(
+                    t.msg(Key::KnowMadeRetiredReason)
+                        .with("reason", reason)
+                        .html(),
+                );
+            }
             if let Some(digest) = judged_on {
                 more.push(rejudged(
                     t,
@@ -593,8 +618,24 @@ fn line(t: T, know: &dyn Subjects, item: &Item) -> Line {
             reviewed,
             superseded_by,
             availability,
+            lifecycle,
+            retired_reason,
         } => {
             let mut more = Vec::new();
+            if *lifecycle == inklkunn_core::knowledge::SourceLife::Retired {
+                more.push(
+                    t.msg(Key::KnowMadeLifecycle)
+                        .with("lifecycle", t.get(source_life_word(*lifecycle)))
+                        .html(),
+                );
+            }
+            if let Some(reason) = retired_reason {
+                more.push(
+                    t.msg(Key::KnowMadeRetiredReason)
+                        .with("reason", reason)
+                        .html(),
+                );
+            }
             if let Some(reference) = reference {
                 let (form, value) = reference_text(t, reference);
                 more.push(

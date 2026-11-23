@@ -3,6 +3,8 @@
 //! ```yaml
 //! kind: secondary                   # primary | secondary | observational | computational | anecdotal | other
 //! availability: unknown             # available | unavailable | unknown: set by a person who checked, never a crawler
+//! lifecycle: retired                # optional: active (the default) | retired (RFC 006 D-10)
+//! retired_reason: "…"               # optional; one line; only where lifecycle is retired
 //! identity:                         # as written (optional)
 //!   title: "…"
 //!   author: "…"
@@ -28,16 +30,18 @@
 use inklkunn_markup::Value;
 use inklkunn_markup::frontmatter::parse_yaml;
 
-use super::claim::{digest, proposal};
+use super::claim::{digest, proposal, reason};
 use super::model::{
     Availability, Identity, Reference, ReferenceForm, Reviewed, Snapshot, Source, SourceId,
-    SourceKind,
+    SourceKind, SourceLife,
 };
 use super::yaml::{is_day, mapping, optional, quoted, required, text, word};
 use super::{Fault, Rule};
 
-const TOP: [&str; 7] = [
+const TOP: [&str; 9] = [
     "kind",
+    "lifecycle",
+    "retired_reason",
     "availability",
     "identity",
     "reference",
@@ -62,6 +66,16 @@ impl Source {
             Availability::FIELD,
             Availability::from_word,
         )?;
+        if let Some(v) = optional(top, "lifecycle") {
+            out.lifecycle = word(v, SourceLife::FIELD, SourceLife::from_word)?;
+        }
+        // The reason a source was retired (RFC 006 D-10): one line, and only where the source is retired.
+        if let Some(v) = optional(top, "retired_reason") {
+            out.retired_reason = Some(reason(v, "retired_reason")?);
+            if out.lifecycle != SourceLife::Retired {
+                return Err(Fault::at(Rule::Value, "retired_reason"));
+            }
+        }
         if let Some(v) = optional(top, "identity") {
             let pairs = mapping(v, "identity", &["title", "author", "date"])?;
             let part = |key: &'static str| optional(pairs, key).map(|v| text(v, key)).transpose();
@@ -120,6 +134,13 @@ impl Source {
         let mut out = String::new();
         out.push_str(&format!("kind: {}\n", self.kind.word()));
         out.push_str(&format!("availability: {}\n", self.availability.word()));
+        // Only a retired source says so: a file of version 1 without the key is the file of an active source, byte for byte.
+        if self.lifecycle == SourceLife::Retired {
+            out.push_str(&format!("lifecycle: {}\n", self.lifecycle.word()));
+            if let Some(why) = &self.retired_reason {
+                out.push_str(&format!("retired_reason: {}\n", quoted(why)));
+            }
+        }
         let id = &self.identity;
         if id.title.is_some() || id.author.is_some() || id.date.is_some() {
             out.push_str("identity:\n");

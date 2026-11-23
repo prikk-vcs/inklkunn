@@ -48,6 +48,7 @@ mod merge;
 mod onpage;
 mod reference_check;
 mod refusals;
+mod retire;
 mod roundtrip;
 mod status;
 mod summary;

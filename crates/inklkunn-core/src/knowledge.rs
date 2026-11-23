@@ -53,7 +53,8 @@ pub use fault::{Fault, Rule};
 pub use model::{
     Availability, Bearing, Claim, ClaimId, CommunityStatus, Digest, Expression, Identity,
     Lifecycle, Link, MAX_ID_CHARS, Reference, ReferenceForm, Relation, RelationType, Reviewed,
-    Snapshot, Source, SourceId, SourceKind, SourceLink, Standing, StatementKind, block_digest,
+    Snapshot, Source, SourceId, SourceKind, SourceLife, SourceLink, Standing, StatementKind,
+    block_digest,
 };
 pub use path::{
     CLAIMS_DIR, Family, File, KNOWLEDGE_DIR, MAX_FILE_BYTES, SOURCES_DIR, claim_path, family_of,

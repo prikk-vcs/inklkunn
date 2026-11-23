@@ -110,15 +110,16 @@ impl Refusal {
     }
 
     /// Can a curation proposal made with the curation form do what this refusal says only curation may (K44)? It
-    /// changes what a claim or a source file holds, and takes a link away; it never takes a file away, nor replaces a
-    /// file that cannot be read (what it held is not known). Those are not offered in this version (K62).
+    /// changes what a claim or a source file holds, and takes a link away; it never takes a file away, and it never replaces a
+    /// file that cannot be read (what it held is not known). A file is retired, not removed (RFC 006 D-10), and a file that cannot
+    /// be read is replaced, or retired, by someone who may moderate the wiki, with a form of its own (G-T6).
     pub fn curation_form_can_make(&self) -> bool {
         !self.removes && self.field != UNREADABLE
     }
 
-    /// The refusal as an English sentence, for operators and logs. A removal, or the replacement of a file that cannot
-    /// be read, is **not offered in this version** and says so (K67): the rule's sentence ([`Rule::sentence`]) is for
-    /// what a curation proposal can do.
+    /// The refusal as an English sentence, for operators and logs. A removal is **not offered, and says what is** (K67; RFC 006
+    /// D-10: retire it), and a file that cannot be read says who replaces it: the rule's sentence ([`Rule::sentence`]) is for what a
+    /// curation proposal can do.
     pub fn sentence(&self) -> &'static str {
         if self.carries {
             UNSTATED_CHECK
@@ -126,15 +127,21 @@ impl Refusal {
             bound.sentence()
         } else if self.curation_form_can_make() {
             self.rule.sentence()
-        } else {
+        } else if self.removes {
             NOT_OFFERED
+        } else {
+            UNREADABLE_BY_MODERATE
         }
     }
 }
 
-/// What is said of the removal of a claim or a source file, and of the replacement of a file that cannot be read
-/// (K67): the web's `know.not_by_form` in English, without its capital and its full stop.
-pub const NOT_OFFERED: &str = "removing a claim or a source file, or replacing a file that cannot be read, is not offered in this version";
+/// What is said of the removal of a claim or a source file (K67, and RFC 006 D-10): the web's `know.not_by_form` in English,
+/// without its capital and its full stop. A claim or a source that is no longer relied on is retired, with a reason.
+pub const NOT_OFFERED: &str = "removing a claim or a source file is not offered: retire it with a curation proposal, and say why";
+
+/// What is said of the replacement of a file that cannot be read (RFC 006 D-10): the web's `know.unreadable_by_moderate` in
+/// English, without its capital and its full stop.
+pub const UNREADABLE_BY_MODERATE: &str = "a file that cannot be read is replaced, with a file that can be read, or retired, by someone who may moderate this wiki";
 
 /// What is said of a source that is found elsewhere now and carries a day or an answer that the proposal does not state
 /// (K71, K80): the web's `invalid.knowledge_check_unstated` in short, without its capital and its full stop.
@@ -227,6 +234,45 @@ pub struct Judged {
     pub judged_on: Digest,
 }
 
+/// Whether a claim or a source is retired, and why (RFC 006 D-10): **curation's to change**, like a status or a review. A
+/// retirement is a decision that a thing no longer stands, so it is made by a proposal that is nothing else, never beside a page
+/// edit; and taking one back is curation's too.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Retirement {
+    /// Not retired. (A claim's `lifecycle` of `proposed`, `adopted` or `unknown` is one word for this: only the retired state is
+    /// curation's, so the other three keep moving as they always did.)
+    Active,
+    /// Retired, with the reason the file gives (`None` in a file written before the reason existed).
+    Retired {
+        /// Why.
+        reason: Option<String>,
+    },
+}
+
+impl Retirement {
+    /// The retirement a claim file says.
+    pub fn of_claim(claim: &Claim) -> Retirement {
+        if claim.lifecycle == super::Lifecycle::Retired {
+            Retirement::Retired {
+                reason: claim.retired_reason.clone(),
+            }
+        } else {
+            Retirement::Active
+        }
+    }
+
+    /// The retirement a source file says.
+    pub fn of_source(source: &super::Source) -> Retirement {
+        if source.lifecycle == super::SourceLife::Retired {
+            Retirement::Retired {
+                reason: source.retired_reason.clone(),
+            }
+        } else {
+            Retirement::Active
+        }
+    }
+}
+
 /// What only a curation proposal sets (part 2 D-3, D-10, and the clarification of 2026-11-08): a claim's community
 /// status and **every change to a source link it already has** (its relation, its bearing, the wording it was judged
 /// on, or its removal; attaching a new link stays with the page edit it belongs to); a source's `last_reviewed` and
@@ -247,6 +293,8 @@ pub enum Curated {
         status: CommunityStatus,
         /// Its source links' judgements, by source.
         links: BTreeMap<SourceId, Judged>,
+        /// Whether it is retired, and why (RFC 006 D-10).
+        retirement: Retirement,
     },
     /// A source's freshness, and the work it names.
     Source {
@@ -261,6 +309,8 @@ pub enum Curated {
         /// The source that replaces it, which points readers at another work: curation's to change once the source was
         /// checked (K36).
         superseded_by: Option<SourceId>,
+        /// Whether it is retired, and why (RFC 006 D-10).
+        retirement: Retirement,
     },
 }
 
@@ -284,6 +334,7 @@ impl Curated {
                         )
                     })
                     .collect(),
+                retirement: Retirement::of_claim(c),
             },
             File::Source(s) => Curated::Source {
                 availability: s.availability,
@@ -291,6 +342,7 @@ impl Curated {
                 identity: s.identity.clone(),
                 reference: s.reference.clone(),
                 superseded_by: s.superseded_by.clone(),
+                retirement: Retirement::of_source(s),
             },
         }
     }
@@ -301,6 +353,7 @@ impl Curated {
             File::Claim(_) => Curated::Claim {
                 status: CommunityStatus::undecided(),
                 links: BTreeMap::new(),
+                retirement: Retirement::Active,
             },
             File::Source(s) => Curated::Source {
                 availability: Availability::Unknown,
@@ -309,6 +362,7 @@ impl Curated {
                 identity: s.identity.clone(),
                 reference: s.reference.clone(),
                 superseded_by: s.superseded_by.clone(),
+                retirement: Retirement::Active,
             },
         }
     }
@@ -322,10 +376,12 @@ impl Curated {
                 Curated::Claim {
                     status: a,
                     links: before,
+                    retirement: ra,
                 },
                 Curated::Claim {
                     status: b,
                     links: after,
+                    retirement: rb,
                 },
             ) => {
                 if a != b {
@@ -335,6 +391,8 @@ impl Curated {
                     .any(|(source, judged)| after.get(source) != Some(judged))
                 {
                     Some("sources")
+                } else if ra != rb {
+                    Some("lifecycle")
                 } else {
                     None
                 }
@@ -346,6 +404,7 @@ impl Curated {
                     identity: ia,
                     reference: fa,
                     superseded_by: sa,
+                    retirement: ta,
                 },
                 Curated::Source {
                     availability: b,
@@ -353,12 +412,15 @@ impl Curated {
                     identity: ib,
                     reference: fb,
                     superseded_by: sb,
+                    retirement: tb,
                 },
             ) => {
                 if a != b {
                     Some("availability")
                 } else if ra != rb {
                     Some("last_reviewed")
+                } else if ta != tb {
+                    Some("lifecycle")
                 } else if *a == Availability::Unknown && ra.is_none() {
                     // Not checked: who and what it is, where, and what replaces it are the page edit's.
                     None
@@ -440,6 +502,32 @@ impl Curated {
         self.unstated_check(was, proposal, None) == Some(Unstated::Carried)
     }
 
+    /// **A retirement must say why** (RFC 006 D-10): does `self` (what a change leaves) retire, or re-word the retirement of, a claim
+    /// or a source **without a reason**, against `was` (what the tip had)? A file that was retired without a reason before the reason
+    /// existed, and a change that leaves it so, is not asked: it reads as it always did.
+    pub fn retired_without_reason(&self, was: &Curated) -> bool {
+        let (now, before) = match (self, was) {
+            (
+                Curated::Claim {
+                    retirement: now, ..
+                },
+                Curated::Claim {
+                    retirement: before, ..
+                },
+            )
+            | (
+                Curated::Source {
+                    retirement: now, ..
+                },
+                Curated::Source {
+                    retirement: before, ..
+                },
+            ) => (now, before),
+            _ => return false,
+        };
+        matches!(now, Retirement::Retired { reason: None }) && now != before
+    }
+
     /// Is taking this away, outside a curation proposal, refused? **When it would take anything curated with it**
     /// (handoff 005 corrections, second round, K16): a claim file whose curated content is not what a fresh claim's is
     /// (a status that was decided, or an un-decided record, **or a source link**: the link is curation's to change
@@ -454,11 +542,17 @@ impl Curated {
     /// [`Curated::departure`] reads them: a claim's status, then its links; a source's availability, then its review.
     pub fn removal_field(&self) -> Option<&'static str> {
         match self {
-            Curated::Claim { status, links } => {
+            Curated::Claim {
+                status,
+                links,
+                retirement,
+            } => {
                 if *status != CommunityStatus::undecided() {
                     Some("community_status")
                 } else if !links.is_empty() {
                     Some("sources")
+                } else if *retirement != Retirement::Active {
+                    Some("lifecycle")
                 } else {
                     None
                 }
@@ -466,12 +560,15 @@ impl Curated {
             Curated::Source {
                 availability,
                 reviewed,
+                retirement,
                 ..
             } => {
                 if *availability != Availability::Unknown {
                     Some("availability")
                 } else if reviewed.is_some() {
                     Some("last_reviewed")
+                } else if *retirement != Retirement::Active {
+                    Some("lifecycle")
                 } else {
                     None
                 }
@@ -483,6 +580,9 @@ impl Curated {
 /// The field a refusal names when a file the tip has but cannot read is removed or written over: it is not a key of
 /// the format, and what the file held is not repeated.
 pub const UNREADABLE: &str = "unreadable";
+
+/// The field a refusal names when a change retires a claim or a source and gives no reason (RFC 006 D-10).
+pub const RETIRED_REASON: &str = "retired_reason";
 
 /// The knowledge files a revision writes (`files`: path, and the new text or `None` for a removal) that do what only
 /// a curation proposal may, judged against `before` (the text a path had at the proposal's base). The same rule as
@@ -530,6 +630,35 @@ pub fn curated_by(
                     out.push(Refusal::rule(path, Rule::Status, field));
                 }
             }
+        }
+    }
+    out
+}
+
+/// The knowledge files a revision writes (`files`: path, and the new text or `None` for a removal) that retire a claim or a source,
+/// or reword a retirement, **without a reason** (RFC 006 D-10), against `before` (the text a path had at the proposal's base):
+/// [`Curated::retired_without_reason`] **without a tree**, in any proposal. What the proposal service asks at submit and at every
+/// revision, so that a proposal the acceptance would refuse for it is never one that can be sent. A file that does not read is not
+/// judged here. In path order.
+pub fn retired_unexplained(
+    files: &[(String, Option<String>)],
+    before: &dyn Fn(&str) -> Option<String>,
+) -> Vec<Refusal> {
+    let mut sorted: Vec<&(String, Option<String>)> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = Vec::new();
+    for (path, text) in sorted {
+        if family_of(path).is_none() {
+            continue;
+        }
+        let Some(Ok(now)) = text.as_ref().map(|t| read_file(path, t.as_bytes())) else {
+            continue;
+        };
+        let was = before(path)
+            .and_then(|t| read_file(path, t.as_bytes()).ok())
+            .map_or_else(|| Curated::baseline(&now), |file| Curated::of(&file));
+        if Curated::of(&now).retired_without_reason(&was) {
+            out.push(Refusal::rule(path, Rule::Missing, RETIRED_REASON));
         }
     }
     out
@@ -614,7 +743,7 @@ fn wordings_of(claim: &Claim, pages: &dyn Pages) -> Vec<Digest> {
 /// in source order, then the status.
 pub fn unjudged_in(now: &Claim, was: Option<&Curated>, pages: &dyn Pages) -> Vec<Unjudged> {
     let (had, had_status) = match was {
-        Some(Curated::Claim { links, status }) => (Some(links), Some(status)),
+        Some(Curated::Claim { links, status, .. }) => (Some(links), Some(status)),
         _ => (None, None),
     };
     let links: Vec<_> = now
@@ -761,6 +890,10 @@ pub fn validate(
                     && let Some(field) = Curated::of(file).departure(&was)
                 {
                     out.insert(Refusal::rule(path, Rule::Status, field));
+                }
+                // A retirement says why (RFC 006 D-10), in any proposal.
+                if Curated::of(file).retired_without_reason(&was) {
+                    out.insert(Refusal::rule(path, Rule::Missing, RETIRED_REASON));
                 }
                 // A source found elsewhere does not carry the check of its old reference (K71): the check of a new
                 // reference is stated by the proposal that moves it, **by naming itself in the day** (K77), and holds

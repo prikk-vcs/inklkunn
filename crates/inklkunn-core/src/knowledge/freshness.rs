@@ -11,7 +11,8 @@
 //! - every source whose `last_reviewed` is a day that **has not come**: a person cannot have looked on it, and a
 //!   mistyped year would otherwise keep the source out of the list for years (K40);
 //!
-//! each with the claims that cite it. The list is **not a ranking and not a verdict**: a listed source is one a
+//! each with the claims that cite it. **A retired source is not listed** (RFC 006 D-10): it is no longer relied on, and it stays
+//! marked on every claim that cites it. The list is **not a ranking and not a verdict**: a listed source is one a
 //! person has not looked at lately, which says nothing about whether it is right, and an unlisted one is not
 //! thereby vouched for.
 //!
@@ -150,6 +151,10 @@ pub fn sources_to_review(
         .sources()
         .iter()
         .filter_map(|source| {
+            // A retired source is no longer relied on: nobody is asked to look at it again (RFC 006 D-10).
+            if source.lifecycle == super::index::RETIRED {
+                return None;
+            }
             let unavailable = source.availability == "unavailable";
             let review = match source.last_reviewed.as_deref().and_then(day_number) {
                 None => LastReview::Never,

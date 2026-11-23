@@ -1058,8 +1058,12 @@ async fn the_page_warns_of_a_decided_claim_removed_and_of_a_source_link_changed(
     assert!(!body.contains(note), "{body}");
 }
 
-/// What the page says of a change no form makes (K62, K67).
-pub(super) const NOT_OFFERED: &str = "is not offered in this version";
+/// What the page says of a removal of a claim or a source file (K62, K67; RFC 006 D-10): not offered, and the claim or the source is
+/// retired instead.
+pub(super) const NOT_OFFERED: &str = "Removing a claim or a source file is not offered.";
+
+/// What the page says of a file that cannot be read, written over or taken away (RFC 006 D-10): who does it.
+pub(super) const BY_MODERATE: &str = "by someone who may moderate this wiki";
 
 #[tokio::test]
 async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_page_edit_is_curation()
@@ -1134,7 +1138,9 @@ async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_pag
         body.contains("Replaces or removes a claim file that cannot be read"),
         "{body}"
     );
-    assert!(body.contains(NOT_OFFERED), "{body}");
+    // Said who replaces it (RFC 006 D-10), and not that it is not offered.
+    assert!(body.contains(BY_MODERATE), "{body}");
+    assert!(!body.contains(NOT_OFFERED), "{body}");
     assert!(!body.contains(note), "{body}");
     assert!(!body.contains("Removes the claim"), "{body}");
     assert!(!body.contains("secret"), "{body}");
@@ -1156,7 +1162,8 @@ async fn removing_a_claim_with_a_link_or_a_file_that_cannot_be_read_beside_a_pag
         "{body}"
     );
     assert!(body.contains("Records the claim"), "{body}");
-    assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(body.contains(BY_MODERATE), "{body}");
+    assert!(!body.contains(NOT_OFFERED), "{body}");
     assert!(!body.contains(note), "{body}");
     // Alone it is a curation proposal: no warning, and the line stays.
     let body = open(

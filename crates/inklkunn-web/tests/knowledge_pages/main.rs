@@ -7,6 +7,7 @@
 mod curate_link;
 mod freshness;
 mod golden;
+mod retired;
 mod thread;
 
 #[path = "../common/mod.rs"]

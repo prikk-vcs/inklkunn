@@ -14,7 +14,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
 use inklkunn_core::knowledge::compose::{
-    CheckFault, Checked, Curation, LinkEdit, Mistake, SourceEdit, Work, curate,
+    CheckFault, Checked, Curation, LinkEdit, Mistake, Retire, SourceEdit, Work, curate,
 };
 use inklkunn_core::knowledge::{
     Availability, Bearing, ClaimId, Link, ReferenceForm, SourceId, Standing,
@@ -60,6 +60,21 @@ pub(crate) async fn create(
         opened,
     )
     .await
+}
+
+/// Whether the body retires what it is about, or takes its retirement back (RFC 006 D-10): **one member says what it should be**,
+/// `"retired": {"reason": "…"}` retires it and `"retired": false` takes the retirement back; left out, it stays as it is. (One
+/// member, so that no body can ask both.)
+fn retire_of(fields: &mut Fields) -> Result<Retire, Problem> {
+    Ok(match fields.object_or_false("retired")? {
+        None => Retire::Leave,
+        Some(None) => Retire::Reinstate,
+        Some(Some(mut one)) => {
+            let reason = one.text("reason")?;
+            one.end()?;
+            Retire::Retire { reason }
+        }
+    })
 }
 
 /// A word of the format, from a member of the body: any other is `invalid-body` at that member.
@@ -173,6 +188,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
                 })
                 .transpose()?,
         };
+        let retire = retire_of(&mut source)?;
         // The check of a new reference, stated (K72): both members, or none.
         let checked = match source.object("checked")? {
             None => None,
@@ -192,9 +208,10 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
             }
         };
         source.end()?;
-        named.push((id, reviewed, availability, work, checked));
+        named.push((id, reviewed, availability, work, checked, retire));
     }
     let confirm = fields.opt_flag("confirm")?;
+    let retire = retire_of(&mut fields)?;
     fields.end()?;
 
     let full = match view.as_deref() {
@@ -221,7 +238,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
     .ok_or_else(|| Problem::new(Code::NotFound))?;
     // The members of a source that say who and what it is are left as the base has them when they are left out.
     let cited = subject.cited();
-    for (id, reviewed, availability, work, checked) in named {
+    for (id, reviewed, availability, work, checked, retire) in named {
         let old = cited.iter().find(|s| s.id == id);
         sources.push(SourceEdit {
             reviewed: reviewed.unwrap_or_else(|| {
@@ -233,6 +250,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
                 .unwrap_or_else(|| old.map_or(Availability::Unknown, |s| s.availability)),
             work: old.and_then(|old| work.over(Work::of(old))),
             checked,
+            retire,
             source: id,
         });
     }
@@ -244,6 +262,7 @@ fn opened(req: &Request, mut fields: Fields) -> Result<Reply, Problem> {
         removed,
         sources,
         confirm,
+        retire,
         proposal: Some(proposal.clone()),
     };
     // A day that has not come is refused at its member, before anything is made (K49).
@@ -327,6 +346,7 @@ fn mistake(req: &Request, m: Mistake) -> Problem {
         Mistake::ReplacedByItself => "replaced-by-itself",
         Mistake::UnknownSuccessor => "unknown-successor",
         Mistake::SuccessorCycle => "successor-cycle",
+        Mistake::ReasonMissing => "retire-reason-missing",
         Mistake::Unwritable => return Problem::new(Code::Failed),
         _ => "not-curatable",
     };

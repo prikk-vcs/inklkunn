@@ -3,6 +3,7 @@
 //! ```yaml
 //! kind: observation                 # observation | interpretation | hypothesis | opinion | decision | policy | question | unknown
 //! lifecycle: proposed               # proposed | adopted | retired | unknown
+//! retired_reason: "…"               # optional; one line; only where lifecycle is retired (RFC 006 D-10)
 //! community_status:
 //!   status: unknown                 # accepted | contested | unresolved | unknown
 //!   proposal: "<uuid>"              # the accepted curation proposal that decided it (optional)
@@ -37,9 +38,10 @@ use super::yaml::{
 };
 use super::{Fault, Rule};
 
-const TOP: [&str; 6] = [
+const TOP: [&str; 7] = [
     "kind",
     "lifecycle",
+    "retired_reason",
     "community_status",
     "expressions",
     "relations",
@@ -49,6 +51,16 @@ const TOP: [&str; 6] = [
 /// A digest key's value.
 pub(super) fn digest(value: &Value, field: &'static str) -> Result<Digest, Fault> {
     Digest::parse(&text(value, field)?).ok_or(Fault::at(Rule::Value, field))
+}
+
+/// The reason something was retired: a text of one line (no line break, no control character), at least one character, within
+/// the bound of any text of the format.
+pub(super) fn reason(value: &Value, field: &'static str) -> Result<String, Fault> {
+    let why = text(value, field)?;
+    if why.trim().is_empty() || why.chars().any(char::is_control) {
+        return Err(Fault::at(Rule::Value, field));
+    }
+    Ok(why)
 }
 
 /// A proposal id's value.
@@ -76,6 +88,13 @@ impl Claim {
             Lifecycle::FIELD,
             Lifecycle::from_word,
         )?;
+        // The reason a claim was retired (RFC 006 D-10): one line, and only where the claim is retired.
+        let retired_reason = optional(top, "retired_reason")
+            .map(|v| reason(v, "retired_reason"))
+            .transpose()?;
+        if retired_reason.is_some() && lifecycle != Lifecycle::Retired {
+            return Err(Fault::at(Rule::Value, "retired_reason"));
+        }
         let community_status = community_status(required(top, "community_status")?)?;
 
         let mut expressions = Vec::new();
@@ -135,6 +154,7 @@ impl Claim {
             expressions,
             relations,
             lifecycle,
+            retired_reason,
             community_status,
             sources,
         };
@@ -172,6 +192,9 @@ impl Claim {
         let mut out = String::new();
         out.push_str(&format!("kind: {}\n", claim.kind.word()));
         out.push_str(&format!("lifecycle: {}\n", claim.lifecycle.word()));
+        if let Some(why) = &claim.retired_reason {
+            out.push_str(&format!("retired_reason: {}\n", quoted(why)));
+        }
         out.push_str("community_status:\n");
         let status = &claim.community_status;
         out.push_str(&format!("  status: {}\n", status.status.word()));

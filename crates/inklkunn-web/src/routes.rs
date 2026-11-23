@@ -618,6 +618,17 @@ fn wiki_specs() -> Vec<Spec> {
             handler: || get(health::health_list),
         },
         // --- handoff 005 K-T6: what a reader sees of the knowledge layer (RFC 005 part 2 D-7).
+        // --- handoff G-T6 (RFC 006 D-10): a knowledge file that cannot be read is replaced, or retired, by the `moderate` rung.
+        Spec {
+            path: "/{slug}/-/knowledge/replace",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: form_route!(
+                knowledge::replace::replace_form,
+                knowledge::replace::replace_post,
+                knowledge::replace::FORM_LIMIT
+            ),
+        },
         Spec {
             path: "/{slug}/-/claim/{id}",
             methods: &["GET", "HEAD"],

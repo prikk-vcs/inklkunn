@@ -139,6 +139,21 @@ impl Fields {
         }
     }
 
+    /// A member that is an object or `false`, and may be left out: `None` when it is left out, `Some(None)` for `false`.
+    pub(crate) fn object_or_false(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<Option<Fields>>, Problem> {
+        match self.map.remove(name) {
+            None => Ok(None),
+            Some(Value::Bool(false)) => Ok(Some(None)),
+            Some(value @ Value::Object(_)) => {
+                Fields::of(value, &self.at(name)).map(|fields| Some(Some(fields)))
+            }
+            Some(_) => Err(invalid(&self.at(name))),
+        }
+    }
+
     /// An object that may be left out.
     pub(crate) fn object(&mut self, name: &str) -> Result<Option<Fields>, Problem> {
         match self.map.remove(name) {

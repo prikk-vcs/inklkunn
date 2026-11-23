@@ -1180,3 +1180,62 @@ fn a_change_to_the_rules_is_proposed_on_its_own_and_mixing_is_refused_by_name_at
         );
     });
 }
+
+// ---------------------------------------------------------------------------------------------------- RFC 006 D-10
+
+mod unreadable {
+    use super::*;
+    use crate::knowledge::{Claim, ClaimId, Lifecycle, claim_path};
+
+    fn broken() -> String {
+        claim_path(&ClaimId::parse("01930000-0000-7000-8000-0000000000aa").expect("an id"))
+    }
+
+    /// A claim file that says it is retired, and why, in the place of the unreadable one.
+    fn retired() -> String {
+        let mut claim =
+            Claim::new(ClaimId::parse("01930000-0000-7000-8000-0000000000aa").expect("an id"));
+        claim.lifecycle = Lifecycle::Retired;
+        claim.retired_reason = Some("Nothing readable was left.".to_owned());
+        claim.to_yaml()
+    }
+
+    fn send(e: &Env, who: &Actor, files: Vec<FileChange>) -> Result<(), ProposalError> {
+        e.service
+            .create_and_submit(&who.principal, &e.wiki, None, proposal(files, vec![]))
+            .map(|_| ())
+    }
+
+    #[test]
+    fn a_file_the_base_cannot_read_is_replaced_or_taken_away_by_the_moderate_rung_alone() {
+        on_both(|e| {
+            e.bases
+                .put_page(&broken(), "kind: observation\nsecret: words\n");
+            let replace = || vec![change(&broken(), Some(&retired()))];
+            let take_away = || vec![change(&broken(), None)];
+            // Someone who only proposes, and someone who only reads, are refused as they are for any act they may not do.
+            for who in [&e.author, &e.observer] {
+                assert_eq!(send(e, who, replace()), Err(ProposalError::NotAllowed));
+                assert_eq!(send(e, who, take_away()), Err(ProposalError::NotAllowed));
+            }
+            // The rung that moderates may, and its proposal is an ordinary one, judged by the acceptance as any is.
+            assert_eq!(send(e, &e.maintainer, replace()), Ok(()));
+            assert_eq!(send(e, &e.admin, take_away()), Ok(()));
+        });
+    }
+
+    #[test]
+    fn a_file_the_base_can_read_is_no_business_of_that_rung() {
+        on_both(|e| {
+            // The base has the file and the layer reads it: a retirement by curation is anyone's who may propose.
+            let mut claim =
+                Claim::new(ClaimId::parse("01930000-0000-7000-8000-0000000000aa").expect("an id"));
+            claim.lifecycle = Lifecycle::Proposed;
+            e.bases.put_page(&broken(), &claim.to_yaml());
+            assert_eq!(
+                send(e, &e.author, vec![change(&broken(), Some(&retired()))]),
+                Ok(())
+            );
+        });
+    }
+}

@@ -297,6 +297,9 @@ pub enum Invalid {
     /// A claim file sets or changes its community status's `judged_on` to a wording that no paragraph of the claim has
     /// once the proposal is made: the same rule, named by the field (K33).
     KnowledgeStatusUnjudged,
+    /// A claim or a source file retires what it is about, or rewords the retirement, and gives no reason: the acceptance would
+    /// refuse it, since a retirement says why (RFC 006 D-10).
+    KnowledgeRetiredUnexplained,
     /// A source file is found elsewhere than at the base and still carries the day or the answer of the check of its old
     /// reference: the acceptance would refuse it, since a check of a new reference is stated by the proposal and never
     /// inferred (RFC 005 part 2 D-3, *correcting a source*; handoff 005 corrections, eighth round, K71).
@@ -1331,7 +1334,7 @@ impl ProposalService {
     ) -> Result<()> {
         validate(summary, sources, content, Finish::Submit)?;
         self.judge_files(principal, wiki, content)?;
-        self.judge_knowledge(wiki, id, content)
+        self.judge_knowledge(principal, wiki, id, content)
     }
 
     /// The wiki-wide hourly limit on what is sent for review; the caller holds the admission lock. Reviewers and the
@@ -1373,7 +1376,7 @@ impl ProposalService {
         let content = self.content_of(&edit, base);
         validate(&edit.summary, &edit.sources, &content, Finish::Submit)?;
         self.judge_files(principal, wiki, &content)?;
-        self.judge_knowledge(wiki, id, &content)?;
+        self.judge_knowledge(principal, wiki, id, &content)?;
         let now = (self.clock)();
         let change = ProposalChange {
             transition: ProposalTransition {

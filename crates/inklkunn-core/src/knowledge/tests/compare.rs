@@ -13,6 +13,7 @@ use crate::knowledge::index::{CURRENT, EARLIER, KnowledgeIndex, PRESENT};
 
 fn claim(n: u8, standing: &str) -> KnowledgeClaimRow {
     KnowledgeClaimRow {
+        retired_reason: None,
         id: claim_id(n).to_string(),
         kind: "observation".to_owned(),
         lifecycle: "proposed".to_owned(),
@@ -45,6 +46,8 @@ fn cites(n: u8, source: u8, relation: &str, bearing: &str, judgement: &str) -> K
 
 fn source(n: u8, kind: &str, availability: &str) -> KnowledgeSourceRow {
     KnowledgeSourceRow {
+        lifecycle: "active".into(),
+        retired_reason: None,
         id: source_id(n).to_string(),
         kind: kind.to_owned(),
         availability: availability.to_owned(),

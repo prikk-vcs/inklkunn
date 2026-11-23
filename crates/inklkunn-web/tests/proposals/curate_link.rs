@@ -221,7 +221,7 @@ async fn more_claims_than_are_offered_a_form_are_counted_and_not_cut_in_silence(
 
 // ---------------------------------------------------------------------------------------------- every change (K44)
 
-use super::claims::{NOT_OFFERED, file, files_of, location};
+use super::claims::{BY_MODERATE, NOT_OFFERED, file, files_of, location};
 use super::curate::{FORM, checked_scene, checked_source, checked_unchanged, later_id, with};
 use inklkunn_core::knowledge::{Reference, ReferenceForm, source_path};
 
@@ -392,14 +392,15 @@ async fn what_no_form_makes_is_not_offered_and_the_page_says_so_without_a_link_i
     )
     .await
     .body();
-    assert!(ja.contains("このバージョンでは提供されていません"), "{ja}");
+    assert!(ja.contains("削除する操作は提供していません"), "{ja}");
+    assert!(!ja.contains("このバージョンでは"), "{ja}");
     assert!(
         !ja.contains("これができるのはキュレーション提案だけです"),
         "{ja}"
     );
     assert!(!ja.contains("主張や出典を削除する"), "{ja}");
 
-    // A file the wiki cannot read, written over: the same.
+    // A file the wiki cannot read, taken away: no form does it, and the page says who does (RFC 006 D-10), not that it is not offered.
     let unread = ClaimId::parse("01930000-0000-7000-8000-000000000003").expect("a claim id");
     s.w.fake
         .set(&claim_path(&unread), "kind: observation\nsecret: words\n");
@@ -410,7 +411,9 @@ async fn what_no_form_makes_is_not_offered_and_the_page_says_so_without_a_link_i
     )
     .await
     .body();
-    assert!(body.contains(NOT_OFFERED), "{body}");
+    assert!(body.contains(BY_MODERATE), "{body}");
+    assert!(!body.contains(NOT_OFFERED), "{body}");
+    assert!(!body.contains("in this version"), "{body}");
     assert!(!body.contains("only a curation proposal may do"), "{body}");
     assert!(!body.contains("proposals/curate"), "{body}");
 

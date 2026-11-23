@@ -212,6 +212,35 @@ fn claim(base: &Claim, theirs: &Claim, ours: &Claim) -> Merged<Claim> {
         [&base.lifecycle, &theirs.lifecycle, &ours.lifecycle],
         |l: &Lifecycle| Some(l.word().to_owned()),
     )?;
+    let retired_reason = scalar(
+        "retired_reason",
+        [
+            &base.retired_reason,
+            &theirs.retired_reason,
+            &ours.retired_reason,
+        ],
+        |r: &Option<String>| r.clone(),
+    )?;
+    // A reason belongs to a retirement: one side took the claim back and the other reworded why it was retired cannot be
+    // taken together (the file would say why a claim is retired that is not), so it is an overlap, never a file that does not read.
+    if retired_reason.is_some() && lifecycle != Lifecycle::Retired {
+        let shown = |c: &Claim| {
+            Some(format!(
+                "{}{}",
+                c.lifecycle.word(),
+                c.retired_reason
+                    .as_ref()
+                    .map(|r| format!(" ({r})"))
+                    .unwrap_or_default()
+            ))
+        };
+        return Err(Box::new(Clash {
+            key: "lifecycle".to_owned(),
+            base: shown(base),
+            theirs: shown(theirs),
+            ours: shown(ours),
+        }));
+    }
     let community_status = scalar(
         "community_status",
         [
@@ -231,6 +260,7 @@ fn claim(base: &Claim, theirs: &Claim, ours: &Claim) -> Merged<Claim> {
         ),
         relations: presence::<Relation>(&base.relations, &theirs.relations, &ours.relations),
         lifecycle,
+        retired_reason,
         community_status,
         sources: links(&base.sources, &theirs.sources, &ours.sources)?,
     };
@@ -286,6 +316,39 @@ fn source(base: &Source, theirs: &Source, ours: &Source) -> Merged<Source> {
             ours: shown(ours),
         }));
     }
+    let lifecycle = scalar(
+        "lifecycle",
+        [&base.lifecycle, &theirs.lifecycle, &ours.lifecycle],
+        |l| Some(l.word().to_owned()),
+    )?;
+    let retired_reason = scalar(
+        "retired_reason",
+        [
+            &base.retired_reason,
+            &theirs.retired_reason,
+            &ours.retired_reason,
+        ],
+        |r: &Option<String>| r.clone(),
+    )?;
+    // As for a claim: a reason belongs to a retirement.
+    if retired_reason.is_some() && lifecycle != super::SourceLife::Retired {
+        let shown = |s: &Source| {
+            Some(format!(
+                "{}{}",
+                s.lifecycle.word(),
+                s.retired_reason
+                    .as_ref()
+                    .map(|r| format!(" ({r})"))
+                    .unwrap_or_default()
+            ))
+        };
+        return Err(Box::new(Clash {
+            key: "lifecycle".to_owned(),
+            base: shown(base),
+            theirs: shown(theirs),
+            ours: shown(ours),
+        }));
+    }
     Ok(Source {
         id: base.id.clone(),
         kind: scalar("kind", [&base.kind, &theirs.kind, &ours.kind], |k| {
@@ -296,6 +359,8 @@ fn source(base: &Source, theirs: &Source, ours: &Source) -> Merged<Source> {
             [&base.availability, &theirs.availability, &ours.availability],
             |a| Some(a.word().to_owned()),
         )?,
+        lifecycle,
+        retired_reason,
         identity: super::Identity {
             title: scalar(
                 "identity/title",

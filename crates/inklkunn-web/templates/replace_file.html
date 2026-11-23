@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}<p>{{ intro }}</p>
+<form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}
+<input type="hidden" name="{{ file_field }}" value="{{ file }}">
+{% if let Some(view) = view %}<input type="hidden" name="{{ view_field }}" value="{{ view }}">
+{% endif %}<input type="hidden" name="{{ base_state_field }}" value="{{ base_state }}">
+<input type="hidden" name="{{ base_block_field }}" value="{{ base_block }}">
+<fieldset>
+<legend>{{ choice_legend }}</legend>
+<p><input id="replace-write" type="radio" name="{{ choice_field }}" value="{{ write_value }}"{% if write_checked %} checked{% endif %}> <label for="replace-write">{{ write_label }}</label></p>
+<p><input id="replace-retire" type="radio" name="{{ choice_field }}" value="{{ retire_value }}"{% if retire_checked %} checked{% endif %}> <label for="replace-retire">{{ retire_label }}</label></p>
+</fieldset>
+<div class="field">
+<label for="replace-text">{{ text_label }}</label>
+<textarea id="replace-text" name="{{ text_field }}" rows="14" cols="80" aria-describedby="replace-text-hint">{{ text }}</textarea>
+<p id="replace-text-hint" class="note">{{ text_hint }}</p>
+</div>
+<div class="field">
+<label for="replace-reason">{{ reason_label }}</label>
+<input id="replace-reason" name="{{ reason_field }}" type="text" value="{{ reason }}" aria-describedby="replace-reason-hint">
+<p id="replace-reason-hint" class="note">{{ reason_hint }} {{ retire_hint }}</p>
+</div>
+<div class="field">
+<label for="replace-summary">{{ summary_label }}</label>
+<input id="replace-summary" name="{{ summary_field }}" type="text" maxlength="{{ summary_max }}" value="{{ summary }}" aria-describedby="replace-summary-hint">
+<p id="replace-summary-hint" class="note">{{ summary_hint }}</p>
+</div>
+<p class="buttons"><button type="submit">{{ send }}</button></p>
+</form>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

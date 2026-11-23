@@ -44,6 +44,9 @@ pub const EARLIER: &str = "earlier";
 /// There is nothing it was judged on (a standing that was never decided).
 pub const NOT_JUDGED: &str = "none";
 
+/// The word a retired claim's `lifecycle` and a retired source's have in the index (RFC 006 D-10).
+pub const RETIRED: &str = "retired";
+
 /// The block is in the page, once.
 pub const PRESENT: &str = "present";
 /// No page has the id.
@@ -243,14 +246,20 @@ impl KnowledgeIndex {
 
     /// The claims said in a page, at blocks the page really has (once): where a reader of the page is offered the
     /// claim. An anchor whose page or block is missing or repeated is not among them, because there is no
-    /// paragraph to offer it on; the index still states it ([`KnowledgeIndex::anchors_of`]).
+    /// paragraph to offer it on; the index still states it ([`KnowledgeIndex::anchors_of`]). **A retired claim is not among
+    /// them either** (RFC 006 D-10): it leaves the paragraph's *Sources and views* link, and keeps its page and its anchors.
+    /// This is the one place that says who is offered a claim.
     pub fn claims_on_page<'a>(
         &'a self,
         page_id: &'a str,
     ) -> impl Iterator<Item = &'a KnowledgeAnchorRow> {
-        self.rows
-            .anchors()
-            .filter(move |a| a.page_id == page_id && a.state == PRESENT)
+        self.rows.anchors().filter(move |a| {
+            a.page_id == page_id
+                && a.state == PRESENT
+                && !self
+                    .claim(&a.claim)
+                    .is_some_and(|claim| claim.lifecycle == RETIRED)
+        })
     }
 
     /// The files under `knowledge/` that cannot be read, by path, each with the rule it broke.
@@ -348,6 +357,7 @@ pub fn build(
             id: claim.id.to_string(),
             kind: claim.kind.word().to_owned(),
             lifecycle: claim.lifecycle.word().to_owned(),
+            retired_reason: claim.retired_reason.as_deref().map(kept),
             standing: claim.community_status.status.word().to_owned(),
             standing_proposal: claim.community_status.proposal.clone(),
             standing_judgement: claim
@@ -384,6 +394,8 @@ fn source_row(source: &Source) -> KnowledgeSourceRow {
         id: source.id.to_string(),
         kind: source.kind.word().to_owned(),
         availability: source.availability.word().to_owned(),
+        lifecycle: source.lifecycle.word().to_owned(),
+        retired_reason: source.retired_reason.as_deref().map(kept),
         last_reviewed: source.last_reviewed.as_ref().map(|r| r.date.clone()),
         superseded_by: source.superseded_by.as_ref().map(ToString::to_string),
     }

@@ -5,7 +5,10 @@
 <h1>{{ heading }}</h1>
 {% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
 {% endif %}<p>{{ kind }}</p>
-<h2>{{ said_heading }}</h2>
+{% if !retired.is_empty() %}<div class="claim-retired" role="note">
+{% for line in retired %}<p>{{ line }}</p>
+{% endfor %}</div>
+{% endif %}<h2>{{ said_heading }}</h2>
 {% if let Some(text) = said_nowhere %}<p>{{ text }}</p>
 {% else %}<ul class="claim-said">
 {% for s in said %}<li><a href="{{ s.href }}">{{ s.text }}</a></li>

@@ -152,6 +152,7 @@ pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
         Invalid::KnowledgeNotShown => t.get(Key::InvalidKnowledgeNotShown),
         Invalid::KnowledgeUnjudged => t.get(Key::InvalidKnowledgeUnjudged),
         Invalid::KnowledgeStatusUnjudged => t.get(Key::InvalidKnowledgeStatusUnjudged),
+        Invalid::KnowledgeRetiredUnexplained => t.get(Key::InvalidKnowledgeRetiredUnexplained),
         Invalid::KnowledgeCheckUnstated => t.get(Key::InvalidKnowledgeCheckUnstated),
         Invalid::ReasonMissing => t.get(Key::InvalidReasonMissing),
         Invalid::ReasonTooLong => t

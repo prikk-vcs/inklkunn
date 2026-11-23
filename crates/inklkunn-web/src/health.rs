@@ -31,7 +31,8 @@ use inklkunn_store::WikiRecord;
 use crate::catalog::{Key, Rich, T, code};
 use crate::discover::{Subject, resolve};
 use crate::knowledge::{
-    curate as knowledge_curate, paths as knowledge_paths, show::source_name, words,
+    curate as knowledge_curate, paths as knowledge_paths, replace as knowledge_replace,
+    show::source_name, words,
 };
 use crate::pages::{Page, PageState, answer};
 use crate::time::utc_minutes;
@@ -529,16 +530,29 @@ fn rows_of(
 
 /// The rows of the list of knowledge files that cannot be read: the file's place in the repository (a storage path,
 /// plain text), what is wrong with it, and what would resolve it.
-fn knowledge_rows(page: &Page, index: &KnowledgeIndex) -> (Vec<String>, Vec<Vec<Cell>>) {
+fn knowledge_rows(
+    page: &Page,
+    index: &KnowledgeIndex,
+    slug: &str,
+    moderate: bool,
+) -> (Vec<String>, Vec<Vec<Cell>>) {
     let rows = index
         .invalid()
         .iter()
         .map(|row| {
             let rule = Rule::from_code(&row.rule).unwrap_or(Rule::Syntax);
+            let mut action = Cell::text(page.get(Resolve::KnowledgeFile.key()));
+            // Whoever may moderate is led to the form that replaces the file or retires it (RFC 006 D-10; handoff G-T6).
+            if moderate {
+                action.links.push(CellLink::to(
+                    page.get(Key::HealthKnowledgeReplaceLink),
+                    knowledge_replace::address(slug, &row.path, None),
+                ));
+            }
             vec![
                 Cell::text(row.path.clone()),
                 Cell::text(page.get(rule_key(rule))),
-                Cell::text(page.get(Resolve::KnowledgeFile.key())),
+                action,
             ]
         })
         .collect();
@@ -749,8 +763,8 @@ fn source_rows(
 enum Built {
     /// The link graph (and, for the stale list, the changes).
     Links(Arc<LinkGraph>, Option<inklkunn_core::read::StaleList>),
-    /// The knowledge index.
-    Knowledge(Arc<KnowledgeIndex>),
+    /// The knowledge index, and whether the visitor may moderate (so is offered the form that replaces a file that cannot be read).
+    Knowledge(Arc<KnowledgeIndex>, bool),
     /// A page of the sources that want a look, read from the list kept with the knowledge index at the clock's day,
     /// and whether the visitor is offered the claims' curation forms.
     Sources(Box<SourcesToReviewPage>, bool),
@@ -782,8 +796,12 @@ pub(crate) async fn health_list(
     let for_work = wiki.clone();
     let built = blocking(move || -> Result<_, ApiError> {
         if kind == Kind::KnowledgeFiles {
+            let moderate = services
+                .authorizer
+                .may_moderate(&services.identity.principal(&asked_by), &for_work.id);
             return Ok(Built::Knowledge(
                 services.read.knowledge_index(&for_work, None)?,
+                moderate,
             ));
         }
         if kind == Kind::SourcesToReview {
@@ -829,7 +847,9 @@ pub(crate) async fn health_list(
         Built::Links(graph, stale) => {
             rows_of(&page, t, &wiki, kind, graph, stale.as_ref(), &mut notes)
         }
-        Built::Knowledge(index) => knowledge_rows(&page, index),
+        Built::Knowledge(index, moderate) => {
+            knowledge_rows(&page, index, wiki.slug.as_str(), *moderate)
+        }
         Built::Sources(list, curate) => source_rows(
             &page,
             t,

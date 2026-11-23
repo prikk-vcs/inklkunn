@@ -37,6 +37,7 @@ pub(super) fn judged_on_now(claim: &Claim, now: &[Digest]) -> bool {
         expressions: _,
         relations: _,
         lifecycle: _,
+        retired_reason: _,
         community_status,
         sources,
     } = claim;

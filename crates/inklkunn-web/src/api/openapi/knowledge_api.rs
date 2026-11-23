@@ -328,12 +328,18 @@ pub(super) fn schemas() -> Map<String, Value> {
                     "day": {"type": "string", "description": "The day a person looked at the new place, `YYYY-MM-DD`."},
                     "availability": {"type": "string", "enum": words(Availability::ALL, Availability::word), "description": "Whether it can be had at the new place, as the person who looked says."},
                 }, "required": ["day", "availability"], "additionalProperties": false},
+                "retired": {"description": "What the source should be, as to whether it is retired (RFC 006 D-10). **`{\"reason\": …}` retires it**: it keeps its page, is marked on every claim that still cites it, and is no longer listed under the sources to review; a retirement says why, so `reason` is one line, not empty (`retire-reason-missing`). **`false` takes the retirement back**: it is in use again, and the file says nothing of it (a source that is not retired is left as it is). Left out: it stays as it is.", "anyOf": [
+                    {"type": "object", "properties": {
+                        "reason": {"type": "string", "description": "Why it is retired: one line, shown to everyone who reads a claim that cites the source."},
+                    }, "required": ["reason"], "additionalProperties": false},
+                    {"const": false},
+                ]},
                 "superseded_by": {"description": "The id of the source that replaces it, a source of this wiki (`unknown-successor`) that does not lead back to this one or to a source it passed (`successor-cycle`). White space around it is ignored. Left out: unchanged. The empty text, or white space only, for none.", "anyOf": [
                     {"type": "string", "pattern": ID_PATTERN_PADDED},
                     {"type": "string", "pattern": NO_ID_PATTERN},
                 ]},
             }),
-            &["reviewed", "availability", "title", "author", "date", "reference", "checked", "superseded_by"],
+            &["reviewed", "availability", "title", "author", "date", "reference", "checked", "retired", "superseded_by"],
         )),
     );
     out.insert(
@@ -350,8 +356,14 @@ pub(super) fn schemas() -> Map<String, Value> {
                     "links": {"type": "array", "maxItems": 256, "items": schema_ref("CurationLink"), "description": "Links to change or remove, each naming a source the claim cites."},
                     "sources": {"type": "array", "maxItems": 256, "items": schema_ref("CurationSource"), "description": "Sources to record a check of, or to correct (checked or not), each naming a source the claim cites."},
                     "confirm": {"type": "boolean", "description": "Judge the sources and the status again on the wording the claim has in the base. Default `false`."},
+                    "retired": {"description": "What the claim should be, as to whether it is retired (RFC 006 D-10). **`{\"reason\": …}` retires it**: it keeps its page, its sources and its history, and is no longer offered beside the paragraphs it is said in; a retirement says why, so `reason` is one line, not empty (`retire-reason-missing`). **`false` takes the retirement back**: it is put forward again and offered beside its paragraphs again (a claim that is not retired is left as it is). Left out: it stays as it is.", "anyOf": [
+                        {"type": "object", "properties": {
+                            "reason": {"type": "string", "description": "Why it is retired: one line, shown to everyone who reads the claim."},
+                        }, "required": ["reason"], "additionalProperties": false},
+                        {"const": false},
+                    ]},
                 }),
-                &["view", "status", "links", "sources", "confirm"],
+                &["view", "status", "links", "sources", "confirm", "retired"],
             ),
             // The ids are those of the examples of the claim and its sources; a wiki that has others answers `not-found`.
             json!([
@@ -367,6 +379,10 @@ pub(super) fn schemas() -> Map<String, Value> {
                 {"claim": EXAMPLE_CLAIM, "summary": "The second source is found at a DOI now, and was looked at there", "submit": true,
                  "sources": [{"source": EXAMPLE_SECOND, "reference": {"type": "doi", "value": "10.1000/182"},
                               "checked": {"day": "2023-11-10", "availability": "available"}}]},
+                {"claim": EXAMPLE_CLAIM, "summary": "The survey was withdrawn", "submit": true,
+                 "retired": {"reason": "The survey was withdrawn by its authors."}},
+                {"claim": EXAMPLE_CLAIM, "summary": "The first source has a second edition", "submit": true,
+                 "sources": [{"source": EXAMPLE_FIRST, "retired": {"reason": "A second edition replaced it."}}]},
                 {"claim": EXAMPLE_CLAIM, "summary": "Nobody checked the survey after all", "submit": false,
                  "sources": [{"source": EXAMPLE_FIRST, "reviewed": "", "availability": "unknown", "superseded_by": ""}]},
             ]),

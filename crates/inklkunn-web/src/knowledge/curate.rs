@@ -5,7 +5,8 @@
 //! tells a reader about a claim, or that tells them a change needs a curation proposal, leads to it, **for those who may
 //! propose** (an account the authorizer lets propose to the wiki) and for nobody else: a link a reader cannot use is not
 //! offered. And it is offered **only for a refusal the form can then make** (K44): the form never removes a file, so for
-//! a removal, or a file that cannot be read, the page says what can be done instead ([`beyond_the_form`]).
+//! a removal, or a file that cannot be read, the page says what is done instead ([`sentences`]: a claim or a source is
+//! retired, and a file that cannot be read is replaced, or retired, by whoever may moderate the wiki; RFC 006 D-10).
 
 use inklkunn_core::knowledge::check::{DayBound, Refusal};
 use inklkunn_core::knowledge::index::KnowledgeIndex;
@@ -117,26 +118,28 @@ pub(crate) fn offers(
     })
 }
 
-/// Does a refusal ask for what no curation form makes (K44): the removal of a claim or of a source file, or the
-/// replacement of a file that cannot be read? Then the page says so, in words, beside the sentence that names the rule.
-pub(crate) fn beyond_the_form(refused: &[Refusal]) -> bool {
-    refused.iter().any(|r| !r.curation_form_can_make())
+/// Is this refusal about a file that cannot be read, written over or taken away?
+fn about_an_unreadable_file(refusal: &Refusal) -> bool {
+    !refusal.removes && refusal.field == inklkunn_core::knowledge::check::UNREADABLE
 }
 
 #[cfg(test)]
 mod tests;
 
 /// The sentences that say why a refused change is refused, **each case said once** (K67): what only a curation proposal
-/// may do (`know.not_curation`) when a refusal is one the form makes, and that a removal, or the replacement of a file
-/// that cannot be read, is not offered in this version (`know.not_by_form`) when a refusal is one it does not. A change
+/// may do (`know.not_curation`) when a refusal is one the form makes; that a removal is not offered, and a claim or a source is
+/// retired instead (`know.not_by_form`); and who replaces a file that cannot be read (`know.unreadable_by_moderate`). A change
 /// that is only a removal is never told to be something only a curation proposal may do. Never empty.
 pub(crate) fn sentences(t: T, refused: &[Refusal]) -> Vec<String> {
     let mut out = Vec::new();
     if refused.is_empty() || refused.iter().any(Refusal::curation_form_can_make) {
         out.push(t.get(Key::KnowNotCuration));
     }
-    if beyond_the_form(refused) {
+    if refused.iter().any(|r| r.removes) {
         out.push(t.get(Key::KnowNotByForm));
+    }
+    if refused.iter().any(about_an_unreadable_file) {
+        out.push(t.get(Key::KnowUnreadableByModerate));
     }
     out
 }
@@ -153,8 +156,10 @@ pub(crate) fn sentence_key(refusal: &Refusal) -> Key {
             DayBound::BeforeReview => Key::KnowCheckBeforeReview,
             DayBound::NotCome => Key::KnowCheckNotCome,
         }
-    } else if !refusal.curation_form_can_make() {
+    } else if refusal.removes {
         Key::KnowNotByForm
+    } else if about_an_unreadable_file(refusal) {
+        Key::KnowUnreadableByModerate
     } else {
         crate::health::rule_key(refusal.rule)
     }

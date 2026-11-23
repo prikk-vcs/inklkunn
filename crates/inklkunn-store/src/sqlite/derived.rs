@@ -432,14 +432,15 @@ impl DerivedStore for SqliteStore {
             for c in &rows.claims {
                 tx.execute(
                     "INSERT OR REPLACE INTO knowledge_claims \
-                     (wiki_id, tip, id, kind, lifecycle, standing, standing_proposal, standing_judgement) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                     (wiki_id, tip, id, kind, lifecycle, retired_reason, standing, standing_proposal, standing_judgement) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     params![
                         w,
                         t,
                         c.id,
                         c.kind,
                         c.lifecycle,
+                        c.retired_reason,
                         c.standing,
                         c.standing_proposal,
                         c.standing_judgement
@@ -450,15 +451,17 @@ impl DerivedStore for SqliteStore {
             for s in &rows.sources {
                 tx.execute(
                     "INSERT OR REPLACE INTO knowledge_sources \
-                     (wiki_id, tip, id, kind, availability, last_reviewed, superseded_by, \
+                     (wiki_id, tip, id, kind, availability, lifecycle, retired_reason, last_reviewed, superseded_by, \
                       title, author, date, reference) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     params![
                         w,
                         t,
                         s.id,
                         s.kind,
                         s.availability,
+                        s.lifecycle,
+                        s.retired_reason,
                         s.last_reviewed,
                         s.superseded_by,
                         s.title,
@@ -713,7 +716,7 @@ fn read_knowledge(conn: &rusqlite::Connection, wiki: &WikiId, tip: &str) -> Resu
     let mut rows = KnowledgeRows::default();
     let mut stmt = conn
         .prepare(
-            "SELECT id, kind, lifecycle, standing, standing_proposal, standing_judgement \
+            "SELECT id, kind, lifecycle, standing, standing_proposal, standing_judgement, retired_reason \
              FROM knowledge_claims WHERE wiki_id = ?1 AND tip = ?2 ORDER BY id",
         )
         .map_err(backend)?;
@@ -726,6 +729,7 @@ fn read_knowledge(conn: &rusqlite::Connection, wiki: &WikiId, tip: &str) -> Resu
                 standing: r.get(3)?,
                 standing_proposal: r.get(4)?,
                 standing_judgement: r.get(5)?,
+                retired_reason: r.get(6)?,
             })
         })
         .map_err(backend)?
@@ -734,7 +738,8 @@ fn read_knowledge(conn: &rusqlite::Connection, wiki: &WikiId, tip: &str) -> Resu
     }
     let mut stmt = conn
         .prepare(
-            "SELECT id, kind, availability, last_reviewed, superseded_by, title, author, date, reference \
+            "SELECT id, kind, availability, last_reviewed, superseded_by, title, author, date, reference, \
+             lifecycle, retired_reason \
              FROM knowledge_sources WHERE wiki_id = ?1 AND tip = ?2 ORDER BY id",
         )
         .map_err(backend)?;
@@ -750,6 +755,8 @@ fn read_knowledge(conn: &rusqlite::Connection, wiki: &WikiId, tip: &str) -> Resu
                 author: r.get(6)?,
                 date: r.get(7)?,
                 reference: r.get(8)?,
+                lifecycle: r.get(9)?,
+                retired_reason: r.get(10)?,
             })
         })
         .map_err(backend)?

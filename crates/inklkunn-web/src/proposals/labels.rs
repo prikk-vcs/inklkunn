@@ -118,6 +118,13 @@ pub(crate) const fn bearing_word(b: Bearing) -> Key {
     }
 }
 
+pub(crate) const fn source_life_word(l: inklkunn_core::knowledge::SourceLife) -> Key {
+    match l {
+        inklkunn_core::knowledge::SourceLife::Active => Key::KnowSourceLifeActive,
+        inklkunn_core::knowledge::SourceLife::Retired => Key::KnowSourceLifeRetired,
+    }
+}
+
 pub(crate) const fn lifecycle_word(l: Lifecycle) -> Key {
     match l {
         Lifecycle::Proposed => Key::KnowLifeProposed,

@@ -33,6 +33,7 @@ fn a_new_claim_and_a_new_source_are_made_and_recorded() {
         summarize(&files, &nothing),
         [
             Item::ClaimMade {
+                retired_reason: None,
                 claim: claim.id.clone(),
                 kind: StatementKind::Observation,
                 standing: Standing::Unknown,
@@ -47,6 +48,8 @@ fn a_new_claim_and_a_new_source_are_made_and_recorded() {
                 }],
             },
             Item::SourceRecorded {
+                lifecycle: crate::knowledge::SourceLife::Active,
+                retired_reason: None,
                 source: source.id.clone(),
                 kind: SourceKind::Primary,
                 identity: Identity {

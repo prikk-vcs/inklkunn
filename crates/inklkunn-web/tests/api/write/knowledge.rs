@@ -1471,10 +1471,10 @@ async fn submit_held(c: &Cast, id: &ProposalId, lang: &str) -> super::super::Ans
 #[tokio::test]
 async fn sending_a_held_draft_that_removes_a_claim_or_replaces_a_file_that_cannot_be_read_says_it_is_not_offered()
  {
-    // K73: the pages say a removal, or the replacement of a file that cannot be read, is not offered in this version; the
+    // K73: the pages say a removal is not offered (retire it instead) and who replaces a file that cannot be read (RFC 006 D-10); the
     // API's refusal of a held draft says the same, and not that only a curation proposal may do it.
     let curation = "only a curation proposal may do";
-    let not_offered = "is not offered in this version";
+    let not_offered = "Removing a claim or a source file is not offered";
     let claim = claim_path(&claim_id(1));
 
     // A claim with source links, removed.
@@ -1488,24 +1488,22 @@ async fn sending_a_held_draft_that_removes_a_claim_or_replaces_a_file_that_canno
     assert!(!detail.contains(curation), "{detail}");
     let ja = submit_held(&c, &id, "ja").await;
     let detail_ja = ja.json().at("/detail").as_str().unwrap().to_owned();
-    assert!(detail_ja.contains("提供されていません"), "{detail_ja}");
+    assert!(detail_ja.contains("提供していません"), "{detail_ja}");
     assert!(
         !detail_ja.contains("キュレーション提案だけです"),
         "{detail_ja}"
     );
 
-    // A claim file the wiki has and cannot read, written over with one that reads.
+    // A claim file the wiki has and cannot read, written over with one that reads: it is the `moderate` rung's (RFC 006 D-10), so a
+    // contributor who sends it is refused as someone who may not, and nothing of what the file held is in the answer.
     let c = cast();
     c.w.fake.set(&claim, "kind: observation\nsecret: words\n");
     let over = claim_in(&c).to_yaml();
     let id = held_draft(&c, vec![(claim.clone(), Some(over)), page_edit()]);
     let a = submit_held(&c, &id, "en").await;
-    assert_eq!(a.status, 422, "{}", a.text());
-    assert_eq!(a.json().at("/reason"), "knowledge-curated");
-    let detail = a.json().at("/detail").as_str().unwrap().to_owned();
-    assert!(detail.contains(not_offered), "{detail}");
-    assert!(!detail.contains(curation), "{detail}");
-    assert!(!detail.contains("secret"), "{detail}");
+    assert_eq!(a.status, 403, "{}", a.text());
+    assert_eq!(problem_type(&a), urn("forbidden"));
+    assert!(!a.text().contains("secret"), "{}", a.text());
 
     // What a curation form can make, held beside it, keeps the rule's sentence (and the removal gets its own).
     let c = cast();
@@ -1543,4 +1541,56 @@ fn claim_in(_: &Cast) -> inklkunn_core::knowledge::Claim {
         link(2, Link::Challenges, Bearing::Partial, SAID),
     ];
     c
+}
+
+#[tokio::test]
+async fn a_curation_retires_a_claim_and_a_source_with_a_reason_and_refuses_a_retirement_that_says_nothing()
+ {
+    let c = cast();
+    let a = propose(
+        &c,
+        json!({
+            "retired": {"reason": "The survey was withdrawn."},
+            "sources": [{"source": source_id(1).to_string(), "retired": {"reason": "A second edition replaced it."}}],
+        }),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+    let files = stored(&c, &a);
+    let claim_text = text_at(&files, &claim_path(&claim_id(1)));
+    let Ok(File::Claim(written)) = read_file(&claim_path(&claim_id(1)), claim_text.as_bytes())
+    else {
+        panic!("the claim does not read: {claim_text}");
+    };
+    assert_eq!(
+        written.lifecycle,
+        inklkunn_core::knowledge::Lifecycle::Retired
+    );
+    assert_eq!(
+        written.retired_reason.as_deref(),
+        Some("The survey was withdrawn.")
+    );
+    let source_text = text_at(&files, &source_path(&source_id(1)));
+    assert!(source_text.contains("lifecycle: retired"), "{source_text}");
+    assert!(
+        source_text.contains("A second edition replaced it."),
+        "{source_text}"
+    );
+    // A retirement without a reason, and one that also takes itself back, are refused in words.
+    for (body, problem) in [
+        (
+            json!({"retired": {"reason": "  "}}),
+            "retire-reason-missing",
+        ),
+        (
+            json!({"sources": [{"source": source_id(1).to_string(), "retired": {"reason": ""}}]}),
+            "retire-reason-missing",
+        ),
+    ] {
+        let a = propose(&c, body).await;
+        assert_eq!(a.status, 422, "{}", a.text());
+        assert_eq!(a.json().at("/reason"), problem, "{}", a.text());
+    }
+    let a = propose(&c, json!({"retired": true})).await;
+    assert_eq!(a.status, 400, "{}", a.text());
 }

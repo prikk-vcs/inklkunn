@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use super::{
     Availability, Bearing, Claim, ClaimId, CommunityStatus, Digest, Expression, Family, File,
     Identity, Lifecycle, Link, Reference, Relation, Reviewed, Rule, Source, SourceId, SourceKind,
-    SourceLink, Standing, StatementKind, family_of, read_file,
+    SourceLife, SourceLink, Standing, StatementKind, family_of, read_file,
 };
 
 /// A claim's citation of a source.
@@ -40,6 +40,8 @@ pub enum ClaimChange {
     Kind(StatementKind),
     /// Where it stands in its life.
     Lifecycle(Lifecycle),
+    /// **Why it is retired** (RFC 006 D-10): what the file says now (`None`: it says none).
+    RetiredReason(Option<String>),
     /// **The community status** (only a curation proposal may). Only when the word itself changes: a status whose
     /// word stays and whose wording moves is [`ClaimChange::Rejudged`].
     Standing {
@@ -121,6 +123,10 @@ pub enum SourceChange {
     Availability(Availability),
     /// The source that replaces it (`None`: it is no longer marked as replaced).
     Superseded(Option<SourceId>),
+    /// Whether it is kept in use or retired (RFC 006 D-10).
+    Lifecycle(SourceLife),
+    /// **Why it is retired**: what the file says now (`None`: it says none).
+    RetiredReason(Option<String>),
 }
 
 /// **What goes with a removed file** (handoff 005 corrections, third round, K27): what the file the base had holds that
@@ -154,6 +160,7 @@ fn leaves(file: &File) -> Leaves {
                 expressions: _,
                 relations: _,
                 lifecycle: _,
+                retired_reason: _,
                 community_status:
                     CommunityStatus {
                         status,
@@ -177,6 +184,8 @@ fn leaves(file: &File) -> Leaves {
                 last_reviewed,
                 superseded_by: _,
                 availability,
+                lifecycle: _,
+                retired_reason: _,
             } = source.as_ref();
             Leaves::Source {
                 reviewed: last_reviewed.as_ref().map(|r| r.date.clone()),
@@ -202,6 +211,8 @@ pub enum Item {
         judged_on: Option<Digest>,
         /// Where it stands in its life.
         lifecycle: Lifecycle,
+        /// Why it is retired, when the file says (RFC 006 D-10).
+        retired_reason: Option<String>,
         /// Where it is said.
         said: Vec<Expression>,
         /// What it relates to.
@@ -240,6 +251,10 @@ pub enum Item {
         superseded_by: Option<SourceId>,
         /// Whether it can be had, as the person who checked says: only a curation proposal may set one.
         availability: Availability,
+        /// Whether it is kept in use or retired (RFC 006 D-10).
+        lifecycle: SourceLife,
+        /// Why it is retired, when the file says.
+        retired_reason: Option<String>,
     },
     /// A source that exists is changed.
     SourceChanged {
@@ -300,6 +315,7 @@ fn claim_changes(before: &Claim, after: &Claim) -> Vec<ClaimChange> {
         expressions,
         relations,
         lifecycle,
+        retired_reason,
         community_status,
         sources,
     } = before;
@@ -309,6 +325,9 @@ fn claim_changes(before: &Claim, after: &Claim) -> Vec<ClaimChange> {
     }
     if *lifecycle != after.lifecycle {
         out.push(ClaimChange::Lifecycle(after.lifecycle));
+    }
+    if *retired_reason != after.retired_reason {
+        out.push(ClaimChange::RetiredReason(after.retired_reason.clone()));
     }
     let CommunityStatus {
         status,
@@ -401,10 +420,18 @@ fn source_changes(before: &Source, after: &Source) -> Vec<SourceChange> {
         last_reviewed,
         superseded_by,
         availability,
+        lifecycle,
+        retired_reason,
     } = before;
     let mut out = Vec::new();
     if *kind != after.kind {
         out.push(SourceChange::Kind(after.kind));
+    }
+    if *lifecycle != after.lifecycle {
+        out.push(SourceChange::Lifecycle(after.lifecycle));
+    }
+    if *retired_reason != after.retired_reason {
+        out.push(SourceChange::RetiredReason(after.retired_reason.clone()));
     }
     // A part that differs by white space alone is told as that (K66); the name is told whole when a part says something else.
     let mut respelled = Vec::new();
@@ -566,6 +593,7 @@ pub fn summarize(
                     expressions,
                     relations,
                     lifecycle,
+                    retired_reason,
                     community_status:
                         CommunityStatus {
                             status,
@@ -580,6 +608,7 @@ pub fn summarize(
                     standing: status,
                     judged_on,
                     lifecycle,
+                    retired_reason,
                     said: expressions,
                     relations,
                     cites: sources.iter().map(cite_of).collect(),
@@ -606,6 +635,8 @@ pub fn summarize(
                     last_reviewed,
                     superseded_by,
                     availability,
+                    lifecycle,
+                    retired_reason,
                 } = *s;
                 out.push(Item::SourceRecorded {
                     source: id,
@@ -616,6 +647,8 @@ pub fn summarize(
                     reviewed: last_reviewed.map(|r| r.date),
                     superseded_by,
                     availability,
+                    lifecycle,
+                    retired_reason,
                 });
             }
             (Some(File::Source(b)), File::Source(a)) => {

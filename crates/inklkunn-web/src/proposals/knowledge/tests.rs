@@ -171,6 +171,7 @@ fn english(items: &[Item]) -> Vec<(String, Vec<String>)> {
 
 fn made(places: usize) -> Item {
     Item::ClaimMade {
+        retired_reason: None,
         claim: claim(),
         kind: StatementKind::Hypothesis,
         standing: Standing::Unknown,
@@ -191,6 +192,7 @@ fn a_claim_that_is_made_is_named_by_a_paragraph_and_says_its_kind_standing_life_
         .with_paragraph(here("b0"), "It opened in 1950.")
         .with_identity(source(), "A history of the bridge");
     let item = Item::ClaimMade {
+        retired_reason: None,
         claim: claim(),
         kind: StatementKind::Hypothesis,
         standing: Standing::Contested,
@@ -239,6 +241,7 @@ fn a_claim_that_is_made_is_named_by_a_paragraph_and_says_its_kind_standing_life_
         .with_identity(source(), "A history of the bridge")
         .with_unjudged(source());
     let new_claim = Item::ClaimMade {
+        retired_reason: None,
         claim: claim(),
         kind: StatementKind::Hypothesis,
         standing: Standing::Unknown,
@@ -320,6 +323,7 @@ fn a_status_decided_on_a_wording_says_the_wording_on_a_new_claim() {
         Some(format!("Words for {}.", d.as_str().get(..2).unwrap()))
     });
     let item = Item::ClaimMade {
+        retired_reason: None,
         claim: claim(),
         kind: StatementKind::Observation,
         standing: Standing::Accepted,
@@ -460,6 +464,8 @@ fn titled(title: &str) -> Identity {
 fn a_source_that_is_recorded_has_its_name_where_it_is_found_whether_it_can_be_had_and_the_day_it_was_checked()
  {
     let item = Item::SourceRecorded {
+        lifecycle: inklkunn_core::knowledge::SourceLife::Active,
+        retired_reason: None,
         source: source(),
         kind: SourceKind::Primary,
         identity: titled("A title"),
@@ -502,6 +508,8 @@ fn other_source() -> SourceId {
 fn a_source_with_no_name_is_told_by_its_identifier_and_a_bare_one_says_it_is_not_known_if_it_can_be_had()
  {
     let item = Item::SourceRecorded {
+        lifecycle: inklkunn_core::knowledge::SourceLife::Active,
+        retired_reason: None,
         source: source(),
         kind: SourceKind::Other,
         identity: Identity::default(),
@@ -520,6 +528,8 @@ fn a_source_with_no_name_is_told_by_its_identifier_and_a_bare_one_says_it_is_not
     assert_eq!(more, &["Whether it can be had: not known."]);
     // An author alone is a name too.
     let item = Item::SourceRecorded {
+        lifecycle: inklkunn_core::knowledge::SourceLife::Active,
+        retired_reason: None,
         source: source(),
         kind: SourceKind::Other,
         identity: Identity {
@@ -707,6 +717,7 @@ fn the_japanese_preview_has_every_line_and_none_is_a_marker_for_a_missing_messag
         .with_identity(source(), "橋の歴史");
     let items = [
         Item::ClaimMade {
+            retired_reason: None,
             claim: claim(),
             kind: StatementKind::Opinion,
             standing: Standing::Accepted,
@@ -756,6 +767,8 @@ fn the_japanese_preview_has_every_line_and_none_is_a_marker_for_a_missing_messag
             ],
         },
         Item::SourceRecorded {
+            lifecycle: inklkunn_core::knowledge::SourceLife::Active,
+            retired_reason: None,
             source: source(),
             kind: SourceKind::Primary,
             identity: titled("橋の歴史"),
@@ -825,6 +838,8 @@ fn the_japanese_preview_has_every_line_and_none_is_a_marker_for_a_missing_messag
 fn the_sources_a_proposal_records_and_the_files_it_removes_carry_no_verdict() {
     // No line says that a claim or a source is good, true or settled.
     let item = Item::SourceRecorded {
+        lifecycle: inklkunn_core::knowledge::SourceLife::Active,
+        retired_reason: None,
         source: source(),
         kind: SourceKind::Secondary,
         identity: titled("A title"),

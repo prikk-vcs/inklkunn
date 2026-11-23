@@ -1,0 +1,13 @@
+<div class="field">
+<label for="{{ r.name }}">{{ r.label }}</label>
+<select id="{{ r.name }}" name="{{ r.name }}" aria-describedby="{{ r.name }}-hint">
+{% for o in r.options %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+<p id="{{ r.name }}-hint" class="note">{{ r.hint }}</p>
+{% if let Some(text) = r.is %}<p class="note">{{ text }}</p>
+{% endif %}</div>
+<div class="field">
+<label for="{{ r.reason_name }}">{{ r.reason_label }}</label>
+<input id="{{ r.reason_name }}" name="{{ r.reason_name }}" type="text" value="{{ r.reason }}" aria-describedby="{{ r.reason_name }}-hint">
+<p id="{{ r.reason_name }}-hint" class="note">{{ r.reason_hint }}</p>
+</div>

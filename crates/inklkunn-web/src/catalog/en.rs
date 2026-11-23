@@ -777,7 +777,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.col_rule", "What is wrong"),
     msg(
         "health.knowledge_action",
-        "Propose a corrected file, or propose to remove it.",
+        "Someone who may moderate this wiki can replace it with a file that can be read, or retire it.",
     ),
     msg("health.none_knowledge", "Every knowledge file can be read."),
     msg(
@@ -3143,7 +3143,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.not_by_form",
-        "Removing a claim or a source file, or replacing a file that cannot be read, is not offered in this version.",
+        "Removing a claim or a source file is not offered. To stop relying on one, retire it with a curation proposal, and say why.",
     ),
     msg(
         "know.source_spacing_title",
@@ -3894,5 +3894,97 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "problem.page_gone.hint",
         "To bring the page back, propose it again: the page of this address in the wiki offers a proposal that undoes the removal or writes the page again with its last text.",
+    ),
+    msg(
+        "claim.retired",
+        "This claim is retired. Its page, its sources and its history stay here, and it is no longer offered beside the paragraphs it is said in.",
+    ),
+    msg("claim.retired_reason", "Why it was retired: {reason}"),
+    msg("claim.retired_no_reason", "No reason was recorded."),
+    msg("claim.source_retired", "This source is retired: {reason}"),
+    msg(
+        "claim.source_retired_no_reason",
+        "This source is retired. No reason was recorded.",
+    ),
+    msg("curate.label_retire_claim", "Whether the claim is retired"),
+    msg(
+        "curate.label_retire_source",
+        "Whether the source is retired",
+    ),
+    msg("curate.retire_leave", "Leave it as it is"),
+    msg("curate.retire_now", "Retire it"),
+    msg("curate.retire_back", "Take the retirement back"),
+    msg(
+        "curate.retire_claim_hint",
+        "A retired claim keeps its page, its sources and its history, and is no longer offered beside the paragraphs it is said in. Taking the retirement back puts the claim forward again.",
+    ),
+    msg(
+        "curate.retire_source_hint",
+        "A retired source keeps its page and is marked on every claim that still cites it. It is no longer listed under the sources to review.",
+    ),
+    msg("curate.label_retire_reason", "Why it is retired"),
+    msg(
+        "curate.retire_reason_hint",
+        "One line, shown to everyone who reads it. It is needed when you retire it.",
+    ),
+    msg("curate.retire_is", "It is retired: {reason}"),
+    msg(
+        "curate.retire_is_no_reason",
+        "It is retired. No reason was recorded.",
+    ),
+    msg(
+        "curate.retire_reason_missing",
+        "Say why you are retiring it: the reason is shown to everyone who reads it.",
+    ),
+    msg(
+        "know.change_retired_reason",
+        "Why it is retired becomes: {reason}",
+    ),
+    msg(
+        "know.change_retired_reason_cleared",
+        "No reason for its retirement is kept any more.",
+    ),
+    msg("know.made_retired_reason", "Why it is retired: {reason}"),
+    msg("know.source_life_active", "in use"),
+    msg("know.source_life_retired", "retired"),
+    msg(
+        "invalid.knowledge_retired_unexplained",
+        "A claim or a source this proposal retires has no reason. A retirement says why, so it is not sent.",
+    ),
+    msg(
+        "know.unreadable_by_moderate",
+        "A file that cannot be read is replaced, with a file that can be read, or retired, by someone who may moderate this wiki.",
+    ),
+    msg("health.knowledge_replace_link", "Replace it or retire it"),
+    msg("replace.heading", "Replace a file that cannot be read"),
+    msg(
+        "replace.intro",
+        "The wiki cannot read the file {file}, so nothing is read from it, and what it held is not known. You can write it again as a file that can be read, or retire it. The proposal is judged as every change to the knowledge files is, and someone who may accept it decides.",
+    ),
+    msg("replace.choice_legend", "What to do with it"),
+    msg("replace.choice_write", "Write the file again"),
+    msg("replace.choice_retire", "Retire it"),
+    msg("replace.label_text", "The whole file, as the wiki reads it"),
+    msg(
+        "replace.text_hint",
+        "The file keeps its name, and so its identifier. It has the keys of a claim or of a source and no others; the wiki says what is wrong with it when it cannot read it.",
+    ),
+    msg(
+        "replace.retire_hint",
+        "A file retired like this says nothing of what the unreadable one held. It keeps the identifier, and it is retired with the reason you give.",
+    ),
+    msg("replace.send", "Send for review"),
+    msg("replace.problem_choice", "Choose what to do with the file."),
+    msg(
+        "replace.problem_text",
+        "The file you wrote cannot be read either: {rule}",
+    ),
+    msg(
+        "replace.problem_reason",
+        "Say why you are retiring it: the reason is shown to everyone who reads it.",
+    ),
+    msg(
+        "replace.problem_nothing",
+        "The wiki can read this file, or it is no knowledge file of this wiki, so there is nothing to replace.",
     ),
 ];

@@ -214,6 +214,17 @@ words! {
 }
 
 words! {
+    /// Whether a source is kept in use or retired (RFC 006 D-10): the optional key `lifecycle` of a source file, `active` when the
+    /// file does not say.
+    SourceLife, "lifecycle" {
+        /// In use.
+        Active = "active",
+        /// No longer relied on: the source keeps its page and is marked on every claim that still cites it.
+        Retired = "retired",
+    }
+}
+
+words! {
     /// What the community has decided about a claim, by an accepted curation proposal and never by a count (KN-2).
     Standing, "status" {
         /// Accepted.
@@ -396,6 +407,10 @@ pub struct Claim {
     pub relations: Vec<Relation>,
     /// Where it stands in its life.
     pub lifecycle: Lifecycle,
+    /// **Why it was retired** (RFC 006 D-10): the optional key `retired_reason`, one line, and only where `lifecycle` is
+    /// `retired`. A claim a 0.3.0 file said was retired has none: it reads as it did, and what newly retires a claim must give
+    /// one (the acceptance's rule, [`super::check::Curated::retired_without_reason`]).
+    pub retired_reason: Option<String>,
     /// What the community has decided.
     pub community_status: CommunityStatus,
     /// Its sources.
@@ -411,6 +426,7 @@ impl Claim {
             expressions: Vec::new(),
             relations: Vec::new(),
             lifecycle: Lifecycle::Unknown,
+            retired_reason: None,
             community_status: CommunityStatus::undecided(),
             sources: Vec::new(),
         }
@@ -498,6 +514,11 @@ pub struct Source {
     pub superseded_by: Option<SourceId>,
     /// Whether it can be had.
     pub availability: Availability,
+    /// Whether it is kept in use (RFC 006 D-10): the optional key `lifecycle`, `active` when the file does not say, so that a
+    /// version 1 file without it reads as it always did.
+    pub lifecycle: SourceLife,
+    /// **Why it was retired**: the optional key `retired_reason`, one line, and only where `lifecycle` is `retired`.
+    pub retired_reason: Option<String>,
 }
 
 impl Source {
@@ -512,6 +533,8 @@ impl Source {
             last_reviewed: None,
             superseded_by: None,
             availability: Availability::Unknown,
+            lifecycle: SourceLife::Active,
+            retired_reason: None,
         }
     }
 }

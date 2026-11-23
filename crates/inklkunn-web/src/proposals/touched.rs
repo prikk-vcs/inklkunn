@@ -21,7 +21,7 @@ use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use inklkunn_core::knowledge::compose::{Curation, LinkEdit, curate};
+use inklkunn_core::knowledge::compose::{Curation, LinkEdit, Retire, curate};
 use inklkunn_core::knowledge::onpage::touches;
 use inklkunn_core::knowledge::touched::{How, PageChange, Touch};
 use inklkunn_core::proposal::{ProposalEdit, ProposalError};
@@ -464,6 +464,7 @@ fn judge_again(page: &Page, ctx: &Ctx, id: &inklkunn_store::ProposalId) -> Respo
             removed: Vec::new(),
             sources: Vec::new(),
             confirm: true,
+            retire: Retire::Leave,
             // No source is edited, so no check is stated.
             proposal: None,
         };

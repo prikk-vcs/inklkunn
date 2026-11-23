@@ -206,6 +206,7 @@ fn a_review_date_is_named_by_the_proposal_that_set_it_and_only_a_curation_may_se
     let s = scene("k5-reviewed");
     let now = digest_of_block("Said. ^b1");
     let edit = Curation {
+        retire: Default::default(),
         status: Standing::Unknown,
         links: vec![LinkEdit {
             source: s.source.id.clone(),
@@ -214,6 +215,7 @@ fn a_review_date_is_named_by_the_proposal_that_set_it_and_only_a_curation_may_se
         }],
         removed: Vec::new(),
         sources: vec![SourceEdit {
+            retire: Default::default(),
             source: s.source.id.clone(),
             checked: None,
             reviewed: "2026-11-04".to_owned(),

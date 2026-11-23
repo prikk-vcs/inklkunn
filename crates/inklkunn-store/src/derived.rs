@@ -184,6 +184,8 @@ pub struct KnowledgeClaimRow {
     pub kind: String,
     /// Where it stands in its life.
     pub lifecycle: String,
+    /// Why it was retired, as the file says (RFC 006 D-10), cut at the bound the index is built with; only a retired claim has one.
+    pub retired_reason: Option<String>,
     /// What the community has decided.
     pub standing: String,
     /// The proposal that decided it, when one did.
@@ -201,6 +203,10 @@ pub struct KnowledgeSourceRow {
     pub kind: String,
     /// Whether it can be had, as a person who checked says.
     pub availability: String,
+    /// `active` or `retired` (RFC 006 D-10): a version 1 file that does not say is `active`.
+    pub lifecycle: String,
+    /// Why it was retired, as the file says, cut at the bound the index is built with; only a retired source has one.
+    pub retired_reason: Option<String>,
     /// The day a person last checked it, as written, when one did.
     pub last_reviewed: Option<String>,
     /// The source that replaces it.

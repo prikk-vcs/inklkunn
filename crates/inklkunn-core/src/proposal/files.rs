@@ -98,6 +98,10 @@ pub(crate) fn knowledge_verdict(
     if !curation && !crate::knowledge::check::curated_by(given, was).is_empty() {
         return Err(Invalid::KnowledgeCurated);
     }
+    // A retirement says why, in any proposal (RFC 006 D-10).
+    if !crate::knowledge::check::retired_unexplained(given, was).is_empty() {
+        return Err(Invalid::KnowledgeRetiredUnexplained);
+    }
     // A source found elsewhere carries no check of its old reference, in any proposal (K71).
     if !crate::knowledge::check::carried_by(given, was, proposal).is_empty() {
         return Err(Invalid::KnowledgeCheckUnstated);
@@ -250,6 +254,7 @@ impl ProposalService {
     /// the files as the base had them; the acceptance still judges them again on the tip, where it is final.
     pub(super) fn judge_knowledge(
         &self,
+        principal: &Principal,
         wiki: &WikiRecord,
         id: &ProposalId,
         content: &RevisionContent,
@@ -268,6 +273,22 @@ impl ProposalService {
             before.insert(path, self.bases.page_text(wiki, &content.base, path)?);
         }
         let was = |path: &str| before.get(path).cloned().flatten();
+        // **A file the base has and the layer cannot read is replaced, or taken away, by the `moderate` rung** (RFC 006 D-10;
+        // handoff G-T6): what it held is not known, so a person who only proposes may not say it again for the wiki. A restricted
+        // account is capped below it, and a wiki whose rules ask more of that rung asks it here. Refused as any proposal is refused
+        // that a person may not make, before anything is judged of its files.
+        if given.iter().any(|(path, _)| {
+            was(path)
+                .is_some_and(|text| crate::knowledge::read_file(path, text.as_bytes()).is_err())
+        }) {
+            self.allow(
+                principal,
+                crate::authorize::Action::Moderate,
+                &crate::authorize::Resource::Wiki {
+                    wiki: wiki.id.clone(),
+                },
+            )?;
+        }
         let pages = ProposedPages::new(self.bases.as_ref(), wiki, content);
         let verdict = knowledge_verdict(
             &given,

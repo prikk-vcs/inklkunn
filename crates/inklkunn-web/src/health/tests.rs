@@ -57,13 +57,14 @@ fn the_status_rule_is_worded_with_what_a_curation_proposal_does_and_not_with_rem
 #[test]
 fn the_removal_clause_is_said_once_in_each_language_by_the_sentence_that_says_it_is_not_offered() {
     // K67: of the sentences that say a rule (the page's reason, the proposal page's note, the core's sentence) and the
-    // one that says what is not offered, only the last speaks of a removal or of a file that cannot be read.
+    // ones that say what is not offered and who replaces a file, only those speak of a removal or of a file that cannot be read.
     use crate::catalog::{EN, JA_DEF, Key, Lang, T};
     let removal = |text: &str, words: &[&str]| words.iter().any(|w| text.contains(w));
     let en_words = ["removes a claim", "Removing a claim", "cannot be read"];
     let ja_words = [
         "主張や出典の削除",
         "主張や出典を削除",
+        "主張や出典のファイルを削除",
         "読み取れないファイル",
     ];
     for (t, words) in [
@@ -74,24 +75,67 @@ fn the_removal_clause_is_said_once_in_each_language_by_the_sentence_that_says_it
             assert!(!removal(&t.get(key), words), "{key:?}: {}", t.get(key));
         }
         assert!(removal(&t.get(Key::KnowNotByForm), words));
+        assert!(removal(&t.get(Key::KnowUnreadableByModerate), words));
     }
     assert!(!removal(Rule::Status.sentence(), &en_words));
 }
 
 #[test]
-fn what_is_not_offered_says_so_and_names_no_reviewer_or_form_in_both_languages() {
-    // K62: a removal of a claim or a source file, or the replacement of a file that cannot be read, is not offered in
-    // this version (RFC 005 part 2). No reviewer and no form is named: none can do it.
+fn what_is_not_offered_says_what_is_offered_instead_and_the_sentences_of_0_3_0_are_gone_in_both_languages()
+ {
+    // RFC 006 D-10 (handoff G-T6): K62's sentence, *not offered in this version*, is replaced. A removal of a claim or a source file
+    // is not offered, and the claim or the source is retired instead, by a curation proposal that says why; a file that cannot be
+    // read is replaced, or retired, by whoever may moderate the wiki. No sentence says *in this version* any more.
     use crate::catalog::{EN, JA_DEF, Key, Lang, T};
-    let en = T::new(EN).get(Key::KnowNotByForm);
-    assert!(en.ends_with("is not offered in this version."), "{en}");
-    for word in ["reviewer", "form", "curation", "proposal"] {
-        assert!(!en.to_lowercase().contains(word), "{word}: {en}");
+    let en = T::new(EN);
+    let not_by_form = en.get(Key::KnowNotByForm);
+    assert!(
+        not_by_form.starts_with("Removing a claim or a source file is not offered."),
+        "{not_by_form}"
+    );
+    assert!(
+        not_by_form.contains("retire it with a curation proposal, and say why"),
+        "{not_by_form}"
+    );
+    let by_moderate = en.get(Key::KnowUnreadableByModerate);
+    assert!(
+        by_moderate.contains("someone who may moderate this wiki"),
+        "{by_moderate}"
+    );
+    assert!(by_moderate.contains("or retired"), "{by_moderate}");
+    for word in ["reviewer", "form"] {
+        assert!(
+            !by_moderate.to_lowercase().contains(word),
+            "{word}: {by_moderate}"
+        );
     }
-    let ja = T::new(Lang::from_def(&JA_DEF)).get(Key::KnowNotByForm);
-    assert!(ja.contains("このバージョンでは提供されていません"), "{ja}");
-    for word in ["レビュアー", "フォーム", "キュレーション", "提案"] {
-        assert!(!ja.contains(word), "{word}: {ja}");
+    let ja = T::new(Lang::from_def(&JA_DEF));
+    let (ja_form, ja_moderate) = (
+        ja.get(Key::KnowNotByForm),
+        ja.get(Key::KnowUnreadableByModerate),
+    );
+    assert!(
+        ja_form.contains("削除する操作は提供していません"),
+        "{ja_form}"
+    );
+    assert!(
+        ja_form.contains("役目を終えたことにしてください"),
+        "{ja_form}"
+    );
+    assert!(
+        ja_moderate.contains("モデレーションを行える役割を持つ人"),
+        "{ja_moderate}"
+    );
+    for t in [&en, &ja] {
+        for key in [
+            Key::KnowNotByForm,
+            Key::KnowUnreadableByModerate,
+            Key::HealthKnowledgeAction,
+        ] {
+            let text = t.get(key);
+            assert!(!text.contains("in this version"), "{key:?}: {text}");
+            assert!(!text.contains("このバージョンでは"), "{key:?}: {text}");
+        }
     }
 }
 

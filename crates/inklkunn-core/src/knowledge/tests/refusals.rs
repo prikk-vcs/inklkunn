@@ -336,7 +336,8 @@ fn every_rule_has_a_code_that_reads_back_and_a_sentence() {
 #[test]
 fn the_status_rule_names_what_a_curation_proposal_does_and_leaves_removals_to_their_own_sentence() {
     // K29, K67: the sentence of this rule names what a curation proposal can do; a removal, and a file that cannot be
-    // read, are not offered in this version and are said so by the refusal itself, once.
+    // read, are said by the refusal itself, once (a removal is not offered and a claim or a source is retired instead; a file that
+    // cannot be read is replaced by whoever may moderate: RFC 006 D-10).
     let sentence = Rule::Status.sentence();
     for part in [
         "community status",
@@ -358,9 +359,9 @@ fn the_status_rule_names_what_a_curation_proposal_does_and_leaves_removals_to_th
 }
 
 #[test]
-fn a_refusal_of_a_removal_or_an_unreadable_file_says_it_is_not_offered_and_not_what_curation_may_do()
+fn a_refusal_of_a_removal_says_it_is_not_offered_and_one_of_an_unreadable_file_says_who_replaces_it()
  {
-    use crate::knowledge::check::{NOT_OFFERED, Refusal, UNREADABLE};
+    use crate::knowledge::check::{NOT_OFFERED, Refusal, UNREADABLE, UNREADABLE_BY_MODERATE};
     let said = |removes: bool, field: &'static str| Refusal {
         file: "knowledge/claims/x.yaml".to_owned(),
         rule: Rule::Status,
@@ -374,12 +375,20 @@ fn a_refusal_of_a_removal_or_an_unreadable_file_says_it_is_not_offered_and_not_w
     let made = said(false, "community_status");
     assert_eq!(made.sentence(), Rule::Status.sentence());
     assert!(made.to_string().contains(Rule::Status.sentence()));
-    // A removal, and a file that cannot be read, say they are not offered: never the rule's sentence beside it.
-    for refusal in [said(true, "community_status"), said(false, UNREADABLE)] {
-        assert_eq!(refusal.sentence(), NOT_OFFERED);
+    // A removal says it is not offered and what is done instead, and a file that cannot be read says who replaces it: never the
+    // rule's sentence beside it, and never *in this version* (the sentences of 0.3.0 are gone).
+    for (refusal, sentence) in [
+        (said(true, "community_status"), NOT_OFFERED),
+        (said(false, UNREADABLE), UNREADABLE_BY_MODERATE),
+    ] {
+        assert_eq!(refusal.sentence(), sentence);
         let text = refusal.to_string();
-        assert!(text.contains("is not offered in this version"), "{text}");
         assert!(!text.contains(Rule::Status.sentence()), "{text}");
-        assert!(!text.contains("curation proposal"), "{text}");
+        assert!(!text.contains("in this version"), "{text}");
     }
+    assert!(NOT_OFFERED.contains("retire it"), "{NOT_OFFERED}");
+    assert!(
+        UNREADABLE_BY_MODERATE.contains("moderate"),
+        "{UNREADABLE_BY_MODERATE}"
+    );
 }

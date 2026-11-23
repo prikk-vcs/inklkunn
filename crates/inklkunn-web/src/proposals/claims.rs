@@ -156,6 +156,7 @@ pub(crate) fn mistake_text(t: T, m: Mistake) -> String {
         // themselves, with the source named (`check_html`, `check_text`), and the attach path never makes one. This is the
         // sentence for a caller that would not name the source; `"-"` stands for the id it has not got, never a made-up one.
         Mistake::Check(_, why) => check_text(t, why, &t.get(Key::CurateSourceUntitled), "-", None),
+        Mistake::ReasonMissing => t.get(Key::CurateRetireReasonMissing),
         Mistake::Unwritable => t.get(Key::AttachUnwritable),
     }
 }

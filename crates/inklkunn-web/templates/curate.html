@@ -22,6 +22,7 @@
 <p id="{{ status_name }}-hint" class="note">{{ status_hint }}</p>
 {% if let Some(text) = status_earlier %}<p class="note">{{ text }}</p>
 {% endif %}</div>
+{% let r = retire %}{% include "curate_retire.html" %}
 {% for s in sources %}<fieldset class="source-fields">
 <legend>{{ s.legend }}</legend>
 {% if let Some(text) = s.earlier %}<p class="note">{{ text }}</p>
@@ -41,7 +42,8 @@
 <label><input type="checkbox" id="{{ s.remove_name }}" name="{{ s.remove_name }}" value="1"{% if s.removed %} checked{% endif %} aria-describedby="{{ s.remove_name }}-hint"> {{ s.remove_label }}</label>
 <p id="{{ s.remove_name }}-hint" class="note">{{ s.remove_hint }}</p>
 </div>
-{% if s.checkable %}<div class="field">
+{% if let Some(r) = s.retire %}{% include "curate_retire.html" %}
+{% endif %}{% if s.checkable %}<div class="field">
 <label for="{{ s.reviewed_name }}">{{ s.reviewed_label }}</label>
 <input id="{{ s.reviewed_name }}" name="{{ s.reviewed_name }}" type="text" value="{{ s.reviewed }}" aria-describedby="{{ s.reviewed_name }}-hint">
 <p id="{{ s.reviewed_name }}-hint" class="note">{{ s.reviewed_hint }}</p>

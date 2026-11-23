@@ -123,10 +123,12 @@ fn the_checks_of_a_curation_share_one_read_of_each_source() {
     let reads = base.reads();
     let subject = subject();
     let mut edit = Curation {
+        retire: Default::default(),
         status: Standing::Unknown,
         links: Vec::new(),
         removed: Vec::new(),
         sources: vec![SourceEdit {
+            retire: Default::default(),
             source: id(1),
             checked: None,
             reviewed: String::new(),
