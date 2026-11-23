@@ -4569,6 +4569,10 @@ pub const CATALOG: &[Entry] = &[
         "The role that may moderate must be reviewer or above: someone who may not review proposals could hide what is in them.",
     ),
     msg(
+        "policy_edit.refusal_order_decide_appeal",
+        "The role that decides appeals must be at least the role that may moderate: otherwise someone could undo what a moderator did.",
+    ),
+    msg(
         "policy_edit.refusal_limit_entry",
         "This server allows at most {role} here.",
     ),

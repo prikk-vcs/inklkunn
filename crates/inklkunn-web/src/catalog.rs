@@ -2204,6 +2204,7 @@ keys! {
     PolicyEditRefusalOrderPropose => "policy_edit.refusal_order_propose",
     PolicyEditRefusalOrderReview => "policy_edit.refusal_order_review",
     PolicyEditRefusalOrderModerate => "policy_edit.refusal_order_moderate",
+    PolicyEditRefusalOrderDecideAppeal => "policy_edit.refusal_order_decide_appeal",
     PolicyEditRefusalLimitEntry => "policy_edit.refusal_limit_entry",
     PolicyEditRefusalLimitDays => "policy_edit.refusal_limit_days",
     AuthorityUnderRules => "authority.under_rules",

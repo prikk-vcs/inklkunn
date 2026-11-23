@@ -236,6 +236,9 @@ pub(crate) fn refusal_text(t: T, refusal: Refusal, limits: &PlatformLimits) -> S
         Refusal::Ordering(OrderingPair::ModerateBelowReviewer) => {
             Key::PolicyEditRefusalOrderModerate
         }
+        Refusal::Ordering(OrderingPair::DecideAppealBelowModerate) => {
+            Key::PolicyEditRefusalOrderDecideAppeal
+        }
         Refusal::PlatformLimit(Limit::EntryMax) => {
             return t
                 .msg(Key::PolicyEditRefusalLimitEntry)
