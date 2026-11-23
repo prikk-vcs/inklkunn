@@ -642,7 +642,8 @@ impl ModerationService {
                 .tip_check(wiki, &found.canonical.id)
                 .map_err(read_failure)?
             {
-                TipCheck::Clear => {}
+                // Allowed: the change is not a tip's text. (The lines of it that a tip still has are told by the form, not refused.)
+                TipCheck::Clear | TipCheck::Survives { .. } => {}
                 TipCheck::Holds { view } => {
                     return Err(ModerationError::TipContent { view: Some(view) });
                 }
@@ -1206,27 +1207,42 @@ impl ModerationService {
             .hidden_of(wiki, &found.canonical, item)?
             .marks()
             .to_vec();
-        let tip = if found.canonical.kind == HiddenItemKind::PageRevision {
+        let (tip, survives) = if found.canonical.kind == HiddenItemKind::PageRevision {
             match self
                 .read
                 .tip_check(wiki, &found.canonical.id)
                 .map_err(read_failure)?
             {
-                TipCheck::Clear => None,
-                TipCheck::Holds { view } => Some(ModerationError::TipContent { view: Some(view) }),
-                TipCheck::Unchecked => Some(ModerationError::TipContent { view: None }),
+                TipCheck::Clear => (None, None),
+                TipCheck::Survives { lines, at_least } => {
+                    (None, Some(Survives { lines, at_least }))
+                }
+                TipCheck::Holds { view } => {
+                    (Some(ModerationError::TipContent { view: Some(view) }), None)
+                }
+                TipCheck::Unchecked => (Some(ModerationError::TipContent { view: None }), None),
             }
         } else {
-            None
+            (None, None)
         };
         Ok(Preview {
             marks,
             tip,
+            survives,
             declines: found.open_latest.is_some(),
             summary: !found.comment
                 && !(matches!(item, Item::ProposalRevision { .. }) && !found.is_latest),
         })
     }
+}
+
+/// The lines of a change that a view's tip still holds (see [`TipCheck::Survives`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Survives {
+    /// How many.
+    pub lines: usize,
+    /// There are at least this many: the count stopped at its bound.
+    pub at_least: bool,
 }
 
 /// What the moderation form is told of an item.
@@ -1236,6 +1252,8 @@ pub struct Preview {
     pub marks: Vec<Mark>,
     /// Why its content cannot be hidden, when it cannot ([`ModerationError::TipContent`]).
     pub tip: Option<ModerationError>,
+    /// Lines the change added that a tip's page still has, when its content may be hidden all the same: the hide does not hide them.
+    pub survives: Option<Survives>,
     /// Hiding its content also declines the proposal it is the latest revision of.
     pub declines: bool,
     /// It has a summary to hide.

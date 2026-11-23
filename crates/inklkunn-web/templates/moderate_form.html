@@ -11,7 +11,8 @@
 </div>
 {% endif %}<p>{{ intro }}</p>
 <p class="note" role="note">{{ still_held }}</p>
-<p><strong>{{ item_line }}</strong></p>
+{% if let Some(text) = later_change %}<p class="note" role="note">{{ text }}</p>
+{% endif %}<p><strong>{{ item_line }}</strong></p>
 {% if !in_force.is_empty() %}<h2>{{ in_force_heading }}</h2>
 <ul class="moderation-in-force">
 {% for h in in_force %}<li>
@@ -29,6 +30,7 @@
 </li>
 {% endfor %}</ul>
 {% endif %}{% if let Some(text) = tip_notice %}<p class="note" role="note">{{ text }}{% if let Some(link) = tip_link %} <a href="{{ link.href }}">{{ link.label }}</a>{% endif %}</p>
+{% endif %}{% if let Some(text) = survives %}<p class="note" role="note">{{ text }}</p>
 {% endif %}{% if let Some(text) = declines %}<p class="note" role="note">{{ text }}</p>
 {% endif %}<form method="post" action="{{ action }}" class="proposal-form">
 {% include "csrf.html" %}{% for (name, value) in item_fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">

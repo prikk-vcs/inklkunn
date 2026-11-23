@@ -136,7 +136,9 @@ pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
 pub use text::BlockText;
 pub use tip::Tip;
-pub use tipcheck::{MAX_REVEALED_FILES, Revealed, TipCheck};
+pub use tipcheck::{
+    MAX_MOVE_CANDIDATES, MAX_REVEALED_FILES, MAX_SURVIVING_LINES, Revealed, TipCheck,
+};
 pub use why::{
     Attached, AttachedSource, Basis, Chain, EXCERPT_CHARS, MAX_WHY_PARAGRAPHS, MAX_WHY_WORK,
     Paragraph, Reach, WhyOutcome, WhyPage, WhyParagraph,

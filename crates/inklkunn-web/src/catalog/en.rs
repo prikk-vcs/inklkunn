@@ -3811,6 +3811,20 @@ pub const CATALOG: &[Entry] = &[
         "moderate.declines",
         "Hiding the text of the latest revision of an open proposal also declines the proposal, because a proposal no one can read cannot be reviewed.",
     ),
+    plural_msg(
+        "moderate.survives",
+        "The current page still contains {count} line this change added. Hiding the change does not hide it; propose an edit that removes it.",
+        "The current page still contains {count} lines this change added. Hiding the change does not hide them; propose an edit that removes them.",
+    ),
+    plural_msg(
+        "moderate.survives_at_least",
+        "The current page still contains at least {count} line this change added. Hiding the change does not hide it; propose an edit that removes it.",
+        "The current page still contains at least {count} lines this change added. Hiding the change does not hide them; propose an edit that removes them.",
+    ),
+    msg(
+        "moderate.later_change",
+        "A hiding covers this change. It does not cover text that a later change writes again.",
+    ),
     msg("moderate.back", "Back to the moderation log"),
     msg("moderate.problem_no_part", "Choose what to hide."),
     msg(

@@ -112,6 +112,7 @@ struct FormTpl<'a> {
     heading: String,
     intro: String,
     still_held: String,
+    later_change: Option<String>,
     problems: Vec<String>,
     item_line: String,
     in_force_heading: String,
@@ -124,6 +125,7 @@ struct FormTpl<'a> {
     hide_field: &'static str,
     tip_notice: Option<String>,
     tip_link: Option<LinkView>,
+    survives: Option<String>,
     declines: Option<String>,
     action: String,
     item_fields: Vec<(&'static str, String)>,
@@ -254,6 +256,9 @@ fn form_page(
         heading: t.get(Key::ModerateHeading),
         intro: t.get(Key::ModerateIntro),
         still_held: t.get(Key::ModerateStillHeld),
+        // What a hide of a change covers (H-5): this change, not text that a later change writes again.
+        later_change: matches!(item, Item::PageRevision { .. })
+            .then(|| t.get(Key::ModerateLaterChange)),
         problems,
         item_line: item_line(t, item),
         in_force_heading: t.get(Key::ModerateInForceHeading),
@@ -273,6 +278,15 @@ fn form_page(
         hide_field: fields::HIDE,
         tip_notice,
         tip_link,
+        survives: preview.survives.map(|s| {
+            t.msg(if s.at_least {
+                Key::ModerateSurvivesAtLeast
+            } else {
+                Key::ModerateSurvives
+            })
+            .n(s.lines as u64)
+            .text()
+        }),
         declines: preview.declines.then(|| t.get(Key::ModerateDeclines)),
         action: paths::form(slug),
         item_fields: item_fields(item),

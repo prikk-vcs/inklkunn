@@ -16,6 +16,7 @@ mod gate;
 mod removed;
 mod surfaces;
 mod texts;
+mod tip;
 
 use axum::http::StatusCode;
 use common::{

@@ -27,7 +27,7 @@ pub use reader::{
 };
 pub use service::{
     HideMade, Item, LogRow, MAX_NOTE_CHARS, MAX_REVEALED_FILES, ModerationDecline, ModerationError,
-    ModerationService, Preview, Revealed, RevealedFile, UnhideMade,
+    ModerationService, Preview, Revealed, RevealedFile, Survives, UnhideMade,
 };
 
 #[cfg(test)]
