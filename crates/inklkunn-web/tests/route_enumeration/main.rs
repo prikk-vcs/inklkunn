@@ -111,8 +111,11 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
             // A comment in a claim's own discussion is made with the action a comment on a proposal is (RFC 005 part 2
             // D-11; handoff 005 K-T10).
             let comments_on_a_claim = entry.path == "/{slug}/-/claim/{id}/discuss";
-            // Putting a temporary protection in place is the `moderate` rung's (RFC 006 D-7; handoff G-T3).
-            let moderates = entry.path == "/{slug}/-/protect";
+            // Putting a temporary protection in place (RFC 006 D-7; handoff G-T3) and the forms that change a role or restrict
+            // a person (D-6, D-7; handoff G-T2) carry the action the core authorizes them with: `moderate` (an admin's change
+            // of a role is `admin`, decided in the core). The people page itself reads.
+            let moderates =
+                entry.path == "/{slug}/-/protect" || entry.path.starts_with("/{slug}/-/people/");
             let expected = if moderates {
                 vec![Action::Moderate]
             } else if creates_a_view {

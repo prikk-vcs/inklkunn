@@ -182,7 +182,18 @@ pub(super) fn prepare(
                 .authorize(&req.principal, Action::Propose, &resource)
                 .is_allowed()
             {
-                return Err(Problem::new(crate::api::problem::Code::Forbidden));
+                return Err(
+                    match req.services.authorizer.restriction_refusal(
+                        &req.principal,
+                        Action::Propose,
+                        &resource,
+                    ) {
+                        Some(notice) => {
+                            crate::api::write::refuse::restricted_problem(req.t, &notice)
+                        }
+                        None => Problem::new(crate::api::problem::Code::Forbidden),
+                    },
+                );
             }
             Ok(())
         };

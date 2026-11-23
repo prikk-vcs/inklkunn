@@ -1393,6 +1393,7 @@ fn an_invited_person_signs_in_proposes_is_reviewed_and_accepted_and_the_pages_sa
 
 mod api;
 mod governance;
+mod people;
 
 mod knowledge;
 mod upgrade;

@@ -1020,7 +1020,7 @@ pub(crate) async fn curate_form(
             return response;
         }
         if !ctx.may_wiki(Action::Propose) {
-            return refused(page, &ctx, &ProposalError::NotAllowed, Vec::new());
+            return refused(page, &ctx, &ctx.refusal_wiki(Action::Propose), Vec::new());
         }
         let Ok(full_view) = view_of(params.get(fields::VIEW).map(String::as_str)) else {
             return generic_not_found(page);
@@ -1105,7 +1105,7 @@ fn post(page: &Page, ctx: &Ctx, fields: &HashMap<String, String>) -> Response {
         );
     };
     if !ctx.may_wiki(Action::Propose) {
-        return refused(page, ctx, &ProposalError::NotAllowed, Vec::new());
+        return refused(page, ctx, &ctx.refusal_wiki(Action::Propose), Vec::new());
     }
     let Ok(full_view) = view_of(sub.view.as_deref()) else {
         return generic_not_found(page);

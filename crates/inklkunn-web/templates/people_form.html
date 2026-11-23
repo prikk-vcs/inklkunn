@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}<p>{{ intro }}</p>
+<form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}
+{% if let Some(person) = person %}<p>{{ person.name }}</p>
+<input type="hidden" name="{{ who_field }}" value="{{ person.id }}">
+{% else %}<div class="field">
+<label for="people-who">{{ who_label }}</label>
+<input id="people-who" name="{{ who_field }}" type="text" value="{{ who }}" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="people-who-hint">
+<p id="people-who-hint" class="note">{{ who_hint }}</p>
+</div>
+{% endif %}{% if let Some(roles) = roles %}<fieldset>
+<legend>{{ roles.legend }}</legend>
+<p class="note">{{ roles.note }}</p>
+{% for o in roles.options %}<p><input id="people-role-{{ o.value }}" type="radio" name="{{ role_field }}" value="{{ o.value }}"{% if o.checked %} checked{% endif %}{% if o.note.is_some() %} aria-describedby="people-role-{{ o.value }}-note"{% endif %}> <label for="people-role-{{ o.value }}">{{ o.label }}</label></p>
+{% if let Some(note) = o.note %}<p id="people-role-{{ o.value }}-note" class="note">{{ note }}</p>
+{% endif %}{% endfor %}</fieldset>
+{% endif %}{% if let Some(days) = days %}<div class="field">
+<label for="people-days">{{ days_label }}</label>
+<input id="people-days" name="{{ days_field }}" type="text" inputmode="numeric" value="{{ days }}" maxlength="5" autocomplete="off" aria-describedby="people-days-hint">
+<p id="people-days-hint" class="note">{{ days_hint }}</p>
+</div>
+{% endif %}<div class="field">
+<label for="people-reason">{{ reason_label }}</label>
+<input id="people-reason" name="{{ reason_field }}" type="text" value="{{ reason }}" aria-describedby="people-reason-hint">
+<p id="people-reason-hint" class="note">{{ reason_hint }}</p>
+</div>
+<p class="buttons"><button type="submit">{{ submit }}</button></p>
+</form>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

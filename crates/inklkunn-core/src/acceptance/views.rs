@@ -35,7 +35,7 @@ use inklkunn_store::{
 
 use super::shared::{self, Blocked, TipError};
 use super::{ProposalAcceptor, words};
-use crate::authorize::{Action, Principal, Resource};
+use crate::authorize::{Action, Principal, Resource, RestrictionNotice};
 use crate::lease::{Busy, LeaseError, Purpose};
 use crate::views::{self, MAX_VIEWS, NameFault};
 
@@ -57,6 +57,9 @@ pub struct ViewCreated {
 pub enum ViewFailure {
     /// *Not allowed*. Nothing was done.
     NotAllowed,
+    /// **The person is restricted** in this wiki, and without the restriction they could have created a view (RFC 006 D-7):
+    /// the reason and the end. Nothing was done.
+    Restricted(RestrictionNotice),
     /// This server's records do not keep a view's creation (its store cannot hold the act the signer is bound
     /// to), so it does not take the first step. Nothing was done.
     NotKept,
@@ -102,6 +105,9 @@ impl std::fmt::Display for ViewFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ViewFailure::NotAllowed => write!(f, "not allowed"),
+            ViewFailure::Restricted(notice) => {
+                write!(f, "restricted until {}: {}", notice.until, notice.reason)
+            }
             ViewFailure::NotKept => write!(f, "this server keeps no record of a view's creation"),
             ViewFailure::InvalidName(why) => write!(f, "the name is not a view's: {why:?}"),
             ViewFailure::NoSuchSource => write!(f, "the view to fork from is not an open view"),
@@ -167,7 +173,12 @@ impl ProposalAcceptor {
             {
                 account.clone()
             }
-            _ => return Err(ViewFailure::NotAllowed),
+            _ => {
+                return Err(p
+                    .proposals
+                    .restriction_in(principal, Action::CreateView, &resource)
+                    .map_or(ViewFailure::NotAllowed, ViewFailure::Restricted));
+            }
         };
         if !p.acts.keeps_view_acts() {
             return Err(ViewFailure::NotKept);

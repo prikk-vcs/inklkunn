@@ -13,8 +13,8 @@ use axum::http::HeaderMap;
 use inklkunn_core::proposal::ProposalService;
 use inklkunn_core::views::ViewKind;
 use inklkunn_core::{
-    AcceptFailure, Accepted, Authorizer, Inbox, Principal, ProposalAcceptor, ReadService, Verifier,
-    ViewCreated, ViewFailure,
+    AcceptFailure, Accepted, Authorizer, Inbox, PeopleService, Principal, ProposalAcceptor,
+    ReadService, Verifier, ViewCreated, ViewFailure,
 };
 use inklkunn_store::{AcceptanceStore, AccountStore, ActStore, ProposalId, WikiRecord, WikiStore};
 
@@ -199,6 +199,8 @@ pub struct Services {
     pub proposals: Arc<ProposalService>,
     /// The accounts, to name the people a proposal's page mentions.
     pub accounts: Arc<dyn AccountStore>,
+    /// Who holds which rung, and who is restricted (RFC 006 D-6, D-7): the people page and its acts, which are web-only.
+    pub people: Arc<PeopleService>,
     /// The acceptance records, to link an accepted proposal to its change.
     pub acceptances: Arc<dyn AcceptanceStore>,
     /// The overlaps an acceptance found, kept on the proposal: shown where the proposal needs a revision (D-5).

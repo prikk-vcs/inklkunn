@@ -48,6 +48,8 @@ pub enum ViewOutcome {
     SigningNotConfigured,
     /// *Not allowed.*
     NotAllowed,
+    /// *Not allowed*, because the person is restricted in this wiki (RFC 006 D-7): the reason and the end.
+    Restricted(inklkunn_core::RestrictionNotice),
     /// *The wiki is busy.*
     Busy,
     /// *The wiki needs recovery.*
@@ -86,6 +88,11 @@ pub fn render_view_outcome(page: &Page, wiki: &WikiRecord, outcome: &ViewOutcome
             StatusCode::FORBIDDEN,
             Key::OutcomeNotAllowed,
             vec![t.get(Key::ViewsNewNotAllowed)],
+        ),
+        ViewOutcome::Restricted(notice) => (
+            StatusCode::FORBIDDEN,
+            Key::OutcomeNotAllowed,
+            crate::people::sentences::restriction_refusal(t, notice),
         ),
         ViewOutcome::Busy => (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -282,6 +289,16 @@ fn may_create(ctx: &Ctx) -> bool {
     )
 }
 
+/// What a person who may not create views is told: the restriction, with its reason and its end, when it is the reason.
+fn not_allowed(ctx: &Ctx) -> ViewOutcome {
+    match ctx.refusal_wiki(Action::CreateView) {
+        inklkunn_core::proposal::ProposalError::Restricted(notice) => {
+            ViewOutcome::Restricted(notice)
+        }
+        _ => ViewOutcome::NotAllowed,
+    }
+}
+
 /// The reason, if there is one, that this server cannot create a view at all, before anyone is asked anything.
 fn cannot(ctx: &Ctx) -> Option<ViewOutcome> {
     let Some(acceptor) = &ctx.services.acceptor else {
@@ -347,7 +364,7 @@ pub(crate) async fn new_form(
             return response;
         }
         if !may_create(&ctx) {
-            return render_view_outcome(page, &ctx.wiki, &ViewOutcome::NotAllowed);
+            return render_view_outcome(page, &ctx.wiki, &not_allowed(&ctx));
         }
         if let Some(outcome) = cannot(&ctx) {
             return render_view_outcome(page, &ctx.wiki, &outcome);
@@ -432,7 +449,7 @@ pub(crate) async fn new_post(
             return response;
         }
         if !may_create(&ctx) {
-            return render_view_outcome(page, &ctx.wiki, &ViewOutcome::NotAllowed);
+            return render_view_outcome(page, &ctx.wiki, &not_allowed(&ctx));
         }
         if let Some(outcome) = cannot(&ctx) {
             return render_view_outcome(page, &ctx.wiki, &outcome);
@@ -516,6 +533,7 @@ fn ended(
         }
         ViewFailure::NameTaken => again(Key::ViewsNewProblemTaken, StatusCode::CONFLICT),
         ViewFailure::NotAllowed => outcome(ViewOutcome::NotAllowed),
+        ViewFailure::Restricted(notice) => outcome(ViewOutcome::Restricted(notice.clone())),
         ViewFailure::NotKept => outcome(ViewOutcome::NotKept),
         ViewFailure::TooMany { bound } => outcome(ViewOutcome::TooMany { bound: *bound }),
         ViewFailure::Busy(_) => outcome(ViewOutcome::Busy),

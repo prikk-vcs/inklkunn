@@ -30,7 +30,7 @@ use inklkunn_store::{
     RevisionContent, RevisionRecord, Role, RoleStore, StoreError, Visibility, WikiRecord,
 };
 
-use crate::authorize::{Action, Authorizer, Principal, Resource, Standing};
+use crate::authorize::{Action, Authorizer, Principal, Resource, RestrictionNotice, Standing};
 use crate::governance::{
     ApprovalsWarning, GovernanceFile, ReadFault, Rules, approvals_warning, is_below_governance,
     is_governance_path, mixes_rules_with_other_paths, only_governance_files,
@@ -312,6 +312,10 @@ pub enum ProposalError {
     /// model C-3d): the refusal names the file and the line. Said only to someone who may read the wiki; anyone else is
     /// told *not allowed*, as they are about a wiki they may not see.
     RulesUnreadable(ReadFault),
+    /// **The person is restricted** in this wiki, and without the restriction they could have done this (RFC 006 D-7; threat
+    /// model C-3g): the reason and the end. Said only to the restricted person, whose own restriction it is; anyone else is
+    /// told *not allowed*.
+    Restricted(RestrictionNotice),
     /// There is no such proposal in the wiki, or the principal may not see it (a draft is its author's alone).
     NotFound,
     /// The act is not one the proposal's state allows ([`machine::TRANSITIONS`]).
@@ -361,6 +365,9 @@ impl std::fmt::Display for ProposalError {
             ProposalError::NotAllowed => write!(f, "not allowed"),
             ProposalError::RulesUnreadable(fault) => {
                 write!(f, "the rules of this wiki cannot be read: {fault}")
+            }
+            ProposalError::Restricted(notice) => {
+                write!(f, "restricted until {}: {}", notice.until, notice.reason)
             }
             ProposalError::NotFound => write!(f, "no such proposal"),
             ProposalError::NotInThisState { op, state } => {
@@ -729,6 +736,18 @@ impl ProposalService {
             .is_allowed()
     }
 
+    /// The restriction that is the reason `principal` may not do `action` to `resource`, when it is (RFC 006 D-7): for the
+    /// acts of the acceptance path that are refused outside [`ProposalService::allow`] (a view's creation).
+    pub(crate) fn restriction_in(
+        &self,
+        principal: &Principal,
+        action: Action,
+        resource: &Resource,
+    ) -> Option<RestrictionNotice> {
+        self.authorizer
+            .restriction_refusal(principal, action, resource)
+    }
+
     fn allow(&self, principal: &Principal, action: Action, resource: &Resource) -> Result<()> {
         if self
             .authorizer
@@ -742,7 +761,14 @@ impl ProposalService {
             let refusal = (action != Action::Read)
                 .then(|| self.authorizer.write_refusal(principal, resource.wiki()))
                 .flatten();
-            Err(refusal.map_or(ProposalError::NotAllowed, ProposalError::RulesUnreadable))
+            if let Some(fault) = refusal {
+                return Err(ProposalError::RulesUnreadable(fault));
+            }
+            // A write refused because the person is restricted says so, with the reason and the end, to them alone.
+            Err(self
+                .authorizer
+                .restriction_refusal(principal, action, resource)
+                .map_or(ProposalError::NotAllowed, ProposalError::Restricted))
         }
     }
 

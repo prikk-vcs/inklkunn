@@ -124,11 +124,13 @@ T6, RFC 004) take the word from here and do not choose their own.
 | A change recorded under the wiki service's signature, as the subject of a sentence | is signed into the history | 署名されて履歴に記録 | yes | The change does not sign: 署名されて履歴に記録されます; never 署名して… for a change | Named by the architect's final check (M60) |
 | Looking after what others wrote: the role that may do it, and the act | moderate | モデレーション | yes | The usual loanword; RFC 006 gives a role the act, and the rules of a wiki set which role. Said only of the role in the rules, never of a person's standing | Drafted · ja: loanword; reviewed by the owner with the messages of the release |
 | A page, or the pages below a title, that asks more of whoever accepts a change to it | protection | 保護 | yes | Said of the page and what it asks, never of a person: what a person cannot do for a time is another word. *By this wiki's rules* is このウィキのルールによる保護 and a temporary one is 一時的な保護 | Drafted · ja: reviewed by the owner with the messages of the release (RFC 006 D-7) |
-| The lowest role of a wiki: it may read and nothing else | observer | オブザーバー | yes | The usual loanword, beside レビュアー and メンテナー | Drafted · ja: loanword; reviewed by the owner with the messages of the release (RFC 006 D-2) |
-| The role that may comment | questioner | 質問者 | yes | The one who asks: the role comments and does not propose | Drafted · ja: reviewed by the owner with the messages of the release (RFC 006 D-2) |
-| The role that may propose | contributor | コントリビューター | yes | The usual loanword | Drafted · ja: loanword; reviewed by the owner with the messages of the release (RFC 006 D-2) |
-| The role that may accept | maintainer | メンテナー | yes | Beside レビュアー and 管理者; the role of a wiki, not a person who looks after a repository | Drafted · ja: loanword; reviewed by the owner with the messages of the release (RFC 006 D-2) |
-| The highest role of a wiki | admin | 管理者 | yes | Always said as a role of a wiki (…の役割); the person who runs the server is このサーバーの管理者, and a sentence that could mean either says このウィキの管理者 | Drafted · ja: reviewed by the owner with the messages of the release (RFC 006 D-2) |
+| What a person may do in one wiki, as a rung of the ladder | role | 役割 | yes | RFC 006's *rung* is the code's word; a reader is told *role*, never *rung*, *level* or *rank*, and a role is said with what gives it (a grant, or what the wiki gives everyone who signs in) | Drafted · ja: reviewed by the owner with the messages of the release |
+| The role that reads, and follows what happens | observer | 閲覧者 | yes | The lowest role; a restriction holds a person to it | Drafted · ja: reviewed by the owner with the messages of the release |
+| The role that asks and comments | questioner | 質問者 | yes | The second role | Drafted · ja: reviewed by the owner with the messages of the release |
+| The role that proposes changes | contributor | コントリビューター | yes | The loanword, so that it stays apart from 投稿者, which says who posted a text (an anonymous contributor); both are *contributor* in English | Drafted · ja: loanword; reviewed by the owner with the messages of the release |
+| The role that accepts proposals and moderates | maintainer | メンテナー | yes | Beside レビュアー; already the word of the pages that say who accepts | Drafted · ja: loanword; reviewed by the owner with the messages of the release |
+| The role that looks after the wiki | admin | 管理者 | yes | An admin of a wiki; the person who runs the server is a different person and is called *the person who runs this server* | Drafted · ja: reviewed by the owner with the messages of the release |
+| What holds a person to reading until a date, with a reason they are told | restriction | 制限 | yes | Said of a person (制限されている), never of a wiki (a wiki that only people who were granted a role can read is not *restricted* to a reader); an upper bound is 上限, so the two never meet | Drafted · ja: reviewed by the owner with the messages of the release |
 
 ## 2. Messages
 
@@ -1503,12 +1505,6 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `protection.requires_review` | what a protection asks: an approval first | "A change here is accepted only after someone other than the proposer has approved it." | "ここへの変更は、提案者以外の人が承認した後でなければ受け入れられません。" |
 | `protection.requires_rung` | what a protection asks: a role; `{role}` is the role | "A change here is accepted only by {role} or a higher role." | "ここへの変更を受け入れられるのは、{role} の役割か、それより上の役割の人だけです。" |
 | `protection.reason` | the reason of a protection, as its author wrote it; `{reason}` is the text | "Reason: {reason}" | "理由: {reason}" |
-| `rung.observer` | the name of the lowest role: it may read and nothing else | "observer" | "オブザーバー" |
-| `rung.questioner` | the name of the role that may comment | "questioner" | "質問者" |
-| `rung.contributor` | the name of the role that may propose | "contributor" | "コントリビューター" |
-| `rung.reviewer` | the name of the role that may review | "reviewer" | "レビュアー" |
-| `rung.maintainer` | the name of the role that may accept | "maintainer" | "メンテナー" |
-| `rung.admin` | the name of the highest role in a wiki | "admin" | "管理者" |
 | `outcome.protected` | the outcome of an acceptance held back by a protection of a page the change touches | "Not signed: a protection holds it" | "署名されませんでした: 保護により保留されています" |
 | `outcome_note.protected_rung` | under that outcome, when the protection asks a higher role; `{role}` is the role | "A protection on a page this change touches says it is accepted only by {role} or a higher role. Nothing was changed, and the proposal is still held for review." | "この変更が触れるページの保護により、受け入れられるのは {role} の役割か、それより上の役割の人だけです。何も変更しておらず、提案はレビュー待ちで保持されたままです。" |
 | `outcome_note.protected_review` | under that outcome, when the protection asks for an approval first | "A protection on a page this change touches asks first for an approval from someone other than the proposer. Nothing was changed, and the proposal is still held for review." | "この変更が触れるページの保護により、先に提案者以外の人の承認が必要です。何も変更しておらず、提案はレビュー待ちで保持されたままです。" |
@@ -1542,6 +1538,96 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `protect.not_kept` | the page when this server keeps no temporary protections | "This server does not keep temporary protections, so nothing was changed." | "このサーバーは一時的な保護を保存しないため、何も変更していません。" |
 | `protect.unavailable` | the page when the records could not be used | "The protection could not be recorded just now. Nothing was changed. Try again in a little while; if it keeps happening, tell the person who runs this server." | "保護を記録できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。" |
 | `protect.back` | the link back to the page that was being protected | "Back to the page" | "ページに戻る" |
+| `role.observer` | the name of the role that reads and follows what happens, wherever a role is named | "observer" | "閲覧者" |
+| `role.questioner` | the name of the role that asks and comments | "questioner" | "質問者" |
+| `role.contributor` | the name of the role that proposes changes | "contributor" | "コントリビューター" |
+| `role.reviewer` | the name of the role that reviews proposals and creates views | "reviewer" | "レビュアー" |
+| `role.maintainer` | the name of the role that accepts proposals and moderates | "maintainer" | "メンテナー" |
+| `role.admin` | the name of the role that looks after the wiki | "admin" | "管理者" |
+| `restriction.notice` | to a restricted person: on the page of every act the restriction refuses, on the people page and on the account page; the first of three sentences | "You are restricted in this wiki: you can read it, and you cannot comment, propose or review until the restriction ends." | "このウィキでは制限を受けています。読むことはできますが、制限が終わるまで、コメント、提案、レビューはできません。" |
+| `restriction.reason` | the second sentence: the reason the restricted person was given (also, to people who can restrict, beside each restricted person on the people page) | "The reason given: {reason}" | "示された理由: {reason}" |
+| `restriction.until` | the third sentence: when the restriction ends; from that moment it no longer applies | "The restriction ends on {date}." | "制限は {date} に終わります。" |
+| `restriction.nothing_changed` | after the three sentences, on the page of an act that a restriction refused | "Nothing was changed." | "何も変更していません。" |
+| `title.people` | the title of the people page | "People · {wiki} · {product}" | "人と役割 · {wiki} · {product}" |
+| `people.heading` | the heading of the people page | "People and roles" | "人と役割" |
+| `people.intro` | under the heading of the people page | "A role says what a person may do in this wiki. These are the roles, lowest first, and the people who hold each one." | "役割は、このウィキで人ができることを決めます。ここには、役割が低い順に、それぞれの役割を持つ人を示しています。" |
+| `people.roles_heading` | the heading over the list of roles | "Roles" | "役割" |
+| `people.entry_none` | on the people page of a wiki whose rules give no role to a person who signs in | "A person who signs in holds no role in this wiki until someone grants them one: they can read it, and nothing more." | "サインインした人は、だれかが役割を付与するまで、このウィキでの役割を持ちません。読むことはできますが、それ以上のことはできません。" |
+| `people.entry_given` | on the people page of a wiki whose rules give every person who signs in a role without a grant | "Every person who signs in holds the role {role} in this wiki without being granted it." | "サインインしたすべての人は、付与されなくても、このウィキで {role} の役割を持ちます。" |
+| `people.entry_none_restricted` | on the people page of a wiki that only people who were granted a role can read | "Only people who were granted a role in this wiki can read it or take part." | "このウィキの役割を付与された人だけが、読んだり参加したりできます。" |
+| `people.entry_no_effect` | on the people page of a wiki that only people who were granted a role can read, whose rules give a role to everyone who signs in: it has no effect there | "The rules of this wiki give every person who signs in the role {role}, but that has no effect here: only people who were granted a role in this wiki can read it or take part." | "このウィキのルールではサインインしたすべての人に {role} の役割が与えられますが、このウィキでは効力がありません。このウィキの役割を付与された人だけが、読んだり参加したりできます。" |
+| `people.promotion_note` | on the people page, after what everyone who signs in holds: nothing promotes a person by itself | "Nothing here promotes anyone by itself: people decide, and no count or score turns into a role." | "ここでは何も自動的に昇格しません。決めるのは人であり、件数や点数が役割になることはありません。" |
+| `people.names_note` | on the people page, to a visitor who is not signed in: who is named | "You are not signed in, so you see who holds the reviewer, maintainer and admin roles, and only how many people hold each of the others." | "サインインしていないため、レビュアー、メンテナー、管理者の役割を持つ人の名前は表示されますが、ほかの役割については人数だけが表示されます。" |
+| `people.you_heading` | the heading of the part of the people page that says the visitor's own role | "Your role" | "あなたの役割" |
+| `people.you_grant` | on the people page and the account page: the role a person holds because someone granted it | "You hold the role {role} in this wiki, because it was granted to you." | "あなたはこのウィキで {role} の役割を持っています。この役割は付与されたものです。" |
+| `people.you_entry` | on the people page and the account page: the role a person holds because the wiki gives it to everyone who signs in | "You hold the role {role} in this wiki, because the wiki gives it to everyone who signs in." | "あなたはこのウィキで {role} の役割を持っています。このウィキでは、サインインしたすべての人にこの役割が与えられます。" |
+| `people.you_none` | on the people page and the account page: a person who holds no role in the wiki | "You hold no role in this wiki: you can read it, and nothing more." | "あなたはこのウィキで役割を持っていません。読むことはできますが、それ以上のことはできません。" |
+| `people.grant_link` | on the people page, for a person who may give roles: the way to the form | "Set a person's role" | "人の役割を設定する" |
+| `people.restrict_link` | on the people page, for a person who may restrict: the way to the form | "Restrict a person" | "人を制限する" |
+| `people.promotion` | under a role on the people page and beside it on the form: what the rules of the wiki say it looks for before granting the role ({text} is the wiki's own sentence) | "What this wiki looks for before it grants this role: {text}" | "このウィキがこの役割を付与する前に見ること: {text}" |
+| `people.no_one` | under a role on the people page when no one holds it | "No one holds this role yet." | "この役割を持つ人はまだいません。" |
+| `people.holder_count` | under a role on the people page, to a visitor who is not signed in: only how many hold it (counted by the number) | "{count} person holds this role." / "{count} people hold this role." | "この役割を持つ人は {count} 人です。" |
+| `people.is_you` | beside a person's name on the people page when it is the visitor | "{person} (you)" | "{person}（あなた）" |
+| `people.restricted_mark` | beside a person's name on the people page, to people who may restrict: the person is restricted | "{person}, restricted until {date}" | "{person}、{date} まで制限中" |
+| `people.change_link_of` | beside a person on the people page: the way to the form that sets their role | "Set the role of {person}" | "{person} の役割を設定する" |
+| `people.restrict_link_of` | beside a person on the people page: the way to the form that restricts them | "Restrict {person}" | "{person} を制限する" |
+| `people.renew_link_of` | beside a restricted person on the people page: the way to the form that renews the restriction | "Renew the restriction of {person}" | "{person} の制限を更新する" |
+| `people.lift_link_of` | beside a restricted person on the people page: the way to the form that lifts the restriction | "Lift the restriction of {person}" | "{person} の制限を解除する" |
+| `people.restricted_heading` | the heading of the list of restricted people, on the people page, to people who may restrict | "Restricted people" | "制限されている人" |
+| `people.restricted_intro` | under that heading | "These people can read this wiki and cannot comment, propose or review until the date shown. Only people who can restrict, and the person restricted, see a restriction." | "ここに挙げた人は、示された日まで、このウィキを読むことはできますが、コメント、提案、レビューはできません。制限を見られるのは、制限する権限を持つ人と、制限された本人だけです。" |
+| `people.restricted_none` | in that list when no one is restricted | "No one is restricted." | "制限されている人はいません。" |
+| `people.restricted_row` | one restricted person in that list, with the reason beside it | "{person}, until {date}." | "{person}、{date} まで。" |
+| `people.done_granted` | on the people page after a role was set | "The role was set." | "役割を設定しました。" |
+| `people.done_revoked` | on the people page after a role was taken away | "The role was taken away." | "役割を取り消しました。" |
+| `people.done_restricted` | on the people page after a person was restricted | "The person was restricted." | "制限しました。" |
+| `people.done_renewed` | on the people page after a restriction was renewed | "The restriction was renewed." | "制限を更新しました。" |
+| `people.done_lifted` | on the people page after a restriction was lifted | "The restriction was lifted." | "制限を解除しました。" |
+| `people.back` | the way back from a form of the people pages | "Back to the people of this wiki" | "このウィキの人と役割に戻る" |
+| `about.people_link` | on the about page: the way to the people page | "People and roles of this wiki" | "このウィキの人と役割" |
+| `title.people_grant` | the title of the form that sets a role | "Set a role · {wiki} · {product}" | "役割を設定 · {wiki} · {product}" |
+| `title.people_restrict` | the title of the form that restricts a person | "Restrict a person · {wiki} · {product}" | "人を制限 · {wiki} · {product}" |
+| `title.people_renew` | the title of the form that renews a restriction | "Renew a restriction · {wiki} · {product}" | "制限を更新 · {wiki} · {product}" |
+| `title.people_lift` | the title of the form that lifts a restriction | "Lift a restriction · {wiki} · {product}" | "制限を解除 · {wiki} · {product}" |
+| `people_grant.heading` | the heading of the form that sets a role | "Set a role" | "役割を設定する" |
+| `people_grant.intro` | under that heading | "Give a person a role in this wiki, switch the role they hold to another, or take it away. Your name and your role are recorded with what you do." | "このウィキでの人の役割を付与し、別の役割に切り替え、または取り消します。この操作には、あなたの名前と役割が記録されます。" |
+| `people_grant.submit` | the button of the form that sets a role | "Set the role" | "役割を設定する" |
+| `people_grant.role_legend` | the legend of the roles to choose from | "The role" | "役割" |
+| `people_grant.reach` | under that legend: the highest role the person may give | "You can give roles up to {role}." | "あなたが付与できる役割は、{role} までです。" |
+| `people_grant.none` | the last choice of the roles: taking the person's role away | "No role (take the role away)" | "役割なし（役割を取り消す）" |
+| `people_restrict.heading` | the heading of the form that restricts a person | "Restrict a person" | "人を制限する" |
+| `people_restrict.intro` | under that heading | "A restricted person can read this wiki and cannot comment, propose or review until the restriction ends. They are told the reason and the end date." | "制限された人は、制限が終わるまで、このウィキを読むことはできますが、コメント、提案、レビューはできません。理由と終了日は本人に伝えられます。" |
+| `people_restrict.submit` | the button of the form that restricts a person | "Restrict" | "制限する" |
+| `people_renew.heading` | the heading of the form that renews a restriction | "Renew a restriction" | "制限を更新する" |
+| `people_renew.intro` | under that heading | "Renewing sets a new reason and a new end date, counted from now." | "更新すると、新しい理由と、今から数えた新しい終了日が設定されます。" |
+| `people_renew.submit` | the button of the form that renews a restriction | "Renew the restriction" | "制限を更新する" |
+| `people_lift.heading` | the heading of the form that lifts a restriction | "Lift a restriction" | "制限を解除する" |
+| `people_lift.intro` | under that heading | "Lifting a restriction ends it now. The person can comment, propose and review again." | "制限を解除すると、制限はすぐに終わります。その人は、またコメント、提案、レビューができるようになります。" |
+| `people_lift.submit` | the button of the form that lifts a restriction | "Lift the restriction" | "制限を解除する" |
+| `people.who_label` | the label of the field that names the person, on the forms of the people pages | "The person" | "対象の人" |
+| `people.who_hint` | under that field | "Their sign-in name or their account id." | "サインイン名か、アカウント ID。" |
+| `people.days_label` | the label of the number of days a restriction lasts | "For how many days" | "何日間" |
+| `people.days_hint` | under that field: the longest a restriction may last | "From 1 to {limit} days: the most the person who runs this server allows." | "1 日から {limit} 日まで。このサーバーの管理者が許す最長の期間です。" |
+| `people.reason_label` | the label of the optional reason | "Why (optional)" | "理由（任意）" |
+| `people.reason_label_required` | the label of the reason of a restriction, which the person is told | "The reason the person is told" | "本人に伝える理由" |
+| `people.reason_hint` | under the reason | "One line, at most {limit} characters." | "1 行で、{limit} 文字までです。" |
+| `people.problem_role_missing` | a problem of the form that sets a role: none was chosen | "Choose a role, or choose to take the role away." | "役割を選ぶか、役割を取り消すことを選んでください。" |
+| `people.problem_no_account` | a problem of the forms of the people pages: no account has that sign-in name or id | "There is no account with that sign-in name or id." | "そのサインイン名または ID のアカウントはありません。" |
+| `people.problem_own_role` | a problem of the form that sets a role: it is the person's own | "Nobody sets their own role." | "自分の役割は、自分では設定できません。" |
+| `people.problem_nothing_changes` | a problem of the form that sets a role: the person already holds it | "This person already holds that role." | "その人はすでにその役割を持っています。" |
+| `people.problem_above_reach` | a problem of the form that sets a role, for a maintainer: the role they hold or the role they would give is above what the rules let a maintainer give | "The rules of this wiki let a maintainer give and take away roles only up to {role}, and this goes above that." | "このウィキのルールでは、メンテナーが付与したり取り消したりできる役割は {role} までです。この操作はそれを超えています。" |
+| `people.problem_last_admin` | a problem of the form that sets a role: the person is the last admin who can sign in | "This is the last admin of this wiki who can sign in, so their role is not taken away or lowered. Give the admin role to someone else first." | "この人は、サインインできるこのウィキ最後の管理者です。役割を取り消したり下げたりはできません。先にほかの人に管理者の役割を付与してください。" |
+| `people.problem_own_restriction` | a problem of the forms that restrict, renew or lift: it is the person's own | "Nobody acts on their own restriction." | "自分自身の制限は操作できません。" |
+| `people.problem_admin` | a problem of the form that restricts: the person is an admin | "Nobody restricts an admin of a wiki." | "ウィキの管理者は制限できません。" |
+| `people.problem_not_below` | a problem of the forms that restrict, renew or lift: the person holds a role that is not below the doer's | "You can restrict only a person whose role is below your own." | "制限できるのは、自分より下の役割の人だけです。" |
+| `people.problem_not_restricted` | a problem of the forms that renew or lift: the person is not restricted | "This person is not restricted." | "この人は制限されていません。" |
+| `people.problem_already_restricted` | a problem of the form that restricts: the person is restricted already | "This person is restricted until {date} already. Renew the restriction to change it." | "この人は、すでに {date} まで制限されています。変更するには、制限を更新してください。" |
+| `people.problem_days` | a problem of the forms that restrict or renew: the number of days is not from 1 to the operator's limit | "A restriction lasts from 1 day to {limit} days." | "制限の期間は、1 日から {limit} 日までです。" |
+| `people.problem_reason_missing` | a problem of the forms that restrict or renew: no reason | "Write the reason: the person is told it." | "理由を書いてください。本人に伝えられます。" |
+| `people.problem_reason_long` | a problem of the forms of the people pages: the reason is too long | "The reason is longer than {limit} characters." | "理由が {limit} 文字を超えています。" |
+| `people.problem_reason_lines` | a problem of the forms of the people pages: the reason is not one line | "Write the reason on one line." | "理由は 1 行で書いてください。" |
+| `account.wikis_heading` | the heading of the part of the account page that says the person's role in each wiki | "Your role in each wiki" | "各ウィキでのあなたの役割" |
+| `account.wikis_intro` | under that heading | "The role you hold in each wiki you can read, and what gives it to you. A restriction, if there is one, is told here with its reason and its end." | "読めるウィキごとに、あなたの役割と、その役割の理由を示します。制限がある場合は、理由と終了日もここに示します。" |
+| `account.wikis_none` | in that part when there is no wiki the person can read | "There is no wiki you can read here yet." | "いま読めるウィキはありません。" |
 
 ## 3. Words the interface does not say
 

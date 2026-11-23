@@ -531,3 +531,21 @@ exact :: protections.rs :: reason :: a placeholder name of a catalog message
 exact :: form.rs :: wiki :: a placeholder name of a catalog message
 exact :: form.rs :: limit :: a placeholder name of a catalog message
 exact :: form.rs :: a protection could not be recorded: {why} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+# --- the people of a wiki: roles, grants and restrictions (RFC 006 D-6, D-7; handoff G-T2)
+exact :: roster.rs :: role :: a placeholder name of a catalog message
+exact :: roster.rs :: person :: a placeholder name of a catalog message
+exact :: roster.rs :: date :: a placeholder name of a catalog message
+exact :: roster.rs :: text :: a placeholder name of a catalog message
+exact :: roster.rs :: reason :: a placeholder name of a catalog message
+exact :: roster.rs :: wiki :: a placeholder name of a catalog message
+exact :: roster.rs :: the people page could not be drawn: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: acts.rs :: role :: a placeholder name of a catalog message
+exact :: acts.rs :: text :: a placeholder name of a catalog message
+exact :: acts.rs :: wiki :: a placeholder name of a catalog message
+exact :: acts.rs :: limit :: a placeholder name of a catalog message
+exact :: acts.rs :: people could not be changed now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: sentences.rs :: reason :: a placeholder name of a catalog message
+exact :: sentences.rs :: date :: a placeholder name of a catalog message
+exact :: sentences.rs :: role :: a placeholder name of a catalog message
+exact :: sentences.rs :: limit :: a placeholder name of a catalog message
+exact :: account.rs :: what an account holds in wiki `{}` could not be read now: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it

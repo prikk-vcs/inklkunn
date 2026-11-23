@@ -193,7 +193,11 @@ fn assemble_signer(parts: Parts) -> Assembled {
     let store = &parts.store;
     // The notifier asks whom a change concerns, and by the same rules the requests are decided by.
     let authorizer = Authorizer::new(
-        Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(parts.read.clone())),
+        Arc::new(
+            StoreAuthz::new(store.clone(), store.clone())
+                .with_rules(parts.read.clone())
+                .with_restrictions(store.clone()),
+        ),
         store.clone() as Arc<dyn AuditSink>,
     );
     let notifier = Arc::new(Notifier::new(

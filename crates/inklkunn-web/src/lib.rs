@@ -37,6 +37,7 @@ mod knowledge;
 pub mod lang;
 pub mod origin;
 pub mod pages;
+mod people;
 mod present;
 mod probe;
 pub mod proposals;

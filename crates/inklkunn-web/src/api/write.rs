@@ -120,6 +120,7 @@ where
     let head = headers.clone();
     let admitted = blocking(move || {
         admit(
+            t,
             &services,
             &head,
             &decided,
@@ -161,6 +162,7 @@ struct Admitted {
 
 /// Steps 1 to 4 of the order above.
 fn admit(
+    t: crate::catalog::T,
     services: &Arc<Services>,
     headers: &HeaderMap,
     decided: &Decided,
@@ -209,7 +211,16 @@ fn admit(
         .authorize(&principal, action, &resource)
         .is_allowed()
     {
-        return Err(Problem::new(Code::Forbidden));
+        // A restricted account is told so, with the reason and the end; every other refusal is the plain `forbidden`.
+        return Err(
+            match services
+                .authorizer
+                .restriction_refusal(&principal, action, &resource)
+            {
+                Some(notice) => refuse::restricted_problem(t, &notice),
+                None => Problem::new(Code::Forbidden),
+            },
+        );
     }
     Ok(Admitted {
         services: services.clone(),

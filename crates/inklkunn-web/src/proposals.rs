@@ -27,6 +27,7 @@ use std::sync::Arc;
 
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
+use inklkunn_core::proposal::ProposalError;
 use inklkunn_core::{Action, Principal, Resource};
 use inklkunn_store::{AccountId, ProposalId, WikiRecord};
 
@@ -112,6 +113,25 @@ impl Ctx {
             .authorizer
             .authorize(&self.principal, action, resource)
             .is_allowed()
+    }
+
+    /// **Why the principal may not** do `action` to `resource`, as the refusal a page says: *restricted*, with the reason and
+    /// the end, when a restriction is the reason (RFC 006 D-7; told to the restricted person alone), else *not allowed*.
+    pub(crate) fn refusal(&self, action: Action, resource: &Resource) -> ProposalError {
+        self.services
+            .authorizer
+            .restriction_refusal(&self.principal, action, resource)
+            .map_or(ProposalError::NotAllowed, ProposalError::Restricted)
+    }
+
+    /// [`Ctx::refusal`] for the wiki as a whole.
+    pub(crate) fn refusal_wiki(&self, action: Action) -> ProposalError {
+        self.refusal(
+            action,
+            &Resource::Wiki {
+                wiki: self.wiki.id.clone(),
+            },
+        )
     }
 
     /// May the principal do `action` to the proposal?

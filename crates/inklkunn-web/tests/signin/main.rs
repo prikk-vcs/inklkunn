@@ -24,6 +24,7 @@ mod corrections;
 mod harness;
 mod identify;
 mod invitations;
+mod people;
 mod provider;
 mod provider_states;
 mod sign_in;

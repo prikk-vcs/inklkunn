@@ -159,6 +159,29 @@ fn a_cap_lowers_the_rung_after_entry_and_none_caps_nothing() {
 }
 
 #[test]
+fn an_admin_is_never_capped_so_that_the_wiki_can_always_change_its_rules_and_every_other_rung_is() {
+    // INV-14 and C-14h: nobody restricts an admin, and a restriction an account had before it became one does not hold it down.
+    for visibility in VISIBILITIES {
+        let mut s = snap(Some(visibility), Some(Role::Admin));
+        s.cap = Some(Role::Observer);
+        assert_eq!(
+            rung_of(s, &Rules::defaults()),
+            Some(Role::Admin),
+            "{visibility:?}"
+        );
+        for role in Role::ALL.into_iter().filter(|r| *r != Role::Admin) {
+            let mut s = snap(Some(visibility), Some(role));
+            s.cap = Some(Role::Observer);
+            assert_eq!(
+                rung_of(s, &Rules::defaults()),
+                Some(Role::Observer),
+                "{role:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn entry_lets_an_account_without_a_grant_do_what_the_rung_allows_in_a_public_or_internal_wiki_only()
 {
     let w = wikis();

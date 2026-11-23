@@ -22,8 +22,9 @@
 //! the two servers, the stylesheet's content-addressed name, a form's per-request token, the footer's version, and the
 //! sentences of the Japanese-preview notice that 0.3.0 printed and the owner's sign-off removed (the same `masked` as the
 //! 0.2.0 test). **One page differs, by one section**: *Why is this here?* now lists the sources the change that attached one
-//! created (0.4.0's M56), taken out by `undo_what_this_tree_adds`, which looks for exactly that section. No other path of the
-//! sample differs, and the stylesheet holds every line of 0.3.0's, in order, with two rules changed (the list of attached sources
+//! created (0.4.0's M56), taken out by `undo_what_this_tree_adds`, which looks for exactly that section; and **one line is added
+//! to the *About* page**, the way to the wiki's people (0.4.0's G-T2), taken out by `undo_the_people_link`, exactly, once and
+//! on that page only. No other path of the sample differs, and the stylesheet holds every line of 0.3.0's, in order, with two rules changed (the list of attached sources
 //! is set and breaks long lines as the page's other lists do).
 //!
 //! Needs prikk and the 0.3.0 binary. Without prikk the test prints `skipping: prikk not on PATH` (counted by
@@ -313,6 +314,7 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
             new_location.as_deref().map(|l| masked(l, new_ports)),
             "{path}: the Location differs"
         );
+        let new_html = &super::upgrade::undo_the_people_link(path, new_html);
         let (undone, touched) = undo_what_this_tree_adds(path, new_html);
         if touched {
             changed.push(path.as_str());

@@ -97,6 +97,8 @@ pub enum AcceptOutcome {
     Overlap,
     /// *Not allowed.*
     NotAllowed,
+    /// *Not allowed*, because the acceptor is restricted in this wiki (RFC 006 D-7): the reason and the end, told to them.
+    Restricted(inklkunn_core::RestrictionNotice),
     /// *The wiki is busy*, with how many acts are ahead and how many seconds to wait before asking again.
     Busy {
         /// The queue's depth: the acts ahead of this one.
@@ -174,6 +176,7 @@ pub(crate) fn outcome_of(
         Ok(Accepted::AlreadySigned { .. }) => AcceptOutcome::Signed,
         // A proposal that is not there is told like one the visitor may not accept: never a difference.
         Err(AcceptFailure::NotAllowed | AcceptFailure::NotFound) => AcceptOutcome::NotAllowed,
+        Err(AcceptFailure::Restricted(notice)) => AcceptOutcome::Restricted(notice),
         Err(AcceptFailure::Proposal(error)) => AcceptOutcome::Proposal(error),
         Err(AcceptFailure::Busy(busy)) => AcceptOutcome::Busy {
             waiting: busy.depth,
@@ -294,6 +297,11 @@ pub fn render_accept_outcome(
             StatusCode::FORBIDDEN,
             Key::OutcomeNotAllowed,
             vec![t.get(Key::OutcomeNoteNotAllowed)],
+        ),
+        AcceptOutcome::Restricted(notice) => (
+            StatusCode::FORBIDDEN,
+            Key::OutcomeNotAllowed,
+            crate::people::sentences::restriction_refusal(t, notice),
         ),
         AcceptOutcome::Busy { waiting, .. } => {
             let mut paragraphs = vec![t.get(Key::OutcomeNoteBusy)];
@@ -483,7 +491,16 @@ pub(crate) async fn accept(
             return refused(page, &ctx, &error, Vec::new());
         }
         let outcome = if !ctx.may_on(Action::Accept, &id) {
-            AcceptOutcome::NotAllowed
+            match ctx.refusal(
+                Action::Accept,
+                &inklkunn_core::Resource::Proposal {
+                    wiki: ctx.wiki.id.clone(),
+                    id: id.to_string(),
+                },
+            ) {
+                ProposalError::Restricted(notice) => AcceptOutcome::Restricted(notice),
+                _ => AcceptOutcome::NotAllowed,
+            }
         } else if ctx
             .services
             .acceptor

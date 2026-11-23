@@ -465,6 +465,45 @@ fn a_role_is_granted_and_taken_away_and_each_is_audited() {
 }
 
 #[test]
+fn the_operators_grant_and_revocation_are_recorded_as_decisions_with_no_one_acting_and_the_role_changes_with_them()
+ {
+    use inklkunn_store::GovernanceStore;
+    let (d, store, wiki_id) = world("decisions");
+    let alice = store_account(&d, &store, "alice");
+    let wiki = inklkunn_store::WikiId::parse(&wiki_id).unwrap();
+    assert_eq!(cli(&d, "grant alice reviewer garden", &[]).0, 0);
+    assert_eq!(cli(&d, "grant alice admin garden", &[]).0, 0);
+    // The same role again changes nothing, so records nothing, and is not an error.
+    assert_eq!(cli(&d, "grant alice admin garden", &[]).0, 0);
+    assert_eq!(cli(&d, "revoke-grant alice garden", &[]).0, 0);
+    // Taking away what is not held changes nothing and records nothing.
+    assert_eq!(cli(&d, "revoke-grant alice garden", &[]).0, 0);
+    let decisions = store.grant_decisions(&wiki, Some(&alice), 10).unwrap();
+    let steps: Vec<(Option<Role>, Option<Role>)> = decisions
+        .iter()
+        .rev()
+        .map(|d| (d.before, d.after))
+        .collect();
+    assert_eq!(
+        steps,
+        [
+            (None, Some(Role::Reviewer)),
+            (Some(Role::Reviewer), Some(Role::Admin)),
+            (Some(Role::Admin), None),
+        ]
+    );
+    for decision in &decisions {
+        assert_eq!(
+            decision.by, None,
+            "the operator acts outside the rules: no account, no rung"
+        );
+        assert_eq!(decision.policy_block, None);
+        assert_eq!(decision.reason, None);
+    }
+    assert_eq!(store.role(&alice, &wiki).unwrap(), None);
+}
+
+#[test]
 fn an_identity_is_linked_by_login_or_id_audited_and_one_identity_has_one_account() {
     let (d, store, _) = world("link");
     let alice = store_account(&d, &store, "alice");

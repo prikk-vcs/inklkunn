@@ -26,7 +26,8 @@
 //! which are this table (the test that holds it is acceptance criterion 1). With them:
 //!
 //! - **The rung an account holds** is the higher of its grant and the wiki's `entry`, **then capped by a restriction**
-//!   ([`Snapshot::cap`]; always `None` until grants and restrictions arrive with G-T2). **`entry` does not apply to a
+//!   ([`Snapshot::cap`]: the loader looks the account's restriction up, at the clock's time, for every write; **an admin is
+//!   never capped**, so that the wiki's admins can always change its rules, INV-14). **`entry` does not apply to a
 //!   `restricted` wiki**: its members are the accounts the operator granted a rung (visibility is the operator's, RFC 006
 //!   D-3). The lowest rung of each action is the policy's ([`Policy::minimum_role`](crate::governance::Policy)).
 //! - **A governance file that cannot be read** ([`Rules::fault`]) makes the wiki **refuse every write** (everything but
@@ -64,9 +65,13 @@ pub use protections::{ProtectError, Setting};
 use crate::governance::{GovernanceFile, ReadFault, Rules};
 use inklkunn_signer::message::SystemLabel;
 use inklkunn_store::{
-    AccountId, AuditEvent, AuditOutcome, AuditSink, Role, RoleStore, Scope, StoreError, Visibility,
-    WikiId, WikiStore,
+    AccountId, AuditEvent, AuditOutcome, AuditSink, GovernanceStore, RestrictionEvent, Role,
+    RoleStore, Scope, StoreError, Visibility, WikiId, WikiStore,
 };
+
+mod holding;
+
+pub use holding::{HeldBy, Holding, RestrictionNotice};
 
 /// The authority to say who a request is: to turn a verified credential into a [`Principal`]. **There is one
 /// per process.** The binary claims it once, when it builds the authenticator, and gives it to the
@@ -396,8 +401,9 @@ pub struct Snapshot {
     /// The role the account holds in the wiki **through a grant** (always `None` for a principal that is not an account).
     pub role: Option<Role>,
     /// The highest rung a restriction leaves the account (RFC 006 D-7: a restriction caps an account at observer), or
-    /// `None` when nothing caps it. **Always `None` until restrictions are recorded (G-T2)**: the hook is here so that the
-    /// rung is computed in one place, in the order the RFC gives (the higher of grant and `entry`, then capped).
+    /// `None` when nothing caps it. **Filled by the [`Authorizer`]'s own loader** from the restrictions in force at the
+    /// clock's time ([`AuthzSource::restriction`]), for a write by an account (a restriction never reduces reading), so that
+    /// the rung is computed in one place, in the order the RFC gives (the higher of grant and `entry`, then capped).
     pub cap: Option<Role>,
 }
 
@@ -405,16 +411,26 @@ pub struct Snapshot {
 /// restriction** (RFC 006 D-5). `None` is no rung at all (the account may read what the wiki's visibility lets it read, and
 /// nothing else). `entry` gives nothing in a `restricted` wiki: its members are the accounts the operator granted a rung.
 /// A wiki that is not there gives no rung.
+///
+/// **An admin is never capped** (RFC 006 INV-14: an admin of a wiki can always change its rules; D-7 and C-14h: nobody
+/// restricts an admin). A restriction is refused for an admin when it is set, and an account that was restricted and then
+/// became an admin is not held down by the restriction it had.
 pub fn rung_of(snapshot: Snapshot, rules: &Rules) -> Option<Role> {
     let visibility = snapshot.visibility?;
-    let entry = match visibility {
-        Visibility::Restricted => None,
-        Visibility::Public | Visibility::Internal => rules.policy().entry().rung(),
-    };
-    let held = snapshot.role.max(entry);
+    let held = snapshot.role.max(entry_rung(visibility, rules));
     match (held, snapshot.cap) {
+        (Some(Role::Admin), _) => held,
         (Some(held), Some(cap)) => Some(held.min(cap)),
         (held, _) => held,
+    }
+}
+
+/// The rung `entry` gives every signed-in account in a wiki of this visibility, or `None`: nothing in a `restricted` wiki,
+/// whose members are the accounts the operator granted a rung.
+pub fn entry_rung(visibility: Visibility, rules: &Rules) -> Option<Role> {
+    match visibility {
+        Visibility::Restricted => None,
+        Visibility::Public | Visibility::Internal => rules.policy().entry().rung(),
     }
 }
 
@@ -509,6 +525,19 @@ pub trait AuthzSource: Send + Sync {
     fn visibility(&self, wiki: &WikiId) -> Result<Option<Visibility>, SourceError>;
     /// The role the account holds in the wiki through a grant, if any.
     fn role(&self, account: &AccountId, wiki: &WikiId) -> Result<Option<Role>, SourceError>;
+    /// The restriction in force on the account in the wiki at `at` (RFC 006 D-7), the one that ends last, or `None`. **The
+    /// default answer is none**: a source that does not keep restrictions caps no one. (The service's own source,
+    /// [`StoreAuthz::with_restrictions`], reads them; a surface cannot make one.) An error is *could not be read now*, and the
+    /// decision it was for is **deny**.
+    fn restriction(
+        &self,
+        account: &AccountId,
+        wiki: &WikiId,
+        at: i64,
+    ) -> Result<Option<RestrictionEvent>, SourceError> {
+        let _ = (account, wiki, at);
+        Ok(None)
+    }
     /// The rules in force for the wiki: **its governance as read from the tip of its default view** (RFC 006 D-5). The
     /// default answer is the defaults, which are 0.3.0's rules: a source that does not read governance decides every wiki as
     /// a wiki with none. (The service's own source, [`StoreAuthz::with_rules`], reads it; a surface cannot make one.)
@@ -531,6 +560,7 @@ pub struct StoreAuthz {
     wikis: Arc<dyn WikiStore>,
     roles: Arc<dyn RoleStore>,
     rules: Option<Arc<dyn RulesSource>>,
+    restrictions: Option<Arc<dyn GovernanceStore>>,
 }
 
 impl std::fmt::Debug for StoreAuthz {
@@ -547,6 +577,7 @@ impl StoreAuthz {
             wikis,
             roles,
             rules: None,
+            restrictions: None,
         }
     }
 
@@ -554,6 +585,14 @@ impl StoreAuthz {
     #[must_use]
     pub fn with_rules(mut self, rules: Arc<dyn RulesSource>) -> Self {
         self.rules = Some(rules);
+        self
+    }
+
+    /// The same, reading each account's restriction from the records of governance (RFC 006 D-7). **Without it no one is
+    /// restricted**, which is every authorizer of a test that is not about restrictions.
+    #[must_use]
+    pub fn with_restrictions(mut self, restrictions: Arc<dyn GovernanceStore>) -> Self {
+        self.restrictions = Some(restrictions);
         self
     }
 }
@@ -573,6 +612,22 @@ impl AuthzSource for StoreAuthz {
 
     fn role(&self, account: &AccountId, wiki: &WikiId) -> Result<Option<Role>, SourceError> {
         self.roles.role(account, wiki).map_err(source_error)
+    }
+
+    fn restriction(
+        &self,
+        account: &AccountId,
+        wiki: &WikiId,
+        at: i64,
+    ) -> Result<Option<RestrictionEvent>, SourceError> {
+        match &self.restrictions {
+            Some(records) => Ok(records
+                .active_restrictions(wiki, account, at)
+                .map_err(source_error)?
+                .into_iter()
+                .next()),
+            None => Ok(None),
+        }
     }
 
     fn rules(&self, wiki: &WikiId) -> Result<Arc<Rules>, SourceError> {
@@ -605,6 +660,8 @@ impl std::fmt::Debug for Authorizer {
 struct Facts {
     snapshot: Snapshot,
     rules: Arc<Rules>,
+    /// The restriction that caps the account (the one that ends last), when one does.
+    restriction: Option<RestrictionEvent>,
 }
 
 impl Authorizer {
@@ -661,10 +718,18 @@ impl Authorizer {
             Principal::Account(a) => self.source.role(&a.id, wiki)?,
             Principal::Anonymous | Principal::System(_) => None,
         };
+        // A restriction caps the account's writes and never its reading, so a read is not asked about one. It is asked for
+        // every write by an account, whether or not the wiki exists, so that an absent wiki and a private one cost the same.
+        let restriction = match principal {
+            Principal::Account(a) if action != Action::Read => {
+                self.source.restriction(&a.id, wiki, (self.clock)())?
+            }
+            Principal::Account(_) | Principal::Anonymous | Principal::System(_) => None,
+        };
         let snapshot = Snapshot {
             visibility,
             role,
-            cap: None,
+            cap: restriction.as_ref().map(|_| Role::Observer),
         };
         let rules_matter = action != Action::Read
             && matches!(principal, Principal::Account(_))
@@ -677,7 +742,11 @@ impl Authorizer {
         } else {
             Arc::clone(&self.defaults)
         };
-        Ok(Facts { snapshot, rules })
+        Ok(Facts {
+            snapshot,
+            rules,
+            restriction,
+        })
     }
 
     /// The role `account` holds in `wiki`, for the service's own bookkeeping (which limit binds whom): nothing is

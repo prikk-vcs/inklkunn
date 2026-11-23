@@ -264,6 +264,8 @@ struct AboutTpl<'a> {
     view: String,
     views_href: String,
     views_label: String,
+    people_href: String,
+    people_label: String,
     badge: Rich,
     preview: bool,
 }
@@ -895,6 +897,8 @@ pub(crate) async fn about(
             .text(),
         views_href: crate::views::paths::list(wiki.slug.as_str()),
         views_label: page.get(Key::ViewsAllLink),
+        people_href: crate::people::paths::page(wiki.slug.as_str()),
+        people_label: page.get(Key::AboutPeopleLink),
         badge: badge(t, &wiki, false),
         preview: crate::catalog::languages()
             .iter()

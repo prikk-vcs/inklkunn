@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(text) = done %}<p class="note" role="status">{{ text }}</p>
+{% endif %}<p>{{ intro }}</p>
+<p>{{ entry }}</p>
+<p class="note">{{ promotion_note }}</p>
+{% if let Some(text) = names_note %}<p class="note">{{ text }}</p>
+{% endif %}{% if !you.is_empty() %}<section aria-labelledby="you">
+<h2 id="you">{{ you_heading }}</h2>
+{% for line in you %}<p>{{ line }}</p>
+{% endfor %}</section>
+{% endif %}{% if let Some(link) = grant %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% if let Some(link) = restrict %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}<section aria-labelledby="roles">
+<h2 id="roles">{{ roles_heading }}</h2>
+{% for role in roles %}<section id="role-{{ role.id }}" aria-labelledby="role-{{ role.id }}-name">
+<h3 id="role-{{ role.id }}-name">{{ role.label }}</h3>
+{% if let Some(text) = role.promotion %}<p class="note">{{ text }}</p>
+{% endif %}{% if let Some(text) = role.count %}<p>{{ text }}</p>
+{% endif %}{% if let Some(text) = role.none %}<p>{{ text }}</p>
+{% endif %}{% if !role.people.is_empty() %}<ul class="people-list">
+{% for person in role.people %}<li>{{ person.line }}{% for link in person.links %} <a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</li>
+{% endfor %}</ul>
+{% endif %}</section>
+{% endfor %}</section>
+{% if let Some(items) = restricted %}<section aria-labelledby="restricted">
+<h2 id="restricted">{{ restricted_heading }}</h2>
+<p>{{ restricted_intro }}</p>
+{% if items.is_empty() %}<p>{{ restricted_none }}</p>
+{% else %}<ul class="people-list">
+{% for item in items %}<li>{{ item.line }} <span class="note">{{ item.reason }}</span>{% for link in item.links %} <a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</li>
+{% endfor %}</ul>
+{% endif %}</section>
+{% endif %}{% endblock %}

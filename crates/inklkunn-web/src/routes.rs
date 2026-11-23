@@ -20,7 +20,7 @@ use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
-    account, api, changes, csrf, discover, health, history, inbox, knowledge, probe, proposals,
+    account, api, changes, csrf, discover, health, history, inbox, knowledge, people, probe, proposals,
     protections, raw, search, signin, style, views, watch, wiki,
 };
 
@@ -52,6 +52,7 @@ fn page_specs() -> Vec<Spec> {
     specs.extend(wiki_specs());
     specs.extend(view_specs());
     specs.extend(moderation_specs());
+    specs.extend(people_specs());
     specs
 }
 
@@ -228,6 +229,62 @@ fn moderation_specs() -> Vec<Spec> {
             protections::form::FORM_LIMIT
         ),
     }]
+}
+
+/// The people of a wiki (RFC 006 D-6, D-7; handoff G-T2): the page, and the four forms that change a role, restrict a
+/// person, renew and lift a restriction. **Web only**: nothing here is in the API. Each begins with the wiki's read check, so
+/// a wiki the visitor may not read answers as one that is not there; the forms then ask the core, which authorizes the act:
+/// `moderate` for a restriction and for a maintainer's change of a role (which is the lowest of the two actions a change of
+/// a role is, an admin's being `admin`).
+fn people_specs() -> Vec<Spec> {
+    vec![
+        Spec {
+            path: "/{slug}/-/people",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(people::roster::people),
+        },
+        Spec {
+            path: "/{slug}/-/people/grant",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: form_route!(
+                people::acts::grant_form,
+                people::acts::grant_post,
+                people::FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/people/restrict",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: form_route!(
+                people::acts::restrict_form,
+                people::acts::restrict_post,
+                people::FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/people/renew",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: form_route!(
+                people::acts::renew_form,
+                people::acts::renew_post,
+                people::FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/people/lift",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Moderate),
+            handler: form_route!(
+                people::acts::lift_form,
+                people::acts::lift_post,
+                people::FORM_LIMIT
+            ),
+        },
+    ]
 }
 
 /// Signing in and out, joining, an invitation and the account page (the sign-in handoff's U1 and U2). None

@@ -7,9 +7,11 @@
 //! A visitor with no session is sent to the sign-in page, which brings them back here. Every form carries the
 //! session's token like any write, and it was checked in front of the handler (`crate::csrf`).
 //!
-//! Nothing here names a wiki, a role or any wiki data: the page is the account's own records, and an account
-//! sees only its own sessions and tokens (the authenticator takes the account id from the session, never from
-//! the form).
+//! The page is the account's own records, and an account sees only its own sessions and tokens (the authenticator
+//! takes the account id from the session, never from the form). **One part names wikis: the role the person holds in
+//! each wiki they may read, what gives it to them, and any restriction with its reason and its end** (RFC 006 D-6,
+//! D-7). It is the person's own standing and no one else's, a wiki the person may not read is not named, and nothing
+//! of a wiki's pages or people is shown.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -76,6 +78,13 @@ struct TokenRow {
     revoke_id: Option<String>,
 }
 
+/// One wiki the person can read, with what they hold in it.
+struct WikiRow {
+    name: String,
+    href: String,
+    lines: Vec<String>,
+}
+
 struct OptionRow {
     value: String,
     label: String,
@@ -93,6 +102,10 @@ struct AccountTpl<'a> {
     made_heading: String,
     made_body: String,
     made_use: String,
+    wikis_heading: String,
+    wikis_intro: String,
+    wikis_none: String,
+    wikis: Vec<WikiRow>,
     name_heading: String,
     name_problem: Option<String>,
     name_action: &'static str,
@@ -146,6 +159,8 @@ struct Acting {
     account: AccountId,
     secret: Option<String>,
     now: i64,
+    /// Who the session is, to ask each wiki what the account holds in it.
+    principal: inklkunn_core::Principal,
 }
 
 /// What differs between one drawing of the page and another.
@@ -189,11 +204,47 @@ fn acting(state: &PageState, page: &Page, headers: &HeaderMap) -> Result<Acting,
     };
     Ok(Acting {
         now: (services.clock)(),
+        principal: services.identity.principal(headers),
         account: who.account.clone(),
         secret: crate::identity::session_secret(headers),
         services,
         auth,
     })
+}
+
+/// What the account holds in each wiki it may read, and what gives it that (a grant, or the wiki's `entry`), with any
+/// restriction and its end (RFC 006 D-6, D-7): **only the wikis the account may read**, so the list says nothing of a wiki
+/// it may not see, and only the person's own standing, never anyone else's. A wiki whose rules could not be read now is left
+/// out and the operator's log says so.
+async fn holdings(acting: &Acting) -> Vec<(inklkunn_store::WikiRecord, inklkunn_core::Holding)> {
+    let services = acting.services.clone();
+    let principal = acting.principal.clone();
+    blocking(move || {
+        let wikis = services.wikis.list().unwrap_or_default();
+        let mut found = Vec::new();
+        for wiki in wikis {
+            let resource = inklkunn_core::Resource::Wiki {
+                wiki: wiki.id.clone(),
+            };
+            if !services
+                .authorizer
+                .authorize(&principal, inklkunn_core::Action::Read, &resource)
+                .is_allowed()
+            {
+                continue;
+            }
+            match services.authorizer.holding(&principal, &wiki.id) {
+                Ok(holding) => found.push((wiki, holding)),
+                Err(error) => (services.log)(&format!(
+                    "what an account holds in wiki `{}` could not be read now: {error}",
+                    wiki.slug
+                )),
+            }
+        }
+        found
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// Draw the account page.
@@ -223,6 +274,15 @@ async fn draw(page: Page, acting: Acting, shown: Shown) -> Response {
         None => return render_failed(&page),
     };
     let t = page.t();
+    let wikis = holdings(&acting).await;
+    let wiki_rows: Vec<WikiRow> = wikis
+        .iter()
+        .map(|(wiki, holding)| WikiRow {
+            name: wiki.display_name.as_str().to_owned(),
+            href: format!("/{}", wiki.slug),
+            lines: crate::people::sentences::holding_paragraphs(t, holding),
+        })
+        .collect();
     let session_rows = sessions
         .iter()
         .map(|s| SessionRow {
@@ -293,6 +353,10 @@ async fn draw(page: Page, acting: Acting, shown: Shown) -> Response {
         made_heading: page.get(Key::AccountTokenMadeHeading),
         made_body: page.get(Key::AccountTokenMadeBody),
         made_use: page.get(Key::AccountTokenMadeUse),
+        wikis_heading: page.get(Key::AccountWikisHeading),
+        wikis_intro: page.get(Key::AccountWikisIntro),
+        wikis_none: page.get(Key::AccountWikisNone),
+        wikis: wiki_rows,
         name_heading: page.get(Key::AccountNameHeading),
         name_problem: shown.name_problem.clone(),
         name_action: NAME_PATH,

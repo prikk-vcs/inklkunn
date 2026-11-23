@@ -10,7 +10,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use inklkunn_core::proposal::{ProposalService, QuotaConfig};
 use inklkunn_core::read::ReadConfig;
-use inklkunn_core::{Authorizer, Inbox, Notifier, ReadService, StoreAuthz, Verifier};
+use inklkunn_core::{
+    Authorizer, Inbox, Notifier, PeopleService, ReadService, StoreAuthz, Verifier,
+};
 use inklkunn_prikk::storage::PathRef;
 use inklkunn_prikk::{
     Change, Diff, ExtractBounds, FileMeta, History, HistoryBlock, Materialized, Operation, Patch,
@@ -732,6 +734,57 @@ pub fn assemble(
     store: &Arc<MemoryStore>,
     layout: RootLayout,
 ) -> (Arc<Services>, Arc<MemoryAudit>, Arc<Mutex<Vec<String>>>) {
+    assemble_under(storage, store, layout, None)
+}
+
+/// The rules a test fixes for every wiki of the world: what the read service would have read from the default view's tip.
+struct FixedRules(Arc<inklkunn_core::governance::Rules>);
+
+impl inklkunn_core::RulesSource for FixedRules {
+    fn rules(
+        &self,
+        _: &inklkunn_store::WikiId,
+    ) -> std::result::Result<Arc<inklkunn_core::governance::Rules>, inklkunn_core::SourceError>
+    {
+        Ok(self.0.clone())
+    }
+}
+
+/// The block of the rules `under` fixes.
+pub const POLICY_BLOCK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+/// The same wiki, repository and records served under the rules of `policy` (the text of a policy file), as if they had been
+/// accepted at [`POLICY_BLOCK`]: the authorizer, the people service and the proposal service all read them.
+pub fn under(w: &World, policy: &str) -> World {
+    let dir = TempDir::new("under");
+    let layout = RootLayout::new(dir.0.join("root"));
+    let storage: Arc<dyn Storage> = w.fake.clone();
+    let rules = Arc::new(inklkunn_core::governance::Rules::read(
+        Some(POLICY_BLOCK.to_owned()),
+        inklkunn_core::governance::read_policy(policy.as_bytes()).expect("a policy"),
+        inklkunn_core::governance::Constitution::default(),
+        &inklkunn_core::governance::PlatformLimits::default(),
+    ));
+    let (services, audit, log) =
+        assemble_under(storage, &w.store, layout, Some(Arc::new(FixedRules(rules))));
+    with_accounts(World {
+        fake: w.fake.clone(),
+        store: w.store.clone(),
+        wiki: w.wiki.clone(),
+        services,
+        audit,
+        log,
+        _dir: dir,
+    })
+}
+
+/// [`assemble`] with the rules of every wiki fixed, when `rules` is given.
+pub fn assemble_under(
+    storage: Arc<dyn Storage>,
+    store: &Arc<MemoryStore>,
+    layout: RootLayout,
+    rules: Option<Arc<dyn inklkunn_core::RulesSource>>,
+) -> (Arc<Services>, Arc<MemoryAudit>, Arc<Mutex<Vec<String>>>) {
     let read = Arc::new(
         ReadService::new(
             storage.clone(),
@@ -749,17 +802,28 @@ pub fn assemble(
     );
     let verifier = Arc::new(Verifier::new(storage, store.clone(), layout).with_clock(|| NOW));
     let audit = Arc::new(MemoryAudit::new());
+    let mut authz = StoreAuthz::new(store.clone(), store.clone()).with_restrictions(store.clone());
+    if let Some(rules) = rules {
+        authz = authz.with_rules(rules);
+    }
+    // A restriction is read by this clock: a test sets one for a number of days from `NOW`.
     let authorizer = Arc::new(
-        Authorizer::new(
-            Arc::new(StoreAuthz::new(store.clone(), store.clone())),
-            audit.clone(),
-        )
-        // Temporary protections (RFC 006 D-7) are kept in the same store, under the operator's default limit.
-        .with_protections(
-            store.clone(),
-            inklkunn_core::governance::PlatformLimits::default(),
-        ),
+        Authorizer::new(Arc::new(authz), audit.clone())
+            .with_clock(|| NOW)
+            // Temporary protections (RFC 006 D-7) are kept in the same store, under the operator's default limit.
+            .with_protections(
+                store.clone(),
+                inklkunn_core::governance::PlatformLimits::default(),
+            ),
     );
+    let people = Arc::new(PeopleService::new(
+        (*authorizer).clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        audit.clone(),
+        inklkunn_core::governance::PlatformLimits::default(),
+    ));
     let log = Arc::new(Mutex::new(Vec::new()));
     let sink = log.clone();
     let inbox = Arc::new(
@@ -805,6 +869,7 @@ pub fn assemble(
         proposals,
         acceptor: None,
         accounts: store.clone(),
+        people,
         acceptances: store.clone(),
         acts: store.clone(),
         auth: None,

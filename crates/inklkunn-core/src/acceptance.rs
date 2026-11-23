@@ -52,7 +52,7 @@ use inklkunn_store::{
     RecoveryFlag, RecoveryReason, Role, RoleStore, RootLayout, StoreError, WikiRecord,
 };
 
-use crate::authorize::Principal;
+use crate::authorize::{Principal, RestrictionNotice};
 use crate::governance::{Fault as GovernanceFault, ReadFault, Rules};
 use crate::knowledge::check::Refusal as KnowledgeRefusal;
 use crate::lease::{Busy, BusyWhy, Lease, LeaseError, Purpose, WikiLeases};
@@ -291,6 +291,9 @@ pub enum AcceptFailure {
     /// *Not allowed* (also: not the person it is for; also: a proposer of a wiki with three maintainers
     /// accepting their own proposal). Nothing was done.
     NotAllowed,
+    /// **The person is restricted** in this wiki, and without the restriction they could have done this (RFC 006 D-7): the
+    /// reason and the end, told to them alone. Nothing was done.
+    Restricted(RestrictionNotice),
     /// There is no such proposal in this wiki, or it is not the principal's to see. Nothing was done.
     NotFound,
     /// The proposal's state or revision does not allow it (the state machine's word). Nothing was done.
@@ -387,7 +390,9 @@ impl AcceptFailure {
     /// refusal.
     pub fn word(&self) -> &'static str {
         match self {
-            AcceptFailure::NotAllowed | AcceptFailure::NotFound => words::NOT_ALLOWED,
+            AcceptFailure::NotAllowed | AcceptFailure::Restricted(_) | AcceptFailure::NotFound => {
+                words::NOT_ALLOWED
+            }
             AcceptFailure::Busy(_) => words::BUSY,
             AcceptFailure::Refused(_) => words::REFUSED_LIMIT,
             AcceptFailure::NeedsRecovery(_) | AcceptFailure::Incomplete { .. } => {
@@ -417,6 +422,9 @@ impl std::fmt::Display for AcceptFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AcceptFailure::NotAllowed => write!(f, "not allowed"),
+            AcceptFailure::Restricted(notice) => {
+                write!(f, "restricted until {}: {}", notice.until, notice.reason)
+            }
             AcceptFailure::NotFound => write!(f, "no such proposal"),
             AcceptFailure::Proposal(e) => write!(f, "{e}"),
             AcceptFailure::Busy(b) => write!(
@@ -515,6 +523,7 @@ impl From<ProposalError> for AcceptFailure {
     fn from(e: ProposalError) -> Self {
         match e {
             ProposalError::NotAllowed => AcceptFailure::NotAllowed,
+            ProposalError::Restricted(notice) => AcceptFailure::Restricted(notice),
             ProposalError::RulesUnreadable(fault) => AcceptFailure::RulesUnreadable(fault),
             ProposalError::NotFound => AcceptFailure::NotFound,
             ProposalError::Quota(q) => AcceptFailure::Refused(q),

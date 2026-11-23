@@ -338,6 +338,11 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/views/compare", Read),
             ("/{slug}/-/views/compare/{*title}", Read),
             ("/{slug}/-/protect", Moderate),
+            ("/{slug}/-/people", Read),
+            ("/{slug}/-/people/grant", Moderate),
+            ("/{slug}/-/people/restrict", Moderate),
+            ("/{slug}/-/people/renew", Moderate),
+            ("/{slug}/-/people/lift", Moderate),
         ]
     );
     // Whatever a route writes, it declares the writing methods only where it declares a non-read action or is

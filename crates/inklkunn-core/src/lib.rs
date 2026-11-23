@@ -37,6 +37,8 @@
 //!   knowledge index of a tip (RFC 005 part 2; handoff K-T1 … K-T4).
 //! - [`governance`]: the rules of a wiki as data (RFC 006 D-1 – D-4): the policy and the constitution as types, their
 //!   schema, reader and validator, the defaults (0.3.0's behaviour) and the platform's limits. Pure; no surface.
+//! - [`people`]: who holds which rung and who is restricted (RFC 006 D-6, D-7; handoff G-T2): grants and revocations as
+//!   recorded decisions, restrictions that end by the clock, and the people page's model. Web-only acts.
 //! - [`import`] and [`export`]: `import-folder` (one accepted change under the system principal) and the
 //!   Portable Wiki Bundle export at fidelity level 3 (handoff 003 T7; RFC 003 D-11, D-12).
 
@@ -55,6 +57,7 @@ pub mod knowledge;
 pub mod lease;
 pub mod merge;
 pub mod notify;
+pub mod people;
 pub mod proposal;
 pub mod protection;
 pub mod read;
@@ -78,9 +81,10 @@ pub use acceptance::{
 };
 pub use assurance::Assurance;
 pub use authorize::{
-    AccountPrincipal, Action, Authorizer, AuthzSource, Decision, IdentityAuthority, Principal,
-    ProtectError, Resource, RulesSource, Setting, Snapshot, SourceError, Standing, StoreAuthz,
-    SystemPrincipal, decide, decide_under, rung_of,
+    AccountPrincipal, Action, Authorizer, AuthzSource, Decision, HeldBy, Holding,
+    IdentityAuthority, Principal, ProtectError, Resource, RestrictionNotice, RulesSource, Setting,
+    Snapshot, SourceError, Standing, StoreAuthz, SystemPrincipal, decide, decide_under, entry_rung,
+    rung_of,
 };
 pub use check::{
     CONCURRENT_CHECKS, CheckOutcome, Checked, Declined, MIN_RECHECK_SECS, NotChecked,
@@ -105,6 +109,7 @@ pub use lease::{Busy, BusyWhy, Lease, LeaseConfig, LeaseError, Leased, Purpose, 
 pub use merge::align_blocks;
 pub use merge::{LineLevel, MergeOutcome, MergedPage, Overlap, PageRef, PageText, Place, merge};
 pub use notify::{Channel, InApp, Notifier};
+pub use people::{PeopleError, PeopleService, PeopleView};
 pub use proposal::{
     BaseSource, Invalid, Metrics, NewComment, Period, ProposalEdit, ProposalError, ProposalService,
     QuotaConfig, QuotaLimit, QuotaRefusal, Quotas, Reset,

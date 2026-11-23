@@ -10,7 +10,7 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::proposal::{Invalid, ProposalError};
-use inklkunn_core::{Action, proposal::NewComment};
+use inklkunn_core::{Action, Resource, proposal::NewComment};
 use inklkunn_store::{CommentId, DecisionKind, ProposalId, ProposalOp, ProposalState};
 
 use super::{
@@ -329,7 +329,17 @@ fn check(ctx: &Ctx, id: &ProposalId, reason: Reason) -> Result<(), ProposalError
         Reason::Decline | Reason::Ask => ctx.may_on(Action::Accept, id),
     };
     if !permitted {
-        return Err(ProposalError::NotAllowed);
+        // A person held down by a restriction is told so, with its reason and its end; a withdrawal is the author's alone.
+        return Err(match reason {
+            Reason::Decline | Reason::Ask => ctx.refusal(
+                Action::Accept,
+                &Resource::Proposal {
+                    wiki: ctx.wiki.id.clone(),
+                    id: id.to_string(),
+                },
+            ),
+            Reason::Withdraw => ProposalError::NotAllowed,
+        });
     }
     if !reason.allowed_in(record.state) {
         return Err(ProposalError::NotInThisState {

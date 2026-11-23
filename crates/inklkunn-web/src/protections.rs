@@ -38,12 +38,12 @@ pub(crate) struct NoticeView {
 /// The name of a role, in the reader's language.
 pub(crate) fn rung_word(t: T, role: Role) -> String {
     t.get(match role {
-        Role::Observer => Key::RungObserver,
-        Role::Questioner => Key::RungQuestioner,
-        Role::Contributor => Key::RungContributor,
-        Role::Reviewer => Key::RungReviewer,
-        Role::Maintainer => Key::RungMaintainer,
-        Role::Admin => Key::RungAdmin,
+        Role::Observer => Key::RoleObserver,
+        Role::Questioner => Key::RoleQuestioner,
+        Role::Contributor => Key::RoleContributor,
+        Role::Reviewer => Key::RoleReviewer,
+        Role::Maintainer => Key::RoleMaintainer,
+        Role::Admin => Key::RoleAdmin,
     })
 }
 

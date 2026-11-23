@@ -457,3 +457,39 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
         assert!(listed.get(member).is_some(), "refusals[].{member}");
     }
 }
+
+#[test]
+fn a_restricted_account_refusal_is_described_with_every_member_the_server_emits() {
+    // RFC 006 D-7 (handoff G-T2): the problem a restricted account gets names its reason, its end and a sentence; the
+    // document says so, and the Problem schema names every member the server emits for it.
+    use inklkunn_core::RestrictionNotice;
+    use inklkunn_store::RestrictionEventId;
+    let document = document(&real_table(), &docs()).unwrap();
+    let intro = document.at("/info/description").as_str().unwrap();
+    assert!(
+        intro.contains("`restricted`") && intro.contains("`until`"),
+        "{intro}"
+    );
+    let reason = document
+        .at("/components/schemas/Problem/properties/reason/description")
+        .as_str()
+        .unwrap();
+    assert!(reason.contains("`restricted`"), "{reason}");
+    let notice = RestrictionNotice {
+        id: RestrictionEventId::new(),
+        reason: "spam".to_owned(),
+        until: 1_700_000_000,
+    };
+    let t = crate::api::request::language(&axum::http::HeaderMap::new());
+    let body = crate::api::write::refuse::restricted_problem(t, &notice).body(t);
+    let members = document.at("/components/schemas/Problem/properties");
+    for member in body.as_object().unwrap().keys() {
+        if ["type", "title", "status", "detail", "hint"].contains(&member.as_str()) {
+            continue;
+        }
+        assert!(
+            members.get(member).is_some(),
+            "the problem member `{member}` of a restricted account is not described"
+        );
+    }
+}

@@ -21,7 +21,9 @@
 //! - `account disable <login | id>` / `account enable <login | id>`: a disabled account cannot sign in, its
 //!   sessions end and its API tokens are revoked; its history stays attributed to it.
 //! - `account grant <login | id> <role> <wiki>` / `account revoke-grant <login | id> <wiki>`: the role the account
-//!   holds in a wiki.
+//!   holds in a wiki. **Each is recorded as a grant decision with no one acting** (RFC 006 D-6: the operator's, outside
+//!   the rules of the wiki, so no rung and no policy block), written with the role in one step; the people of the wiki
+//!   change roles on the people page, and their decisions are recorded the same way, naming who acted.
 
 use std::ffi::OsString;
 use std::io::Write;
@@ -30,8 +32,9 @@ use inklkunn_auth::invitation::{DEFAULT_LIFETIME_SECS, MAX_LIFETIME_SECS};
 use inklkunn_auth::{AccountError, AuthConfig, Authenticator, InviteError};
 use inklkunn_core::IdentityAuthority;
 use inklkunn_store::{
-    Account, AccountId, AccountStore, AuditOutcome, AuditSink, ExternalIdentity, LoginName, Role,
-    RoleGrant, RoleStore, SqliteStore, WikiRecord,
+    Account, AccountId, AccountStore, AuditOutcome, AuditSink, ExternalIdentity, GovernanceStore,
+    GrantDecisionId, GrantDecisionRecord, LoginName, Role, RoleGrant, RoleStore, SqliteStore,
+    WikiId, WikiRecord,
 };
 
 use crate::admin::Trail;
@@ -392,13 +395,7 @@ pub(crate) fn execute(
             let resource = format!("{} {}", account_resource(&account), wiki_resource(&record));
             let detail = format!("role {}", role.as_str());
             trail.begin("account-grant", &resource, &detail)?;
-            if let Err(e) = store.grant(RoleGrant {
-                account: account.id.clone(),
-                wiki: record.id.clone(),
-                role: *role,
-                granted_by: None,
-                granted_at: now,
-            }) {
+            if let Err(e) = decide(&store, &account.id, &record.id, Some(*role), now) {
                 let _ = trail.finish("account-grant", &resource, AuditOutcome::Failed, "not done");
                 return Err(format!("the role could not be granted ({e})"));
             }
@@ -417,7 +414,7 @@ pub(crate) fn execute(
             let record = find_wiki(&store, wiki)?;
             let resource = format!("{} {}", account_resource(&account), wiki_resource(&record));
             trail.begin("account-revoke-grant", &resource, "")?;
-            let had = match store.revoke(&account.id, &record.id) {
+            let had = match decide(&store, &account.id, &record.id, None, now) {
                 Ok(had) => had,
                 Err(e) => {
                     let _ = trail.finish(
@@ -453,6 +450,45 @@ pub(crate) fn execute(
             Ok(())
         }
     }
+}
+
+/// The operator's change of the role `account` holds in `wiki`, **recorded as a grant decision with no one acting** and
+/// applied in one step (RFC 006 D-6). `true` when the account held a role before. Asking for the role it holds already
+/// records nothing (a decision changes something) and is not an error, as it never was.
+fn decide(
+    store: &SqliteStore,
+    account: &AccountId,
+    wiki: &WikiId,
+    new: Option<Role>,
+    now: i64,
+) -> Result<bool, inklkunn_store::StoreError> {
+    let before = store.role(account, wiki)?;
+    if before == new {
+        if let Some(role) = new {
+            // The same role again: the grant is stamped anew, as it always was.
+            store.grant(RoleGrant {
+                account: account.clone(),
+                wiki: wiki.clone(),
+                role,
+                granted_by: None,
+                granted_at: now,
+            })?;
+        }
+        return Ok(before.is_some());
+    }
+    store.record_grant_decision(&GrantDecisionRecord {
+        id: GrantDecisionId::new(),
+        wiki: wiki.clone(),
+        at: now,
+        by: None,
+        policy_block: None,
+        target: account.clone(),
+        before,
+        after: new,
+        reason: None,
+        appeal: None,
+    })?;
+    Ok(before.is_some())
 }
 
 #[cfg(test)]

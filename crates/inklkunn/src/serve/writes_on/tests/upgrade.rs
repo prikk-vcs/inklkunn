@@ -15,7 +15,8 @@
 //! same directory, after the one *Why is this here?* line is taken out of the page view and what differs on every
 //! page for no reason of the page's (the ports of the two servers, the stylesheet's content-addressed name, a form's
 //! per-request token) is masked. The two other places a page differs (a link on the wiki's About, an entry in its
-//! health index) are named in `undo_what_0_3_0_adds`, each exactly. The stylesheet is compared too: this tree's is
+//! health index) are named in `undo_what_0_3_0_adds`, each exactly; and 0.4.0's one line on the About page, the way to the
+//! wiki's people, is taken out by `undo_the_people_link`, exactly, once and on that page only. The stylesheet is compared too: this tree's is
 //! 0.2.0's, with additions and one changed rule.
 //!
 //! **0.3.0 on the migrated store** (RC-4): the last steps use the layer the migration (versions 16 - 18) made room
@@ -367,6 +368,29 @@ fn undo_what_0_3_0_adds(path: &str, html: &str) -> (String, bool) {
     (out, touched)
 }
 
+/// The one line this tree's *About* page adds beside 0.3.0's: the way to the wiki's people (0.4.0's G-T2).
+const PEOPLE_LINK: &str = "<p><a href=\"/handbook/-/people\">People and roles of this wiki</a></p>";
+
+/// This tree's page with the way to the people page taken out, **exactly**: one line, on the *About* page and nowhere else,
+/// so that a second one, or one on another page, is not taken out and is found as a difference.
+pub(super) fn undo_the_people_link(path: &str, html: &str) -> String {
+    let mut out = String::new();
+    let mut taken = 0;
+    for line in html.split_inclusive('\n') {
+        if line.trim_end() == PEOPLE_LINK {
+            taken += 1;
+            continue;
+        }
+        out.push_str(line);
+    }
+    let expected = usize::from(path == "/handbook/-/about");
+    assert_eq!(
+        taken, expected,
+        "{path}: the line that leads to the people page is on the About page, once, and nowhere else"
+    );
+    out
+}
+
 /// The first line at which two texts differ, with a few lines around it, for a failure to say where.
 pub(super) fn first_difference(old: &str, new: &str) -> String {
     let (o, n): (Vec<&str>, Vec<&str>) = (old.lines().collect(), new.lines().collect());
@@ -588,6 +612,7 @@ fn a_directory_made_by_the_0_2_0_binary_is_opened_migrated_and_used_by_this_tree
             new_location.as_deref().map(|l| masked(l, new_ports)),
             "{path}: the Location differs"
         );
+        let new_html = &undo_the_people_link(path, new_html);
         let (undone, touched) = undo_what_0_3_0_adds(path, new_html);
         if touched {
             changed.push(path.as_str());

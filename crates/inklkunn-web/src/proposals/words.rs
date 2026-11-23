@@ -194,6 +194,11 @@ pub(crate) fn refusal(t: T, error: &ProposalError) -> Option<Refusal> {
             Key::OutcomeNotAllowed,
             vec![t.get(Key::RefusedNotAllowedBody)],
         ),
+        ProposalError::Restricted(notice) => page(
+            StatusCode::FORBIDDEN,
+            Key::OutcomeNotAllowed,
+            crate::people::sentences::restriction_refusal(t, notice),
+        ),
         ProposalError::RulesUnreadable(fault) => page(
             StatusCode::SERVICE_UNAVAILABLE,
             Key::OutcomeRulesUnreadable,

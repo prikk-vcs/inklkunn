@@ -507,7 +507,7 @@ fn post(
         _ => return incomplete(page, ctx),
     };
     if held.is_none() && !ctx.may_wiki(Action::Propose) {
-        return refused(page, ctx, &ProposalError::NotAllowed, Vec::new());
+        return refused(page, ctx, &ctx.refusal_wiki(Action::Propose), Vec::new());
     }
     // The claim and source files a revision already has are carried forward; this post may add to them.
     let carried: Vec<FileChange> = held

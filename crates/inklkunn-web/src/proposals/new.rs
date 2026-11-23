@@ -644,7 +644,7 @@ fn open_form(page: &Page, ctx: &Ctx, params: &HashMap<String, String>) -> Respon
         return response;
     }
     if !ctx.may_wiki(Action::Propose) {
-        return refused(page, ctx, &ProposalError::NotAllowed, Vec::new());
+        return refused(page, ctx, &ctx.refusal_wiki(Action::Propose), Vec::new());
     }
     let slug = ctx.slug();
     let Ok(full_view) = view_of(params.get(fields::VIEW).map(String::as_str)) else {
@@ -714,14 +714,17 @@ fn open_form(page: &Page, ctx: &Ctx, params: &HashMap<String, String>) -> Respon
     let Ok(text) = String::from_utf8(raw.bytes) else {
         return read_failure(page, ctx, ReadError::PageUnreadable(PageProblem::NotUtf8));
     };
-    if !ctx.may(
-        Action::Propose,
-        &Resource::Page {
-            wiki: ctx.wiki.id.clone(),
-            path: raw.path.clone(),
-        },
-    ) {
-        return refused(page, ctx, &ProposalError::NotAllowed, Vec::new());
+    let target = Resource::Page {
+        wiki: ctx.wiki.id.clone(),
+        path: raw.path.clone(),
+    };
+    if !ctx.may(Action::Propose, &target) {
+        return refused(
+            page,
+            ctx,
+            &ctx.refusal(Action::Propose, &target),
+            Vec::new(),
+        );
     }
     let Some(base) = Base::new(&raw.tip.state_id, &raw.tip.block_id) else {
         return refused(

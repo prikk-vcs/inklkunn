@@ -9,7 +9,9 @@ use std::time::Duration;
 use inklkunn_auth::{AuthConfig, Authenticator, ProxyPolicy};
 use inklkunn_core::proposal::{ProposalService, QuotaConfig};
 use inklkunn_core::read::ReadService;
-use inklkunn_core::{Authorizer, IdentityAuthority, Inbox, Notifier, StoreAuthz, Verifier};
+use inklkunn_core::{
+    Authorizer, IdentityAuthority, Inbox, Notifier, PeopleService, StoreAuthz, Verifier,
+};
 use inklkunn_prikk::sandbox::{Sandbox, probe_bwrap};
 use inklkunn_prikk::{Admission, PrikkCli, SizeHints, Storage};
 use inklkunn_store::{AuditSink, RootLayout, SqliteStore};
@@ -162,12 +164,27 @@ fn prepare_probing(
     // `authorize()` reads the rules of a wiki through the read service, and only through it: a handler cannot pass one.
     let authorizer = Arc::new(
         Authorizer::new(
-            Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(read.clone())),
+            Arc::new(
+                StoreAuthz::new(store.clone(), store.clone())
+                    .with_rules(read.clone())
+                    // A restriction caps the account it is on at observer in the wiki it is in (RFC 006 D-7), until its end.
+                    .with_restrictions(store.clone()),
+            ),
             store.clone() as Arc<dyn AuditSink>,
         )
         // The temporary protections of the `moderate` rung are kept in the same store, and last no longer than the operator's limit.
         .with_protections(store.clone(), web.governance),
     );
+    // Who holds which rung, and who is restricted: web-only acts (RFC 006 D-12), over the same authorizer and the same
+    // store, under the operator's longest restriction (D-3).
+    let people = Arc::new(PeopleService::new(
+        (*authorizer).clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone() as Arc<dyn AuditSink>,
+        web.governance,
+    ));
     let inbox = Arc::new(Inbox::new(
         store.clone(),
         store.clone(),
@@ -236,6 +253,7 @@ fn prepare_probing(
         inbox,
         proposals,
         accounts: store.clone(),
+        people,
         acceptances: store.clone(),
         acts: store.clone(),
         // The acceptor of RFC 004 D-4 over the same lease as the command line, or `NoSigner` when this server was

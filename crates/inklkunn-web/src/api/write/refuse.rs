@@ -6,6 +6,7 @@
 //! `unavailable` with `Retry-After`. `NotFound` is the same answer for a proposal that is absent and one the
 //! caller may not see (a draft is its author's alone).
 
+use inklkunn_core::RestrictionNotice;
 use inklkunn_core::acceptance::AcceptFailure;
 use inklkunn_core::governance::{Fault, ReadFault, Require, Target};
 use inklkunn_core::proposal::{Invalid, ProposalError, QuotaRefusal, Reset};
@@ -110,6 +111,7 @@ impl Request {
     pub(crate) fn refusal(&self, error: ProposalError) -> Problem {
         match error {
             ProposalError::NotAllowed => Problem::new(Code::Forbidden),
+            ProposalError::Restricted(notice) => restricted_problem(self.t, &notice),
             ProposalError::RulesUnreadable(fault) => rules_unreadable_problem(&fault).said(
                 "explanation",
                 crate::proposals::governance::read_fault_text(self.t, &fault),
@@ -165,6 +167,7 @@ impl Request {
     pub(crate) fn refused_acceptance(&self, failure: AcceptFailure) -> Problem {
         match failure {
             AcceptFailure::Proposal(error) => self.refusal(error),
+            AcceptFailure::Restricted(notice) => restricted_problem(self.t, &notice),
             AcceptFailure::Refused(q) => self.quota(&q),
             other => acceptance_problem(other, &|line| self.log(line)),
         }
@@ -200,6 +203,10 @@ pub(crate) fn quota_problem(q: &QuotaRefusal, now: i64) -> Problem {
 pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> Problem {
     match failure {
         AcceptFailure::NotAllowed => Problem::new(Code::Forbidden),
+        // Told by the caller that holds the language (`Request::refused_acceptance`); here, the plain fact.
+        AcceptFailure::Restricted(notice) => {
+            restricted_members(Problem::new(Code::Forbidden), &notice)
+        }
         AcceptFailure::NotFound => Problem::new(Code::NotFound),
         AcceptFailure::Busy(busy) => Problem::new(Code::Busy)
             .member("waiting", json!(busy.depth))
@@ -351,6 +358,25 @@ fn protected_problem(notices: &[Notice], lack: Lack) -> Problem {
         Lack::Review => problem.named("lacks", "approval"),
     };
     problem.member("protections", json!(listed))
+}
+
+/// `403 forbidden`, `restricted` (RFC 006 D-7; threat model C-3g): the caller's account is restricted in this wiki, and without
+/// the restriction it could have done this. **The reason the person was given and the end are members**, so a program reads
+/// them (`restriction_reason`, and `until` in Unix seconds) and a person reads the sentence (`explanation`, in the caller's
+/// language). Said to the restricted account alone: it is told only of its own restriction.
+pub(crate) fn restricted_problem(t: crate::catalog::T, notice: &RestrictionNotice) -> Problem {
+    restricted_members(Problem::new(Code::Forbidden), notice).named(
+        "explanation",
+        crate::people::sentences::restriction_paragraphs(t, notice).join(" "),
+    )
+}
+
+/// The members of `restricted_problem`, without the sentence.
+fn restricted_members(problem: Problem, notice: &RestrictionNotice) -> Problem {
+    problem
+        .named("reason", "restricted")
+        .named("restriction_reason", notice.reason.as_str())
+        .member("until", json!(notice.until))
 }
 
 /// `403 forbidden`, `rules-unreadable`: every write of the wiki is refused until its governance file is repaired; the file,
