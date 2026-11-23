@@ -1335,3 +1335,65 @@ fn every_hide_of_the_wiki_is_read_however_many_there_are_on_both_stores() {
     every_hide_is_read(&MemoryStore::new());
     every_hide_is_read(&inklkunn_store::SqliteStore::open_in_memory().unwrap());
 }
+
+/// A document of the repository with its whitespace collapsed, so that a sentence wrapped across lines is the sentence.
+fn document(relative: &str) -> String {
+    std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(relative),
+    )
+    .unwrap_or_else(|e| panic!("{relative}: {e}"))
+    .split_whitespace()
+    .collect::<Vec<_>>()
+    .join(" ")
+}
+
+#[test]
+fn security_md_and_the_operator_docs_say_what_still_holds_hidden_content_in_the_words_the_export_uses()
+ {
+    let security = document("SECURITY.md");
+    assert!(security.contains("## What still holds hidden content"));
+    // The sentence the moderation form says too (RFC 006 D-8): what holds the content, and what removes it.
+    for sentence in [
+        "Hiding is not removal",
+        "What still holds the content: the repository (prikk keeps every object), the operator's backups and `archive export`, and any copy made before the hide.",
+        "Removal from those is the operator's P-1 procedure, not offered yet",
+        "A person who must have content removed cannot get that from the moderation form.",
+        "made **after** a hide leaves the hidden part out",
+        "A bundle made **before** the hide, and every `--archive`",
+    ] {
+        assert!(security.contains(sentence), "SECURITY.md: {sentence}");
+    }
+    // The names it uses are the names the export writes: the members of a marked line and the manifest's declaration.
+    let r = extended("docs");
+    page_hide(&r, B3, &["summary"]);
+    let files = export_as(&r, &stand_extended(), "bundle");
+    let line = text(&files, "history/p1.jsonl");
+    let manifest = text(&files, "wiki-bundle.yaml");
+    for (name, written) in [
+        ("`suppressed`", line.contains("\"suppressed\":")),
+        ("`reasons`", line.contains("\"reasons\":")),
+        (
+            "`inklkunn.tombstones`",
+            manifest.contains("\n  tombstones:\n"),
+        ),
+        (
+            "`fidelity.dropped`",
+            manifest.contains("\n  dropped: [{construct:"),
+        ),
+    ] {
+        assert!(written, "the export does not write {name}");
+        assert!(security.contains(name), "SECURITY.md does not name {name}");
+    }
+    let keys = document("docs/KEYS.md");
+    for sentence in [
+        "**Hidden content and an export.**",
+        "An export made **after** moderation hid something leaves that part out of the bundle",
+        "refuses a bundle that declares it",
+        "`--archive` (prikk's own archive holds every object, hidden or not)",
+    ] {
+        assert!(keys.contains(sentence), "docs/KEYS.md: {sentence}");
+    }
+    assert!(document("docs/RECOVERY.md").contains("What still holds hidden content"));
+}

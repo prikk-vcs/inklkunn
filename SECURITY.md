@@ -245,6 +245,30 @@ badge shows the last verdict. The format prikk wrote is kept in the wiki's store
 The **bootstrap signer** over a plain-text key directory exists only behind the `bootstrap` cargo feature, for
 tests; the gate fails if a product crate enables it.
 
+## What still holds hidden content
+
+**Hiding is not removal** (RFC 006 D-8, threat model RR-15). A moderator can hide the content, the summary or the author of
+a revision, or the body or the author of a comment, behind a tombstone: the wiki stops showing it, and says what kind of
+reason it was hidden for. What still holds the content: the repository (prikk keeps every object), the operator's backups
+and `archive export`, and any copy made before the hide. Removal from those is the operator's P-1 procedure, not offered
+yet (it is planned in the operations RFC and is not part of 0.4.0).
+
+- **A person who must have content removed cannot get that from the moderation form.** The form hides; it does not
+  erase. Content that must not exist (a court order, a leaked secret, personal data a law says to delete) needs the
+  operator's removal procedure (P-1), which is not offered yet; until it is, nothing inklkunn offers makes the repository
+  forget it.
+- **Anyone who is given the repository can read what was hidden.** That is every clone, every backup and every archive
+  made before the hide, and a read-only host of the repository, if the operator ever offers one.
+- **What the wiki's own export does.** `inklkunn wiki export <wiki> --bundle <dir>` made **after** a hide leaves the hidden
+  part out: an entry of `history/<page id>.jsonl` or of a claim thread whose content, summary or author is hidden is marked
+  `suppressed` (a list of `content`, `summary` and `author`) with its `reasons` (the same reason categories the moderation
+  log shows), omits that part, and names the person only for what is not hidden (`users.yaml`). The manifest says that the
+  bundle carries such entries (`inklkunn.tombstones`, and a `fidelity.dropped` line), and the import of a bundle that says
+  so is refused until tombstones can be imported. A bundle made **before** the hide, and every `--archive` (prikk's own,
+  which holds every object), still hold what was hidden.
+- **A tip's content cannot be hidden.** The files a wiki serves now are in every export as they are; its summary and its
+  author can be hidden, and its content is first reverted or removed by a proposal.
+
 ## Reporting a vulnerability
 
 Please report privately through GitHub's security advisories for this repository

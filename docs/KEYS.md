@@ -256,6 +256,15 @@ wording the wiki will not have, is refused by file and rule, and the whole impor
 import sets what only a curation proposal sets. Removing a claim or a source file, and replacing a file that cannot be read,
 are not offered in this version. The claim threads and the records of how views were made, which an export carries under `extensions/inklkunn-knowledge/`, belong to the exporting service and are not imported.
 
+**Hidden content and an export.** An export made **after** moderation hid something leaves that part out of the bundle: a
+history line or a claim-thread comment whose content, summary or author is hidden is marked `suppressed`, with its
+`reasons`, and carries none of it; the person is listed in `users.yaml` only for what is not hidden; the manifest declares
+it (`inklkunn.tombstones`, and `fidelity.dropped`); and `import-folder` refuses a bundle that declares it, naming the
+manifest, because tombstones are not imported yet. An export made **before** the hide does not do any of this, and neither
+does the `--archive` (prikk's own archive holds every object, hidden or not): both hold what was hidden for as long as they
+exist. Hiding is not removal; `SECURITY.md` (*What still holds hidden content*) says what holds it and why the moderation
+form cannot remove it.
+
 **Hold note: an import that adopts history.** An import that receives a history (`bundle import --adopt` or
 `archive import --adopt` of prikk, the bundle import of RFC 007) on prikk **0.57.0 or earlier** must be followed by one
 `prikk verify` of the wiki's repository. Without it every later commit reads about twice the whole history (42 MB per commit

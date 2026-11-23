@@ -38,7 +38,11 @@
 //! declares the knowledge extension** (`extensions_used: inklkunn-knowledge`, version 1; RFC 005 part 2 D-12), the claim and
 //! source files of `knowledge/`. Everything else at the top (the manifest, `SHA256SUMS`, `users.yaml`, `history/`,
 //! `extensions/`, `governance/`, and `knowledge/` when no extension the import knows gives it meaning) is *not imported*
-//! and is listed as such: a Portable Wiki Bundle's import with its history is RFC 007's.
+//! and is listed as such: a Portable Wiki Bundle's import with its history is RFC 007's. **A manifest that declares
+//! tombstones** (`inklkunn.tombstones`, RFC 006 D-13: entries of the bundle whose content, summary or author was hidden by
+//! moderation, omitted and marked `suppressed`) **refuses the whole folder, naming the manifest**: tombstones are not imported
+//! yet, and the pages of such a bundle, complete as they are, would enter a wiki that has no record of what was hidden and so
+//! look whole.
 //!
 //! **Knowledge files are judged as an acceptance judges them** (RFC 005 part 2 D-5, D-3): each is read with the format's own
 //! reader at the plan (a file that does not read is refused by name and rule, never by what it said), and the whole set is

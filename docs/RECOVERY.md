@@ -143,7 +143,9 @@ and that it stopped.
    ordinary proposal, once the wiki takes writes again. It is never sealed from the side.
 2. **Keep the evidence and wait.** This is the right choice when nothing is urgent. The wiki serves every read;
    only acceptances wait. `inklkunn wiki export <wiki> --bundle <dir> --archive <file>` writes the whole wiki
-   (the sealed history, never the queued patch) to somewhere safe meanwhile.
+   (the sealed history, never the queued patch) to somewhere safe meanwhile. (The archive holds every object of the
+   repository, anything moderation hid included; the bundle leaves out what was hidden before it was made. See
+   `SECURITY.md`, *What still holds hidden content*.)
 3. **Take the patch back (prikk 0.57.0 and later).** `prikk uncommit` takes the newest queued commit out of the
    queue and keeps it in prikk's own recovery log, so that `prikk doctor --recovery-restore <run>` puts it back. With
    0.57.0 a run of `inklkunn wiki recover <wiki>` (without `--plan`) adds a note that says what prikk would do (prikk's
