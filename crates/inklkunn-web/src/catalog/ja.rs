@@ -4042,4 +4042,13 @@ pub const CATALOG: &[Entry] = &[
         "replace.problem_nothing",
         "このファイルはウィキが読み取れるか、このウィキの知識ファイルではないため、置き換えるものはありません。",
     ),
+    msg("quota.appeals_day", "直近 1 日の申し立てが多すぎます"),
+    msg(
+        "quota.appeals_open",
+        "このウィキで決定待ちの申し立てが多すぎます",
+    ),
+    msg(
+        "quota.reset_appeal_decided",
+        "このウィキで決定待ちの申し立てのどれかが決定されると、リセットされます。",
+    ),
 ];

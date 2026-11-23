@@ -3987,4 +3987,13 @@ pub const CATALOG: &[Entry] = &[
         "replace.problem_nothing",
         "The wiki can read this file, or it is no knowledge file of this wiki, so there is nothing to replace.",
     ),
+    msg("quota.appeals_day", "too many appeals in the last day"),
+    msg(
+        "quota.appeals_open",
+        "too many appeals are waiting for a decision in this wiki",
+    ),
+    msg(
+        "quota.reset_appeal_decided",
+        "It resets when one of this wiki's open appeals is decided.",
+    ),
 ];

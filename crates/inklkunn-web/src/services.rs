@@ -203,6 +203,8 @@ pub struct Services {
     pub people: Arc<PeopleService>,
     /// Hide, unhide and show hidden content, and the moderation log (RFC 006 D-8, D-12): the acts are web-only.
     pub moderation: Arc<inklkunn_core::tombstone::ModerationService>,
+    /// File and decide appeals (RFC 006 D-9), and what a person may contest: the acts are web-only.
+    pub appeals: Arc<inklkunn_core::appeal::AppealService>,
     /// The acceptance records, to link an accepted proposal to its change.
     pub acceptances: Arc<dyn AcceptanceStore>,
     /// The overlaps an acceptance found, kept on the proposal: shown where the proposal needs a revision (D-5).

@@ -567,3 +567,58 @@ fn the_web_settings_carry_the_platform_limits_and_a_bad_one_is_a_start_up_error(
         assert!(e.contains(name), "{name}={bad}: {e}");
     }
 }
+
+#[test]
+fn the_two_limits_on_appeals_have_the_documented_defaults_and_named_refusals() {
+    // RFC 006 D-9 and RFC 004 D-11: three a day for one person, fifty open in a wiki.
+    let d = appeal_limits(&env(&[])).unwrap();
+    assert_eq!(d, inklkunn_core::appeal::AppealLimits::default());
+    assert_eq!((d.per_person_per_day, d.open_per_wiki), (3, 50));
+    for (name, good, n) in [
+        ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "1", 1),
+        ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "100", 100),
+        ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "1", 1),
+        ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "200", 200),
+    ] {
+        let l = appeal_limits(&env(&[(name, good)])).unwrap();
+        let got = if name.ends_with("DAY") {
+            l.per_person_per_day
+        } else {
+            l.open_per_wiki
+        };
+        assert_eq!(got, n, "{name}={good}");
+    }
+    for (name, bad) in [
+        ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "0"),
+        ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "101"),
+        ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "three"),
+        ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", ""),
+        ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "0"),
+        ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "201"),
+        ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "-1"),
+    ] {
+        let e = appeal_limits(&env(&[(name, bad)])).unwrap_err().0;
+        assert!(e.contains(name), "{name}={bad:?}: {e}");
+    }
+    for name in [
+        "INKLKUNN_APPEAL_PER_PERSON_PER_DAY",
+        "INKLKUNN_APPEAL_OPEN_PER_WIKI",
+    ] {
+        assert!(KNOWN.contains(&name), "a file may carry {name}");
+    }
+    // The web settings carry them, and a bad one is a start-up error that names the variable.
+    let base = [
+        ("INKLKUNN_APP_ORIGIN", "https://a.example"),
+        ("INKLKUNN_CONTENT_ORIGIN", "https://b.example"),
+    ];
+    assert_eq!(WebSettings::load(&env(&base)).unwrap().appeals, d);
+    let mut all = base.to_vec();
+    all.push(("INKLKUNN_APPEAL_OPEN_PER_WIKI", "7"));
+    assert_eq!(
+        WebSettings::load(&env(&all)).unwrap().appeals.open_per_wiki,
+        7
+    );
+    all.push(("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "0"));
+    let e = WebSettings::load(&env(&all)).unwrap_err().0;
+    assert!(e.contains("INKLKUNN_APPEAL_PER_PERSON_PER_DAY"), "{e}");
+}

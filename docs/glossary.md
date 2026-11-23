@@ -1761,6 +1761,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `replace.problem_text` | a problem of that form: the text written is not a file the wiki reads; `{rule}` is the sentence of the rule it breaks | "The file you wrote cannot be read either: {rule}" | "書かれたファイルも読み取れません: {rule}" |
 | `replace.problem_reason` | a problem of that form: a retirement without a reason, or one that is not one line | "Say why you are retiring it: the reason is shown to everyone who reads it." | "役目を終えたことにする理由を書いてください。読む人全員に示されます。" |
 | `replace.problem_nothing` | the page that answers a request to replace a file that cannot be read when the file is not one | "The wiki can read this file, or it is no knowledge file of this wiki, so there is nothing to replace." | "このファイルはウィキが読み取れるか、このウィキの知識ファイルではないため、置き換えるものはありません。" |
+| `quota.appeals_day` | the name of the limit on appeals a person files in a day | "too many appeals in the last day" | "直近 1 日の申し立てが多すぎます" |
+| `quota.appeals_open` | the name of the limit on appeals a wiki holds open | "too many appeals are waiting for a decision in this wiki" | "このウィキで決定待ちの申し立てが多すぎます" |
+| `quota.reset_appeal_decided` | under a refusal by the limit on open appeals | "It resets when one of this wiki's open appeals is decided." | "このウィキで決定待ちの申し立てのどれかが決定されると、リセットされます。" |
 
 ## 3. Words the interface does not say
 

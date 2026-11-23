@@ -20,6 +20,8 @@
 //! | `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS` | (`serve`) `knowledge.review_after` (RFC 005 part 2 D-10): how many days after a person last reviewed a source it is listed on the health list *Sources to review*; a source marked unavailable, or never reviewed, is listed whatever this says. The wiki fetches nothing: a person looks at a source and says so in a proposal | `1096` (three years) |
 //! | `INKLKUNN_GOVERNANCE_ENTRY_MAX` | (`serve`) the platform constitution's first limit (RFC 006 D-3): the highest `entry` rung a wiki's policy may give every signed-in account without a grant: `none`, `observer`, `questioner` or `contributor`. A policy above it is refused when it is accepted; if the operator lowers it later, a wiki above it is read as if it were at the limit, and its policy page says so | `contributor` |
 //! | `INKLKUNN_GOVERNANCE_LIMIT_DAYS` | (`serve`) the platform constitution's second limit (RFC 006 D-3): the longest a temporary protection or restriction may last, in days (1 to 3650) | `90` |
+//! | `INKLKUNN_APPEAL_PER_PERSON_PER_DAY` | (`serve`) the first limit on appeals (RFC 006 D-9, RFC 004 D-11): the most appeals one person may file in one wiki in a rolling day (1 to 100). The refusal names the limit (`appeals-per-day-per-principal`) and says when the next one fits | `3` |
+//! | `INKLKUNN_APPEAL_OPEN_PER_WIKI` | (`serve`) the second limit on appeals: the most appeals one wiki may hold open at once, whoever filed them, so that they cannot flood the rung that decides them (1 to 200). The refusal names the limit (`open-appeals-per-wiki`) and says it clears when an open appeal is decided | `50` |
 //! | `INKLKUNN_JOIN` | (`serve`) who may make an account without an invitation: `off` (accounts come only from invitations), `provider` (a first sign-in through the configured OpenID Connect provider makes one; **a public provider makes this open registration**) or `anyone` (also a local account with a password) | `off` |
 //! | `INKLKUNN_OIDC_ISSUER` | (`serve`) the OpenID Connect provider's issuer, an `https` address exactly as the provider publishes it (its discovery document is at `<issuer>/.well-known/openid-configuration`); switches provider sign-in on. Needs `curl`, the system CA bundle, `prlimit` and bubblewrap on the host | none (no provider) |
 //! | `INKLKUNN_OIDC_CLIENT_ID` | (`serve`) the client id registered at the provider; required with the issuer | none |
@@ -42,6 +44,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use inklkunn_auth::JoinPolicy;
+use inklkunn_core::appeal::{
+    AppealLimits, OPEN_PER_WIKI_DEFAULT, OPEN_PER_WIKI_MAX, PER_DAY_DEFAULT, PER_DAY_MAX,
+};
 use inklkunn_core::governance::{
     Entry, LIMIT_DAYS_MAX, LIMIT_DAYS_MIN, PlatformLimits, defaults as governance_defaults,
 };
@@ -214,6 +219,9 @@ pub struct WebSettings {
     /// `INKLKUNN_GOVERNANCE_ENTRY_MAX` and `INKLKUNN_GOVERNANCE_LIMIT_DAYS`: what the operator allows any wiki's rules
     /// (RFC 006 D-3). A value outside what the settings allow is a start-up error.
     pub governance: PlatformLimits,
+    /// `INKLKUNN_APPEAL_PER_PERSON_PER_DAY` and `INKLKUNN_APPEAL_OPEN_PER_WIKI`: the limits on appeals (RFC 006 D-9). A value
+    /// outside the range is a start-up error.
+    pub appeals: AppealLimits,
 }
 
 /// The OpenID Connect provider the operator configured (`INKLKUNN_OIDC_*`). All or nothing: the issuer and the
@@ -436,6 +444,28 @@ pub fn platform_limits(
     })
 }
 
+/// Read the two limits on appeals (RFC 006 D-9, RFC 004 D-11) through `get`: `INKLKUNN_APPEAL_PER_PERSON_PER_DAY` (1 to 100) and
+/// `INKLKUNN_APPEAL_OPEN_PER_WIKI` (1 to 200), the defaults where they are not set. A value that is not a whole number in its
+/// range is a start-up error that names the variable.
+pub fn appeal_limits(get: &dyn Fn(&str) -> Option<OsString>) -> Result<AppealLimits, ConfigError> {
+    Ok(AppealLimits {
+        per_person_per_day: number_setting(
+            get,
+            "INKLKUNN_APPEAL_PER_PERSON_PER_DAY",
+            PER_DAY_DEFAULT,
+            1,
+            PER_DAY_MAX,
+        )?,
+        open_per_wiki: number_setting(
+            get,
+            "INKLKUNN_APPEAL_OPEN_PER_WIKI",
+            OPEN_PER_WIKI_DEFAULT,
+            1,
+            OPEN_PER_WIKI_MAX,
+        )?,
+    })
+}
+
 impl WebSettings {
     /// Read the web settings through `get`.
     pub fn load(get: &dyn Fn(&str) -> Option<OsString>) -> Result<Self, ConfigError> {
@@ -463,6 +493,7 @@ impl WebSettings {
             },
             oidc: OidcSettings::load(get)?,
             governance: platform_limits(get)?,
+            appeals: appeal_limits(get)?,
             trusted_proxies: match text("INKLKUNN_TRUSTED_PROXIES")? {
                 None => Vec::new(),
                 Some(list) => list
@@ -495,6 +526,8 @@ pub const KNOWN: &[&str] = &[
     "INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS",
     "INKLKUNN_GOVERNANCE_ENTRY_MAX",
     "INKLKUNN_GOVERNANCE_LIMIT_DAYS",
+    "INKLKUNN_APPEAL_PER_PERSON_PER_DAY",
+    "INKLKUNN_APPEAL_OPEN_PER_WIKI",
     "INKLKUNN_TRUSTED_PROXIES",
     "INKLKUNN_JOIN",
     "INKLKUNN_OIDC_ISSUER",

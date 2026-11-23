@@ -234,11 +234,23 @@ fn prepare_probing(
             store.clone(),
             store.clone(),
             read.clone(),
-            tombstones,
+            tombstones.clone(),
             store.clone() as Arc<dyn AuditSink>,
         )
         .with_notifier(notifier),
     );
+    // Appeals against a decline, a hiding, a restriction, a protection or a lowered role (RFC 006 D-9): web-only acts, over the
+    // same stores, under the operator's two limits (`INKLKUNN_APPEAL_*`).
+    let appeals = Arc::new(inklkunn_core::appeal::AppealService::new(
+        (*authorizer).clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        tombstones,
+        store.clone() as Arc<dyn AuditSink>,
+        web.appeals,
+    ));
     let auth = Arc::new(outbound::attach(
         Authenticator::new(
             store.clone(),
@@ -280,6 +292,7 @@ fn prepare_probing(
         accounts: store.clone(),
         people,
         moderation,
+        appeals,
         acceptances: store.clone(),
         acts: store.clone(),
         // The acceptor of RFC 004 D-4 over the same lease as the command line, or `NoSigner` when this server was

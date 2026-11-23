@@ -50,6 +50,8 @@ pub(crate) fn limit_name(limit: QuotaLimit) -> Key {
         QuotaLimit::ProposalsPerHourPerWiki => Key::QuotaHourWiki,
         QuotaLimit::AcceptanceQueue => Key::QuotaQueue,
         QuotaLimit::CommentsPerHourPerPrincipal => Key::QuotaCommentsHourPerson,
+        QuotaLimit::AppealsPerDayPerPrincipal => Key::QuotaAppealsDay,
+        QuotaLimit::OpenAppealsPerWiki => Key::QuotaAppealsOpen,
     }
 }
 
@@ -84,6 +86,7 @@ pub(crate) fn quota_paragraphs(t: T, q: &QuotaRefusal) -> Vec<String> {
         Reset::At(at) => t.msg(Key::ResetAt).with("when", utc_minutes(at)).text(),
         Reset::WhenAProposalCloses => t.get(Key::ResetProposalCloses),
         Reset::WhenTheQueueMoves => t.get(Key::ResetQueue),
+        Reset::WhenAnAppealIsDecided => t.get(Key::ResetAppealDecided),
         Reset::Never => t.get(match q.limit {
             QuotaLimit::RevisionsPerProposal => Key::ResetNeverRevisions,
             _ => Key::ResetNeverTooBig,

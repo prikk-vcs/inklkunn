@@ -60,7 +60,7 @@ impl Default for QuotaConfig {
 /// The length of the hourly window, in seconds.
 const HOUR: i64 = 3600;
 /// The length of the daily window, in seconds.
-const DAY: i64 = 24 * 3600;
+pub(crate) const DAY: i64 = 24 * 3600;
 
 /// Which limit refused. The names are fixed: a glossary row will give each its words (handoff 004 T3/T8,
 /// "refused: the named limit").
@@ -80,11 +80,15 @@ pub enum QuotaLimit {
     AcceptanceQueue,
     /// Too many comments by one principal in an hour.
     CommentsPerHourPerPrincipal,
+    /// Too many appeals by one person in a day (RFC 006 D-9: appeals cannot flood the rung that decides them).
+    AppealsPerDayPerPrincipal,
+    /// Too many appeals waiting for a decision in the wiki.
+    OpenAppealsPerWiki,
 }
 
 impl QuotaLimit {
     /// Every limit.
-    pub const ALL: [QuotaLimit; 7] = [
+    pub const ALL: [QuotaLimit; 9] = [
         QuotaLimit::OpenProposals,
         QuotaLimit::RevisionsPerProposal,
         QuotaLimit::AcceptedBytesPerDay,
@@ -92,6 +96,8 @@ impl QuotaLimit {
         QuotaLimit::ProposalsPerHourPerWiki,
         QuotaLimit::AcceptanceQueue,
         QuotaLimit::CommentsPerHourPerPrincipal,
+        QuotaLimit::AppealsPerDayPerPrincipal,
+        QuotaLimit::OpenAppealsPerWiki,
     ];
 
     /// The fixed name (stable: logs, the API's problem type and the glossary key are made from it).
@@ -104,6 +110,8 @@ impl QuotaLimit {
             QuotaLimit::ProposalsPerHourPerWiki => "proposals-per-hour-per-wiki",
             QuotaLimit::AcceptanceQueue => "acceptance-queue",
             QuotaLimit::CommentsPerHourPerPrincipal => "comments-per-hour-per-principal",
+            QuotaLimit::AppealsPerDayPerPrincipal => "appeals-per-day-per-principal",
+            QuotaLimit::OpenAppealsPerWiki => "open-appeals-per-wiki",
         }
     }
 }
@@ -117,6 +125,8 @@ pub enum Reset {
     WhenAProposalCloses,
     /// When a waiting acceptance gets its turn or gives up.
     WhenTheQueueMoves,
+    /// When one of the wiki's open appeals is decided.
+    WhenAnAppealIsDecided,
     /// Not by waiting: the proposal has all the revisions it can have (open a new one), or one request is
     /// larger than the limit allows at all (make it smaller).
     Never,
@@ -397,7 +407,7 @@ fn count(times: &[i64]) -> u64 {
 
 /// For a rolling window of `window` seconds holding `times` (oldest first, all inside it) against a limit of
 /// `allowed`: `None` when one more fits, else the moment it will, when enough of the oldest have aged out.
-fn rolling_reset(times: &[i64], allowed: u64, window: i64) -> Option<Reset> {
+pub(crate) fn rolling_reset(times: &[i64], allowed: u64, window: i64) -> Option<Reset> {
     let n = count(times);
     if n < allowed {
         return None;

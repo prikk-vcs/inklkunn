@@ -52,6 +52,7 @@ pub use metrics::{
     ClaimFigures, Metrics, Period, REVIEW_RECORD_NOTE, REVIEW_RECORD_SCHEMA, Ratio,
     operator_metrics,
 };
+pub(crate) use quota::{DAY as QUOTA_DAY, rolling_reset};
 pub use quota::{QuotaConfig, QuotaLimit, QuotaRefusal, Quotas, Reset};
 
 /// The longest summary, in characters (RFC 004 D-2; the CT-03 first line).

@@ -1994,6 +1994,9 @@ keys! {
     ReplaceProblemText => "replace.problem_text",
     ReplaceProblemReason => "replace.problem_reason",
     ReplaceProblemNothing => "replace.problem_nothing",
+    QuotaAppealsDay => "quota.appeals_day",
+    QuotaAppealsOpen => "quota.appeals_open",
+    ResetAppealDecided => "quota.reset_appeal_decided",
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

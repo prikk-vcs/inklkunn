@@ -364,6 +364,7 @@ impl Running {
             join: inklkunn_auth::JoinPolicy::Off,
             oidc: None,
             governance: inklkunn_core::governance::PlatformLimits::default(),
+            appeals: inklkunn_core::appeal::AppealLimits::default(),
         };
         let log = Arc::new(Mutex::new(Vec::new()));
         let sink = log.clone();

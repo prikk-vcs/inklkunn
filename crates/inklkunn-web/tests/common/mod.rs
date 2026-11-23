@@ -897,11 +897,21 @@ pub fn assemble_under(
             store.clone(),
             store.clone(),
             read.clone(),
-            tombstones,
+            tombstones.clone(),
             audit.clone(),
         )
         .with_notifier(notifier),
     );
+    let appeals = Arc::new(inklkunn_core::appeal::AppealService::new(
+        (*authorizer).clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        tombstones,
+        audit.clone(),
+        inklkunn_core::appeal::AppealLimits::default(),
+    ));
     let services = Arc::new(Services {
         wikis: store.clone(),
         read,
@@ -914,6 +924,7 @@ pub fn assemble_under(
         accounts: store.clone(),
         people,
         moderation,
+        appeals,
         acceptances: store.clone(),
         acts: store.clone(),
         auth: None,

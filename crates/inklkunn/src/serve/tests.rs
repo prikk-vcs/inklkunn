@@ -52,6 +52,7 @@ fn web(bind: &str, app: &str, content: &str) -> WebSettings {
         join: inklkunn_auth::JoinPolicy::Off,
         oidc: None,
         governance: inklkunn_core::governance::PlatformLimits::default(),
+        appeals: inklkunn_core::appeal::AppealLimits::default(),
     }
 }
 

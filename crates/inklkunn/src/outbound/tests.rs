@@ -321,6 +321,7 @@ fn a_provider_whose_secret_cannot_be_read_is_refused_at_start_naming_the_setting
             "/nonexistent/oidc-secret",
         )))),
         governance: inklkunn_core::governance::PlatformLimits::default(),
+        appeals: inklkunn_core::appeal::AppealLimits::default(),
     };
     let e = provider_if_configured(&web).err().unwrap();
     assert!(e.contains("INKLKUNN_OIDC_CLIENT_SECRET_FILE"), "{e}");
@@ -346,6 +347,7 @@ fn the_start_says_a_provider_is_on_with_the_address_to_register_and_warns_of_joi
         join: inklkunn_auth::JoinPolicy::Off,
         oidc: None,
         governance: inklkunn_core::governance::PlatformLimits::default(),
+        appeals: inklkunn_core::appeal::AppealLimits::default(),
     };
     assert!(start_notes(&web).is_empty(), "nothing to say about nothing");
     web.join = inklkunn_auth::JoinPolicy::Provider;

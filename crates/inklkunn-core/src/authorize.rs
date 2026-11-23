@@ -60,6 +60,7 @@
 
 use std::sync::Arc;
 
+mod appeals;
 mod protections;
 
 pub use protections::{ProtectError, Setting};
