@@ -20,7 +20,7 @@ use inklkunn_core::governance::{Require, Target};
 use inklkunn_core::protection::{Kind, Lack, Notice};
 use inklkunn_store::Role;
 
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T};
 use crate::time::utc_minutes;
 
 /// One protection, ready to print: four short sentences, each a whole message.
@@ -33,6 +33,8 @@ pub(crate) struct NoticeView {
     pub(crate) requires: String,
     /// Why, in the words of whoever set it.
     pub(crate) reason: String,
+    /// For a temporary protection: the role of whoever put it in place and the rules they did it under (RFC 006 D-5; no name).
+    pub(crate) set_by: Option<Rich>,
 }
 
 /// The name of a role, in the reader's language.
@@ -47,7 +49,7 @@ pub(crate) fn rung_word(t: T, role: Role) -> String {
     })
 }
 
-fn view(t: T, notice: &Notice) -> NoticeView {
+fn view(t: T, slug: &str, notice: &Notice) -> NoticeView {
     let kind = match notice.kind() {
         Kind::Standing => t.get(Key::ProtectionKindStanding),
         Kind::Temporary { until } => t
@@ -77,17 +79,26 @@ fn view(t: T, notice: &Notice) -> NoticeView {
             .msg(Key::ProtectionReason)
             .with("reason", notice.reason())
             .text(),
+        set_by: notice.set_by().map(|by| {
+            t.msg(Key::AuthoritySetBy)
+                .with("role", rung_word(t, by.rung))
+                .rich(
+                    "authority",
+                    crate::authority::under(t, slug, by.block.as_deref()),
+                )
+                .html()
+        }),
     }
 }
 
 /// The notices as the list a page prints, in the order the core gave them (the policy's first, then the temporary ones).
-pub(crate) fn views(t: T, notices: &[Notice]) -> Vec<NoticeView> {
-    notices.iter().map(|n| view(t, n)).collect()
+pub(crate) fn views(t: T, slug: &str, notices: &[Notice]) -> Vec<NoticeView> {
+    notices.iter().map(|n| view(t, slug, n)).collect()
 }
 
 /// The notices as paragraphs: each protection's four sentences, one paragraph a sentence, in the same order.
 pub(crate) fn paragraphs(t: T, notices: &[Notice]) -> Vec<String> {
-    views(t, notices)
+    views(t, "", notices)
         .into_iter()
         .flat_map(|v| [v.kind, v.on, v.requires, v.reason])
         .collect()

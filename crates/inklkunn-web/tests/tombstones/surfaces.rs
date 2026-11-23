@@ -346,3 +346,31 @@ async fn surface_removed_page() {
 async fn surface_restore_offer() {
     super::removed::surface_restore_offer().await;
 }
+
+#[tokio::test]
+async fn surface_rules_history() {
+    let e = env().await;
+    // A change of the rules, made by the accepted proposal: the page of the rules names the proposal by its summary.
+    e.w.fake
+        .set_files(&[("governance/policy.yaml", "entry: observer\n")]);
+    e.w.fake
+        .say(4, &super::message(&e.accepted, &e.author, &e.maintainer));
+    e.w.fake.touches(&change(4), &["governance/policy.yaml"]);
+    let before = read(&e, "/handbook/-/policy", None).await;
+    assert_eq!(before.status, StatusCode::OK, "{}", before.body());
+    assert!(before.body().contains(super::SUMMARY), "{}", before.body());
+    // Hide the proposal's summary and author: the page says the summary is hidden, to every viewer, the moderator included.
+    let item = proposal_item(&e.accepted, 1);
+    let a = hide(&e, &borrowed(&item), &["part_summary", "part_author"], "").await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    for who in viewers(&e) {
+        let a = read(&e, "/handbook/-/policy", who.as_ref()).await;
+        assert_eq!(a.status, StatusCode::OK, "{who:?}: {}", a.body());
+        nothing_hidden_in(&a, "/handbook/-/policy");
+        assert!(
+            a.body().contains("(summary hidden)"),
+            "{who:?}: {}",
+            a.body()
+        );
+    }
+}

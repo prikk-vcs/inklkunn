@@ -32,7 +32,7 @@
 <p>{{ restricted_intro }}</p>
 {% if items.is_empty() %}<p>{{ restricted_none }}</p>
 {% else %}<ul class="people-list">
-{% for item in items %}<li>{{ item.line }} <span class="note">{{ item.reason }}</span>{% for link in item.links %} <a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</li>
+{% for item in items %}<li>{{ item.line }} <span class="note">{{ item.reason }}</span> <span class="note">{{ item.authority }}</span>{% for link in item.links %} <a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</li>
 {% endfor %}</ul>
 {% endif %}</section>
 {% endif %}{% endblock %}

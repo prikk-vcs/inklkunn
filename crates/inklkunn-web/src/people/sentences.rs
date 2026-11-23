@@ -32,6 +32,14 @@ pub(crate) fn restriction_paragraphs(t: T, notice: &RestrictionNotice) -> Vec<St
         t.msg(Key::RestrictionUntil)
             .with("date", utc_minutes(notice.until))
             .text(),
+        // Who set it, as which role and under which rules (RFC 006 D-5): never a name.
+        t.msg(Key::AuthorityRestriction)
+            .with("role", role_label(t, notice.by_rung))
+            .with(
+                "authority",
+                crate::authority::under_text(t, notice.policy_block.as_deref()),
+            )
+            .text(),
     ]
 }
 

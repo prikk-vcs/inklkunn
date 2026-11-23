@@ -451,6 +451,7 @@ pub(super) fn render_form(
         .collect();
     let protections = crate::protections::views(
         t,
+        ctx.slug(),
         &ctx.services
             .authorizer
             .protections_on_change(&ctx.principal, &ctx.wiki.id, &touched),

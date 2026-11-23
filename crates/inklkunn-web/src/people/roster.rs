@@ -16,7 +16,7 @@ use inklkunn_core::people::{Holders, PeopleError, PeopleView, Person};
 use inklkunn_store::{Visibility, WikiRecord};
 
 use super::{fields, paths, sentences};
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T};
 use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
 use crate::proposals::render::LinkView;
@@ -47,6 +47,8 @@ struct RoleRow {
 struct RestrictedItem {
     line: String,
     reason: String,
+    /// Who set it, as which role, under which rules (RFC 006 D-5).
+    authority: Rich,
     links: Vec<LinkView>,
 }
 
@@ -226,6 +228,14 @@ fn restricted_rows(t: T, slug: &str, view: &PeopleView) -> Vec<RestrictedItem> {
                     .msg(Key::RestrictionReason)
                     .with("reason", row.reason.as_str())
                     .text(),
+                authority: t
+                    .msg(Key::AuthorityRestriction)
+                    .with("role", sentences::role_label(t, row.by_rung))
+                    .rich(
+                        "authority",
+                        crate::authority::under(t, slug, row.policy_block.as_deref()),
+                    )
+                    .html(),
                 links,
             }
         })

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+<p>{{ intro }}</p>
+{% if let Some((unreadable_heading, paragraphs)) = unreadable %}<section class="notice" role="alert" aria-labelledby="unreadable">
+<h2 id="unreadable">{{ unreadable_heading }}</h2>
+{% for text in paragraphs %}<p>{{ text }}</p>
+{% endfor %}</section>
+{% endif %}{% if let Some(text) = source %}<p>{{ text }}</p>
+{% endif %}{% if let Some(text) = defaults %}<p>{{ text }}</p>
+{% endif %}{% if let Some(text) = warning %}<p class="note" role="note">{{ text }}</p>
+{% endif %}{% for section in sections %}<section id="{{ section.id }}" aria-labelledby="{{ section.id }}-heading">
+<h2 id="{{ section.id }}-heading">{{ section.heading }}</h2>
+{% if let Some(text) = section.intro %}<p>{{ text }}</p>
+{% endif %}{% if !section.lines.is_empty() %}<dl class="rules">
+{% for l in section.lines %}{% if l.value.is_empty() %}<dt>{{ l.label }}</dt>
+<dd></dd>
+{% else %}<dt>{{ l.label }}</dt>
+<dd>{{ l.value }}{% if let Some(note) = l.note %} <span class="note">{{ note }}</span>{% endif %}</dd>
+{% endif %}{% endfor %}</dl>
+{% endif %}{% for text in section.notes %}<p class="note">{{ text }}</p>
+{% endfor %}</section>
+{% endfor %}<section id="protections" aria-labelledby="protections-heading">
+<h2 id="protections-heading">{{ protections_heading }}</h2>
+<p>{{ protections_intro }}</p>
+{% if !protections.is_empty() %}<ul>
+{% for p in protections %}<li><strong>{{ p.kind }}</strong> {{ p.on }} {{ p.requires }} {{ p.reason }}{% if let Some(by) = p.set_by %} {{ by }}{% endif %}</li>
+{% endfor %}</ul>
+{% endif %}{% for text in protections_notes %}<p class="note">{{ text }}</p>
+{% endfor %}</section>
+<section id="history" aria-labelledby="history-heading">
+<h2 id="history-heading">{{ history_heading }}</h2>
+<p>{{ history_intro }}</p>
+{% if !history.is_empty() %}<ol class="rules-history">
+{% for row in history %}<li>{{ row.head }}
+<ul>
+{% for text in row.lines %}<li>{{ text }}</li>
+{% endfor %}</ul>
+</li>
+{% endfor %}</ol>
+{% endif %}{% for text in history_notes %}<p class="note">{{ text }}</p>
+{% endfor %}</section>
+<ul class="links">
+{% for link in links %}<li><a href="{{ link.href }}">{{ link.label }}</a></li>
+{% endfor %}</ul>
+{% endblock %}

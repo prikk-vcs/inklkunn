@@ -23,6 +23,7 @@
 mod account;
 pub mod api;
 mod appeals;
+mod authority;
 pub mod catalog;
 mod changes;
 pub mod config;
@@ -39,6 +40,7 @@ pub mod lang;
 pub mod origin;
 pub mod pages;
 mod people;
+mod policy;
 mod present;
 mod probe;
 pub mod proposals;

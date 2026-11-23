@@ -106,6 +106,8 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
                 && entry.path != "/{slug}/-/proposals/{id}")
                 // The proposal that restores a removed page (RFC 006 D-10; handoff G-T6) is a proposal.
                 || entry.path == "/{slug}/-/restore/{*title}"
+                // The form that proposes a change to the rules (RFC 006 D-4; handoff G-T7) is a proposal.
+                || entry.path == "/{slug}/-/policy/edit"
                 || (entry.path.starts_with("/{slug}/-/api/v1/proposals")
                     && entry.methods == ["POST"]);
             // A view's creation is its own action (RFC 005 part 2 D-9; handoff 005 K-T8).

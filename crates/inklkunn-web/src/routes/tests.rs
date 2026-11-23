@@ -355,6 +355,8 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/appeals/mine", Read),
             ("/{slug}/-/appeals/new", Read),
             ("/{slug}/-/appeals/decide", Read),
+            ("/{slug}/-/policy", Read),
+            ("/{slug}/-/policy/edit", Propose),
         ]
     );
     // Whatever a route writes, it declares the writing methods only where it declares a non-read action or is

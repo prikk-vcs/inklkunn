@@ -10,7 +10,8 @@
 <p class="change-head">{% if let Some(link) = row.link %}<a href="{{ link.href }}">{{ row.head }}</a>{% else %}{{ row.head }}{% endif %}</p>
 <ul class="change-facts">
 {% for f in row.facts %}<li>{{ f }}</li>
-{% endfor %}{% if let Some(text) = row.declined %}<li>{{ text }}</li>
+{% endfor %}<li>{{ row.authority }}</li>
+{% if let Some(text) = row.declined %}<li>{{ text }}</li>
 {% endif %}{% if let Some(text) = row.appeal %}<li>{{ text }}</li>
 {% endif %}{% if let Some(text) = row.note %}<li>{{ text }}</li>
 {% endif %}</ul>

@@ -3382,7 +3382,10 @@ pub const CATALOG: &[Entry] = &[
     msg("protection.kind_standing", "By this wiki's rules"),
     msg("protection.kind_temporary", "Temporarily, until {until}"),
     msg("protection.on_page", "On the page {title}."),
-    msg("protection.on_namespace", "On every page below {title}."),
+    msg(
+        "protection.on_namespace",
+        "On the pages under {title}/ (not the page {title}).",
+    ),
     msg(
         "protection.requires_review",
         "A change here is accepted only after someone other than the proposer has approved it.",
@@ -4200,5 +4203,384 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "log.restored_by_appeal",
         "Restored because an appeal was decided.",
+    ),
+    msg("title.policy", "Rules · {wiki} · {product}"),
+    msg("policy.heading", "The rules of this wiki"),
+    msg(
+        "policy.intro",
+        "These are the rules of this wiki: who may do what here, and how the rules themselves are changed. They are kept in the wiki's own files and change only by a proposal, like everything else here.",
+    ),
+    msg(
+        "policy.defaults_note",
+        "This wiki has no rules of its own yet, so it follows the default rules. They are listed here.",
+    ),
+    msg(
+        "policy.as_of",
+        "These are the rules as set by the change {change}.",
+    ),
+    msg("policy.unreadable_heading", "The rules cannot be read"),
+    msg(
+        "policy.unreadable_defaults",
+        "Until they are repaired, every change is refused, and what is listed below is only what the default rules say.",
+    ),
+    msg("policy.who_heading", "Who may do what"),
+    msg("policy.label_comment", "Who may comment"),
+    msg("policy.label_propose", "Who may propose a change"),
+    msg("policy.label_review", "Who may review a proposal"),
+    msg("policy.label_create_view", "Who may create a view"),
+    msg("policy.label_accept", "Who may accept a proposal"),
+    msg("policy.label_moderate", "Who may moderate"),
+    msg("policy.label_decide_appeal", "Who decides an appeal"),
+    msg(
+        "policy.label_grant",
+        "The highest role a maintainer may grant",
+    ),
+    msg("policy.label_entry", "The role everyone who signs in holds"),
+    msg("policy.value_rung", "{role} or above"),
+    msg("policy.value_rung_top", "{role} only"),
+    msg(
+        "policy.value_entry_none",
+        "none: people hold only the role they are granted",
+    ),
+    msg(
+        "policy.value_grant_none",
+        "none: only an admin grants a role",
+    ),
+    msg("policy.value_grant_up_to", "up to {role}"),
+    msg(
+        "policy.entry_no_effect",
+        "This has no effect in this wiki: only people who were granted a role here can read it or take part.",
+    ),
+    msg("policy.accept_heading", "How a proposal is accepted"),
+    msg(
+        "policy.label_approvals",
+        "Approvals needed before a proposal is accepted",
+    ),
+    plural_msg(
+        "policy.value_approvals",
+        "{count} approval from someone other than the proposer",
+        "{count} approvals from people other than the proposer",
+    ),
+    msg("policy.value_approvals_none", "none"),
+    msg("policy.label_self", "Accepting your own proposal"),
+    msg(
+        "policy.value_self_never",
+        "never: a proposal is accepted by someone other than its proposer",
+    ),
+    msg(
+        "policy.value_self_small",
+        "a maintainer may, while the wiki has fewer than {limit} maintainers",
+    ),
+    msg(
+        "policy.label_review_after",
+        "A source is due for review after",
+    ),
+    msg("policy.value_review_days", "{days} days"),
+    msg(
+        "policy.value_review_server",
+        "{days} days, as this server is set",
+    ),
+    msg(
+        "policy.promotion_heading",
+        "What this wiki looks for before granting a role",
+    ),
+    msg(
+        "policy.promotion_note",
+        "These are guidance for people. Nothing promotes anyone by them, no count turns into a role, and there is no score.",
+    ),
+    msg("policy.label_promotion", "Before this wiki grants {role}"),
+    msg("policy.promotion_none", "No role has a text of this kind."),
+    msg("policy.change_heading", "Changing these rules"),
+    msg(
+        "policy.label_change_rules",
+        "Who may accept a change to these rules",
+    ),
+    msg(
+        "policy.label_change_who",
+        "Who may accept a change to who may change the rules",
+    ),
+    plural_msg(
+        "policy.value_change_rules",
+        "{role} or above, with {count} approval from someone other than the proposer",
+        "{role} or above, with {count} approvals from people other than the proposer",
+    ),
+    plural_msg(
+        "policy.value_change_who",
+        "{role} only, with {count} approval from someone other than the proposer",
+        "{role} only, with {count} approvals from people other than the proposer",
+    ),
+    msg(
+        "policy.hatch_note",
+        "An admin of this wiki can always change these rules without any approval, whatever they say. The record of the acceptance says so.",
+    ),
+    msg("policy.protections_heading", "Protections in force"),
+    msg(
+        "policy.protections_intro",
+        "Pages and groups of pages whose changes need more before they are accepted: the ones the rules of this wiki set, and the ones moderators set for a time.",
+    ),
+    msg("policy.protections_none", "No protection is in force."),
+    msg(
+        "policy.protections_self_note",
+        "Where a protection asks for a review, a proposal accepted by its own proposer does not meet it: while the wiki is small, a lone maintainer cannot both propose and accept a change to a protected page.",
+    ),
+    msg("policy.limits_heading", "Limits of this server"),
+    msg(
+        "policy.limits_intro",
+        "The person who runs this server sets limits that no wiki's rules can go beyond.",
+    ),
+    msg(
+        "policy.limit_entry",
+        "The highest role the rules may give everyone who signs in: {role}",
+    ),
+    msg(
+        "policy.limit_days",
+        "The longest a temporary protection or restriction may last: {days} days",
+    ),
+    msg(
+        "policy.lowered_entry",
+        "The rules say that everyone who signs in holds {was}, but this server allows at most {now}. So {now} is what applies.",
+    ),
+    msg("policy.history_heading", "Why the rules are what they are"),
+    msg(
+        "policy.history_intro",
+        "Each change to the rules, newest first, with the proposal that made it.",
+    ),
+    msg("policy.history_none", "No change to the rules is recorded."),
+    msg("policy.history_row", "{change}, by the proposal {proposal}"),
+    msg("policy.history_row_alone", "{change}"),
+    msg(
+        "policy.history_repair",
+        "This change cleared or made something where the files of the rules belong, and changed no rule.",
+    ),
+    plural_msg(
+        "policy.history_more",
+        "…and {count} more change of the rules.",
+        "…and {count} more changes of the rules.",
+    ),
+    msg(
+        "policy.history_window",
+        "Only the newest {blocks} changes of the wiki were looked through, so older changes of the rules are not listed.",
+    ),
+    msg(
+        "policy.history_unavailable",
+        "The history of the rules could not be read now.",
+    ),
+    msg(
+        "policy.protections_unavailable",
+        "The protections could not be read now.",
+    ),
+    msg("policy.link_log", "The moderation log"),
+    msg("policy.link_change", "Propose a change to these rules"),
+    msg("about.policy_link", "The rules of this wiki"),
+    msg("policy.change_line", "{label}: {before} → {after}"),
+    msg("policy.change_promotion_none", "no text"),
+    msg(
+        "policy.change_protection_added",
+        "Protection added: {protection}",
+    ),
+    msg(
+        "policy.change_protection_removed",
+        "Protection removed: {protection}",
+    ),
+    msg(
+        "policy.change_protection_changed",
+        "Protection changed: {before} → {after}",
+    ),
+    msg(
+        "policy.protection_page",
+        "The page {title}: {asks}. Reason: {reason}",
+    ),
+    msg(
+        "policy.protection_namespace",
+        "The pages under {title}/ (not the page {title}): {asks}. Reason: {reason}",
+    ),
+    msg(
+        "policy.protection_review",
+        "a review by someone other than the proposer first",
+    ),
+    msg("policy.protection_rung", "only {role} or above accepts"),
+    msg(
+        "governance.change_heading",
+        "What this proposal changes in the rules",
+    ),
+    msg(
+        "governance.change_none",
+        "This changes the file of the rules, but no rule says anything different.",
+    ),
+    msg(
+        "governance.change_defaults",
+        "This removes a file of the rules: the default rules apply again for what it set.",
+    ),
+    msg(
+        "governance.change_unreadable",
+        "The new text of a file of the rules cannot be read as rules, and this proposal cannot be accepted: {rule}",
+    ),
+    msg("governance.needs", "Accepting this change takes: {rule}."),
+    msg(
+        "governance.hatch_you",
+        "You are an admin of this wiki, so you may accept this change without any approval. The record of the acceptance will say so.",
+    ),
+    msg(
+        "title.policy_edit",
+        "Propose a change to the rules · {wiki} · {product}",
+    ),
+    msg("policy_edit.heading", "Propose a change to the rules"),
+    msg(
+        "policy_edit.intro",
+        "Change what you want, and send it as a proposal. It is reviewed and accepted like any other proposal, and the rules change only when it is accepted.",
+    ),
+    msg(
+        "policy_edit.who_note",
+        "Anyone who may propose can send a change to the rules. Who may accept it is set by the rules themselves.",
+    ),
+    msg(
+        "policy_edit.accept_note",
+        "Accepting a change to the rules takes: {rule}.",
+    ),
+    msg(
+        "policy_edit.repair_note",
+        "The rules cannot be read, so the form starts from the default rules. Only an admin of the wiki can send the repair, and nothing else in the wiki can be changed until it is accepted.",
+    ),
+    msg(
+        "policy_edit.repair_not_admin",
+        "The rules cannot be read. Only an admin of the wiki can propose the repair.",
+    ),
+    msg(
+        "policy_edit.entry_hint",
+        "This server allows at most {role} here.",
+    ),
+    msg(
+        "policy_edit.approvals_hint",
+        "A whole number from 0 to {max}.",
+    ),
+    msg(
+        "policy_edit.review_hint",
+        "A number of days, 1 to {max}. Leave it empty to use this server's setting ({days} days).",
+    ),
+    msg(
+        "policy_edit.promotion_hint",
+        "Guidance for people, shown beside the role. Nothing promotes anyone by it. Leave it empty for none.",
+    ),
+    msg(
+        "policy_edit.protect_intro",
+        "A protection asks more of whoever accepts a change to the pages it covers. A protection on the pages under a title covers those pages, and not the page of the same name: protect that page itself to cover it.",
+    ),
+    msg("policy_edit.protect_row", "Protection {number}"),
+    msg("policy_edit.protect_kind_label", "What it covers"),
+    msg("policy_edit.protect_kind_page", "One page"),
+    msg(
+        "policy_edit.protect_kind_namespace",
+        "The pages under a title, and not the page of that title",
+    ),
+    msg("policy_edit.protect_title_label", "Title"),
+    msg("policy_edit.protect_asks_label", "What it asks"),
+    msg(
+        "policy_edit.protect_reason_label",
+        "Reason, shown to everyone who may read the page",
+    ),
+    msg("policy_edit.protect_remove", "Remove this protection"),
+    msg("policy_edit.protect_add", "Add a protection"),
+    msg(
+        "policy_edit.summary_default",
+        "Change the rules of this wiki",
+    ),
+    msg(
+        "policy_edit.summary_defaults",
+        "Go back to the default rules of this wiki",
+    ),
+    msg("policy_edit.send", "Send as a proposal"),
+    msg(
+        "policy_edit.defaults_button",
+        "Propose going back to the default rules",
+    ),
+    msg(
+        "policy_edit.unchanged",
+        "Nothing was changed, so no proposal was made. Change something, and send it again.",
+    ),
+    msg(
+        "policy_edit.defaults_unchanged",
+        "This wiki already follows the default rules, so there is nothing to go back to.",
+    ),
+    msg("policy_edit.problem_number", "This must be a whole number."),
+    msg(
+        "policy_edit.refusal_wrong_shape",
+        "This is not a value this setting takes.",
+    ),
+    msg(
+        "policy_edit.refusal_unknown_value",
+        "Choose one of the options.",
+    ),
+    msg(
+        "policy_edit.refusal_out_of_range",
+        "This number is outside what this setting allows.",
+    ),
+    msg(
+        "policy_edit.refusal_bounds",
+        "This is too long, or there are too many.",
+    ),
+    msg(
+        "policy_edit.refusal_forbidden",
+        "This holds a character that cannot be used here (a control or direction character, or a line break). Write it on one line.",
+    ),
+    msg("policy_edit.refusal_missing", "This cannot be empty."),
+    msg(
+        "policy_edit.refusal_duplicate",
+        "This page or title is protected more than once.",
+    ),
+    msg(
+        "policy_edit.refusal_order_propose",
+        "The role that may propose must not be above the role that may review: someone could propose what nobody they could ask may review.",
+    ),
+    msg(
+        "policy_edit.refusal_order_review",
+        "The role that may review must not be above the role that may accept: someone could accept what they may not review.",
+    ),
+    msg(
+        "policy_edit.refusal_order_moderate",
+        "The role that may moderate must be reviewer or above: someone who may not review proposals could hide what is in them.",
+    ),
+    msg(
+        "policy_edit.refusal_limit_entry",
+        "This server allows at most {role} here.",
+    ),
+    msg(
+        "policy_edit.refusal_limit_days",
+        "A period is longer than this server allows ({days} days).",
+    ),
+    msg("authority.under_rules", "under the rules as of {change}"),
+    msg("authority.under_defaults", "under the default rules"),
+    msg(
+        "authority.unrecorded",
+        "The role and the rules this was decided under were not recorded.",
+    ),
+    msg(
+        "authority.accepted",
+        "Accepted by {person} ({role}), {authority}.",
+    ),
+    msg(
+        "authority.accepted_hatch",
+        "Accepted by {person} ({role}) as an admin of the wiki, with no approvals asked, {authority}.",
+    ),
+    msg("authority.reviewed", "Decided as {role}, {authority}."),
+    msg("authority.done", "Done {authority}."),
+    msg(
+        "authority.set_by",
+        "Put in place by a person holding {role}, {authority}.",
+    ),
+    msg(
+        "authority.restriction",
+        "Set by a person holding {role}, {authority}.",
+    ),
+    msg(
+        "policy_edit.label_change_approvals",
+        "Approvals a change to these rules needs, from people other than the proposer",
+    ),
+    msg(
+        "policy_edit.label_change_who_approvals",
+        "Approvals a change to who may change the rules needs (an admin accepts it)",
+    ),
+    msg(
+        "policy_edit.refusal_title",
+        "Write the title as the page is named: no slash at the start or the end, no empty part, and no part that is only a dot or two dots.",
     ),
 ];

@@ -16,7 +16,7 @@ use inklkunn_store::{HiddenItemKind, TombstoneAct, TombstoneEventId};
 
 use super::paths::{self, fields};
 use super::{category_word, part_words};
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T};
 use crate::discover::Subject;
 use crate::history::LinkView;
 use crate::pages::{Page, PageState, answer};
@@ -44,6 +44,8 @@ struct RowView {
     head: String,
     link: Option<LinkView>,
     facts: Vec<String>,
+    /// The rules the act was done under: the role is in the facts, and the rules' change is linked (RFC 006 D-5; criterion 12).
+    authority: Rich,
     declined: Option<String>,
     /// For a hide that was appealed: **that it was, and how it ended**, in a sentence, and nothing else (RFC 006 D-9). For a
     /// restoring that an appeal's overturn made: that it was.
@@ -121,6 +123,13 @@ fn row_view(t: T, slug: &str, row: &LogRow, may_restore: bool) -> RowView {
         head: item_head(t, row),
         link,
         facts,
+        authority: t
+            .msg(Key::AuthorityDone)
+            .rich(
+                "authority",
+                crate::authority::under(t, slug, row.policy_block.as_deref()),
+            )
+            .html(),
         declined: row.declined.then(|| t.get(Key::LogDeclined)),
         appeal: match (row.appeal, row.by_appeal) {
             (Some(mark), _) => Some(t.get(match mark {

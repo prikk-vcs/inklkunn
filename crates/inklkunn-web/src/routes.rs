@@ -21,8 +21,8 @@ use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
     account, api, appeals, changes, csrf, discover, health, history, inbox, knowledge, people,
-    probe, proposals, protections, raw, restore, search, signin, style, tombstone, views, watch,
-    wiki,
+    policy, probe, proposals, protections, raw, restore, search, signin, style, tombstone, views,
+    watch, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -55,6 +55,7 @@ fn page_specs() -> Vec<Spec> {
     specs.extend(moderation_specs());
     specs.extend(people_specs());
     specs.extend(appeal_specs());
+    specs.extend(policy_specs());
     specs
 }
 
@@ -332,6 +333,31 @@ fn people_specs() -> Vec<Spec> {
                 people::acts::lift_form,
                 people::acts::lift_post,
                 people::FORM_LIMIT
+            ),
+        },
+    ]
+}
+
+/// The rules of a wiki (RFC 006 D-4, D-11; handoff G-T7): the page that says them in sentences, and the form that proposes a change to
+/// them. **Every handler begins as every handler of a wiki does** (`Ctx::open`), so a wiki the visitor may not read answers as one that
+/// is not there. The form is guarded by `propose`: the handler asks it of the visitor (an admin, while the rules cannot be read, the
+/// repair), and what it sends is a proposal that the proposal service judges and the acceptance validates again.
+fn policy_specs() -> Vec<Spec> {
+    vec![
+        Spec {
+            path: "/{slug}/-/policy",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(policy::rules_page::policy_page),
+        },
+        Spec {
+            path: "/{slug}/-/policy/edit",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Propose),
+            handler: form_route!(
+                policy::rules_form::edit_form,
+                policy::rules_form::edit_post,
+                policy::FORM_LIMIT
             ),
         },
     ]

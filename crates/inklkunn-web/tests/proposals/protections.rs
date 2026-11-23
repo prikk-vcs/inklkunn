@@ -235,7 +235,10 @@ async fn a_namespace_protection_is_shown_on_the_pages_below_it_and_not_on_the_pa
     .await;
     assert_eq!(location(&set), "/handbook/-/protect?namespace=Help");
     let below = get(&c.w, "/handbook/Help/Start").await.body();
-    assert!(below.contains("On every page below Help."), "{below}");
+    assert!(
+        below.contains("On the pages under Help/ (not the page Help)."),
+        "{below}"
+    );
     assert!(
         below.contains("Reason: The help is read by everyone."),
         "{below}"

@@ -825,15 +825,21 @@ pub const POLICY_BLOCK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef
 /// The same wiki, repository and records served under the rules of `policy` (the text of a policy file), as if they had been
 /// accepted at [`POLICY_BLOCK`]: the authorizer, the people service and the proposal service all read them.
 pub fn under(w: &World, policy: &str) -> World {
-    let dir = TempDir::new("under");
-    let layout = RootLayout::new(dir.0.join("root"));
-    let storage: Arc<dyn Storage> = w.fake.clone();
-    let rules = Arc::new(inklkunn_core::governance::Rules::read(
+    let rules = inklkunn_core::governance::Rules::read(
         Some(POLICY_BLOCK.to_owned()),
         inklkunn_core::governance::read_policy(policy.as_bytes()).expect("a policy"),
         inklkunn_core::governance::Constitution::default(),
         &inklkunn_core::governance::PlatformLimits::default(),
-    ));
+    );
+    under_rules(w, rules)
+}
+
+/// The same wiki served under any [`Rules`](inklkunn_core::governance::Rules): a constitution of its own, a fault, a block.
+pub fn under_rules(w: &World, rules: inklkunn_core::governance::Rules) -> World {
+    let dir = TempDir::new("under");
+    let layout = RootLayout::new(dir.0.join("root"));
+    let storage: Arc<dyn Storage> = w.fake.clone();
+    let rules = Arc::new(rules);
     let (services, audit, log) =
         assemble_under(storage, &w.store, layout, Some(Arc::new(FixedRules(rules))));
     with_accounts(World {
@@ -931,6 +937,7 @@ pub fn assemble_under(
             QuotaConfig::default(),
         )
         .with_notifier(notifier.clone())
+        .with_roles(store.clone())
         .with_tombstones(tombstones.clone())
         .with_claim_threads(store.clone(), read.clone())
         .with_clock(|| NOW),
@@ -1301,6 +1308,18 @@ pub fn accept_by_hand(
     acceptor: &inklkunn_store::AccountId,
     proposer: &inklkunn_store::AccountId,
 ) {
+    accept_by_hand_under(w, proposal, acceptor, proposer, None, false);
+}
+
+/// [`accept_by_hand`] under the rules set by `block` (none: the defaults), as the hatch when `hatch`.
+pub fn accept_by_hand_under(
+    w: &World,
+    proposal: &inklkunn_store::ProposalId,
+    acceptor: &inklkunn_store::AccountId,
+    proposer: &inklkunn_store::AccountId,
+    block: Option<&str>,
+    hatch: bool,
+) {
     use inklkunn_store::{
         AcceptanceId, AcceptanceOutcome, AcceptanceRecord, AcceptanceResult, AcceptanceStore,
         ProposalChange, ProposalOp, ProposalState, ProposalStore, ProposalTransition, Role,
@@ -1324,15 +1343,15 @@ pub fn accept_by_hand(
     let id = AcceptanceId::new();
     w.store
         .begin_acceptance(&AcceptanceRecord {
-            policy_block: None,
-            hatch: false,
+            policy_block: block.map(str::to_owned),
+            hatch,
             id: id.clone(),
             proposal: proposal.clone(),
             revision: 1,
             wiki: w.wiki.id.clone(),
             view: "heads/main".to_owned(),
             acceptor: acceptor.clone(),
-            acceptor_role: Role::Maintainer,
+            acceptor_role: if hatch { Role::Admin } else { Role::Maintainer },
             policy_version: "bootstrap".to_owned(),
             proposer: proposer.clone(),
             digest: "d".repeat(64),

@@ -266,6 +266,8 @@ struct AboutTpl<'a> {
     views_label: String,
     people_href: String,
     people_label: String,
+    policy_href: String,
+    policy_label: String,
     badge: Rich,
     preview: bool,
 }
@@ -840,7 +842,7 @@ fn found_marked(
         view_note: view_name.map(|v| t.msg(Key::WikiViewInUse).with("view", v).text()),
         notes,
         stale: view.stale.then(|| page.get(Key::PageStale)),
-        protections: crate::protections::views(t, protected.notices),
+        protections: crate::protections::views(t, wiki.slug.as_str(), protected.notices),
         protect: (protected.may_protect && !on_permalink).then(|| Choice {
             label: page.get(Key::ProtectLink),
             href: crate::protections::paths::form_for(wiki.slug.as_str(), false, &page_title),
@@ -917,6 +919,8 @@ pub(crate) async fn about(
         views_label: page.get(Key::ViewsAllLink),
         people_href: crate::people::paths::page(wiki.slug.as_str()),
         people_label: page.get(Key::AboutPeopleLink),
+        policy_href: crate::policy::rules_paths::page(wiki.slug.as_str()),
+        policy_label: page.get(Key::AboutPolicyLink),
         badge: badge(t, &wiki, false),
         preview: crate::catalog::languages()
             .iter()

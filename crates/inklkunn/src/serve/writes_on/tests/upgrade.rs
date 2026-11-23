@@ -371,22 +371,27 @@ fn undo_what_0_3_0_adds(path: &str, html: &str) -> (String, bool) {
 /// The one line this tree's *About* page adds beside 0.3.0's: the way to the wiki's people (0.4.0's G-T2).
 const PEOPLE_LINK: &str = "<p><a href=\"/handbook/-/people\">People and roles of this wiki</a></p>";
 
-/// This tree's page with the way to the people page taken out, **exactly**: one line, on the *About* page and nowhere else,
-/// so that a second one, or one on another page, is not taken out and is found as a difference.
+/// The second line this tree's *About* page adds: the way to the rules of the wiki (0.4.0's G-T7).
+const POLICY_LINK: &str = "<p><a href=\"/handbook/-/policy\">The rules of this wiki</a></p>";
+
+/// This tree's page with the two ways 0.4.0 adds taken out, **exactly**: the way to the people page and the way to the rules, each
+/// one line, on the *About* page and nowhere else, so that a second one, or one on another page, is not taken out and is found as
+/// a difference.
 pub(super) fn undo_the_people_link(path: &str, html: &str) -> String {
     let mut out = String::new();
-    let mut taken = 0;
+    let (mut people, mut rules) = (0, 0);
     for line in html.split_inclusive('\n') {
-        if line.trim_end() == PEOPLE_LINK {
-            taken += 1;
-            continue;
+        match line.trim_end() {
+            PEOPLE_LINK => people += 1,
+            POLICY_LINK => rules += 1,
+            _ => out.push_str(line),
         }
-        out.push_str(line);
     }
     let expected = usize::from(path == "/handbook/-/about");
     assert_eq!(
-        taken, expected,
-        "{path}: the line that leads to the people page is on the About page, once, and nowhere else"
+        (people, rules),
+        (expected, expected),
+        "{path}: the lines that lead to the people page and to the rules are on the About page, once each, and nowhere else"
     );
     out
 }

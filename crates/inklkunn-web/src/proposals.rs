@@ -44,6 +44,7 @@ pub(crate) mod curate;
 pub(crate) mod fields;
 pub(crate) mod form;
 pub(crate) mod governance;
+pub(crate) mod governance_view;
 pub(crate) mod knowledge;
 pub(crate) mod labels;
 pub(crate) mod lints;

@@ -41,6 +41,9 @@ type Params = Result<Query<HashMap<String, String>>, QueryRejection>;
 
 struct DecisionView {
     line: String,
+    /// The role the reviewer held and the rules the decision was made under (RFC 006 D-5; criterion 12), or that it was not
+    /// recorded.
+    authority: Rich,
     note: Option<String>,
     body: String,
 }
@@ -100,9 +103,12 @@ struct ProposalTpl<'a> {
     sources_heading: String,
     sources: Vec<String>,
     signed: Option<(String, Option<LinkView>)>,
+    /// Who accepted it, in which role, under which rules, and whether as an admin without approvals (RFC 006 D-5, D-4).
+    accepted: Option<Rich>,
     actions: Vec<LinkView>,
     accept: Option<AcceptView>,
     overlaps: Option<OverlapsView>,
+    governance: Option<super::governance_view::GovernanceView>,
     changes_heading: String,
     changes: Option<ChangesView>,
     know_heading: String,
@@ -484,11 +490,11 @@ pub(crate) fn draw(
     let mut olds: Vec<Option<String>> = Vec::new();
     if let Some(content) = &r.content {
         // The pages; the claim and source files are listed on their own (RFC 005 part 2 D-3).
-        for f in content
-            .files
-            .iter()
-            .filter(|f| inklkunn_core::knowledge::family_of(&f.path).is_none())
-        {
+        for f in content.files.iter().filter(|f| {
+            inklkunn_core::knowledge::family_of(&f.path).is_none()
+                    // The rules are said as before and after sentences ([`super::governance_view`]), never as the text of a file.
+                    && inklkunn_core::governance::GovernanceFile::at_or_below(&f.path).is_none()
+        }) {
             let old = match ctx
                 .services
                 .read
@@ -639,25 +645,49 @@ pub(crate) fn draw(
     {
         facts.push(t.msg(Key::FactView).with("view", view).text());
     }
+    // The acceptance that signed it: its change, and who accepted it, as which role, under which rules.
+    let acceptance = (record.state == ProposalState::Accepted)
+        .then(|| {
+            latest.and_then(|n| {
+                ctx.services
+                    .acceptances
+                    .acceptances_of(id, n)
+                    .ok()?
+                    .into_iter()
+                    .find_map(|e| match e.result?.outcome {
+                        inklkunn_store::AcceptanceOutcome::Sealed { block_id, .. } => {
+                            Some((block_id, e.acceptance))
+                        }
+                        inklkunn_store::AcceptanceOutcome::Failed { .. } => None,
+                    })
+            })
+        })
+        .flatten();
     let signed = (record.state == ProposalState::Accepted).then(|| {
-        let block = latest.and_then(|n| {
-            ctx.services
-                .acceptances
-                .acceptances_of(id, n)
-                .ok()?
-                .into_iter()
-                .find_map(|e| match e.result?.outcome {
-                    inklkunn_store::AcceptanceOutcome::Sealed { block_id, .. } => Some(block_id),
-                    inklkunn_store::AcceptanceOutcome::Failed { .. } => None,
-                })
-        });
         (
             t.get(Key::OutcomeSigned),
-            block.map(|b| LinkView {
-                href: crate::url::change_path(slug, None, &b),
+            acceptance.as_ref().map(|(b, _)| LinkView {
+                href: crate::url::change_path(slug, None, b),
                 label: t.get(Key::SignedChangeLink),
             }),
         )
+    });
+    let accepted_by = acceptance.as_ref().map(|(_, a)| {
+        t.msg(if a.hatch {
+            Key::AuthorityAcceptedHatch
+        } else {
+            Key::AuthorityAccepted
+        })
+        .with("person", ctx.person(t, &a.acceptor))
+        .with(
+            "role",
+            crate::people::sentences::role_label(t, a.acceptor_role),
+        )
+        .rich(
+            "authority",
+            crate::authority::under(t, slug, a.policy_block.as_deref()),
+        )
+        .html()
     });
 
     // The actions the viewer's role and the state allow.
@@ -904,6 +934,17 @@ pub(crate) fn draw(
                 .with("reviewer", ctx.person(t, &d.reviewer))
                 .with("number", d.revision)
                 .text(),
+            authority: match d.reviewer_rung {
+                Some(role) => t
+                    .msg(Key::AuthorityReviewed)
+                    .with("role", crate::people::sentences::role_label(t, role))
+                    .rich(
+                        "authority",
+                        crate::authority::under(t, slug, d.policy_block.as_deref()),
+                    )
+                    .html(),
+                None => crate::catalog::plain(&t.get(Key::AuthorityUnrecorded)),
+            },
             note: latest
                 .is_some_and(|n| d.revision < n)
                 .then(|| t.get(Key::DecisionOlder)),
@@ -975,6 +1016,7 @@ pub(crate) fn draw(
             .unwrap_or_default();
         crate::protections::views(
             t,
+            ctx.slug(),
             &ctx.services
                 .authorizer
                 .protections_on_change(&ctx.principal, &ctx.wiki.id, &touched),
@@ -1006,8 +1048,13 @@ pub(crate) fn draw(
         sources_heading: t.get(Key::SourcesHeading),
         sources: record.sources.clone(),
         signed,
+        accepted: accepted_by,
         actions,
         accept,
+        governance: r
+            .content
+            .as_ref()
+            .and_then(|content| super::governance_view::view(ctx, t, content)),
         overlaps,
         changes_heading: t.get(Key::ProposalChangesHeading),
         changes: Some(changes),

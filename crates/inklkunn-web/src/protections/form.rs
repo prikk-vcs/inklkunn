@@ -163,6 +163,7 @@ fn form_page(
         Some(target) => (
             views(
                 t,
+                ctx.slug(),
                 &ctx.services
                     .authorizer
                     .protections_on(&ctx.principal, wiki, target.title()),

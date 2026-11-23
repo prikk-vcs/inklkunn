@@ -618,3 +618,53 @@ exact :: words.rs :: person :: a placeholder name of a catalog message
 exact :: page.rs :: appeal-{} :: the id of an element of a form, made from the appeal's id; no sentence a reader sees
 exact :: appeals.rs :: an appeal could not be handled now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: restore.rs :: pages :: a placeholder name of a catalog message
+
+# --- handoff G-T7 (RFC 006 D-4, D-11, D-12): the policy page, the policy form, the authority phrase and the governance endpoints
+scope :: governance_api.rs :: * :: the governance endpoints (descriptions and schemas, English by decision, like describe.rs; JSON member names and codes): every sentence a caller reads is a problem detail or a catalog message
+scope :: rules_fields.rs :: * :: the names of the policy form fields, their values and the ids of its controls: code a form and a handler agree on, no sentence a reader sees
+scope :: rules_paths.rs :: * :: the addresses of the policy page and its form, under the reserved prefix: no sentence a reader sees
+scope :: rules_phrases.rs :: * :: the placeholder names of the sentences of the rules and the keys of the schema each fact says (code that a test holds is never printed): every sentence is a catalog message
+exact :: authority.rs :: change :: a placeholder name of a catalog message
+exact :: roster.rs :: authority :: a placeholder name of a catalog message
+exact :: sentences.rs :: authority :: a placeholder name of a catalog message
+exact :: rules_change.rs :: label :: a placeholder name of a catalog message
+exact :: rules_change.rs :: before :: a placeholder name of a catalog message
+exact :: rules_change.rs :: after :: a placeholder name of a catalog message
+exact :: rules_change.rs :: protection :: a placeholder name of a catalog message
+exact :: rules_data.rs :: the changes of the rules of wiki `{}` could not be read now: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: rules_form.rs :: small :: the value of the form choice of accepting one own proposal while the wiki is small (never the word the file uses: no page prints it)
+exact :: rules_form.rs :: never :: the value of the form choice of never accepting one own proposal
+exact :: rules_form.rs :: small-wiki :: the word of the file for that choice, which only the text of a draft carries
+exact :: rules_form.rs :: role :: a placeholder name of a catalog message
+exact :: rules_form.rs :: days :: a placeholder name of a catalog message
+exact :: rules_form.rs :: max :: a placeholder name of a catalog message
+exact :: rules_form.rs :: maintainer :: a role word, which the option of a select carries (the label is a catalog message)
+exact :: rules_form.rs :: admin :: a role word, which the option of a select carries (the label is a catalog message)
+exact :: rules_form.rs :: number :: a placeholder name of a catalog message
+exact :: rules_form.rs :: limit :: a placeholder name of a catalog message
+exact :: rules_form.rs :: wiki :: a placeholder name of a catalog message
+exact :: rules_form.rs :: rule :: a placeholder name of a catalog message
+exact :: rules_form.rs :: a base could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: rules_form.rs :: a governance file could not be asked for: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: rules_page.rs :: rungs. :: the beginning of a key of the schema, read to sort the facts of the rules into sections; never printed
+exact :: rules_page.rs :: entry :: the beginning of a key of the schema, read to sort the facts of the rules into sections; never printed
+exact :: rules_page.rs :: promotion. :: the beginning of a key of the schema, read to sort the facts of the rules into sections; never printed
+exact :: rules_page.rs :: was :: a placeholder name of a catalog message
+exact :: rules_page.rs :: now :: a placeholder name of a catalog message
+exact :: rules_page.rs :: who :: the id of a section of the page of the rules; no sentence a reader sees
+exact :: rules_page.rs :: accept :: the id of a section of the page of the rules; no sentence a reader sees
+exact :: rules_page.rs :: promotion :: the id of a section of the page of the rules; no sentence a reader sees
+exact :: rules_page.rs :: change :: the id of a section of the page of the rules; no sentence a reader sees
+exact :: rules_page.rs :: limits :: the id of a section of the page of the rules; no sentence a reader sees
+exact :: rules_page.rs :: role :: a placeholder name of a catalog message
+exact :: rules_page.rs :: days :: a placeholder name of a catalog message
+exact :: rules_page.rs :: proposal :: a placeholder name of a catalog message
+exact :: rules_page.rs :: blocks :: a placeholder name of a catalog message
+exact :: rules_page.rs :: wiki :: a placeholder name of a catalog message
+exact :: rules_page.rs :: the rules could not be read now: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: governance_view.rs :: a governance file at the base of a proposal could not be read now: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: governance_view.rs :: rule :: a placeholder name of a catalog message
+exact :: show.rs :: role :: a placeholder name of a catalog message
+exact :: show.rs :: authority :: a placeholder name of a catalog message
+exact :: protections.rs :: authority :: a placeholder name of a catalog message
+exact :: log.rs :: authority :: a placeholder name of a catalog message

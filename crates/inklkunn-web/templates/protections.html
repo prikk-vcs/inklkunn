@@ -2,7 +2,7 @@
 <h2 id="protections-heading">{{ page.get(Key::ProtectionHeading) }}</h2>
 <p class="note">{{ page.get(Key::ProtectionNote) }}</p>
 <ul>
-{% for p in protections %}<li><strong>{{ p.kind }}</strong> {{ p.on }} {{ p.requires }} {{ p.reason }}</li>
+{% for p in protections %}<li><strong>{{ p.kind }}</strong> {{ p.on }} {{ p.requires }} {{ p.reason }}{% if let Some(by) = p.set_by %} {{ by }}{% endif %}</li>
 {% endfor %}</ul>
 </section>
 {% endif %}

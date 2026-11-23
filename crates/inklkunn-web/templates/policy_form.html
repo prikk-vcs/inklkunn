@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}<p>{{ page.get(Key::PolicyEditIntro) }}</p>
+{% for text in notes %}<p class="note">{{ text }}</p>
+{% endfor %}<form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}
+<input type="hidden" name="{{ base_state_field }}" value="{{ base_state }}">
+<input type="hidden" name="{{ base_block_field }}" value="{{ base_block }}">
+<input type="hidden" name="{{ rows_field }}" value="{{ rows }}">
+<p class="buttons">{% for b in buttons %}<button type="submit" name="{{ b.name }}" value="{{ b.value }}">{{ b.label }}</button> {% endfor %}</p>
+<div class="field">
+<label for="{{ summary.id }}">{{ summary.label }}</label>
+<input id="{{ summary.id }}" name="{{ summary.name }}" type="text" value="{{ summary.value }}"{% if let Some(max) = summary.max %} maxlength="{{ max }}"{% endif %}{% if summary.error.is_some() %} aria-invalid="true" aria-describedby="{{ summary.id }}-problem"{% endif %}>
+{% if let Some(text) = summary.hint %}<p class="note">{{ text }}</p>
+{% endif %}{% if let Some(text) = summary.error %}<p id="{{ summary.id }}-problem" class="field-problem" role="alert">{{ text }}</p>
+{% endif %}</div>
+{% for group in groups %}<fieldset>
+<legend>{{ group.legend }}</legend>
+{% if let Some(text) = group.note %}<p class="note">{{ text }}</p>
+{% endif %}{% for c in group.controls %}<div class="field">
+<label for="{{ c.id }}">{{ c.label }}</label>
+{% if !c.options.is_empty() %}<select id="{{ c.id }}" name="{{ c.name }}"{% if c.error.is_some() %} aria-invalid="true" aria-describedby="{{ c.id }}-problem"{% endif %}>
+{% for o in c.options %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+{% endfor %}</select>
+{% else %}<input id="{{ c.id }}" name="{{ c.name }}" type="text"{% if c.numeric %} inputmode="numeric"{% endif %} value="{{ c.value }}"{% if let Some(max) = c.max %} maxlength="{{ max }}"{% endif %} autocomplete="off"{% if c.error.is_some() %} aria-invalid="true" aria-describedby="{{ c.id }}-problem"{% endif %}>
+{% endif %}{% if let Some(text) = c.hint %}<p class="note">{{ text }}</p>
+{% endif %}{% if let Some(text) = c.error %}<p id="{{ c.id }}-problem" class="field-problem" role="alert">{{ text }}</p>
+{% endif %}</div>
+{% endfor %}{% if let Some(button) = group.button %}<p class="buttons"><button type="submit" name="{{ button.name }}" value="{{ button.value }}">{{ button.label }}</button></p>
+{% endif %}</fieldset>
+{% endfor %}<p class="buttons">{% for b in buttons %}<button type="submit" name="{{ b.name }}" value="{{ b.value }}">{{ b.label }}</button> {% endfor %}</p>
+</form>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

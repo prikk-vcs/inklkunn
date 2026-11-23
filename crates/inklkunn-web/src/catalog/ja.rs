@@ -3443,7 +3443,7 @@ pub const CATALOG: &[Entry] = &[
     msg("protection.on_page", "ページ {title} が対象です。"),
     msg(
         "protection.on_namespace",
-        "{title} の下にあるすべてのページが対象です。",
+        "{title}/ の下にあるページが対象です（ページ {title} 自体は含みません）。",
     ),
     msg(
         "protection.requires_review",
@@ -4264,5 +4264,377 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "log.restored_by_appeal",
         "申し立ての決定により、元に戻しました。",
+    ),
+    msg("title.policy", "ルール · {wiki} · {product}"),
+    msg("policy.heading", "このウィキのルール"),
+    msg(
+        "policy.intro",
+        "ここに書かれているのは、このウィキのルールです。ここで誰が何をできるか、そしてルール自体をどう変えるかを定めています。ルールはウィキ自身のファイルとして保管され、ここにあるほかのものと同じく、提案を通してのみ変わります。",
+    ),
+    msg(
+        "policy.defaults_note",
+        "このウィキには独自のルールがまだないため、既定のルールに従っています。次に一覧します。",
+    ),
+    msg(
+        "policy.as_of",
+        "以下は、変更 {change} で定められたルールです。",
+    ),
+    msg("policy.unreadable_heading", "ルールを読み取れません"),
+    msg(
+        "policy.unreadable_defaults",
+        "修復されるまで、すべての変更は拒否されます。以下に載せているのは、既定のルールの内容にすぎません。",
+    ),
+    msg("policy.who_heading", "誰が何をできるか"),
+    msg("policy.label_comment", "コメントできる人"),
+    msg("policy.label_propose", "変更を提案できる人"),
+    msg("policy.label_review", "提案をレビューできる人"),
+    msg("policy.label_create_view", "ビューを作成できる人"),
+    msg("policy.label_accept", "提案を受け入れられる人"),
+    msg("policy.label_moderate", "モデレーションできる人"),
+    msg("policy.label_decide_appeal", "申し立てを決定する人"),
+    msg("policy.label_grant", "メンテナーが付与できる最も高い役割"),
+    msg("policy.label_entry", "サインインした全員が持つ役割"),
+    msg("policy.value_rung", "{role} 以上"),
+    msg("policy.value_rung_top", "{role} のみ"),
+    msg(
+        "policy.value_entry_none",
+        "なし: 付与された役割だけを持ちます",
+    ),
+    msg(
+        "policy.value_grant_none",
+        "なし: 役割を付与できるのは管理者だけです",
+    ),
+    msg("policy.value_grant_up_to", "{role} まで"),
+    msg(
+        "policy.entry_no_effect",
+        "このウィキでは、これは効力がありません。このウィキの役割を付与された人だけが、読んだり参加したりできます。",
+    ),
+    msg("policy.accept_heading", "提案が受け入れられる条件"),
+    msg(
+        "policy.label_approvals",
+        "提案が受け入れられる前に必要な承認",
+    ),
+    msg("policy.value_approvals", "{count} 件、提案者以外の人から"),
+    msg("policy.value_approvals_none", "なし"),
+    msg("policy.label_self", "自分の提案を自分で受け入れること"),
+    msg(
+        "policy.value_self_never",
+        "不可: 提案を受け入れるのは、提案者以外の人です",
+    ),
+    msg(
+        "policy.value_self_small",
+        "このウィキのメンテナーが {limit} 人より少ない間は、メンテナーに限り可能",
+    ),
+    msg(
+        "policy.label_review_after",
+        "出典の再確認が必要になるまでの期間",
+    ),
+    msg("policy.value_review_days", "{days} 日"),
+    msg(
+        "policy.value_review_server",
+        "{days} 日（このサーバーの設定）",
+    ),
+    msg(
+        "policy.promotion_heading",
+        "役割を付与する前にこのウィキが見ること",
+    ),
+    msg(
+        "policy.promotion_note",
+        "これは人への案内です。これで誰かが昇格することはなく、数が役割に変わることも、点数もありません。",
+    ),
+    msg(
+        "policy.label_promotion",
+        "このウィキが {role} を付与する前に見ること",
+    ),
+    msg(
+        "policy.promotion_none",
+        "この種の文章がある役割はありません。",
+    ),
+    msg("policy.change_heading", "このルールの変更"),
+    msg(
+        "policy.label_change_rules",
+        "このルールの変更を受け入れられる人",
+    ),
+    msg(
+        "policy.label_change_who",
+        "ルールを変えられる人の変更を受け入れられる人",
+    ),
+    msg(
+        "policy.value_change_rules",
+        "{role} 以上、提案者以外の人から {count} 件の承認",
+    ),
+    msg(
+        "policy.value_change_who",
+        "{role} のみ、提案者以外の人から {count} 件の承認",
+    ),
+    msg(
+        "policy.hatch_note",
+        "このウィキの管理者は、ルールの内容にかかわらず、承認なしでいつでもこのルールを変更できます。受け入れの記録には、その旨が残ります。",
+    ),
+    msg("policy.protections_heading", "有効な保護"),
+    msg(
+        "policy.protections_intro",
+        "受け入れる前により多くのことが必要なページとページ群です。このウィキのルールによるものと、モデレーターが期間を定めて設けたものがあります。",
+    ),
+    msg("policy.protections_none", "有効な保護はありません。"),
+    msg(
+        "policy.protections_self_note",
+        "保護が承認を求めている場合、提案者本人が受け入れても条件を満たしません。ウィキが小さい間でも、メンテナーが一人だけなら、保護されたページの変更を自分で提案して自分で受け入れることはできません。",
+    ),
+    msg("policy.limits_heading", "このサーバーの制限"),
+    msg(
+        "policy.limits_intro",
+        "このサーバーの管理者は、どのウィキのルールも超えられない制限を定めています。",
+    ),
+    msg(
+        "policy.limit_entry",
+        "ルールがサインインした全員に与えられる最も高い役割: {role}",
+    ),
+    msg(
+        "policy.limit_days",
+        "一時的な保護や制限の最長期間: {days} 日",
+    ),
+    msg(
+        "policy.lowered_entry",
+        "ルールではサインインした全員が {was} を持つとされていますが、このサーバーが許すのは {now} までです。そのため、{now} が適用されます。",
+    ),
+    msg("policy.history_heading", "ルールがこうなっている理由"),
+    msg(
+        "policy.history_intro",
+        "ルールの変更を新しい順に、それを行った提案とともに載せています。",
+    ),
+    msg("policy.history_none", "ルールの変更の記録はありません。"),
+    msg("policy.history_row", "{change}、提案 {proposal} による"),
+    msg("policy.history_row_alone", "{change}"),
+    msg(
+        "policy.history_repair",
+        "この変更は、ルールのファイルの置き場所にあったものを取り除くか作っただけで、ルールは変えていません。",
+    ),
+    msg(
+        "policy.history_more",
+        "…ほかに、ルールの変更が {count} 件あります。",
+    ),
+    msg(
+        "policy.history_window",
+        "ウィキの新しい変更 {blocks} 件だけを調べたため、それより古いルールの変更は載せていません。",
+    ),
+    msg(
+        "policy.history_unavailable",
+        "ルールの履歴を今は読み取れません。",
+    ),
+    msg(
+        "policy.protections_unavailable",
+        "保護を今は読み取れません。",
+    ),
+    msg("policy.link_log", "モデレーションの記録"),
+    msg("policy.link_change", "このルールの変更を提案する"),
+    msg("about.policy_link", "このウィキのルール"),
+    msg("policy.change_line", "{label}: {before} → {after}"),
+    msg("policy.change_promotion_none", "文章なし"),
+    msg("policy.change_protection_added", "保護を追加: {protection}"),
+    msg(
+        "policy.change_protection_removed",
+        "保護を削除: {protection}",
+    ),
+    msg(
+        "policy.change_protection_changed",
+        "保護を変更: {before} → {after}",
+    ),
+    msg(
+        "policy.protection_page",
+        "ページ {title}: {asks}。理由: {reason}",
+    ),
+    msg(
+        "policy.protection_namespace",
+        "{title}/ の下のページ（ページ {title} 自体は含みません）: {asks}。理由: {reason}",
+    ),
+    msg(
+        "policy.protection_review",
+        "提案者以外の人によるレビューが先に必要",
+    ),
+    msg("policy.protection_rung", "{role} 以上だけが受け入れられる"),
+    msg("governance.change_heading", "この提案がルールで変えること"),
+    msg(
+        "governance.change_none",
+        "この提案はルールのファイルを変えますが、ルールの内容は変わりません。",
+    ),
+    msg(
+        "governance.change_defaults",
+        "この提案はルールのファイルを削除します。そのファイルで定めていた内容は、既定のルールに戻ります。",
+    ),
+    msg(
+        "governance.change_unreadable",
+        "ルールのファイルの新しい内容をルールとして読み取れないため、この提案は受け入れられません: {rule}",
+    ),
+    msg(
+        "governance.needs",
+        "この変更を受け入れるのに必要なもの: {rule}",
+    ),
+    msg(
+        "governance.hatch_you",
+        "あなたはこのウィキの管理者なので、この変更は承認なしで受け入れられます。受け入れの記録には、その旨が残ります。",
+    ),
+    msg(
+        "title.policy_edit",
+        "ルールの変更を提案 · {wiki} · {product}",
+    ),
+    msg("policy_edit.heading", "ルールの変更を提案する"),
+    msg(
+        "policy_edit.intro",
+        "変えたい項目を直して、提案として送ります。提案はほかの提案と同じようにレビューされ、受け入れられた時点で初めてルールが変わります。",
+    ),
+    msg(
+        "policy_edit.who_note",
+        "提案できる人なら誰でも、ルールの変更を送れます。受け入れられる人は、ルール自体が定めています。",
+    ),
+    msg(
+        "policy_edit.accept_note",
+        "ルールの変更を受け入れるのに必要なもの: {rule}",
+    ),
+    msg(
+        "policy_edit.repair_note",
+        "ルールを読み取れないため、このフォームは既定のルールから始まります。修復を送れるのはこのウィキの管理者だけで、受け入れられるまで、ウィキのほかのものは変更できません。",
+    ),
+    msg(
+        "policy_edit.repair_not_admin",
+        "ルールを読み取れません。修復を提案できるのは、このウィキの管理者だけです。",
+    ),
+    msg(
+        "policy_edit.entry_hint",
+        "このサーバーで許されるのは {role} までです。",
+    ),
+    msg(
+        "policy_edit.approvals_hint",
+        "0 から {max} までの整数です。",
+    ),
+    msg(
+        "policy_edit.review_hint",
+        "日数で、1 から {max} までです。空にすると、このサーバーの設定（{days} 日）が使われます。",
+    ),
+    msg(
+        "policy_edit.promotion_hint",
+        "人への案内として、役割の横に表示されます。これで誰かが昇格することはありません。空にすると、文章なしになります。",
+    ),
+    msg(
+        "policy_edit.protect_intro",
+        "保護は、対象のページへの変更を受け入れる人に、より多くのことを求めます。タイトルの下のページへの保護は、それらのページだけが対象で、同じ名前のページは含みません。そのページも保護するには、そのページ自体を保護してください。",
+    ),
+    msg("policy_edit.protect_row", "保護 {number}"),
+    msg("policy_edit.protect_kind_label", "対象"),
+    msg("policy_edit.protect_kind_page", "1 ページ"),
+    msg(
+        "policy_edit.protect_kind_namespace",
+        "タイトルの下のページ（そのタイトルのページ自体は含まない）",
+    ),
+    msg("policy_edit.protect_title_label", "タイトル"),
+    msg("policy_edit.protect_asks_label", "求めること"),
+    msg(
+        "policy_edit.protect_reason_label",
+        "理由（そのページを読める人全員に表示されます）",
+    ),
+    msg("policy_edit.protect_remove", "この保護を削除"),
+    msg("policy_edit.protect_add", "保護を追加"),
+    msg(
+        "policy_edit.summary_default",
+        "このウィキのルールを変更する",
+    ),
+    msg(
+        "policy_edit.summary_defaults",
+        "このウィキのルールを既定に戻す",
+    ),
+    msg("policy_edit.send", "提案として送る"),
+    msg(
+        "policy_edit.defaults_button",
+        "既定のルールに戻す提案をする",
+    ),
+    msg(
+        "policy_edit.unchanged",
+        "何も変更していないため、提案は作られませんでした。何かを変更してから、もう一度送ってください。",
+    ),
+    msg(
+        "policy_edit.defaults_unchanged",
+        "このウィキはすでに既定のルールに従っているため、戻すものがありません。",
+    ),
+    msg("policy_edit.problem_number", "整数で入力してください。"),
+    msg(
+        "policy_edit.refusal_wrong_shape",
+        "この設定が受け付ける値ではありません。",
+    ),
+    msg(
+        "policy_edit.refusal_unknown_value",
+        "選択肢の中から選んでください。",
+    ),
+    msg(
+        "policy_edit.refusal_out_of_range",
+        "この数は、この設定で許される範囲の外です。",
+    ),
+    msg("policy_edit.refusal_bounds", "長すぎるか、数が多すぎます。"),
+    msg(
+        "policy_edit.refusal_forbidden",
+        "ここでは使えない文字（制御文字、文字方向の文字、改行）が含まれています。1 行で書いてください。",
+    ),
+    msg("policy_edit.refusal_missing", "空にはできません。"),
+    msg(
+        "policy_edit.refusal_duplicate",
+        "このページまたはタイトルは、複数回保護されています。",
+    ),
+    msg(
+        "policy_edit.refusal_order_propose",
+        "提案できる役割は、レビューできる役割より上であってはなりません。そうなると、頼める相手の誰もレビューできない提案を出せてしまいます。",
+    ),
+    msg(
+        "policy_edit.refusal_order_review",
+        "レビューできる役割は、受け入れられる役割より上であってはなりません。そうなると、自分がレビューできない提案を受け入れられてしまいます。",
+    ),
+    msg(
+        "policy_edit.refusal_order_moderate",
+        "モデレーションできる役割は、レビュアー以上でなければなりません。そうでないと、提案をレビューできない人が、その中身を非表示にできてしまいます。",
+    ),
+    msg(
+        "policy_edit.refusal_limit_entry",
+        "このサーバーで許されるのは {role} までです。",
+    ),
+    msg(
+        "policy_edit.refusal_limit_days",
+        "期間が、このサーバーで許される長さ（{days} 日）を超えています。",
+    ),
+    msg("authority.under_rules", "変更 {change} の時点"),
+    msg("authority.under_defaults", "既定のルール"),
+    msg(
+        "authority.unrecorded",
+        "これを決定したときの役割とルールは、記録されていません。",
+    ),
+    msg(
+        "authority.accepted",
+        "{person}（{role}）が受け入れました。適用されたルール: {authority}。",
+    ),
+    msg(
+        "authority.accepted_hatch",
+        "{person}（{role}）がこのウィキの管理者として、承認を求めずに受け入れました。適用されたルール: {authority}。",
+    ),
+    msg(
+        "authority.reviewed",
+        "{role} として決定しました。適用されたルール: {authority}。",
+    ),
+    msg("authority.done", "適用されたルール: {authority}。"),
+    msg(
+        "authority.set_by",
+        "{role} の人が設けました。適用されたルール: {authority}。",
+    ),
+    msg(
+        "authority.restriction",
+        "{role} の人が設定しました。適用されたルール: {authority}。",
+    ),
+    msg(
+        "policy_edit.label_change_approvals",
+        "このルールの変更に必要な承認の数（提案者以外の人から）",
+    ),
+    msg(
+        "policy_edit.label_change_who_approvals",
+        "ルールを変えられる人の変更に必要な承認の数（受け入れるのは管理者です）",
+    ),
+    msg(
+        "policy_edit.refusal_title",
+        "ページの名前のとおりに書いてください。先頭や末尾にスラッシュを付けず、空の部分や、ドットだけの部分を含めないでください。",
     ),
 ];
