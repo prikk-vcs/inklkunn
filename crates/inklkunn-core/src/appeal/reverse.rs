@@ -14,8 +14,9 @@
 //! proposal's reopening, all or none. A hide unhid by a moderator while the decision was made makes the decision fail whole.
 //!
 //! **What *the same act* is.** One hide of a change's content is one record for each page it wrote, and one for its summary and
-//! author; the store has no act id, so the siblings of a hide are the hides in force on the same change, made by the same account
-//! under the same category within [`SAME_ACT_SECS`] seconds of it.
+//! author; the records of one act carry **one act id** (A-2), so the siblings of a hide are the hides in force that carry the
+//! act id of the hide the appeal names, and no others: two hides by one moderator in one second are two acts. The unhides an
+//! overturn writes are one act of their own, with one time.
 //!
 //! **A hide that declined a proposal.** Overturning it also reopens the proposal, **if** it is still exactly as that hide left it
 //! (declined, and the hide's decline its last step) and nothing else still hides its latest revision's content. The person is made
@@ -24,16 +25,13 @@
 use inklkunn_store::{
     Actor, AppealRecord, GrantDecisionId, GrantDecisionRecord, MeasureEvent, ProposalChange,
     ProposalId, ProposalOp, ProposalState, ProposalTransition, ProtectionEvent, ProtectionEventId,
-    RestrictionEvent, RestrictionEventId, Reversal, Role, TombstoneAct, TombstoneEvent,
-    TombstoneEventId, TombstoneReversal, WikiRecord,
+    RestrictionEvent, RestrictionEventId, Reversal, Role, TombstoneAct, TombstoneActId,
+    TombstoneEvent, TombstoneEventId, TombstoneReversal, WikiRecord,
 };
 
 use super::service::{Acting, AppealError, AppealService, OverturnRefusal, unavailable};
 use crate::people::{GrantCheck, GrantRefusal, check_grant};
 use crate::proposal::machine;
-
-/// How far apart, in seconds, the hides of one act may be recorded.
-pub(super) const SAME_ACT_SECS: i64 = 2;
 
 fn moot(why: OverturnRefusal) -> AppealError {
     AppealError::Overturn(why)
@@ -291,8 +289,11 @@ impl AppealService {
                     .any(|e| e.act == TombstoneAct::Unhide && e.of_event.as_ref() == Some(&h.id))
             })
             .collect();
+        // The unhides of an overturn are one act, at one time.
+        let act = TombstoneActId::new();
         let unhide = |of: &TombstoneEvent, id: TombstoneEventId| TombstoneEvent {
             id,
+            act_id: act.clone(),
             wiki: wiki.id.clone(),
             at: now,
             act: TombstoneAct::Unhide,
@@ -310,12 +311,7 @@ impl AppealService {
         let siblings: Vec<&TombstoneEvent> = in_force
             .iter()
             .copied()
-            .filter(|h| {
-                h.id != hide.id
-                    && h.by.account == hide.by.account
-                    && h.category == hide.category
-                    && (h.at - hide.at).abs() <= SAME_ACT_SECS
-            })
+            .filter(|h| h.id != hide.id && h.act_id == hide.act_id)
             .collect();
         let reopen = match hide.declined_transition {
             Some(position) => {

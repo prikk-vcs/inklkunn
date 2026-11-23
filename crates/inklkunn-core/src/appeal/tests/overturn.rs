@@ -5,7 +5,7 @@
 use inklkunn_store::{
     AppealState, AppealedKind, GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenParts,
     MeasureEvent, ProposalId, ProposalOp, ProposalState, ReasonCategory, Role, TombstoneAct,
-    TombstoneEvent, TombstoneEventId,
+    TombstoneActId, TombstoneEvent, TombstoneEventId,
 };
 
 use super::scenes::scene;
@@ -185,6 +185,7 @@ pub(super) fn hide_revision(
             wiki: w.wiki.id.clone(),
             at: now(),
             act: TombstoneAct::Hide,
+            act_id: TombstoneActId::new(),
             item: HiddenItem {
                 kind: HiddenItemKind::ProposalRevision,
                 id: proposal.to_string(),
@@ -259,7 +260,8 @@ fn an_overturned_tombstone_is_unhidden_by_an_unhide_that_names_the_appeal() {
     }
 }
 
-/// A hiding of the content of one page of a change (the block), recorded at `at`: a change's text is recorded once for each page it wrote.
+/// A hiding of the content of one page of a change (the block), recorded at `at` as a record of the act `act`: a change's text is
+/// recorded once for each page it wrote, and the records of one act share its id and its time.
 pub(super) fn hide_page(
     w: &World,
     by: &super::support::Person,
@@ -267,6 +269,7 @@ pub(super) fn hide_page(
     block: &str,
     path: &str,
     at: i64,
+    act: &TombstoneActId,
 ) -> TombstoneEventId {
     let id = TombstoneEventId::new();
     w.store
@@ -275,6 +278,7 @@ pub(super) fn hide_page(
             wiki: w.wiki.id.clone(),
             at,
             act: TombstoneAct::Hide,
+            act_id: act.clone(),
             item: HiddenItem {
                 kind: HiddenItemKind::PageRevision,
                 id: block.to_owned(),
@@ -311,9 +315,18 @@ fn an_overturned_tombstone_restores_every_hide_the_same_act_made_and_not_another
         let other = w.person("Olly", Some(Role::Maintainer));
         let author = w.person("Pat", Some(Role::Contributor));
         // One act hid a change's text in two records (one for each page it wrote); another moderator, another act, hid a third.
-        let first = hide_page(&w, &mover, &author, &block, "pages/One.md", now() - 2);
-        let second = hide_page(&w, &mover, &author, &block, "pages/Two.md", now() - 1);
-        let elsewhere = hide_page(&w, &other, &author, &block, "pages/Three.md", now() - 1);
+        let act = TombstoneActId::new();
+        let first = hide_page(&w, &mover, &author, &block, "pages/One.md", now(), &act);
+        let second = hide_page(&w, &mover, &author, &block, "pages/Two.md", now(), &act);
+        let elsewhere = hide_page(
+            &w,
+            &other,
+            &author,
+            &block,
+            "pages/Three.md",
+            now(),
+            &TombstoneActId::new(),
+        );
         let contest = ContestRef {
             kind: AppealedKind::Tombstone,
             id: first.to_string(),
@@ -331,6 +344,124 @@ fn an_overturned_tombstone_restores_every_hide_the_same_act_made_and_not_another
             marks,
             vec![elsewhere],
             "the two records of one act are restored ({first} and {second}); the other act's stays"
+        );
+    }
+}
+
+#[test]
+fn two_hides_by_one_moderator_in_one_second_are_two_acts_and_overturning_one_leaves_the_other() {
+    let block = "ab".repeat(32);
+    for kind in KINDS {
+        let w = World::new(kind);
+        let admin = w.person("Dee", Some(Role::Admin));
+        let mover = w.person("Max", Some(Role::Maintainer));
+        let author = w.person("Pat", Some(Role::Contributor));
+        // The same moderator, the same reason, the same second, the same change: two acts (the old reading by closeness in time
+        // could not tell them apart).
+        let one = hide_page(
+            &w,
+            &mover,
+            &author,
+            &block,
+            "pages/One.md",
+            now(),
+            &TombstoneActId::new(),
+        );
+        let two = hide_page(
+            &w,
+            &mover,
+            &author,
+            &block,
+            "pages/Two.md",
+            now(),
+            &TombstoneActId::new(),
+        );
+        let contest = ContestRef {
+            kind: AppealedKind::Tombstone,
+            id: one.to_string(),
+        };
+        overturned(&w, &author, &contest, &admin).expect("overturned");
+        let still: Vec<TombstoneEventId> = w
+            .tombstones
+            .of_change(&w.wiki.id, &block)
+            .unwrap()
+            .marks()
+            .iter()
+            .map(|m| m.event.clone())
+            .collect();
+        assert_eq!(still, vec![two], "{kind:?}: the other act stays hidden");
+    }
+}
+
+#[test]
+fn an_overturned_act_of_many_pages_is_restored_whole_in_one_act_of_its_own() {
+    let block = "ab".repeat(32);
+    for kind in KINDS {
+        let w = World::new(kind);
+        let admin = w.person("Dee", Some(Role::Admin));
+        let mover = w.person("Max", Some(Role::Maintainer));
+        let author = w.person("Pat", Some(Role::Contributor));
+        let act = TombstoneActId::new();
+        let pages: Vec<TombstoneEventId> = (0..7)
+            .map(|n| {
+                hide_page(
+                    &w,
+                    &mover,
+                    &author,
+                    &block,
+                    &format!("pages/P{n}.md"),
+                    now(),
+                    &act,
+                )
+            })
+            .collect();
+        let other = hide_page(
+            &w,
+            &mover,
+            &author,
+            &block,
+            "pages/Other.md",
+            now(),
+            &TombstoneActId::new(),
+        );
+        // The appeal names the last page of the act, not the first: the whole act is the same whichever is named.
+        let contest = ContestRef {
+            kind: AppealedKind::Tombstone,
+            id: pages.last().unwrap().to_string(),
+        };
+        overturned(&w, &author, &contest, &admin).expect("overturned");
+        let still: Vec<TombstoneEventId> = w
+            .tombstones
+            .of_change(&w.wiki.id, &block)
+            .unwrap()
+            .marks()
+            .iter()
+            .map(|m| m.event.clone())
+            .collect();
+        assert_eq!(still, vec![other], "{kind:?}: all seven pages are restored");
+        // The unhides are one act, at one time, by the decider, each naming the appeal.
+        let events = w
+            .store
+            .tombstone_events_of_id(&w.wiki.id, HiddenItemKind::PageRevision, &block)
+            .unwrap();
+        let unhides: Vec<&TombstoneEvent> = events
+            .iter()
+            .filter(|e| e.act == TombstoneAct::Unhide)
+            .collect();
+        assert_eq!(unhides.len(), 7, "{kind:?}");
+        let first = unhides.first().unwrap();
+        assert!(
+            unhides
+                .iter()
+                .all(|e| e.act_id == first.act_id && e.at == first.at && e.appeal.is_some()),
+            "{kind:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .filter(|e| e.act == TombstoneAct::Hide)
+                .all(|e| e.act_id != first.act_id),
+            "{kind:?}: the unhides are not the act of the hides"
         );
     }
 }
@@ -784,6 +915,7 @@ fn a_hide_that_was_unhidden_by_someone_else_meanwhile_is_moot() {
                 wiki: w.wiki.id.clone(),
                 at: T0,
                 act: TombstoneAct::Unhide,
+                act_id: TombstoneActId::new(),
                 item: HiddenItem {
                     kind: HiddenItemKind::ProposalComment,
                     id: comment.to_string(),

@@ -7,8 +7,8 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 
 use inklkunn_store::{
-    AppealState, AppealedKind, AuditOutcome, ProposalState, Role, TombstoneAct, TombstoneEvent,
-    TombstoneEventId,
+    AppealState, AppealedKind, AuditOutcome, ProposalState, Role, TombstoneAct, TombstoneActId,
+    TombstoneEvent, TombstoneEventId,
 };
 
 use super::overturn::{hide_page, hide_revision};
@@ -30,6 +30,8 @@ fn unhide_by_hand(w: &World, hide: &TombstoneEventId, by: &Person) -> TombstoneE
     TombstoneEvent {
         id: TombstoneEventId::new(),
         act: TombstoneAct::Unhide,
+        // An unhide by hand is an act of its own.
+        act_id: TombstoneActId::new(),
         at: now(),
         category: None,
         note: None,
@@ -89,9 +91,10 @@ fn a_moderators_unhide_during_the_decision_leaves_no_page_unhidden_under_an_open
         let mover = w.person("Max", Some(Role::Maintainer));
         let author = w.person("Pat", Some(Role::Contributor));
         // One act hid a change in three records, one for each page it wrote.
-        let first = hide_page(&w, &mover, &author, &block, "pages/One.md", now());
-        let second = hide_page(&w, &mover, &author, &block, "pages/Two.md", now());
-        let third = hide_page(&w, &mover, &author, &block, "pages/Three.md", now());
+        let act = TombstoneActId::new();
+        let first = hide_page(&w, &mover, &author, &block, "pages/One.md", now(), &act);
+        let second = hide_page(&w, &mover, &author, &block, "pages/Two.md", now(), &act);
+        let third = hide_page(&w, &mover, &author, &block, "pages/Three.md", now(), &act);
         let contest = ContestRef {
             kind: AppealedKind::Tombstone,
             id: first.to_string(),
@@ -145,9 +148,10 @@ fn a_moderators_unhide_of_a_page_the_decision_does_not_name_is_not_a_reason_to_r
         let admin = w.person("Dee", Some(Role::Admin));
         let mover = w.person("Max", Some(Role::Maintainer));
         let author = w.person("Pat", Some(Role::Contributor));
-        let first = hide_page(&w, &mover, &author, &block, "pages/One.md", now());
-        let second = hide_page(&w, &mover, &author, &block, "pages/Two.md", now());
-        let third = hide_page(&w, &mover, &author, &block, "pages/Three.md", now());
+        let act = TombstoneActId::new();
+        let first = hide_page(&w, &mover, &author, &block, "pages/One.md", now(), &act);
+        let second = hide_page(&w, &mover, &author, &block, "pages/Two.md", now(), &act);
+        let third = hide_page(&w, &mover, &author, &block, "pages/Three.md", now(), &act);
         let contest = ContestRef {
             kind: AppealedKind::Tombstone,
             id: first.to_string(),
@@ -190,9 +194,10 @@ fn an_unhide_and_a_decision_at_once_either_all_of_the_overturn_lands_or_none_of_
         let mover = w.person("Max", Some(Role::Maintainer));
         let author = w.person("Pat", Some(Role::Contributor));
         let block = format!("{round:02x}").repeat(32);
-        let first = hide_page(&w, &mover, &author, &block, "pages/One.md", T0);
-        let second = hide_page(&w, &mover, &author, &block, "pages/Two.md", T0);
-        let third = hide_page(&w, &mover, &author, &block, "pages/Three.md", T0);
+        let act = TombstoneActId::new();
+        let first = hide_page(&w, &mover, &author, &block, "pages/One.md", T0, &act);
+        let second = hide_page(&w, &mover, &author, &block, "pages/Two.md", T0, &act);
+        let third = hide_page(&w, &mover, &author, &block, "pages/Three.md", T0, &act);
         let contest = ContestRef {
             kind: AppealedKind::Tombstone,
             id: first.to_string(),

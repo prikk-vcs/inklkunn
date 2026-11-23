@@ -13,7 +13,7 @@ use inklkunn_store::{
     ProposalState, ProposalStore, ProposalTransition, ProtectionEvent, ProtectionEventId,
     ProtectionKind, ProtectionRequirement, ReasonCategory, RestrictionEvent, RestrictionEventId,
     RevisionContent, RevisionRecord, Role, RoleGrant, RoleStore, Slug, SqliteStore, TombstoneAct,
-    TombstoneEvent, TombstoneEventId, Visibility, WikiRecord, WikiStore,
+    TombstoneActId, TombstoneEvent, TombstoneEventId, Visibility, WikiRecord, WikiStore,
 };
 
 use crate::appeal::{AppealLimits, AppealService, ContestRef};
@@ -510,6 +510,7 @@ impl World {
                 wiki: self.wiki.id.clone(),
                 at,
                 act: TombstoneAct::Hide,
+                act_id: TombstoneActId::new(),
                 item: HiddenItem {
                     kind: HiddenItemKind::ProposalComment,
                     id: comment.to_string(),

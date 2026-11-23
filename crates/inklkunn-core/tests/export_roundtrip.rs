@@ -990,7 +990,7 @@ fn what_moderation_hides_of_a_real_revision_is_not_in_the_bundle_and_the_import_
     use inklkunn_store::governance::Actor as GovernanceActor;
     use inklkunn_store::{
         Account, AccountStore, GovernanceStore, HiddenItem, HiddenItemKind, HiddenParts,
-        ReasonCategory, TombstoneAct, TombstoneEvent, TombstoneEventId,
+        ReasonCategory, TombstoneAct, TombstoneActId, TombstoneEvent, TombstoneEventId,
     };
     if !prikk_on_path() {
         println!("skipping: prikk not on PATH");
@@ -1032,6 +1032,7 @@ fn what_moderation_hides_of_a_real_revision_is_not_in_the_bundle_and_the_import_
                 wiki: a.record.id.clone(),
                 at: 1_700_000_100,
                 act: TombstoneAct::Hide,
+                act_id: TombstoneActId::new(),
                 item: HiddenItem {
                     kind: HiddenItemKind::PageRevision,
                     id: tip,

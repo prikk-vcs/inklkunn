@@ -226,6 +226,17 @@ impl Governance {
             AppealedKind::Tombstone,
             "an appeal named here is an open appeal of a tombstone in this wiki",
         )?;
+        if self.tombstones.iter().any(|t| {
+            t.act_id == e.act_id
+                && (t.wiki != e.wiki
+                    || t.at != e.at
+                    || t.by.account != e.by.account
+                    || t.act != e.act)
+        }) {
+            return broken(
+                "the events of one act are of one wiki, one time, one person and one kind",
+            );
+        }
         self.tombstones.push(e.clone());
         Ok(())
     }

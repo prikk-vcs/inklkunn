@@ -91,8 +91,8 @@ pub use record::{
     AcceptanceId, AccountId, AppealId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,
     DisplayNameError, GrantDecisionId, InboxEventId, IntentId, InvitationId, NewWiki, NewWikiError,
     NotRun, PrikkVersion, ProposalId, ProtectionEventId, RecoveryActId, RestrictionEventId, Slug,
-    SlugError, SystemActId, TokenId, TombstoneEventId, Verification, VerificationState, ViewActId,
-    Visibility, WikiId, WikiRecord,
+    SlugError, SystemActId, TokenId, TombstoneActId, TombstoneEventId, Verification,
+    VerificationState, ViewActId, Visibility, WikiId, WikiRecord,
 };
 pub use review::{ClaimHow, ClaimOutcome, ClaimReview};
 pub use root::RootLayout;

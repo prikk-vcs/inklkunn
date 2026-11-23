@@ -16,7 +16,8 @@ use inklkunn_store::{
     ProposalChange, ProposalId, ProposalOp, ProposalState, ProposalStore, ProtectionEvent,
     ProtectionEventId, ProtectionKind, ProtectionRequirement, ReasonCategory, RestrictionEvent,
     RestrictionEventId, Reversal, Role, RoleStore, SqliteStore, StoreError, TombstoneAct,
-    TombstoneEvent, TombstoneEventId, TombstoneReversal, WikiId, WikiStore, hidden_parts,
+    TombstoneActId, TombstoneEvent, TombstoneEventId, TombstoneReversal, WikiId, WikiStore,
+    hidden_parts,
 };
 use support::{account, mv, open_draft, step, submit, wiki};
 
@@ -141,6 +142,7 @@ fn hide(
         wiki: w.clone(),
         at,
         act: TombstoneAct::Hide,
+        act_id: TombstoneActId::new(),
         item: item.clone(),
         parts,
         category: Some(ReasonCategory::Harassment),
@@ -158,6 +160,7 @@ fn unhide(of: &TombstoneEvent, by: (&AccountId, Role), at: i64) -> TombstoneEven
     TombstoneEvent {
         id: TombstoneEventId::new(),
         act: TombstoneAct::Unhide,
+        act_id: TombstoneActId::new(),
         at,
         category: None,
         note: None,
@@ -904,6 +907,54 @@ where
 }
 
 // ------------------------------------------------------------------------------------------------ tombstones
+
+/// The events of one act (A-2) share its id, and with it one time, one person, one wiki and one kind: another time, another
+/// person or the other kind under the same id is a different act and is refused; the act id comes back as it went in.
+fn the_events_of_one_act_share_one_time_one_person_and_one_kind<S>(r: &Rig<S>)
+where
+    S: GovernanceStore,
+{
+    let (s, w) = (&r.store, &r.wiki);
+    let by = (&r.maintainer, Role::Maintainer);
+    let (one, two, other) = (comment_item(), comment_item(), comment_item());
+    let first = hide(w, &one, CONTENT, by, T0);
+    s.record_tombstone_event(&first).unwrap();
+    let same_act = |item: &HiddenItem, by: (&AccountId, Role), at: i64| {
+        let mut e = hide(w, item, CONTENT, by, at);
+        e.act_id = first.act_id.clone();
+        e
+    };
+    let rule = "the events of one act are of one wiki, one time, one person and one kind";
+    // Another second, another person, the other kind of event: not one act.
+    assert!(backend(s.record_tombstone_event(&same_act(&two, by, T0 + 1))).contains(rule));
+    assert!(
+        backend(s.record_tombstone_event(&same_act(&two, (&r.admin, Role::Admin), T0)))
+            .contains(rule)
+    );
+    let mut unhiding = unhide(&first, by, T0);
+    unhiding.act_id = first.act_id.clone();
+    assert!(backend(s.record_tombstone_event(&unhiding)).contains(rule));
+    assert_eq!(s.tombstone_events_of(w, &two).unwrap(), []);
+    // The same second and the same person under the id is the same act, and it is read back with it.
+    let second = same_act(&two, by, T0);
+    s.record_tombstone_event(&second).unwrap();
+    assert_eq!(
+        s.tombstone_event(&second.id).unwrap().map(|e| e.act_id),
+        Some(first.act_id.clone())
+    );
+    // A hide of its own, the same second and person, is another act.
+    let third = hide(w, &other, CONTENT, by, T0);
+    assert_ne!(third.act_id, first.act_id);
+    s.record_tombstone_event(&third).unwrap();
+    let in_act: Vec<TombstoneEventId> = s
+        .tombstone_log(w, None, 10)
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.act_id == first.act_id)
+        .map(|e| e.id)
+        .collect();
+    assert_eq!(in_act, [second.id, first.id]);
+}
 
 fn a_tombstone_hides_and_an_unhide_restores_exactly<S>(r: &Rig<S>)
 where
@@ -2398,6 +2449,7 @@ both_stores!(
     a_temporary_protection_ends_by_the_clock_and_is_found_by_exactly_its_target,
     a_protection_event_is_well_formed_or_refused,
     a_tombstone_hides_and_an_unhide_restores_exactly,
+    the_events_of_one_act_share_one_time_one_person_and_one_kind,
     the_moderation_log_is_newest_first_and_pages_by_event,
     a_tombstone_names_its_item_the_way_its_kind_does,
     a_hide_that_declined_a_proposal_names_the_decline,

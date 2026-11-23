@@ -90,6 +90,74 @@ async fn an_unhide_restores_every_surface_exactly() {
 }
 
 #[tokio::test]
+async fn one_hide_is_one_act_with_one_id_and_one_time_and_the_audit_trail_names_the_act() {
+    let e = env().await;
+    let item = page_item(2);
+    let a = hide(&e, &borrowed(&item), ALL, "").await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    let hides: Vec<_> = log(&e)
+        .into_iter()
+        .filter(|ev| ev.act == TombstoneAct::Hide)
+        .collect();
+    assert!(
+        hides.len() > 1,
+        "a change is a record for each page and one for the rest: {hides:?}"
+    );
+    let first = hides.first().unwrap();
+    assert!(
+        hides
+            .iter()
+            .all(|h| h.act_id == first.act_id && h.at == first.at),
+        "one act, one id, one time: {hides:?}"
+    );
+    // The trail names the act, not one of its records.
+    let line = |act: &str| {
+        e.w.audit
+            .events()
+            .into_iter()
+            .find(|ev| ev.action == act)
+            .unwrap_or_else(|| panic!("{act} is in the trail"))
+    };
+    assert_eq!(
+        line("tombstone-hide").resource,
+        format!("tombstone:{}:{}", e.w.wiki.id, first.act_id)
+    );
+    // Showing it names the hide's act; an unhide is an act of its own.
+    let content = hides.iter().find(|h| h.parts.content).unwrap();
+    let mut fields: Vec<(&str, &str)> = borrowed(&item);
+    fields.push(("hide", content.id.as_str()));
+    let shown = post_form(
+        &e.w,
+        "/handbook/-/moderate/show",
+        Some(&e.maintainer),
+        &fields,
+    )
+    .await;
+    assert_eq!(shown.status, StatusCode::OK, "{}", shown.body());
+    assert_eq!(
+        line("tombstone-show").resource,
+        format!("tombstone:{}:{}", e.w.wiki.id, first.act_id)
+    );
+    let a = post_form(
+        &e.w,
+        "/handbook/-/moderate/unhide",
+        Some(&e.maintainer),
+        &[("hide", first.id.as_str())],
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
+    let unhide = log(&e)
+        .into_iter()
+        .find(|ev| ev.act == TombstoneAct::Unhide)
+        .expect("an unhide");
+    assert_ne!(unhide.act_id, first.act_id);
+    assert_eq!(
+        line("tombstone-unhide").resource,
+        format!("tombstone:{}:{}", e.w.wiki.id, unhide.act_id)
+    );
+}
+
+#[tokio::test]
 async fn the_text_of_a_tip_cannot_be_hidden_but_its_summary_and_author_can() {
     let e = env().await;
     let item = page_item(3);

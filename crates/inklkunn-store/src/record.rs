@@ -260,6 +260,14 @@ uuid_id! {
 }
 
 uuid_id! {
+    /// The opaque id of **one act of moderation** (RFC 006 D-8; A-2): a moderator's one hide of a change is a record for each page
+    /// it wrote and one for its summary and author, and all of them carry the one id of the act, and the one time. An unhide
+    /// (by hand, or by an overturned appeal) is an act of its own. What an overturn reverses is the events of the act, and the
+    /// audit trail names the act (`tombstone:<wiki>:<act id>`). It is not the id of an event ([`TombstoneEventId`]).
+    TombstoneActId
+}
+
+uuid_id! {
     /// The opaque id of an appeal (RFC 006 D-9).
     AppealId
 }

@@ -29,7 +29,7 @@ use inklkunn_store::{
     DisplayName, FileChange, GovernanceStore, HiddenItem, HiddenItemKind, HiddenParts, IntentId,
     MemoryStore, NewWiki, ProposalChange, ProposalId, ProposalOp, ProposalRecord, ProposalState,
     ProposalStore, ProposalTransition, ReasonCategory, RevisionContent, RevisionRecord, RootLayout,
-    Slug, TombstoneAct, TombstoneEvent, TombstoneEventId, WikiRecord, WikiStore,
+    Slug, TombstoneAct, TombstoneActId, TombstoneEvent, TombstoneEventId, WikiRecord, WikiStore,
 };
 use sha2::{Digest, Sha256};
 
@@ -574,6 +574,7 @@ fn plant(
         wiki: r.wiki.id.clone(),
         at: 1_700_000_500,
         act: TombstoneAct::Hide,
+        act_id: TombstoneActId::new(),
         item: HiddenItem {
             kind,
             id: id.to_owned(),
@@ -624,6 +625,7 @@ fn unhide(r: &Rig, hide: &TombstoneEvent) {
             id: TombstoneEventId::new(),
             at: hide.at + 60,
             act: TombstoneAct::Unhide,
+            act_id: TombstoneActId::new(),
             category: None,
             note: None,
             of_event: Some(hide.id.clone()),
@@ -1300,6 +1302,7 @@ where
                 wiki: wiki.id.clone(),
                 at: 1_700_000_000 + n as i64,
                 act: TombstoneAct::Hide,
+                act_id: TombstoneActId::new(),
                 item: HiddenItem {
                     kind: HiddenItemKind::PageRevision,
                     id: format!("{n:064x}"),

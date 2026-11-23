@@ -537,7 +537,7 @@ fn the_export_command_leaves_out_what_moderation_hid_and_says_so() {
     use inklkunn_store::{
         Account, AccountId, AccountStore, ClaimCommentRecord, ClaimThreadStore, CommentId,
         DisplayName, GovernanceStore, HiddenItem, HiddenItemKind, HiddenParts, ReasonCategory,
-        Slug, TombstoneAct, TombstoneEvent, TombstoneEventId, WikiStore,
+        Slug, TombstoneAct, TombstoneActId, TombstoneEvent, TombstoneEventId, WikiStore,
     };
     let Some(w) = world("hidden") else { return };
     let (status, _, err) = w.cli(&["wiki", "create", "handbook", "--name", "The Handbook"]);
@@ -593,6 +593,7 @@ fn the_export_command_leaves_out_what_moderation_hid_and_says_so() {
             wiki: record.id,
             at: 1_700_000_100,
             act: TombstoneAct::Hide,
+            act_id: TombstoneActId::new(),
             item: HiddenItem {
                 kind: HiddenItemKind::ClaimComment,
                 id: comment.to_string(),

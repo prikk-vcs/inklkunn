@@ -30,8 +30,8 @@
 use crate::access::Role;
 use crate::proposal::{ProposalChange, ProposalOp, ProposalState};
 use crate::record::{
-    AccountId, AppealId, GrantDecisionId, ProtectionEventId, RestrictionEventId, TombstoneEventId,
-    WikiId,
+    AccountId, AppealId, GrantDecisionId, ProtectionEventId, RestrictionEventId, TombstoneActId,
+    TombstoneEventId, WikiId,
 };
 use crate::{Result, StoreError};
 
@@ -535,15 +535,22 @@ impl TombstoneAct {
 
 /// One hide or one unhide (RFC 006 D-8), written once. **No hidden text is in it.** An unhide follows one hide, names the
 /// same item and the same parts, and has no category of its own: the log shows the hide's.
+///
+/// **An act and its events.** One act of a moderator (one hide of a change, which is a record for each page it wrote and one
+/// for its summary and author) is several events that carry **one [`TombstoneActId`] and one `at`**, and the database refuses an
+/// event of an act that differs from the act's others in time, wiki, person or kind (hide or unhide). What an overturned appeal
+/// reverses is the events of the act it names, and no other (A-2): two hides by one moderator in one second are two acts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TombstoneEvent {
     /// The id.
     pub id: TombstoneEventId,
+    /// The act this event belongs to: the same for every event of one act, and for no other.
+    pub act_id: TombstoneActId,
     /// The wiki.
     pub wiki: WikiId,
-    /// Unix seconds.
+    /// Unix seconds: the act's, the same for every event of it.
     pub at: i64,
-    /// Hide or unhide.
+    /// Hide or unhide (the kind of the act's events, not its identity: that is `act_id`).
     pub act: TombstoneAct,
     /// What is hidden.
     pub item: HiddenItem,

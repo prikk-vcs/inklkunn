@@ -236,6 +236,7 @@ impl Raw {
                 ("seq", num(1)),
                 ("wiki_id", text(&self.wiki)),
                 ("at", num(10)),
+                ("act_id", text(&uuid())),
                 ("event", text("hide")),
                 ("item_kind", text("proposal-comment")),
                 ("item_id", text(&uuid())),
@@ -268,6 +269,27 @@ fn the_database_refuses_a_tombstone_the_store_would_not_write() {
     let revision = [("item_kind", text("proposal-revision"))];
     assert!(t(&revision).contains("CHECK constraint"));
     assert!(t(&[revision[0].clone(), ("item_ref", text("one"))]).contains("CHECK constraint"));
+    // An act has an id, plain and bounded; the events of one act are of one wiki, one time, one person and one kind.
+    assert!(t(&[("act_id", NULL)]).contains("NOT NULL"));
+    assert!(t(&[("act_id", text(""))]).contains("CHECK constraint"));
+    assert!(t(&[("act_id", text("NOT/AN/ID"))]).contains("CHECK constraint"));
+    assert!(t(&[("act_id", text(&"a".repeat(129)))]).contains("CHECK constraint"));
+    let act = uuid();
+    insert(
+        &r.conn,
+        "tombstones",
+        &r.tombstone(&[("act_id", text(&act))]),
+    )
+    .expect("the first record of an act");
+    let one_act = "the events of one act are of one wiki, one time, one person and one kind";
+    assert!(t(&[("act_id", text(&act)), ("at", num(11))]).contains(one_act));
+    assert!(t(&[("act_id", text(&act)), ("actor", text(&r.b))]).contains(one_act));
+    insert(
+        &r.conn,
+        "tombstones",
+        &r.tombstone(&[("act_id", text(&act))]),
+    )
+    .expect("the same time and person: the same act");
     // The identifier is plain; the bounds hold; a role is one of six.
     assert!(t(&[("item_id", text("NOT/AN/ID"))]).contains("CHECK constraint"));
     assert!(t(&[("item_id", text(&"a".repeat(129)))]).contains("CHECK constraint"));
@@ -850,6 +872,7 @@ fn the_indexes_that_enforce_and_serve_are_there() {
         "protections_target",
         "tombstones_wiki",
         "tombstones_item",
+        "tombstones_act",
         "appeals_wiki",
         "appeals_appellant",
         "appeals_action",

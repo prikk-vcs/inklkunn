@@ -946,8 +946,10 @@ BEGIN SELECT RAISE(ABORT, 'a reply is in the thread of the comment it answers');
 ///   not name alone: a proposal's revision number, a page's path) and of its parts (content, summary, author, as three
 ///   flags), with a reason category of six (a closed set), an optional note for the `moderate` rung, the account the item
 ///   is about, and, for a hide that declined an open proposal, the decline's own record (`proposal_transitions.seq`). An
-///   unhide follows a hide, names the same item and parts, and restores exactly. **The hidden text is not here**: the
-///   store holds the fact of a hiding, never the content.
+///   unhide follows a hide, names the same item and parts, and restores exactly. **An act** (a moderator's one hide of a
+///   change, a record for each page it wrote and one for its summary and author) is its events' shared `act_id`: they have
+///   one time, one person, one wiki and one kind (a trigger), so an overturn reverses exactly an act and the audit trail
+///   names it. **The hidden text is not here**: the store holds the fact of a hiding, never the content.
 /// - **`appeals`:** the action appealed (`action_kind` of five and its id: a record's id, or for a decline the
 ///   transition's number), who took it (so that the database itself refuses a decision by that person, and by the
 ///   appellant), the appellant's text, and how it stands: open, upheld or overturned, with the decision's time, person and
@@ -1148,6 +1150,7 @@ CREATE TABLE IF NOT EXISTS tombstones (
     seq                 INTEGER NOT NULL,
     wiki_id             TEXT NOT NULL REFERENCES wikis(id),
     at                  INTEGER NOT NULL,
+    act_id              TEXT NOT NULL CHECK (length(act_id) BETWEEN 1 AND 128 AND act_id NOT GLOB '*[^0-9a-f-]*'),
     event               TEXT NOT NULL CHECK (event IN ('hide', 'unhide')),
     item_kind           TEXT NOT NULL CHECK (item_kind IN ('proposal-comment', 'claim-comment', 'proposal-revision', 'page-revision')),
     item_id             TEXT NOT NULL CHECK (length(item_id) BETWEEN 1 AND 128 AND item_id NOT GLOB '*[^0-9a-f-]*'),
@@ -1173,6 +1176,7 @@ CREATE TABLE IF NOT EXISTS tombstones (
 );
 CREATE INDEX IF NOT EXISTS tombstones_wiki ON tombstones(wiki_id, seq);
 CREATE INDEX IF NOT EXISTS tombstones_item ON tombstones(wiki_id, item_kind, item_id);
+CREATE INDEX IF NOT EXISTS tombstones_act ON tombstones(wiki_id, act_id);
 CREATE UNIQUE INDEX IF NOT EXISTS tombstones_one_unhide ON tombstones(of_event) WHERE of_event IS NOT NULL;
 CREATE TRIGGER IF NOT EXISTS tombstones_no_update BEFORE UPDATE ON tombstones
 BEGIN SELECT RAISE(ABORT, 'tombstones are append-only'); END;
@@ -1189,6 +1193,12 @@ WHEN NEW.of_event IS NOT NULL AND NOT EXISTS (SELECT 1 FROM tombstones h WHERE h
        AND h.item_ref IS NEW.item_ref AND h.hides_content = NEW.hides_content AND h.hides_summary = NEW.hides_summary
        AND h.hides_author = NEW.hides_author AND h.at <= NEW.at)
 BEGIN SELECT RAISE(ABORT, 'tombstones are append-only: an unhide follows a hide of the same item and parts'); END;
+-- The events of one act (`act_id`: one hide of a change, a record for each page it wrote and one for its summary and author)
+-- are of one wiki, one time, one person and one kind (hide or unhide): an overturn reverses exactly an act's events.
+CREATE TRIGGER IF NOT EXISTS tombstones_one_act BEFORE INSERT ON tombstones
+WHEN EXISTS (SELECT 1 FROM tombstones a WHERE a.act_id = NEW.act_id
+       AND (a.wiki_id <> NEW.wiki_id OR a.at <> NEW.at OR a.actor <> NEW.actor OR a.event <> NEW.event))
+BEGIN SELECT RAISE(ABORT, 'tombstones are append-only: the events of one act are of one wiki, one time, one person and one kind'); END;
 CREATE TRIGGER IF NOT EXISTS tombstones_by_appeal BEFORE INSERT ON tombstones
 WHEN NEW.appeal_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM appeals WHERE id = NEW.appeal_id AND wiki_id = NEW.wiki_id
                                                 AND status = 'open' AND action_kind = 'tombstone')

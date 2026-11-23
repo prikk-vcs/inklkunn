@@ -27,8 +27,8 @@ use inklkunn_store::{
     AccountId, AccountStore, Actor, AppealedAction, AppealedKind, AuditEvent, AuditOutcome,
     AuditSink, ClaimThreadStore, CommentId, GovernanceStore, HiddenItem, HiddenItemKind,
     HiddenParts, ProposalChange, ProposalId, ProposalOp, ProposalState, ProposalStore,
-    ProposalTransition, ReasonCategory, Role, StoreError, TombstoneAct, TombstoneEvent,
-    TombstoneEventId, WikiRecord,
+    ProposalTransition, ReasonCategory, Role, StoreError, TombstoneAct, TombstoneActId,
+    TombstoneEvent, TombstoneEventId, WikiRecord,
 };
 
 use super::model::{Hidden, Mark};
@@ -164,8 +164,10 @@ fn store_failure(e: StoreError) -> ModerationError {
 /// A hide that was made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HideMade {
-    /// The record of the hide.
+    /// The record of the hide (the first of the act's records).
     pub id: TombstoneEventId,
+    /// The act: every record of this hide carries it, an overturn reverses exactly them, and the audit trail names it.
+    pub act: TombstoneActId,
     /// The proposal the act declined with it, when it did.
     pub declined: Option<ProposalId>,
 }
@@ -175,6 +177,8 @@ pub struct HideMade {
 pub struct UnhideMade {
     /// The record of the unhide.
     pub id: TombstoneEventId,
+    /// The act of the unhide, which the audit trail names.
+    pub act: TombstoneActId,
     /// The hide it followed.
     pub of: TombstoneEventId,
 }
@@ -396,7 +400,7 @@ impl ModerationService {
     }
 
     /// **The event of the act in the audit trail**, written before the record is: `rung=…; policy=…` as every decision is,
-    /// and what the act is about, never content.
+    /// and what the act is about, never content. The resource is the act: `tombstone:<wiki>:<act id>` (A-2).
     #[allow(clippy::too_many_arguments)]
     fn audit_act(
         &self,
@@ -404,7 +408,7 @@ impl ModerationService {
         wiki: &WikiRecord,
         acting: &Acting,
         operation: &str,
-        id: &TombstoneEventId,
+        act: &TombstoneActId,
         outcome: AuditOutcome,
         detail: &str,
     ) -> Result<(), ModerationError> {
@@ -412,7 +416,7 @@ impl ModerationService {
             self.authorizer.now(),
             &principal.audit_name(),
             operation,
-            &format!("tombstone:{}:{id}", wiki.id),
+            &format!("tombstone:{}:{act}", wiki.id),
             outcome,
             &format!(
                 "rung={}; policy={}; {detail}",
@@ -605,6 +609,7 @@ impl ModerationService {
             None
         };
         let id = TombstoneEventId::new();
+        let act = TombstoneActId::new();
         let detail = format!(
             "hide; item={}:{}; parts={}; category={}{}",
             found.canonical.kind.as_str(),
@@ -620,7 +625,7 @@ impl ModerationService {
             wiki,
             &acting,
             "tombstone-hide",
-            &id,
+            &act,
             AuditOutcome::Allowed,
             &detail,
         )?;
@@ -629,6 +634,7 @@ impl ModerationService {
             &acting,
             rung,
             &id,
+            &act,
             &found,
             parts,
             category,
@@ -638,6 +644,7 @@ impl ModerationService {
         match done {
             Ok(()) => Ok(HideMade {
                 id,
+                act,
                 declined: declines,
             }),
             Err(e) => {
@@ -647,7 +654,7 @@ impl ModerationService {
                     wiki,
                     &acting,
                     "tombstone-hide",
-                    &id,
+                    &act,
                     AuditOutcome::Failed,
                     &format!("{detail}; the record failed"),
                 );
@@ -732,12 +739,15 @@ impl ModerationService {
         acting: &Acting,
         rung: Role,
         id: &TombstoneEventId,
+        act: &TombstoneActId,
         found: &Found,
         parts: HiddenParts,
         category: ReasonCategory,
         note: Option<String>,
         declines: Option<&ProposalId>,
     ) -> Result<(), ModerationError> {
+        // One act, one time: every record of this hide is written at the same second, under the one act id.
+        let at = self.authorizer.now();
         let mut declined_transition = None;
         if let Some(proposal) = declines {
             let current = self.proposal_of(wiki, proposal)?;
@@ -781,8 +791,9 @@ impl ModerationService {
                     } else {
                         TombstoneEventId::new()
                     },
+                    act_id: act.clone(),
                     wiki: wiki.id.clone(),
-                    at: self.authorizer.now(),
+                    at,
                     act: TombstoneAct::Hide,
                     item,
                     parts: these,
@@ -846,6 +857,7 @@ impl ModerationService {
         };
         let hidden = self.in_force(wiki, hide)?;
         let id = TombstoneEventId::new();
+        let act = TombstoneActId::new();
         let detail = format!(
             "unhide; item={}:{}; parts={}; of={hide}",
             hidden.item.kind.as_str(),
@@ -857,12 +869,13 @@ impl ModerationService {
             wiki,
             &acting,
             "tombstone-unhide",
-            &id,
+            &act,
             AuditOutcome::Allowed,
             &detail,
         )?;
         let done = self.governance.record_tombstone_event(&TombstoneEvent {
             id: id.clone(),
+            act_id: act.clone(),
             wiki: wiki.id.clone(),
             at: self.authorizer.now(),
             act: TombstoneAct::Unhide,
@@ -883,6 +896,7 @@ impl ModerationService {
         match done {
             Ok(()) => Ok(UnhideMade {
                 id,
+                act,
                 of: hide.clone(),
             }),
             Err(e) => {
@@ -891,7 +905,7 @@ impl ModerationService {
                     wiki,
                     &acting,
                     "tombstone-unhide",
-                    &id,
+                    &act,
                     AuditOutcome::Failed,
                     &format!("{detail}; the record failed"),
                 );
@@ -924,7 +938,7 @@ impl ModerationService {
             wiki,
             &acting,
             "tombstone-show",
-            hide,
+            &event.act_id,
             AuditOutcome::Allowed,
             &format!(
                 "show; item={}:{}; parts={}",

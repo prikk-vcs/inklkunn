@@ -17,8 +17,8 @@ use crate::governance::{
     Reversal, TombstoneAct, TombstoneEvent,
 };
 use crate::record::{
-    AccountId, AppealId, GrantDecisionId, ProtectionEventId, RestrictionEventId, TombstoneEventId,
-    WikiId,
+    AccountId, AppealId, GrantDecisionId, ProtectionEventId, RestrictionEventId, TombstoneActId,
+    TombstoneEventId, WikiId,
 };
 use crate::{Result, StoreError};
 
@@ -373,7 +373,7 @@ fn insert_protection(tx: &Transaction<'_>, e: &ProtectionEvent) -> Result<()> {
 
 const TOMBSTONE_COLUMNS: &str = "id, wiki_id, at, event, item_kind, item_id, item_ref, hides_content, hides_summary, \
                                  hides_author, reason_category, note, affected, actor, actor_rung, policy_block, \
-                                 of_event, appeal_id, declined_transition";
+                                 of_event, appeal_id, declined_transition, act_id";
 
 fn tombstone_of(row: &Row<'_>) -> rusqlite::Result<TombstoneEvent> {
     let flag = |i: usize| -> rusqlite::Result<bool> { Ok(row.get::<_, i64>(i)? == 1) };
@@ -407,6 +407,8 @@ fn tombstone_of(row: &Row<'_>) -> rusqlite::Result<TombstoneEvent> {
             .transpose()?,
         appeal: appeal_of(row.get(17)?)?,
         declined_transition: row.get(18)?,
+        act_id: TombstoneActId::parse(&row.get::<_, String>(19)?)
+            .ok_or_else(|| invalid("act id"))?,
     })
 }
 
@@ -438,8 +440,8 @@ fn insert_tombstone(tx: &Transaction<'_>, e: &TombstoneEvent) -> Result<()> {
     tx.execute(
         "INSERT INTO tombstones (id, seq, wiki_id, at, event, item_kind, item_id, item_ref, hides_content, \
          hides_summary, hides_author, reason_category, note, affected, actor, actor_rung, policy_block, of_event, \
-         appeal_id, declined_transition) VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM tombstones), ?2, ?3, ?4, \
-         ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+         appeal_id, declined_transition, act_id) VALUES (?1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM tombstones), ?2, ?3, \
+         ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
             e.id.as_str(),
             e.wiki.as_str(),
@@ -460,6 +462,7 @@ fn insert_tombstone(tx: &Transaction<'_>, e: &TombstoneEvent) -> Result<()> {
             e.of_event.as_ref().map(TombstoneEventId::as_str),
             e.appeal.as_ref().map(AppealId::as_str),
             e.declined_transition,
+            e.act_id.as_str(),
         ],
     )
     .map_err(refusal)?;
