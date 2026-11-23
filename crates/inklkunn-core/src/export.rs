@@ -600,10 +600,12 @@ fn histories(
 
 /// Export the wiki as a bundle directory `dest` (absolute; must not exist; its directory must). `now` is the
 /// time written in the manifest. The wiki's scratch directory is where the tip is extracted (and removed from). The
-/// bundle carries none of the service's records (claim threads, views), and its manifest says so in `fidelity.dropped`:
-/// see [`export_bundle_with`]. **It is not told what moderation hides either**, so its history lines are written whole: a
-/// wiki that has hidden anything is exported with [`export_bundle_with`] and the records [`knowledge_records`] reads.
-pub fn export_bundle(
+/// bundle carries none of the service's records (claim threads, views), and its manifest says so in `fidelity.dropped`.
+/// **It is not told what moderation hides either**, so its history lines are written whole: **a function that ignores
+/// moderation is a trap, so it exists in this crate's own unit tests alone** (handoff G-T4, decision request 13). A wiki is
+/// exported with [`export_bundle_with`] and the records [`knowledge_records`] reads.
+#[cfg(test)]
+pub(crate) fn export_bundle(
     storage: &dyn Storage,
     layout: &RootLayout,
     record: &WikiRecord,
@@ -614,7 +616,9 @@ pub fn export_bundle(
     export_bundle_inner(storage, layout, record, dest, inklkunn_version, now, None)
 }
 
-/// [`export_bundle`], carrying these records in the bundle's knowledge extension ([`knowledge_records`] reads them).
+/// Export the wiki as a bundle directory `dest` (as the tests' own `export_bundle` does), carrying these records in the bundle's
+/// knowledge extension ([`knowledge_records`] reads them): the claim threads, the views' creation records and **what moderation
+/// hides**, which the bundle then carries as tombstones and never as the hidden words (RFC 006 D-13).
 pub fn export_bundle_with(
     storage: &dyn Storage,
     layout: &RootLayout,

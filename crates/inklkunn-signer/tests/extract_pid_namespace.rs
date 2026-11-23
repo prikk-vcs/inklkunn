@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use inklkunn_core::export::export_bundle;
+use inklkunn_core::export::export_bundle_with;
 use inklkunn_core::read::scratch::{Extract, sweep_leftovers, sweep_partials};
 use inklkunn_prikk::storage::{
     Change, Diff, Entry, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
@@ -367,4 +367,25 @@ fn an_export_beside_a_sweep_from_another_pid_namespace_keeps_its_directories_and
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(left, vec![DEST.to_owned()], "{left:?}");
+}
+
+/// The bundle of the wiki, as [`export_bundle_with`] writes it when it is given no records of the service's (the one function
+/// that exported without them ignored what moderation hides, and is the crate's unit tests' alone).
+fn export_bundle(
+    storage: &dyn inklkunn_prikk::Storage,
+    layout: &inklkunn_store::RootLayout,
+    record: &inklkunn_store::WikiRecord,
+    dest: &std::path::Path,
+    version: &str,
+    now: i64,
+) -> Result<inklkunn_core::export::Exported, inklkunn_core::export::ExportError> {
+    export_bundle_with(
+        storage,
+        layout,
+        record,
+        dest,
+        version,
+        now,
+        &inklkunn_core::export::KnowledgeRecords::default(),
+    )
 }

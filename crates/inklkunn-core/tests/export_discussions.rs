@@ -10,8 +10,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use inklkunn_core::export::{
-    KnowledgeRecords, Suppressions, claim_discussions, export_bundle, export_bundle_with,
-    knowledge_records,
+    KnowledgeRecords, Suppressions, claim_discussions, export_bundle_with, knowledge_records,
 };
 use inklkunn_prikk::storage::{
     Change, Diff, Entry, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
@@ -609,27 +608,6 @@ fn an_export_leaves_a_directory_beside_its_destination_that_it_did_not_make_whol
 }
 
 #[test]
-fn an_export_that_was_not_given_the_services_records_says_so_in_the_manifest() {
-    let r = rig("unread");
-    let ann = person(&r.store, "Ann");
-    say(&r, C1, &ann, None, "A thread the export was not given.", 5);
-    let stand = repository();
-    export_bundle(&stand, &r.layout, &r.wiki, &r.out, "0.0.0", 1_700_001_000)
-        .unwrap_or_else(|e| panic!("{e}"));
-    let files = files_of(&r.out);
-    assert!(
-        !files.keys().any(|k| k.starts_with("extensions")),
-        "{files:?}"
-    );
-    let manifest = text(&files, "wiki-bundle.yaml");
-    assert!(
-        manifest.contains("claim threads and view-creation records"),
-        "the manifest does not look complete when it is not\n{manifest}"
-    );
-    assert!(bundle_manifest::violations(&manifest).is_empty());
-}
-
-#[test]
 fn the_names_of_the_people_are_the_names_they_have_and_a_person_the_service_lost_is_nameless_not_dropped()
  {
     let r = rig("names");
@@ -656,4 +634,25 @@ fn the_names_of_the_people_are_the_names_they_have_and_a_person_the_service_lost
             .name,
         ""
     );
+}
+
+/// The bundle of the wiki, as [`export_bundle_with`] writes it when it is given no records of the service's (the one function
+/// that exported without them ignored what moderation hides, and is the crate's unit tests' alone).
+fn export_bundle(
+    storage: &dyn inklkunn_prikk::Storage,
+    layout: &inklkunn_store::RootLayout,
+    record: &inklkunn_store::WikiRecord,
+    dest: &std::path::Path,
+    version: &str,
+    now: i64,
+) -> Result<inklkunn_core::export::Exported, inklkunn_core::export::ExportError> {
+    export_bundle_with(
+        storage,
+        layout,
+        record,
+        dest,
+        version,
+        now,
+        &inklkunn_core::export::KnowledgeRecords::default(),
+    )
 }

@@ -1133,7 +1133,7 @@ fn criterion_11_a_retired_claim_and_a_retired_source_stay_in_the_export() {
     .unwrap();
     signed(w.accept(&w.maintainer, &retire.id));
     let dest = w._tmp.0.join("bundle");
-    inklkunn_core::export::export_bundle(&*w.storage, &w.layout, &w.wiki, &dest, "0.0.0", now())
+    export_bundle(&*w.storage, &w.layout, &w.wiki, &dest, "0.0.0", now())
         .unwrap_or_else(|e| panic!("{e}"));
     // Both files are in the bundle as the repository has them: a retirement removes nothing.
     for (path, words) in [
@@ -1150,4 +1150,25 @@ fn criterion_11_a_retired_claim_and_a_retired_source_stay_in_the_export() {
             "{path} is as the repository has it"
         );
     }
+}
+
+/// The bundle of the wiki, as [`export_bundle_with`] writes it when it is given no records of the service's (the one function
+/// that exported without them ignored what moderation hides, and is the crate's unit tests' alone).
+fn export_bundle(
+    storage: &dyn inklkunn_prikk::Storage,
+    layout: &inklkunn_store::RootLayout,
+    record: &inklkunn_store::WikiRecord,
+    dest: &std::path::Path,
+    version: &str,
+    now: i64,
+) -> Result<inklkunn_core::export::Exported, inklkunn_core::export::ExportError> {
+    inklkunn_core::export::export_bundle_with(
+        storage,
+        layout,
+        record,
+        dest,
+        version,
+        now,
+        &inklkunn_core::export::KnowledgeRecords::default(),
+    )
 }

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use inklkunn_core::export::{ExportError, export_bundle};
+use inklkunn_core::export::{ExportError, export_bundle_with};
 use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
 use inklkunn_core::message::{Actor, BlockId, Message, Summary};
 use inklkunn_core::read::ReadConfig;
@@ -1125,4 +1125,25 @@ fn what_moderation_hides_of_a_real_revision_is_not_in_the_bundle_and_the_import_
             plan.report()
         );
     }
+}
+
+/// The bundle of the wiki, as [`export_bundle_with`] writes it when it is given no records of the service's (the one function
+/// that exported without them ignored what moderation hides, and is the crate's unit tests' alone).
+fn export_bundle(
+    storage: &dyn inklkunn_prikk::Storage,
+    layout: &inklkunn_store::RootLayout,
+    record: &inklkunn_store::WikiRecord,
+    dest: &std::path::Path,
+    version: &str,
+    now: i64,
+) -> Result<inklkunn_core::export::Exported, inklkunn_core::export::ExportError> {
+    export_bundle_with(
+        storage,
+        layout,
+        record,
+        dest,
+        version,
+        now,
+        &inklkunn_core::export::KnowledgeRecords::default(),
+    )
 }

@@ -163,6 +163,36 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_th
     assert!(!created.contains("checksums:") && !created.contains("exported_at"));
 }
 
+/// An export that was not given the service's records says so in its manifest, in `fidelity.dropped`: the manifest does not look
+/// complete when it is not (it was a test of the integration tests, which no longer export without records).
+#[test]
+fn an_export_that_was_not_given_the_services_records_says_so_in_the_manifest() {
+    let facts = |records_read| ManifestFacts {
+        exported: Some(ExportFacts {
+            pages: 1,
+            attachments: 0,
+            exported_at: 1_700_000_000,
+            tip: "ab".repeat(32),
+            interwiki: Vec::new(),
+            unattributed_changes: 0,
+            histories_not_written: 0,
+            knowledge_extension: false,
+            records_read,
+            suppressed_entries: 0,
+        }),
+    };
+    let unread = bundle::manifest_with(&record(), "0.0.0", &facts(false));
+    assert!(
+        unread.contains("claim threads and view-creation records"),
+        "{unread}"
+    );
+    let read = bundle::manifest_with(&record(), "0.0.0", &facts(true));
+    assert!(
+        !read.contains("claim threads and view-creation records"),
+        "{read}"
+    );
+}
+
 /// The report prikk gave of an extraction of these files.
 fn reported(files: u64, bytes: u64) -> Materialized {
     Materialized {
