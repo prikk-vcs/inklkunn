@@ -44,6 +44,7 @@ use inklkunn_store::{DerivedPage, IndexEntry, WikiId, WikiRecord};
 use super::linediff::HunkView;
 use super::{Lookup, PageView, Presentation, ReadError, ReadService, Tip, TitleIndex};
 use crate::message::{Actor, Kind as MessageKind, Message, SUMMARY_MAX_CHARS};
+use crate::tombstone::{Hidden, Mark};
 
 /// The rows of one history page.
 pub const HISTORY_PAGE_ROWS: usize = 20;
@@ -84,6 +85,9 @@ pub enum Who {
     },
     /// The wiki service itself.
     Service,
+    /// Hidden by moderation (RFC 006 D-8): the person is named nowhere. The change's [`ChangeInfo::hidden`] says by which
+    /// category, rung and date.
+    Hidden,
 }
 
 /// What a message records the change as.
@@ -139,6 +143,35 @@ pub struct ChangeInfo {
     /// The proposal the message names (its `Proposal:` trailer), for a proposal or a rollback in the service's
     /// form: the id as a text, never checked against the wiki's records here.
     pub proposal: Option<String>,
+    /// What moderation hides of this change **now** (RFC 006 D-8; INV-13): its summary and its author are already replaced in
+    /// this record (the summary is empty and the people are [`Who::Hidden`]), and `content` says that the page's text at this
+    /// change is not shown by any surface. Never carries a name.
+    pub hidden: Hidden,
+}
+
+impl ChangeInfo {
+    /// This change with what moderation hides of it taken out: the summary, and the people when the author is hidden (the
+    /// accepter too when the same person, so that a hidden author is not named by the other half of the message).
+    #[must_use]
+    pub fn with_hidden(mut self, hidden: Hidden) -> ChangeInfo {
+        if hidden.summary().is_some() {
+            self.summary.clear();
+        }
+        if hidden.author().is_some()
+            && let Provenance::Recorded {
+                proposed_by,
+                accepted_by,
+                ..
+            } = &mut self.provenance
+        {
+            if accepted_by == proposed_by {
+                *accepted_by = Who::Hidden;
+            }
+            *proposed_by = Who::Hidden;
+        }
+        self.hidden = hidden;
+        self
+    }
 }
 
 /// What a change did to the page the history is of.
@@ -300,11 +333,33 @@ pub struct PageDiff {
     pub no_lines: bool,
 }
 
+/// A diff of which a side is hidden (RFC 006 D-8): the page, the two changes, and which side says *hidden*.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HiddenDiff {
+    /// The page's title.
+    pub title: String,
+    /// The first block.
+    pub from: String,
+    /// The second block.
+    pub to: String,
+    /// The first block's number in the view's history.
+    pub from_number: u64,
+    /// The second block's number.
+    pub to_number: u64,
+    /// The hiding of the first side's content, when it is hidden.
+    pub from_hidden: Option<Mark>,
+    /// The hiding of the second side's content, when it is hidden.
+    pub to_hidden: Option<Mark>,
+}
+
 /// What a diff request came to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiffOutcome {
     /// The diff.
     Found(Box<PageDiff>),
+    /// The text of one side, or both, is hidden by moderation, so the difference is shown by nobody (a difference with a
+    /// hidden side would give the hidden text back, line by line).
+    Hidden(Box<HiddenDiff>),
     /// One of the blocks is not one of this wiki's.
     NoSuchChange,
     /// Several pages match the title and none is nearer.
@@ -329,6 +384,14 @@ pub enum AtOutcome {
         /// The title asked for.
         title: String,
         /// The change.
+        change: Box<ChangeInfo>,
+    },
+    /// The page's text at this change is hidden by moderation: the change says so (`change.hidden`), and no surface shows
+    /// the text.
+    Hidden {
+        /// The title asked for.
+        title: String,
+        /// The change, with its tombstone.
         change: Box<ChangeInfo>,
     },
     /// The view's history has no such block.
@@ -369,6 +432,14 @@ struct Touch {
     kind: TouchKind,
     /// The path touched (the new path of a rename).
     path: String,
+}
+
+/// The paths a block wrote, or that it is too large to say.
+pub(super) enum TouchesOf {
+    /// Every path the block created, edited, renamed to or otherwise wrote (not the ones it deleted), once.
+    Paths(Vec<String>),
+    /// Too large to list within the bounds.
+    TooLarge,
 }
 
 /// What is known of a block's operations.
@@ -526,6 +597,7 @@ fn infos_of(blocks: &[HistoryBlock]) -> Vec<ChangeInfo> {
                 summary,
                 provenance,
                 proposal,
+                hidden: Hidden::none(),
             }
         })
         .collect()
@@ -841,6 +913,41 @@ impl ReadService {
         })
     }
 
+    /// The change with what moderation hides of it taken out (RFC 006 D-8). **Every change a surface is given passes here**:
+    /// the held log keeps the change as the history says it, and what is hidden is asked at each request, so a hide and an
+    /// unhide are in force at once.
+    pub(super) fn masked(
+        &self,
+        wiki: &WikiRecord,
+        info: ChangeInfo,
+    ) -> Result<ChangeInfo, ReadError> {
+        let hidden = self.hidden_block(&wiki.id, &info.block_id)?;
+        Ok(info.with_hidden(hidden))
+    }
+
+    /// The paths the change wrote: what the check of a tip's content compares (RFC 006 D-8).
+    pub(super) fn written_paths(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+    ) -> Result<TouchesOf, ReadError> {
+        if !is_block_id(block_id) {
+            return Ok(TouchesOf::Paths(Vec::new()));
+        }
+        Ok(match self.touches_of(wiki, block_id)?.0 {
+            Touches::Known(list) => {
+                let mut paths: Vec<String> = Vec::new();
+                for touch in list.iter().filter(|t| t.kind != TouchKind::Delete) {
+                    if !paths.contains(&touch.path) {
+                        paths.push(touch.path.clone());
+                    }
+                }
+                TouchesOf::Paths(paths)
+            }
+            Touches::TooLarge => TouchesOf::TooLarge,
+        })
+    }
+
     fn target(&self, wiki: &WikiRecord, tip: &Tip, title: &str) -> Result<Target, ReadError> {
         let index = self.index_at(wiki, tip)?;
         resolve(&index, title)
@@ -931,7 +1038,7 @@ impl ReadService {
             }
             if let Some(change) = window.blocks.get(at).cloned() {
                 rows.push(HistoryRow {
-                    change,
+                    change: self.masked(wiki, change)?,
                     path: path_after,
                     events,
                 });
@@ -950,6 +1057,19 @@ impl ReadService {
     /// The change in the view's history with this block id, as the held log describes it (no `show`): `None`
     /// when the view's history has no such block. What a rollback is planned from.
     pub(super) fn change_info(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        block_id: &str,
+    ) -> Result<Option<ChangeInfo>, ReadError> {
+        self.change_info_raw(wiki, view, block_id)?
+            .map(|info| self.masked(wiki, info))
+            .transpose()
+    }
+
+    /// The change **as the history says it, with nothing hidden**: for the one act that shows hidden content, and for the
+    /// moderation form's check that a change is there. Never given to a surface.
+    pub(super) fn change_info_raw(
         &self,
         wiki: &WikiRecord,
         view: Option<&str>,
@@ -983,6 +1103,7 @@ impl ReadService {
         let Some(info) = window.blocks.get(at).cloned() else {
             return Ok(ChangeOutcome::NoSuchChange);
         };
+        let info = self.masked(wiki, info)?;
         let shown = self
             .storage
             .change(&self.layout.repo_dir(&wiki.id), block_id);
@@ -1037,6 +1158,22 @@ impl ReadService {
         else {
             return Ok(DiffOutcome::NoSuchChange);
         };
+        // A side whose text is hidden gives no difference: the lines of a diff are the hidden text, one side at a time.
+        let (from_hidden, to_hidden) = (
+            self.hidden_block(&wiki.id, from)?.content().cloned(),
+            self.hidden_block(&wiki.id, to)?.content().cloned(),
+        );
+        if from_hidden.is_some() || to_hidden.is_some() {
+            return Ok(DiffOutcome::Hidden(Box::new(HiddenDiff {
+                title,
+                from: from.to_owned(),
+                to: to.to_owned(),
+                from_number: from_block.number,
+                to_number: to_block.number,
+                from_hidden,
+                to_hidden,
+            })));
+        }
         let diff = match self.storage.diff(
             &self.layout.repo_dir(&wiki.id),
             &Point::Block(from.to_owned()),
@@ -1086,11 +1223,19 @@ impl ReadService {
         let Some(change) = window.blocks.get(at).cloned() else {
             return Ok(AtOutcome::NoSuchChange);
         };
+        let change = self.masked(wiki, change)?;
         let index = self.index_at(wiki, &tip)?;
         let (path, page_title) = match resolve(&index, title)? {
             Target::Page { path, title } => (path, title),
             Target::Ambiguous(candidates) => return Ok(AtOutcome::Ambiguous { candidates }),
         };
+        // Before the text is read, and before the held renders are asked: a hidden text is not held anywhere it is served from.
+        if change.hidden.content().is_some() {
+            return Ok(AtOutcome::Hidden {
+                title: page_title,
+                change: Box::new(change),
+            });
+        }
         let at_tip = Tip {
             view: tip.view.clone(),
             state_id: change.state_id.clone(),

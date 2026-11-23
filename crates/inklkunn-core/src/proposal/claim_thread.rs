@@ -166,9 +166,23 @@ impl ProposalService {
     ) -> Result<ClaimThreadPage> {
         self.allow(principal, Action::Read, &Self::thread_resource(wiki, claim))?;
         let threads = self.threads()?;
-        Ok(threads
+        let mut page = threads
             .store
-            .claim_comments(&wiki.id, claim.as_str(), after, limit)?)
+            .claim_comments(&wiki.id, claim.as_str(), after, limit)?;
+        if let Some(tombstones) = &self.tombstones {
+            for row in &mut page.rows {
+                if tombstones
+                    .claim_comment(&wiki.id, &row.comment.id)
+                    .map_err(super::hidden::unreadable)?
+                    .content()
+                    .is_some()
+                {
+                    // A hidden comment's body is not given; `claim_comment_marks` says why and which author is hidden.
+                    row.comment.body.clear();
+                }
+            }
+        }
+        Ok(page)
     }
 
     /// The comment in place `position` (from 1) of `claim`'s thread: what a link to a comment on another page is made

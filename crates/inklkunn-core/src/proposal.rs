@@ -40,6 +40,7 @@ use crate::read::{ReadError, ReadService};
 
 pub mod claim_thread;
 pub mod files;
+mod hidden;
 pub mod machine;
 pub mod metrics;
 pub mod quota;
@@ -654,6 +655,9 @@ pub struct ProposalService {
     /// Who holds which role in a wiki, to count the people who could give the approvals its rules ask for (RFC 006 D-4's
     /// warning), when the service is given them.
     roles: Option<Arc<dyn RoleStore>>,
+    /// What moderation hides (RFC 006 D-8), asked of every proposal, revision and comment a surface is given; `None` until
+    /// [`ProposalService::with_tombstones`] gives it (nothing is then hidden).
+    tombstones: Option<Arc<crate::tombstone::Tombstones>>,
 }
 
 impl std::fmt::Debug for ProposalService {
@@ -684,6 +688,7 @@ impl ProposalService {
             notifier: None,
             claim_threads: None,
             roles: None,
+            tombstones: None,
         }
     }
 
@@ -1597,7 +1602,7 @@ impl ProposalService {
             return Ok(());
         };
         for id in ids {
-            let revisions = self.revisions(principal, wiki, id)?;
+            let revisions = self.revisions_raw(principal, wiki, id)?;
             let rules_only = revisions
                 .last()
                 .is_some_and(|r| only_governance_files(touched_by(&r.content)));
@@ -1800,6 +1805,19 @@ impl ProposalService {
         id: &ProposalId,
     ) -> Result<ProposalRecord> {
         let viewer = self.readable(principal, wiki, id)?;
+        let record = self.load(wiki, id, viewer)?;
+        self.shown(wiki, viewer, record)
+    }
+
+    /// The proposal **as it was written**, with nothing hidden: what the acceptance builds the change's message from. Never
+    /// given to a surface (INV-13).
+    pub(crate) fn get_raw(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+    ) -> Result<ProposalRecord> {
+        let viewer = self.readable(principal, wiki, id)?;
         self.load(wiki, id, viewer)
     }
 
@@ -1817,9 +1835,12 @@ impl ProposalService {
                 wiki: wiki.id.clone(),
             },
         )?;
-        Ok(self
-            .proposals
-            .proposals(&wiki.id, filter, viewer_of(principal))?)
+        let viewer = viewer_of(principal);
+        self.proposals
+            .proposals(&wiki.id, filter, viewer)?
+            .into_iter()
+            .map(|record| self.shown(wiki, viewer, record))
+            .collect()
     }
 
     /// The draft's working copy, for its author to resume.
@@ -1845,6 +1866,28 @@ impl ProposalService {
     ) -> Result<Vec<RevisionRecord>> {
         let viewer = self.readable(principal, wiki, id)?;
         self.load(wiki, id, viewer)?;
+        let mut revisions = self.proposals.revisions(id, viewer)?;
+        for revision in &mut revisions {
+            let hidden = self.revision_hidden(wiki, id, revision.seq)?;
+            if hidden.content().is_some() {
+                // The pages of a hidden revision are not given: what is left says nothing, and `revision_marks` says why.
+                revision.content.files.clear();
+                revision.content.renames.clear();
+            }
+        }
+        Ok(revisions)
+    }
+
+    /// The revisions **as they were written**, with nothing hidden: what the acceptance and the writes of a proposal read.
+    /// Never given to a surface (INV-13).
+    pub(crate) fn revisions_raw(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+    ) -> Result<Vec<RevisionRecord>> {
+        let viewer = self.readable(principal, wiki, id)?;
+        self.load(wiki, id, viewer)?;
         Ok(self.proposals.revisions(id, viewer)?)
     }
 
@@ -1857,7 +1900,21 @@ impl ProposalService {
     ) -> Result<Vec<CommentRecord>> {
         let viewer = self.readable(principal, wiki, id)?;
         self.load(wiki, id, viewer)?;
-        Ok(self.proposals.comments(id, viewer)?)
+        let mut comments = self.proposals.comments(id, viewer)?;
+        if let Some(tombstones) = &self.tombstones {
+            for comment in &mut comments {
+                if tombstones
+                    .proposal_comment(&wiki.id, &comment.id)
+                    .map_err(hidden::unreadable)?
+                    .content()
+                    .is_some()
+                {
+                    // The body of a hidden comment is not given; `comment_marks` says why and which author is hidden.
+                    comment.body.clear();
+                }
+            }
+        }
+        Ok(comments)
     }
 
     /// The decisions, oldest first, each with the revision it is bound to.

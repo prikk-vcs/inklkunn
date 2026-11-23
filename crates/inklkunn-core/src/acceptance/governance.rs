@@ -209,7 +209,7 @@ impl ProposalAcceptor {
     ) -> Result<usize, AcceptFailure> {
         let proposals = &self.parts.proposals;
         let latest = proposals
-            .revisions(principal, wiki, &proposal.id)?
+            .revisions_raw(principal, wiki, &proposal.id)?
             .last()
             .map(|r| r.seq)
             .ok_or(AcceptFailure::NotFound)?;

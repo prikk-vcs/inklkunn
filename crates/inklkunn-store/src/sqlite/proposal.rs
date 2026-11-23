@@ -746,6 +746,17 @@ impl ProposalStore for SqliteStore {
         })
     }
 
+    fn last_transition_position(&self, id: &ProposalId) -> Result<Option<i64>> {
+        self.with(|conn| {
+            conn.query_row(
+                "SELECT MAX(seq) FROM proposal_transitions WHERE proposal_id = ?1",
+                params![id.as_str()],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .map_err(backend)
+        })
+    }
+
     fn add_comment(&self, comment: &CommentRecord, states: &[ProposalState]) -> Result<()> {
         self.with(|conn| {
             let tx = conn

@@ -68,6 +68,7 @@ mod sanitize;
 pub mod scratch;
 mod search;
 mod tip;
+mod tipcheck;
 mod why;
 
 // The read API's reads (handoff 003 T8).
@@ -110,7 +111,7 @@ pub use graph::{
 };
 pub use history::{
     AtOutcome, ChangeDetail, ChangeInfo, ChangeKind as HistoryChangeKind, ChangeOutcome, Did,
-    DiffOutcome, DiffStatus, HISTORY_PAGE_ROWS, HistoryOutcome, HistoryRow, MAX_DID,
+    DiffOutcome, DiffStatus, HISTORY_PAGE_ROWS, HiddenDiff, HistoryOutcome, HistoryRow, MAX_DID,
     MAX_DIFF_LINES, MAX_INSPECTED_PER_REQUEST, MAX_SHOWS_PER_REQUEST, MAX_WINDOW, PageDiff,
     PageEvent, PageHistory, Provenance, Subject, Who,
 };
@@ -128,6 +129,7 @@ pub use rollback::{MAX_ROLLBACK_PAGES, NoRollback, RollbackOutcome, RollbackPlan
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
 pub use tip::Tip;
+pub use tipcheck::{MAX_REVEALED_FILES, Revealed, TipCheck};
 pub use why::{
     Attached, AttachedSource, Basis, Chain, EXCERPT_CHARS, MAX_WHY_PARAGRAPHS, MAX_WHY_WORK,
     Paragraph, Reach, WhyOutcome, WhyPage, WhyParagraph,
@@ -400,6 +402,9 @@ pub struct ReadService {
     history: history::State,
     /// The derived governance snapshot (RFC 006 D-5), when the store keeps one.
     governance: Option<Arc<dyn inklkunn_store::GovernanceSnapshotStore>>,
+    /// What moderation hides (RFC 006 D-8), asked of every change a surface is given; `None` until
+    /// [`ReadService::with_tombstones`] gives it (nothing is then hidden).
+    tombstones: Option<Arc<crate::tombstone::Tombstones>>,
     /// What the operator allows any wiki (RFC 006 D-3): a policy above a limit is read as if it were at it.
     limits: crate::governance::PlatformLimits,
     /// The rules of each wiki at its last-seen tip, and the walk's memory.
@@ -441,6 +446,7 @@ impl ReadService {
             flags: None,
             history: history::State::default(),
             governance: None,
+            tombstones: None,
             limits: crate::governance::PlatformLimits::default(),
             rules: rules::RulesState::default(),
             clock: inklkunn_store::record::now_secs,
@@ -520,6 +526,31 @@ impl ReadService {
     pub fn with_revision_flags(mut self, records: Arc<dyn ProposalStore>) -> Self {
         self.flags = Some(records);
         self
+    }
+
+    /// The same, hiding what moderation hides (RFC 006 D-8; INV-13): the summary and the author of a change, the page's text
+    /// at it, and the difference to or from it. **A server that serves wikis gives this**; without it nothing is hidden.
+    #[must_use]
+    pub fn with_tombstones(mut self, tombstones: Arc<crate::tombstone::Tombstones>) -> Self {
+        self.tombstones = Some(tombstones);
+        self
+    }
+
+    /// What moderation hides of the change `block` now: nothing when the service has no tombstones. A store that cannot be
+    /// read is *could not be read now*, never *nothing hidden*.
+    pub fn hidden_block(
+        &self,
+        wiki: &WikiId,
+        block: &str,
+    ) -> Result<crate::tombstone::Hidden, ReadError> {
+        let Some(tombstones) = &self.tombstones else {
+            return Ok(crate::tombstone::Hidden::none());
+        };
+        tombstones.page_revision(wiki, block).map_err(|e| {
+            self.store_failures
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            ReadError::CouldNotBeReadNow(Cause::Store(StoreError::Backend(e.0)))
+        })
     }
 
     /// The sanitizer every page passes through, for a surface that has other HTML of its own to clean (a diff,

@@ -488,6 +488,14 @@ impl ProposalStore for MemoryStore {
             .collect())
     }
 
+    fn last_transition_position(&self, id: &ProposalId) -> Result<Option<i64>> {
+        let d = self.proposals_lock();
+        Ok(d.transitions
+            .iter()
+            .rposition(|t| t.proposal == *id)
+            .and_then(|at| i64::try_from(at + 1).ok()))
+    }
+
     fn add_comment(&self, comment: &CommentRecord, states: &[ProposalState]) -> Result<()> {
         if !self.has_account(&comment.author) {
             // The proposal is checked first, as the SQLite store does.

@@ -102,6 +102,8 @@ pub enum Person {
     Anonymous(String),
     /// The service itself, by its label.
     Service(String),
+    /// Hidden by moderation (RFC 006 D-8): the person is named nowhere.
+    Hidden,
 }
 
 impl From<&Actor> for Person {
@@ -177,6 +179,9 @@ pub struct ChangeRow {
     pub first_seen: i64,
     /// What it touched; `None` when `show` could not be asked just now.
     pub pages: Option<Vec<ChangedPage>>,
+    /// What moderation hides of this change now (RFC 006 D-8): its summary is already empty and its people are
+    /// [`Person::Hidden`] where they are hidden.
+    pub hidden: crate::tombstone::Hidden,
 }
 
 impl ChangeRow {
@@ -550,15 +555,29 @@ impl ReadService {
                 cut = true;
                 break;
             }
+            // What moderation hides of the change is asked now, at every request: the list is not held.
+            let hidden = self.hidden_block(&wiki.id, &c.block.block_id)?;
+            let (mut summary, mut proposed_by, mut accepted_by) =
+                (head.summary, head.proposed_by, head.accepted_by);
+            if hidden.summary().is_some() {
+                summary.clear();
+            }
+            if hidden.author().is_some() {
+                if accepted_by == proposed_by {
+                    accepted_by = Some(Person::Hidden);
+                }
+                proposed_by = Some(Person::Hidden);
+            }
             rows.push(ChangeRow {
                 block_id: c.block.block_id.clone(),
                 view: c.view,
                 parent_block: c.parent,
                 update_seq: c.block.update_seq,
-                summary: head.summary,
+                summary,
                 kind: head.kind,
-                proposed_by: head.proposed_by,
-                accepted_by: head.accepted_by,
+                proposed_by,
+                accepted_by,
+                hidden,
                 rollback,
                 minor: flagged.minor,
                 machine_assisted: flagged.automated,

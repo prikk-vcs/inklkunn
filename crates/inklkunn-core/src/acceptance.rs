@@ -745,7 +745,7 @@ impl ProposalAcceptor {
     ) -> Result<Accepted, AcceptFailure> {
         // 0. Authorization, first: before the lease, before any record is read.
         let acceptor = self.parts.proposals.authorize_accept(principal, wiki, id)?;
-        let proposal = self.parts.proposals.get(principal, wiki, id)?;
+        let proposal = self.parts.proposals.get_raw(principal, wiki, id)?;
         // A retry of an acceptance that finished answers without taking the lease.
         if let Some(done) = self.sealed_before(wiki, &proposal, revision)? {
             return Ok(done);
@@ -860,7 +860,7 @@ impl ProposalAcceptor {
         let latest = self
             .parts
             .proposals
-            .revisions(principal, wiki, &proposal.id)?
+            .revisions_raw(principal, wiki, &proposal.id)?
             .last()
             .map(|r| r.seq)
             .ok_or(AcceptFailure::NotFound)?;
@@ -884,7 +884,7 @@ impl ProposalAcceptor {
         let content = self
             .parts
             .proposals
-            .revisions(principal, wiki, id)?
+            .revisions_raw(principal, wiki, id)?
             .into_iter()
             .find(|r| r.seq == revision)
             .ok_or(AcceptFailure::NotFound)?
@@ -1040,7 +1040,7 @@ impl ProposalAcceptor {
     ) -> Result<Step, AcceptFailure> {
         self.recovery_guard(wiki, lease)?;
         // What the lease waited for may have settled it: a retry behind the first finds its record.
-        let proposal = self.parts.proposals.get(principal, wiki, id)?;
+        let proposal = self.parts.proposals.get_raw(principal, wiki, id)?;
         if let Some(done) = self.sealed_before(wiki, &proposal, revision)? {
             return Ok(Step::AlreadySigned(done));
         }
@@ -1059,7 +1059,7 @@ impl ProposalAcceptor {
         let content = self
             .parts
             .proposals
-            .revisions(principal, wiki, id)?
+            .revisions_raw(principal, wiki, id)?
             .into_iter()
             .find(|r| r.seq == revision)
             .ok_or(AcceptFailure::NotFound)?

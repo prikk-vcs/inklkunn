@@ -557,6 +557,15 @@ pub trait ProposalStore: Send + Sync {
         viewer: Option<&AccountId>,
     ) -> Result<Vec<ProposalTransition>>;
 
+    /// The position in the proposal log (`proposal_transitions.seq`, from 1, in the order written) of the proposal's **last**
+    /// step, `None` for a proposal with none (or not there). What a record that names a step of the log, as a tombstone
+    /// names the decline it made in the same act (RFC 006 D-8), is given.
+    fn last_transition_position(&self, _id: &ProposalId) -> Result<Option<i64>> {
+        Err(crate::StoreError::Backend(
+            "this store does not say where a step of the proposal log stands".to_owned(),
+        ))
+    }
+
     /// Add a comment, if the proposal is in one of `states` and the comment's revision is its latest
     /// ([`crate::StoreError::StateChanged`] otherwise) and its parent, if any, is a comment of the same
     /// proposal ([`crate::StoreError::NotFound`] otherwise).

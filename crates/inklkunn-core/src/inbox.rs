@@ -86,6 +86,8 @@ pub struct ProposalLine {
     pub summary: String,
     /// Where it is now.
     pub state: ProposalState,
+    /// The summary is hidden by moderation (RFC 006 D-8): [`ProposalLine::summary`] is empty, and this says why.
+    pub summary_hidden: Option<crate::tombstone::Mark>,
 }
 
 /// What an event is about, as far as the person looking may be told.
@@ -99,8 +101,11 @@ pub enum About {
         wiki: String,
         /// The proposal, when the event is about one.
         proposal: Option<ProposalLine>,
-        /// The display name of the person who did it, when a person did. Untrusted text.
+        /// The display name of the person who did it, when a person did. Untrusted text. Empty when the person's name is
+        /// hidden by moderation ([`About::Readable::actor_hidden`]).
         actor: Option<String>,
+        /// The person's name is hidden by moderation: they wrote a hidden comment, or the proposal whose author is hidden.
+        actor_hidden: Option<Box<crate::tombstone::Mark>>,
     },
     /// They may not read it now (or it is gone): nothing is named.
     Unreadable,
@@ -140,6 +145,7 @@ pub struct Inbox {
     accounts: Arc<dyn AccountStore>,
     authorizer: Authorizer,
     clock: fn() -> i64,
+    tombstones: Option<Arc<crate::tombstone::Tombstones>>,
 }
 
 impl std::fmt::Debug for Inbox {
@@ -181,7 +187,16 @@ impl Inbox {
             accounts,
             authorizer,
             clock: inklkunn_store::record::now_secs,
+            tombstones: None,
         }
+    }
+
+    /// The same, hiding what moderation hides (RFC 006 D-8): a hidden proposal summary, and the name of a person whose
+    /// authorship of the proposal or of a comment on it is hidden. Without it nothing is hidden.
+    #[must_use]
+    pub fn with_tombstones(mut self, tombstones: Arc<crate::tombstone::Tombstones>) -> Self {
+        self.tombstones = Some(tombstones);
+        self
     }
 
     /// The same, reading the time from `clock` (Unix seconds): tests pin it.
@@ -215,13 +230,37 @@ impl Inbox {
         let Ok(wiki) = self.wikis.get(&event.wiki) else {
             return About::Unreadable;
         };
+        let mut actor_hidden = None;
         let proposal = match &event.proposal {
             Some(id) => match self.proposals.proposal(id, viewer) {
-                Ok(Some(p)) if p.wiki == event.wiki => Some(ProposalLine {
-                    id: p.id,
-                    summary: p.summary,
-                    state: p.state,
-                }),
+                Ok(Some(p)) if p.wiki == event.wiki => {
+                    let (summary_hidden, hidden_author) = match self.hidden_in(&p, viewer) {
+                        Ok(found) => found,
+                        // What is hidden cannot be read now: nothing of the proposal is named.
+                        Err(()) => return About::Unreadable,
+                    };
+                    if hidden_author.is_some() && event.actor.as_ref() == Some(&p.author) {
+                        actor_hidden = hidden_author.map(Box::new);
+                    }
+                    if actor_hidden.is_none()
+                        && let Some(who) = &event.actor
+                    {
+                        match self.hidden_commenter(&event.wiki, &p.id, who) {
+                            Ok(mark) => actor_hidden = mark.map(Box::new),
+                            Err(()) => return About::Unreadable,
+                        }
+                    }
+                    Some(ProposalLine {
+                        id: p.id,
+                        summary: if summary_hidden.is_some() {
+                            String::new()
+                        } else {
+                            p.summary
+                        },
+                        state: p.state,
+                        summary_hidden,
+                    })
+                }
                 // A proposal that is not there for this reader is not named.
                 _ => return About::Unreadable,
             },
@@ -230,6 +269,7 @@ impl Inbox {
         let actor = event
             .actor
             .as_ref()
+            .filter(|_| actor_hidden.is_none())
             .and_then(|a| self.accounts.account(a).ok().flatten())
             .map(|a| a.display_name.as_str().to_owned());
         About::Readable {
@@ -237,7 +277,59 @@ impl Inbox {
             wiki: wiki.display_name.as_str().to_owned(),
             proposal,
             actor,
+            actor_hidden,
         }
+    }
+
+    /// What moderation hides of the proposal: its summary, and its author. `Err` when it cannot be read.
+    fn hidden_in(
+        &self,
+        p: &inklkunn_store::ProposalRecord,
+        viewer: Option<&AccountId>,
+    ) -> std::result::Result<
+        (
+            Option<crate::tombstone::Mark>,
+            Option<crate::tombstone::Mark>,
+        ),
+        (),
+    > {
+        let Some(tombstones) = &self.tombstones else {
+            return Ok((None, None));
+        };
+        let latest = self
+            .proposals
+            .revisions(&p.id, viewer)
+            .map_err(|_| ())?
+            .last()
+            .map_or(0, |r| r.seq);
+        let hidden = tombstones
+            .proposal(&p.wiki, &p.id, latest)
+            .map_err(|_| ())?;
+        Ok((hidden.summary, hidden.author))
+    }
+
+    /// The hiding of a comment's author, when `who` wrote a comment of the proposal whose author is hidden.
+    fn hidden_commenter(
+        &self,
+        wiki: &inklkunn_store::WikiId,
+        proposal: &ProposalId,
+        who: &AccountId,
+    ) -> std::result::Result<Option<crate::tombstone::Mark>, ()> {
+        let Some(tombstones) = &self.tombstones else {
+            return Ok(None);
+        };
+        for comment in self.proposals.comments(proposal, None).map_err(|_| ())? {
+            if comment.author != *who {
+                continue;
+            }
+            let hidden = tombstones
+                .proposal_comment(wiki, &comment.id)
+                .map_err(|_| ())?;
+            if let Some(mark) = hidden.author() {
+                return Ok(Some(mark.clone()));
+            }
+        }
+        Ok(None)
     }
 
     /// The account's newest events (at most [`INBOX_LIMIT`]), newest first, each shown as far as the account

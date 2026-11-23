@@ -33,6 +33,7 @@ fn the_proposers_inbox_has_the_decline_with_what_it_is_about() {
             wiki,
             proposal,
             actor,
+            actor_hidden: _,
         } = &entry.about
         else {
             panic!("the proposer may read their own wiki: {:?}", entry.about);

@@ -64,6 +64,7 @@ pub mod read;
 pub mod reconcile;
 pub mod recovery;
 pub mod routes;
+pub mod tombstone;
 pub mod views;
 pub mod wiki;
 
