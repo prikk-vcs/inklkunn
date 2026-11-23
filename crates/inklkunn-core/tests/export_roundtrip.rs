@@ -979,3 +979,149 @@ fn an_import_is_held_to_the_tip_it_was_planned_against_and_an_unchanged_reimport
     run_import(&w.acts, &a.record, &replan).unwrap();
     assert_eq!(blocks(&w), after_other + 1);
 }
+
+/// RFC 006 D-13 on a real repository: the summary and the people of an accepted proposal are hidden, and the bundle of the
+/// wiki holds neither (nor a name of theirs in `users.yaml`), says what it left out, and is refused by the import.
+#[test]
+fn what_moderation_hides_of_a_real_revision_is_not_in_the_bundle_and_the_import_refuses_the_bundle()
+{
+    use inklkunn_core::export::{export_bundle_with, knowledge_records};
+    use inklkunn_store::access::Role;
+    use inklkunn_store::governance::Actor as GovernanceActor;
+    use inklkunn_store::{
+        Account, AccountStore, GovernanceStore, HiddenItem, HiddenItemKind, HiddenParts,
+        ReasonCategory, TombstoneAct, TombstoneEvent, TombstoneEventId,
+    };
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let w = world(&format!("hidden-{n}"), sandbox);
+        let a = create(&w, "alpha");
+        let folder = dir_in(&w.tmp, "folder1");
+        first_folder(&folder.0);
+        do_import(&w, &a, &folder.0, false);
+        proposal_edit(&w, &a);
+        let tip = w
+            .storage
+            .history(
+                &a.repo,
+                &Point::View(a.record.default_view.clone()),
+                Some(1),
+            )
+            .unwrap()
+            .blocks
+            .first()
+            .unwrap()
+            .block_id
+            .clone();
+        let moderator = AccountId::new();
+        w.store
+            .add_account(&Account {
+                id: moderator.clone(),
+                display_name: DisplayName::new("Mona Moderator").unwrap(),
+                local: None,
+                created_at: 1,
+                disabled: false,
+            })
+            .unwrap();
+        w.store
+            .record_tombstone_event(&TombstoneEvent {
+                id: TombstoneEventId::new(),
+                wiki: a.record.id.clone(),
+                at: 1_700_000_100,
+                act: TombstoneAct::Hide,
+                item: HiddenItem {
+                    kind: HiddenItemKind::PageRevision,
+                    id: tip,
+                    reference: None,
+                },
+                parts: HiddenParts {
+                    content: false,
+                    summary: true,
+                    author: true,
+                },
+                category: Some(ReasonCategory::PersonalData),
+                note: None,
+                affected: None,
+                by: GovernanceActor {
+                    account: moderator,
+                    rung: Role::Maintainer,
+                },
+                policy_block: None,
+                of_event: None,
+                appeal: None,
+                declined_transition: None,
+            })
+            .unwrap();
+        let records = knowledge_records(
+            &*w.store,
+            &*w.store,
+            &*w.store,
+            &*w.store,
+            &*w.store,
+            &a.record.id,
+        )
+        .unwrap();
+        let out = dir_in(&w.tmp, "out");
+        let dir = out.0.join("bundle");
+        export_bundle_with(
+            &w.storage,
+            &w.layout,
+            &a.record,
+            &dir,
+            "0.0.0",
+            1_700_000_200,
+            &records,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        let files = files_of(&dir);
+        let everything: String = files
+            .values()
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .collect();
+        for word in [
+            "Say hello properly",
+            "Aiko Tanaka",
+            "Ben (maintainer)",
+            "Mona Moderator",
+        ] {
+            assert!(!everything.contains(word), "`{word}` is in the bundle");
+        }
+        // The change is still there, in its place, marked.
+        let history = json_lines(get(&files, "history/home-1.jsonl"));
+        let line = history.get(1).unwrap();
+        assert_eq!(at(line, "/kind"), "proposal");
+        assert_eq!(
+            at(line, "/suppressed"),
+            &serde_json::json!(["summary", "author"])
+        );
+        assert_eq!(at(line, "/reasons/summary"), "personal-data");
+        assert!(at(line, "/summary").is_null() && at(line, "/authors").is_null());
+        assert!(!at(history.first().unwrap(), "/summary").is_null());
+        let users = String::from_utf8(get(&files, "users.yaml").clone()).unwrap();
+        assert_eq!(users, "users: []\n");
+        let manifest = String::from_utf8(get(&files, "wiki-bundle.yaml").clone()).unwrap();
+        assert!(
+            manifest.contains("  tombstones:\n    entries: 1\n"),
+            "{manifest}"
+        );
+        // Listed, with its digest, and valid against wiki-commons' schema.
+        let sums = bundle_checksums(&files);
+        for (path, hash) in &sums {
+            assert_eq!(&sha(get(&files, path)), hash, "{path}");
+        }
+        // A bundle that carries tombstones is not imported (they are not imported yet).
+        let b = create(&w, "beta");
+        let have = wiki_state(&w.storage, &w.layout, &b.record, &ReadConfig::default()).unwrap();
+        let plan = plan_folder(&dir, &have, true, &ReadConfig::default()).unwrap();
+        assert!(!plan.is_importable(), "{}", plan.report());
+        assert!(
+            plan.refused.iter().any(|r| r.name == "wiki-bundle.yaml"
+                && r.reason.contains("tombstones are not imported yet")),
+            "{}",
+            plan.report()
+        );
+    }
+}

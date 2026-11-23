@@ -968,6 +968,13 @@ fn export(
                     },
                     done.users
                 );
+                if done.suppressed > 0 {
+                    let _ = writeln!(
+                        out,
+                        "  hidden by moderation (entries marked `suppressed`, none carrying what was hidden): {}; the manifest says so, and an import refuses such a bundle",
+                        done.suppressed
+                    );
+                }
                 if done.knowledge_files > 0 || done.threads > 0 || done.views > 0 {
                     let _ = writeln!(
                         out,

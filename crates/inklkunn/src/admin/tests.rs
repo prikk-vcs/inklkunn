@@ -531,6 +531,131 @@ fn put(root: &std::path::Path, rel: &str, bytes: &[u8]) {
 }
 
 #[test]
+fn the_export_command_leaves_out_what_moderation_hid_and_says_so() {
+    use inklkunn_store::access::Role;
+    use inklkunn_store::governance::Actor as GovernanceActor;
+    use inklkunn_store::{
+        Account, AccountId, AccountStore, ClaimCommentRecord, ClaimThreadStore, CommentId,
+        DisplayName, GovernanceStore, HiddenItem, HiddenItemKind, HiddenParts, ReasonCategory,
+        Slug, TombstoneAct, TombstoneEvent, TombstoneEventId, WikiStore,
+    };
+    let Some(w) = world("hidden") else { return };
+    let (status, _, err) = w.cli(&["wiki", "create", "handbook", "--name", "The Handbook"]);
+    assert_eq!(status, 0, "{err}");
+    let record = w.store.by_slug(&Slug::new("handbook").unwrap()).unwrap();
+    let person = |name: &str| {
+        let id = AccountId::new();
+        w.store
+            .add_account(&Account {
+                id: id.clone(),
+                display_name: DisplayName::new(name).unwrap(),
+                local: None,
+                created_at: 1,
+                disabled: false,
+            })
+            .unwrap();
+        id
+    };
+    let (ann, mona) = (person("Ann Hidden"), person("Mona"));
+    let comment = CommentId::new();
+    w.store
+        .add_claim_comment(&ClaimCommentRecord {
+            id: comment.clone(),
+            wiki: record.id.clone(),
+            claim: "019a0000-0000-7000-8000-000000000c01".to_owned(),
+            author: ann,
+            parent: None,
+            body: "A private remark about the harbour".to_owned(),
+            created_at: 1_700_000_000,
+        })
+        .unwrap();
+    let out_dir = dir(&w.tmp.0, "exports");
+    let before = out_dir.0.join("before");
+    let (status, out, err) = w.cli(&[
+        "wiki",
+        "export",
+        "handbook",
+        "--bundle",
+        before.to_str().unwrap(),
+    ]);
+    assert_eq!(status, 0, "{err}");
+    assert!(!out.contains("hidden by moderation"), "{out}");
+    let read = |bundle: &std::path::Path| {
+        std::fs::read_to_string(bundle.join(
+            "extensions/inklkunn-knowledge/threads/019a0000-0000-7000-8000-000000000c01.jsonl",
+        ))
+        .unwrap()
+    };
+    assert!(read(&before).contains("A private remark") && read(&before).contains("Ann Hidden"));
+    w.store
+        .record_tombstone_event(&TombstoneEvent {
+            id: TombstoneEventId::new(),
+            wiki: record.id,
+            at: 1_700_000_100,
+            act: TombstoneAct::Hide,
+            item: HiddenItem {
+                kind: HiddenItemKind::ClaimComment,
+                id: comment.to_string(),
+                reference: None,
+            },
+            parts: HiddenParts {
+                content: true,
+                summary: false,
+                author: true,
+            },
+            category: Some(ReasonCategory::PersonalData),
+            note: None,
+            affected: None,
+            by: GovernanceActor {
+                account: mona,
+                rung: Role::Maintainer,
+            },
+            policy_block: None,
+            of_event: None,
+            appeal: None,
+            declined_transition: None,
+        })
+        .unwrap();
+    let after = out_dir.0.join("after");
+    let (status, out, err) = w.cli(&[
+        "wiki",
+        "export",
+        "handbook",
+        "--bundle",
+        after.to_str().unwrap(),
+    ]);
+    assert_eq!(status, 0, "{err}");
+    assert!(
+        out.contains(
+            "hidden by moderation (entries marked `suppressed`, none carrying what was hidden): 1;"
+        ),
+        "{out}"
+    );
+    let thread = read(&after);
+    assert!(
+        thread.contains("\"suppressed\":[\"content\",\"author\"]"),
+        "{thread}"
+    );
+    assert!(
+        !thread.contains("A private remark") && !thread.contains("Ann Hidden"),
+        "{thread}"
+    );
+    for (path, bytes) in all_files(&after) {
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(
+            !text.contains("A private remark") && !text.contains("Ann Hidden"),
+            "{}",
+            path.display()
+        );
+    }
+    let manifest = std::fs::read_to_string(after.join("wiki-bundle.yaml")).unwrap();
+    assert!(
+        manifest.contains("  tombstones:\n    entries: 1\n"),
+        "{manifest}"
+    );
+}
+
+#[test]
 fn a_wiki_is_created_filled_exported_and_archived_through_the_commands_and_no_seed_shows_anywhere()
 {
     let Some(w) = world("flow") else { return };
