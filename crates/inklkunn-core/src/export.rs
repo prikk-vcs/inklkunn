@@ -528,10 +528,13 @@ fn histories(
                 .and_then(|m| Message::parse(&m.message).ok());
             let (kind, summary, authors, source) = match &message {
                 Some(m) => {
-                    for a in [m.proposed_by(), m.accepted_by()] {
-                        if of_change.author.is_some() {
-                            continue;
-                        }
+                    // A hidden person is not a person of the bundle for this change (`users.yaml`).
+                    let named = if of_change.author.is_none() {
+                        vec![m.proposed_by(), m.accepted_by()]
+                    } else {
+                        Vec::new()
+                    };
+                    for a in named {
                         if let Actor::Account { id, name } = a {
                             let names = out.accounts.entry(id.as_str().to_owned()).or_default();
                             if !names.iter().any(|n| n == name.as_str()) {

@@ -15,7 +15,7 @@
 //! only for what is not hidden.
 //!
 //! **What an item is.** A page revision is named by the block that made it; a hide may name one page of a block that changed
-//! several. The `content` of a revision is the page's, so a hide that names a page marks that page's lines only. The
+//! several, **by its path in the repository** (`pages/Home.md`, as the line's own `path` has it: the item's `reference`). The `content` of a revision is the page's, so a hide that names a page marks that page's lines only. The
 //! `summary` and the `authors` of a history line are the *change's* (the patch message is one text for every page it
 //! touched), so a hide of either on any page of a block hides it on every line of that block and keeps the person out of
 //! `users.yaml` for that block: a summary or a name that is hidden on one page and shown on its neighbour is not hidden.
