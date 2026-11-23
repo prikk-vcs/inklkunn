@@ -10,11 +10,14 @@ use std::collections::BTreeSet;
 
 use inklkunn_markup::path::title_to_path;
 use inklkunn_prikk::{Point, StorageError};
+
 use inklkunn_store::{DerivedHeading, IndexEntry, WikiRecord};
 
-use super::{ReadError, ReadService, SafeHtml, Tip};
+use super::text::FileAt;
+use super::{PageProblem, ReadError, ReadService, SafeHtml, Tip};
 use crate::knowledge::{MAX_FILE_BYTES, Readability, Unreadable, readability};
 use crate::read::Presentation;
+use crate::tombstone::Mark;
 
 /// A page drawn from text that is not in the repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,29 +31,37 @@ pub struct Preview {
 impl ReadService {
     /// The file at `path` as it was at the block `block_id`, as text. `Ok(None)` when there was no such file
     /// then, or it is not text. A file larger than a page may be is an error (it could not be read), not a
-    /// missing file.
+    /// missing file. **A text that moderation hides is an error too** ([`PageProblem::Hidden`]), whichever block wrote it
+    /// (RFC 006 D-8; INV-13): this reads through [`ReadService::text_at`] and gives none of it. A surface that says that the text
+    /// is hidden, rather than that it could not be read, asks [`ReadService::text_at`] itself.
     pub fn source_at(
         &self,
         wiki: &WikiRecord,
         block_id: &str,
         path: &str,
     ) -> Result<Option<String>, ReadError> {
-        let repo = self.layout.repo_dir(&wiki.id);
-        let point = Point::Block(block_id.to_owned());
-        match self
-            .storage
-            .read(&repo, &point, path, self.config.page_max_bytes)
-        {
-            Ok(bytes) => Ok(String::from_utf8(bytes).ok()),
-            Err(refused @ StorageError::Refused { .. }) => {
-                // Either there was no such file then, or it is over the size read: `stat` tells.
-                match self.storage.stat(&repo, &point, path) {
-                    Err(StorageError::Refused { .. }) => Ok(None),
-                    Ok(_) => Err(self.storage_error(wiki, refused)),
-                    Err(e) => Err(self.storage_error(wiki, e)),
-                }
-            }
-            Err(e) => Err(self.storage_error(wiki, e)),
+        match self.file_at(wiki, None, block_id, path, self.config.page_max_bytes)? {
+            FileAt::Held(bytes) => Ok(String::from_utf8(bytes).ok()),
+            FileAt::Missing => Ok(None),
+            FileAt::TooLarge(refused) => Err(self.storage_error(wiki, refused)),
+            FileAt::Hidden(_) => Err(ReadError::PageUnreadable(PageProblem::Hidden)),
+        }
+    }
+
+    /// [`ReadService::source_at`] for a surface that **says that the text is hidden** instead of failing: the text, or the
+    /// hiding of the text (`Err`), and never both. What a proposal's page reads the text it was written against by: the text is
+    /// then said to be hidden, with its tombstone, and the change is shown without it.
+    pub fn source_or_hidden(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+        path: &str,
+    ) -> Result<Result<Option<String>, Box<Mark>>, ReadError> {
+        match self.file_at(wiki, None, block_id, path, self.config.page_max_bytes)? {
+            FileAt::Held(bytes) => Ok(Ok(String::from_utf8(bytes).ok())),
+            FileAt::Missing => Ok(Ok(None)),
+            FileAt::TooLarge(refused) => Err(self.storage_error(wiki, refused)),
+            FileAt::Hidden(mark) => Ok(Err(mark)),
         }
     }
 

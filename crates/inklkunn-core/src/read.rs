@@ -69,6 +69,7 @@ mod rules;
 mod sanitize;
 pub mod scratch;
 mod search;
+mod text;
 mod tip;
 mod tipcheck;
 mod why;
@@ -133,6 +134,7 @@ pub use rule_history::{MAX_RULE_CHANGES, RuleChange, RuleFileChange, RuleHistory
 pub use rules::WALK_BLOCKS;
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
+pub use text::BlockText;
 pub use tip::Tip;
 pub use tipcheck::{MAX_REVEALED_FILES, Revealed, TipCheck};
 pub use why::{
@@ -216,6 +218,9 @@ pub enum PageProblem {
     Frontmatter(String),
     /// The frontmatter is longer than [`FRONTMATTER_READ_BYTES`].
     FrontmatterTooLong,
+    /// The text is hidden by moderation (RFC 006 D-8): whichever change wrote it, it is not read, and nothing of it is given.
+    /// What a surface that says so asks [`ReadService::text_at`] for.
+    Hidden,
 }
 
 impl std::fmt::Display for PageProblem {
@@ -227,6 +232,7 @@ impl std::fmt::Display for PageProblem {
                 f,
                 "the frontmatter is longer than {FRONTMATTER_READ_BYTES} bytes"
             ),
+            PageProblem::Hidden => f.write_str("the text is hidden by moderation"),
         }
     }
 }
@@ -405,6 +411,8 @@ pub struct ReadService {
     /// What history, change, diff and permalink pages hold (handoff 003 T5): log windows, the operations of
     /// blocks, a few permalink renders.
     history: history::State,
+    /// What the one reader of a file's text at a block holds (the digests of files at blocks).
+    texts: text::State,
     /// The derived governance snapshot (RFC 006 D-5), when the store keeps one.
     governance: Option<Arc<dyn inklkunn_store::GovernanceSnapshotStore>>,
     /// What moderation hides (RFC 006 D-8), asked of every change a surface is given; `None` until
@@ -450,6 +458,7 @@ impl ReadService {
             store_failures: AtomicU64::new(0),
             flags: None,
             history: history::State::default(),
+            texts: text::State::default(),
             governance: None,
             tombstones: None,
             limits: crate::governance::PlatformLimits::default(),
@@ -1032,15 +1041,7 @@ impl ReadService {
         tip: &Tip,
         path: &str,
     ) -> Result<Option<String>, ReadError> {
-        let bytes = self
-            .storage
-            .read(
-                &self.layout.repo_dir(&wiki.id),
-                &Point::Block(tip.block_id.clone()),
-                path,
-                self.config.page_max_bytes,
-            )
-            .map_err(|e| self.storage_error(wiki, e))?;
+        let bytes = self.bytes_at_tip(wiki, tip, path)?;
         Ok(String::from_utf8(bytes).ok())
     }
 

@@ -497,21 +497,29 @@ pub(crate) fn draw(
     // The pages: what the proposal holds, against what it was written on.
     let mut files: Vec<(String, String, Option<String>)> = Vec::new();
     let mut olds: Vec<Option<String>> = Vec::new();
+    // The hiding of the text the proposal was written against, when moderation hides it (RFC 006 D-8; H-1): that text is not shown,
+    // and the change is shown without it, with the tombstone.
+    let mut base_hidden: Option<inklkunn_core::tombstone::Mark> = None;
     if let Some(content) = &r.content {
         // The pages; the claim and source files are listed on their own (RFC 005 part 2 D-3).
         for f in content.files.iter().filter(|f| {
             inklkunn_core::knowledge::family_of(&f.path).is_none()
-                    // The rules are said as before and after sentences ([`super::governance_view`]), never as the text of a file.
-                    && inklkunn_core::governance::GovernanceFile::at_or_below(&f.path).is_none()
+                // The rules are said as before and after sentences ([`super::governance_view`]), never as the text of a file.
+                && inklkunn_core::governance::GovernanceFile::at_or_below(&f.path).is_none()
         }) {
-            let old = match ctx
-                .services
-                .read
-                .source_at(&ctx.wiki, &content.base.block_id, &f.path)
-            {
-                Ok(old) => old,
-                Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
-            };
+            let old =
+                match ctx
+                    .services
+                    .read
+                    .source_or_hidden(&ctx.wiki, &content.base.block_id, &f.path)
+                {
+                    Ok(Ok(old)) => old,
+                    Ok(Err(mark)) => {
+                        base_hidden.get_or_insert(*mark);
+                        None
+                    }
+                    Err(e) => return crate::proposals::new::read_failure(page, ctx, e),
+                };
             files.push((
                 f.path.clone(),
                 inklkunn_markup::path::path_to_title(&f.path).unwrap_or_else(|| f.path.clone()),
@@ -643,6 +651,10 @@ pub(crate) fn draw(
             .text(),
     ];
     facts.push(t.msg(Key::FactPages).n(files.len() as u64).text());
+    if let Some(mark) = &base_hidden {
+        facts.push(t.get(Key::TombstoneDiffFrom));
+        facts.extend(crate::tombstone::mark_facts(t, mark));
+    }
     // What moderation hides of the revisions, in place of it: the text of a hidden revision is not shown above, and each
     // hiding says why, which role and when (RFC 006 D-8). **A name is never in it.**
     for (seq, hidden) in &r.revision_marks {

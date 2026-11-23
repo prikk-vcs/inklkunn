@@ -382,15 +382,7 @@ impl ReadService {
         if entry.size.is_some_and(|size| size > max) {
             return Ok(Err(ReadFault::from_stored(file, None, Refusal::TooLong)));
         }
-        let bytes = self
-            .storage
-            .read(
-                &self.layout.repo_dir(&wiki.id),
-                point,
-                file.path(),
-                max.saturating_add(1),
-            )
-            .map_err(|e| self.storage_error(wiki, e))?;
+        let bytes = self.rules_bytes_at(wiki, point, file.path(), max.saturating_add(1))?;
         Ok(match file {
             GovernanceFile::Constitution => read_constitution(&bytes).map(Read::Constitution),
             GovernanceFile::Policy => read_policy(&bytes).map(Read::Policy),

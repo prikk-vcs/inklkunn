@@ -141,10 +141,12 @@ pub(crate) fn pages_of(
         .iter()
         .filter(|f| inklkunn_core::knowledge::family_of(&f.path).is_none())
     {
+        // A text moderation hides is not read: the page is taken as one the proposal writes new (H-1).
         let old = ctx
             .services
             .read
-            .source_at(&ctx.wiki, &content.base.block_id, &f.path)?;
+            .source_or_hidden(&ctx.wiki, &content.base.block_id, &f.path)?
+            .unwrap_or(None);
         pages.push((f.path.clone(), old, f.text.clone()));
     }
     Ok(pages)

@@ -24,16 +24,17 @@
 //!
 //! **A removed page's old text can be hidden, and a way back never brings it back** (INV-13; D-8, D-10). The page's last text
 //! is not a tip, so moderation may hide it; the way back would copy it into a draft, then into the tip. So the way back is
-//! offered only when none of the revisions that wrote the text to be written again has hidden content: [`Restore::TextHidden`]
-//! says which pages, and the form that restores refuses. Only the *content* matters: a hidden summary or author of that
+//! offered only when the text to be written again is not hidden, which the one reader of a text at a block says
+//! ([`ReadService::text_at`]: the change that last wrote the page there has its content hidden, whichever change that is):
+//! [`Restore::TextHidden`] says which pages, and the form that restores refuses. Only the *content* matters: a hidden summary or author of that
 //! revision leaves the text free to come back (the draft's own summary is the service's).
 
 use inklkunn_markup::path::{path_to_title, title_to_path};
-use inklkunn_store::{FileChange, WikiRecord};
+use inklkunn_store::WikiRecord;
 
 use super::history::{ChangeInfo, PageEvent};
-use super::{Lookup, ReadError, ReadService, RollbackOutcome, Tip};
-use crate::merge::{PageText, merge};
+use super::rollback::Planned;
+use super::{BlockText, Lookup, ReadError, ReadService, Tip};
 use crate::tombstone::Mark;
 
 /// The most steps of a page's history read to find out that a title is a removed page. A step inspects at most
@@ -112,16 +113,6 @@ impl RemovedPage {
     }
 }
 
-/// What the revisions behind a removal say of the text that would be written again.
-enum TextToReturn {
-    /// None of them has its content hidden.
-    Free,
-    /// The text of these pages (titles) is hidden.
-    Hidden(Vec<String>),
-    /// A revision could not be found within the history this reads.
-    Unknown,
-}
-
 impl ReadService {
     /// Is the title `title`, which leads to no page at the tip of `view`, a page that was removed? `Ok(None)` when it is not
     /// (it was never a page, was moved, or its removal is older than the history this reads), and when the title leads to a
@@ -171,7 +162,8 @@ impl ReadService {
     /// **The way back for a removed page**, as it is offered now: a rollback of the removing change when it merges cleanly
     /// over the tip, else the page's last text, else nothing; and **nothing but a refusal when the text that would be written
     /// again is hidden**. It is the costly half of a removed page (see the module's account), so it is asked on the form that
-    /// restores, behind the `propose` guard, and by no answer that a visitor gets for the asking.
+    /// restores, behind the `propose` guard, and by no answer that a visitor gets for the asking. The texts are read through
+    /// the one reader ([`ReadService::text_at`]), which says which of them moderation hides, whichever change wrote them.
     pub fn way_back(
         &self,
         wiki: &WikiRecord,
@@ -179,147 +171,42 @@ impl ReadService {
         removed: &RemovedPage,
     ) -> Result<Restore, ReadError> {
         let (tip, removal, path) = (&removed.tip, &removed.removal, removed.path.as_str());
-        if let RollbackOutcome::Plan(plan) = self.rollback_plan(wiki, view, &removal.block_id)?
-            && self.merges_over(wiki, tip, &plan.undoes, &plan.files)?
-        {
-            // Only a file that is written (not one that is taken away) brings text back.
-            let written: Vec<&str> = plan
-                .files
-                .iter()
-                .filter(|file| file.text.is_some())
-                .map(|file| file.path.as_str())
-                .collect();
-            return Ok(
-                match self.text_to_return(wiki, tip, &removal.block_id, &written)? {
-                    TextToReturn::Free => Restore::Rollback {
+        // Whether the rollback would merge over the tip is asked of the files (the verdict is all that comes back, never a text);
+        // when it would and the text it would write is hidden, the way back is refused whole, naming the pages.
+        match self.plan_of(wiki, view, &removal.block_id)? {
+            Planned::Plan(plan) => {
+                let paths: Vec<String> = plan.files.iter().map(|f| f.path.clone()).collect();
+                if let Some(parent) = &removal.parent
+                    && self.rollback_merges(wiki, &plan.undoes, parent, &tip.block_id, &paths)?
+                {
+                    return Ok(Restore::Rollback {
                         undoes: plan.undoes,
-                    },
-                    TextToReturn::Hidden(titles) => Restore::TextHidden { titles },
-                    TextToReturn::Unknown => Restore::BeyondHistory,
-                },
-            );
+                    });
+                }
+            }
+            Planned::Hidden {
+                titles,
+                undoes,
+                parent,
+                paths,
+            } => {
+                if self.rollback_merges(wiki, &undoes, &parent, &tip.block_id, &paths)? {
+                    return Ok(Restore::TextHidden { titles });
+                }
+            }
+            Planned::No(_) => {}
         }
         let Some(parent) = removal.parent.as_deref() else {
             return Ok(Restore::BeyondHistory);
         };
-        if !matches!(self.text_at(wiki, parent, path)?, Ok(Some(_))) {
-            return Ok(Restore::NotText);
-        }
-        Ok(
-            match self.text_to_return(wiki, tip, &removal.block_id, &[path])? {
-                TextToReturn::Free => Restore::LastText {
-                    from: parent.to_owned(),
-                },
-                TextToReturn::Hidden(titles) => Restore::TextHidden { titles },
-                TextToReturn::Unknown => Restore::BeyondHistory,
+        Ok(match self.text_at(wiki, view, parent, path)? {
+            BlockText::Text(_) => Restore::LastText {
+                from: parent.to_owned(),
             },
-        )
-    }
-
-    /// **Is the text that `paths` had before the change `removal` hidden?** For each path the revisions that wrote the text the
-    /// path held just before the removal are read from the path's own history (the same history, in the same bounded steps,
-    /// that found the removal): the newest change before the removal that touched the path and, while that one only moved the
-    /// page (no text of its own), the ones before it, up to the one that wrote the text. If **any** has its content hidden, the
-    /// text may not come back, and the titles say which pages. A revision that cannot be found within the bounds is not guessed
-    /// at: the way back is then not offered at all ([`TextToReturn::Unknown`]).
-    fn text_to_return(
-        &self,
-        wiki: &WikiRecord,
-        tip: &Tip,
-        removal: &str,
-        paths: &[&str],
-    ) -> Result<TextToReturn, ReadError> {
-        let mut hidden = Vec::new();
-        let mut unknown = false;
-        for path in paths {
-            let title = path_to_title(path).unwrap_or_else(|| (*path).to_owned());
-            match self.revisions_before(wiki, tip, path, &title, removal)? {
-                Some(behind) if behind.iter().any(|c| c.hidden.content().is_some()) => {
-                    hidden.push(title);
-                }
-                Some(_) => {}
-                None => unknown = true,
-            }
-        }
-        Ok(if !hidden.is_empty() {
-            TextToReturn::Hidden(hidden)
-        } else if unknown {
-            TextToReturn::Unknown
-        } else {
-            TextToReturn::Free
+            BlockText::Hidden(_) => Restore::TextHidden {
+                titles: vec![path_to_title(path).unwrap_or_else(|| path.to_owned())],
+            },
+            BlockText::Missing | BlockText::NotText | BlockText::TooLarge => Restore::NotText,
         })
-    }
-
-    /// The changes behind the change `removal` in the history of the page at `path`, newest first, up to and including the first
-    /// that wrote the page's text; `None` when `removal` is not found in the history within [`MAX_REMOVAL_STEPS`] steps.
-    fn revisions_before(
-        &self,
-        wiki: &WikiRecord,
-        tip: &Tip,
-        path: &str,
-        title: &str,
-        removal: &str,
-    ) -> Result<Option<Vec<ChangeInfo>>, ReadError> {
-        let (mut after, mut found, mut behind) = (None, false, Vec::new());
-        for _ in 0..MAX_REMOVAL_STEPS {
-            let step =
-                self.history_step(wiki, tip.clone(), path.to_owned(), title.to_owned(), after)?;
-            for row in step.rows {
-                if !found {
-                    found = row.change.block_id == removal;
-                    continue;
-                }
-                // A change that only moved the page wrote no text of its own: the text is an older change's.
-                let ends = row
-                    .events
-                    .iter()
-                    .any(|event| !matches!(event, PageEvent::MovedFrom { .. }));
-                behind.push(row.change);
-                if ends {
-                    return Ok(Some(behind));
-                }
-            }
-            match step.older {
-                Some(older) => after = Some(older),
-                // The history ends here: nothing older wrote anything.
-                None => {
-                    // Older than the log this service reads: nothing is known of what is there.
-                    return Ok((found && !step.beyond_window).then_some(behind));
-                }
-            }
-        }
-        Ok(None)
-    }
-
-    /// Would the pages of a rollback plan merge cleanly over the tip (RFC 004 D-5, the merge the acceptance runs): the base
-    /// is the pages at the undone block, *theirs* the pages at the tip, *ours* the plan's. Only the pages the plan writes
-    /// are asked, so a change anywhere else is no obstacle.
-    fn merges_over(
-        &self,
-        wiki: &WikiRecord,
-        tip: &Tip,
-        undoes: &str,
-        files: &[FileChange],
-    ) -> Result<bool, ReadError> {
-        let (mut base, mut theirs, mut ours) = (Vec::new(), Vec::new(), Vec::new());
-        for file in files {
-            // A page the service cannot read as text at either end is not one it can merge.
-            let (Ok(was), Ok(now)) = (
-                self.text_at(wiki, undoes, &file.path)?,
-                self.text_at(wiki, &tip.block_id, &file.path)?,
-            ) else {
-                return Ok(false);
-            };
-            if let Some(text) = was {
-                base.push(PageText::new(file.path.clone(), text));
-            }
-            if let Some(text) = now {
-                theirs.push(PageText::new(file.path.clone(), text));
-            }
-            if let Some(text) = &file.text {
-                ours.push(PageText::new(file.path.clone(), text.clone()));
-            }
-        }
-        Ok(merge(&base, &theirs, &ours).is_clean())
     }
 }

@@ -9,7 +9,6 @@
 //! `Last-Modified` is when this service first saw the tip's block (see [`super::changes`]: prikk's history
 //! carries no time), which is a moment the representation was at the latest as it is now.
 
-use inklkunn_prikk::Point;
 use inklkunn_store::WikiRecord;
 
 use super::index::Lookup;
@@ -57,15 +56,7 @@ impl ReadService {
             Lookup::BrokenRedirect { from, .. } => from,
             Lookup::Ambiguous { .. } | Lookup::Missing => return Ok(None),
         };
-        let bytes = self
-            .storage
-            .read(
-                &self.layout.repo_dir(&wiki.id),
-                &Point::Block(tip.block_id.clone()),
-                &entry.path,
-                self.config.page_max_bytes,
-            )
-            .map_err(|e| self.storage_error(wiki, e))?;
+        let bytes = self.bytes_at_tip(wiki, &tip, &entry.path)?;
         let last_modified = self
             .derived
             .first_seen(

@@ -923,16 +923,11 @@ pub(crate) async fn at(
                 change,
             }),
             Ok(AtOutcome::NoSuchChange) => Err(Early::NoSuchChange(start.wiki)),
-            Ok(AtOutcome::Hidden { change, .. }) => {
-                // The text is hidden: the page says so and why, and the change it is after is one link away.
+            Ok(AtOutcome::Hidden { change, text, .. }) => {
+                // The text is hidden: the page says so and why (the hiding of the change that wrote it, which is not always the
+                // change it is after), and the change it is after is one link away.
                 let mut paragraphs = vec![t.get(Key::TombstoneAtHidden)];
-                paragraphs.extend(
-                    change
-                        .hidden
-                        .content()
-                        .into_iter()
-                        .flat_map(|mark| crate::tombstone::mark_facts(t, mark)),
-                );
+                paragraphs.extend(crate::tombstone::mark_facts(t, &text));
                 let link = change_link(t, &start, &change);
                 let choices = vec![Choice {
                     label: link.label,

@@ -70,9 +70,10 @@ pub use derived::{
 pub use governance::{
     Actor, AppealDecision, AppealOutcome, AppealRecord, AppealState, AppealedAction, AppealedKind,
     Decided, GovernanceFault, GovernanceSnapshot, GovernanceSnapshotStore, GovernanceStore,
-    GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenParts, MAX_FAULT_FOUND, MeasureEvent,
-    ProtectionEvent, ProtectionKind, ProtectionRequirement, ReasonCategory, RestrictionEvent,
-    Reversal, TombstoneAct, TombstoneEvent, TombstoneReversal, hidden_parts,
+    GrantDecisionRecord, HiddenItem, HiddenItemKind, HiddenParts, MAX_CONTENT_HIDDEN_IDS,
+    MAX_FAULT_FOUND, MeasureEvent, ProtectionEvent, ProtectionKind, ProtectionRequirement,
+    ReasonCategory, RestrictionEvent, Reversal, TombstoneAct, TombstoneEvent, TombstoneReversal,
+    hidden_parts,
 };
 pub use identity::{
     Account, AccountStore, CredentialStore, ExternalIdentity, ExternalIdentityError,

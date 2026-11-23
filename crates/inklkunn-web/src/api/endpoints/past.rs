@@ -104,9 +104,12 @@ pub(super) async fn revision(
                     {
                         AtOutcome::Found { view: page, .. } => shape::page(wiki, &page),
                         // The text at this change is hidden: the member says so, and why, in place of the page.
-                        AtOutcome::Hidden { change, .. } => {
+                        AtOutcome::Hidden { text, .. } => {
                             let mut hidden = serde_json::Map::new();
-                            shape::tombstones(&mut hidden, &change.hidden);
+                            shape::tombstones(
+                                &mut hidden,
+                                &inklkunn_core::tombstone::Hidden::from_marks([*text]),
+                            );
                             Value::Object(hidden)
                         }
                         AtOutcome::PageMissing { .. } => {

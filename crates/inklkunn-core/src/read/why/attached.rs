@@ -10,11 +10,12 @@
 //! **Bounded.** A request names how many files it may read for one change; the rest are counted. A change too
 //! large for prikk's report to list is said to be (what it attached is not known), never read as having none.
 
-use inklkunn_prikk::{Point, StorageError};
 use inklkunn_store::WikiRecord;
 
+use super::super::text::FileAt;
 use super::super::{ReadError, ReadService};
 use crate::knowledge::{Family, File, MAX_FILE_BYTES, family_of, read_file};
+use crate::tombstone::Mark;
 
 /// A source file a change created, as the change wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +37,9 @@ pub struct Attached {
     pub omitted: usize,
     /// The change is too large to list what it did: what it attached is not known.
     pub too_large: bool,
+    /// **What the change attached is hidden** (RFC 006 D-8; H-4): the text of the source files it created is a hidden change's, so
+    /// none of it is read or said, and this is the hiding. `sources` and `unreadable` do not count those files.
+    pub hidden: Option<Mark>,
 }
 
 impl ReadService {
@@ -57,24 +61,23 @@ impl ReadService {
             .iter()
             .filter(|path| family_of(path) == Some(Family::Source))
             .collect();
-        let repo = self.layout.repo_dir(&wiki.id);
-        let point = Point::Block(block_id.to_owned());
         let mut out = Attached {
             omitted: wanted.len().saturating_sub(limit),
             ..Attached::default()
         };
         for path in wanted.into_iter().take(limit) {
-            let bytes = match self
-                .storage
-                .read(&repo, &point, path, MAX_FILE_BYTES as u64)
-            {
-                Ok(bytes) => bytes,
+            let bytes = match self.file_at(wiki, None, block_id, path, MAX_FILE_BYTES as u64)? {
+                FileAt::Held(bytes) => bytes,
                 // No such file at the block, or one over the size a knowledge file may have.
-                Err(StorageError::Refused { .. }) => {
+                FileAt::Missing | FileAt::TooLarge(_) => {
                     out.unreadable += 1;
                     continue;
                 }
-                Err(e) => return Err(self.storage_error(wiki, e)),
+                // The change that wrote it has its content hidden: what it attached is not quoted (RFC 006 D-8).
+                FileAt::Hidden(mark) => {
+                    out.hidden.get_or_insert(*mark);
+                    continue;
+                }
             };
             match read_file(path, &bytes) {
                 Ok(File::Source(source)) => out.sources.push(AttachedSource {

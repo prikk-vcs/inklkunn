@@ -38,6 +38,7 @@ use inklkunn_markup::path::title_to_path;
 use inklkunn_store::IndexEntry;
 
 use super::history::{ChangeInfo, HistoryRow, MAX_INSPECTED_PER_REQUEST, PageEvent};
+use super::text::FileAt;
 use super::{Lookup, PageProblem, ReadError, ReadService, Tip};
 use trace::{Fed, Tracer};
 
@@ -138,7 +139,34 @@ fn path_before(row: &HistoryRow) -> String {
         .unwrap_or_else(|| row.path.clone())
 }
 
+/// The text of the page at a block, for the trace.
+enum Past {
+    /// The text.
+    Text(String),
+    /// No file then, or not text.
+    Absent,
+    /// The text is hidden by moderation (RFC 006 D-8): it is not read, and the trace does not go across it.
+    Hidden,
+}
+
 impl ReadService {
+    /// The page's text at a block, through the one reader of a text at a block ([`ReadService::text_at`]).
+    fn past_text(
+        &self,
+        wiki: &inklkunn_store::WikiRecord,
+        block: &str,
+        path: &str,
+    ) -> Result<Past, ReadError> {
+        Ok(
+            match self.file_at(wiki, None, block, path, self.config.page_max_bytes)? {
+                FileAt::Held(bytes) => String::from_utf8(bytes).map_or(Past::Absent, Past::Text),
+                FileAt::Missing => Past::Absent,
+                FileAt::TooLarge(refused) => return Err(self.storage_error(wiki, refused)),
+                FileAt::Hidden(_) => Past::Hidden,
+            },
+        )
+    }
+
     /// The paragraphs of the page titled `title` at the view's tip, each with the change that last changed it and
     /// the one that first wrote it, within the bounds of the page's history (see the module's account).
     pub fn page_why(
@@ -182,8 +210,8 @@ impl ReadService {
             // The page after the newest change is the page as it is, unless the newest change is not the tip's
             // own block: then the two are compared, and a difference no listed change explains ends the reading.
             if step == 0 && row.change.block_id != tip.block_id {
-                let after = self.source_at(wiki, &row.change.block_id, &row.path)?;
-                if after.as_deref() != Some(current.as_str()) {
+                let after = self.past_text(wiki, &row.change.block_id, &row.path)?;
+                if !matches!(&after, Past::Text(text) if *text == current) {
                     unfollowed = true;
                     break;
                 }
@@ -191,11 +219,12 @@ impl ReadService {
             let older = if row.events.contains(&PageEvent::Created) {
                 None
             } else if let Some(before) = rows.get(step + 1) {
-                match self.source_at(wiki, &before.change.block_id, &before.path)? {
-                    Some(text) => Some(text),
+                match self.past_text(wiki, &before.change.block_id, &before.path)? {
+                    Past::Text(text) => Some(text),
                     // Absent, or not text: only a page that was deleted or moved away is absent.
-                    None if absent_after(&before.events) => None,
-                    None => {
+                    Past::Absent if absent_after(&before.events) => None,
+                    // Absent otherwise, or hidden: what the page was then is not read, so not followed across.
+                    Past::Absent | Past::Hidden => {
                         unfollowed = true;
                         break;
                     }
@@ -207,9 +236,9 @@ impl ReadService {
                 let Some(parent) = &row.change.parent else {
                     break;
                 };
-                match self.source_at(wiki, parent, &path_before(row))? {
-                    Some(text) => Some(text),
-                    None => {
+                match self.past_text(wiki, parent, &path_before(row))? {
+                    Past::Text(text) => Some(text),
+                    Past::Absent | Past::Hidden => {
                         unfollowed = true;
                         break;
                     }

@@ -785,6 +785,26 @@ impl GovernanceStore for SqliteStore {
         )
     }
 
+    fn content_hidden_ids(
+        &self,
+        wiki: &WikiId,
+        kind: HiddenItemKind,
+        limit: usize,
+    ) -> Result<Vec<String>> {
+        let limit = limit.clamp(1, crate::governance::MAX_CONTENT_HIDDEN_IDS + 1);
+        self.governance_rows(
+            "SELECT item_id FROM tombstones WHERE wiki_id = ?1 AND item_kind = ?2 AND event = ?3 AND hides_content = 1 \
+             GROUP BY item_id ORDER BY MIN(seq) LIMIT ?4",
+            params![
+                wiki.as_str(),
+                kind.as_str(),
+                TombstoneAct::Hide.as_str(),
+                i64::try_from(limit).unwrap_or(i64::MAX)
+            ],
+            |row| row.get::<_, String>(0),
+        )
+    }
+
     fn tombstone_log(
         &self,
         wiki: &WikiId,

@@ -46,6 +46,8 @@ pub const MAX_TARGET_BYTES: usize = 1024;
 pub const MAX_SNAPSHOT_FILE_BYTES: usize = 1024 * 1024;
 /// The most rows a list read returns, whatever is asked for.
 pub const MAX_PAGE: usize = 200;
+/// The most identifiers [`GovernanceStore::content_hidden_ids`] returns, whatever is asked for.
+pub const MAX_CONTENT_HIDDEN_IDS: usize = 1000;
 
 fn refuse<T>(what: &str) -> Result<T> {
     Err(StoreError::Backend(what.to_owned()))
@@ -1065,6 +1067,17 @@ pub trait GovernanceStore: Send + Sync {
         kind: HiddenItemKind,
         id: &str,
     ) -> Result<Vec<TombstoneEvent>>;
+    /// The identifiers of the wiki's items of this kind that have **a hide that covers the content recorded**, hidden still or
+    /// since restored, each once, oldest first, at most `limit` (never more than [`MAX_CONTENT_HIDDEN_IDS`] plus one, so that a reader of that many can tell that there are more; at least one). What
+    /// a reader that must know whether anything of the kind has its content hidden asks first: an item that is not in this list
+    /// has never had its content hidden, so nothing more is asked of it. Whether an item is hidden *now* is
+    /// [`GovernanceStore::tombstone_events_of_id`] read with [`hidden_parts`]: this list is a superset, never the answer.
+    fn content_hidden_ids(
+        &self,
+        wiki: &WikiId,
+        kind: HiddenItemKind,
+        limit: usize,
+    ) -> Result<Vec<String>>;
     /// The wiki's moderation log: at most `limit` events (never more than [`MAX_PAGE`], at least one), newest first,
     /// older than the event `before` when one is named ([`StoreError::NotFound`] when that is not an event of the wiki).
     fn tombstone_log(

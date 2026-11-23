@@ -883,8 +883,9 @@ impl<'a> Resolver<'a> {
         let (Some(entry), None) = (at.next(), at.next()) else {
             return None;
         };
-        match read.source_at(&self.ctx.wiki, &self.place.base.block_id, &entry.path) {
-            Ok(text) => text.map(|text| (entry.path.clone(), text)),
+        match read.source_or_hidden(&self.ctx.wiki, &self.place.base.block_id, &entry.path) {
+            // A text moderation hides is not read: the page is taken as one the base did not have (H-1).
+            Ok(text) => text.unwrap_or(None).map(|text| (entry.path.clone(), text)),
             Err(e) => {
                 self.failed(e);
                 None
@@ -1130,7 +1131,8 @@ pub(crate) fn file_lines(
             f.path.clone(),
             ctx.services
                 .read
-                .source_at(&ctx.wiki, &place.base.block_id, &f.path)?,
+                .source_or_hidden(&ctx.wiki, &place.base.block_id, &f.path)?
+                .unwrap_or(None),
         );
         given.push((f.path.clone(), f.text.clone()));
     }

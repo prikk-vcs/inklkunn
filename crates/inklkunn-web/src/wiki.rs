@@ -683,6 +683,7 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
                 PageProblem::NotUtf8 => page.get(Key::UnreadableNotText),
                 PageProblem::Frontmatter(_) => page.get(Key::UnreadableInfo),
                 PageProblem::FrontmatterTooLong => page.get(Key::UnreadableInfoLong),
+                PageProblem::Hidden => page.get(Key::TombstoneAtHidden),
             };
             notice(
                 page,

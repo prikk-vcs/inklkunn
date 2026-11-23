@@ -42,6 +42,7 @@ use inklkunn_prikk::{
 use inklkunn_store::{DerivedPage, IndexEntry, WikiId, WikiRecord};
 
 use super::linediff::HunkView;
+use super::text::FileAt;
 use super::{Lookup, PageView, Presentation, ReadError, ReadService, Tip, TitleIndex};
 use crate::message::{Actor, Kind as MessageKind, Message, SUMMARY_MAX_CHARS};
 use crate::tombstone::{Hidden, Mark};
@@ -386,13 +387,15 @@ pub enum AtOutcome {
         /// The change.
         change: Box<ChangeInfo>,
     },
-    /// The page's text at this change is hidden by moderation: the change says so (`change.hidden`), and no surface shows
-    /// the text.
+    /// The page's text at this change is hidden by moderation (the change that wrote it has its content hidden: this one, or an
+    /// earlier one that this change left the page as), and no surface shows the text.
     Hidden {
         /// The title asked for.
         title: String,
-        /// The change, with its tombstone.
+        /// The change asked for, with its own tombstone (it may have none: the text is a later change's to read).
         change: Box<ChangeInfo>,
+        /// The hiding of the text: of the change that last wrote the page at this change, which is the one named when it is not this one.
+        text: Box<Mark>,
     },
     /// The view's history has no such block.
     NoSuchChange,
@@ -407,7 +410,7 @@ pub enum AtOutcome {
 
 /// A view's log, as far as it was read.
 #[derive(Debug)]
-struct Window {
+pub(super) struct Window {
     wiki: WikiId,
     view: String,
     /// The state id of the newest block read.
@@ -415,6 +418,18 @@ struct Window {
     blocks: Vec<ChangeInfo>,
     /// The whole log is here (the read came back short).
     complete: bool,
+}
+
+impl Window {
+    /// The place of the block in the log (newest first: a lower place is a later change), when the log holds it.
+    pub(super) fn block_position(&self, block_id: &str) -> Option<usize> {
+        self.blocks.iter().position(|b| b.block_id == block_id)
+    }
+
+    /// The id of the block at a place of the log.
+    pub(super) fn block_id_at(&self, at: usize) -> Option<&str> {
+        self.blocks.get(at).map(|b| b.block_id.as_str())
+    }
 }
 
 /// What one operation of a block did to one path.
@@ -833,7 +848,7 @@ impl ReadService {
 
     /// The window that holds `block_id`, and where, growing the read (at most [`MAX_WINDOW`] blocks) until it
     /// is found or the log ends. `None` when the view's history has no such block.
-    fn find_block(
+    pub(super) fn find_block(
         &self,
         wiki: &WikiRecord,
         tip: &Tip,
@@ -909,6 +924,22 @@ impl ReadService {
                     .map(|t| t.path.clone())
                     .collect(),
             ),
+            Touches::TooLarge => None,
+        })
+    }
+
+    /// What the block did to the page now at `tracked`, oldest first, and whether a `show` was made to know it; `tracked` becomes
+    /// the path the page had before the block. `None` when the block is too large to list what it did. What the reader of a
+    /// page's text at a block walks the changes between two blocks by.
+    pub(super) fn events_of(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+        tracked: &mut String,
+    ) -> Result<Option<(Vec<PageEvent>, bool)>, ReadError> {
+        let (touches, fetched) = self.touches_of(wiki, block_id)?;
+        Ok(match touches {
+            Touches::Known(list) => Some((events_for(&list, tracked), fetched)),
             Touches::TooLarge => None,
         })
     }
@@ -1158,10 +1189,12 @@ impl ReadService {
         else {
             return Ok(DiffOutcome::NoSuchChange);
         };
-        // A side whose text is hidden gives no difference: the lines of a diff are the hidden text, one side at a time.
+        // A side whose text is hidden gives no difference: the lines of a diff are the hidden text, one side at a time. Whose
+        // text a side is, is the one reader's to say (RFC 006 D-8; H-1): the change that last wrote the page there, which may
+        // be a change long before the block named.
         let (from_hidden, to_hidden) = (
-            self.hidden_block(&wiki.id, from)?.content().cloned(),
-            self.hidden_block(&wiki.id, to)?.content().cloned(),
+            self.hidden_text(wiki, view, from, &path)?,
+            self.hidden_text(wiki, view, to, &path)?,
         );
         if from_hidden.is_some() || to_hidden.is_some() {
             return Ok(DiffOutcome::Hidden(Box::new(HiddenDiff {
@@ -1230,10 +1263,12 @@ impl ReadService {
             Target::Ambiguous(candidates) => return Ok(AtOutcome::Ambiguous { candidates }),
         };
         // Before the text is read, and before the held renders are asked: a hidden text is not held anywhere it is served from.
-        if change.hidden.content().is_some() {
+        // Whose text it is, is the one reader's to say: the change that last wrote the page at this block, not only this one.
+        if let Some(text) = self.hidden_text(wiki, view, block_id, &path)? {
             return Ok(AtOutcome::Hidden {
                 title: page_title,
                 change: Box::new(change),
+                text: Box::new(text),
             });
         }
         let at_tip = Tip {
@@ -1259,30 +1294,26 @@ impl ReadService {
         let (row, cached) = match held {
             Some(row) => (row, true),
             None => {
-                let bytes = match self.storage.read(
-                    &self.layout.repo_dir(&wiki.id),
-                    &Point::Block(block_id.to_owned()),
-                    &path,
-                    self.config.page_max_bytes,
-                ) {
-                    Ok(bytes) => bytes,
-                    Err(refused @ StorageError::Refused { .. }) => {
-                        // Either there was no such page then, or it is over the size read: `stat` tells.
-                        return match self.storage.stat(
-                            &self.layout.repo_dir(&wiki.id),
-                            &Point::Block(block_id.to_owned()),
-                            &path,
-                        ) {
-                            Err(StorageError::Refused { .. }) => Ok(AtOutcome::PageMissing {
+                let bytes =
+                    match self.file_at(wiki, view, block_id, &path, self.config.page_max_bytes)? {
+                        FileAt::Held(bytes) => bytes,
+                        // There was no such page then.
+                        FileAt::Missing => {
+                            return Ok(AtOutcome::PageMissing {
                                 title: page_title,
                                 change: Box::new(change),
-                            }),
-                            Ok(_) => Err(self.storage_error(wiki, refused)),
-                            Err(e) => Err(self.storage_error(wiki, e)),
-                        };
-                    }
-                    Err(e) => return Err(self.storage_error(wiki, e)),
-                };
+                            });
+                        }
+                        // It is over the size read.
+                        FileAt::TooLarge(refused) => return Err(self.storage_error(wiki, refused)),
+                        FileAt::Hidden(text) => {
+                            return Ok(AtOutcome::Hidden {
+                                title: page_title,
+                                change: Box::new(change),
+                                text,
+                            });
+                        }
+                    };
                 let text = String::from_utf8(bytes)
                     .map_err(|_| ReadError::PageUnreadable(super::PageProblem::NotUtf8))?;
                 let entry = IndexEntry {

@@ -1085,6 +1085,57 @@ where
     );
 }
 
+fn the_items_whose_content_was_ever_hidden_are_listed_once_each_in_the_order_they_were_first_hidden<
+    S,
+>(
+    r: &Rig<S>,
+) where
+    S: GovernanceStore,
+{
+    let (s, w) = (&r.store, &r.wiki);
+    let by = (&r.maintainer, Role::Maintainer);
+    let revision = |n: u64, reference: Option<&str>| HiddenItem {
+        kind: HiddenItemKind::PageRevision,
+        id: block(n),
+        reference: reference.map(str::to_owned),
+    };
+    let ids = |limit: usize| {
+        s.content_hidden_ids(w, HiddenItemKind::PageRevision, limit)
+            .unwrap()
+    };
+    assert!(ids(10).is_empty(), "nothing hidden: nothing listed");
+    // Block 7 is hidden per page (two events), block 5 once; the second of 7 is not a second entry.
+    let seven_a = hide(w, &revision(7, Some("pages/A.md")), CONTENT, by, T0);
+    let five = hide(w, &revision(5, None), CONTENT_AND_AUTHOR, by, T0 + 1);
+    let seven_b = hide(w, &revision(7, Some("pages/B.md")), CONTENT, by, T0 + 2);
+    for e in [&seven_a, &five, &seven_b] {
+        s.record_tombstone_event(e).unwrap();
+    }
+    assert_eq!(ids(10), vec![block(7), block(5)]);
+    assert_eq!(ids(1), vec![block(7)], "a limit cuts the list");
+    assert_eq!(ids(0), vec![block(7)], "at least one");
+    // A hide of the summary or the author alone is not a hide of the content; another kind and another wiki are not listed.
+    let summary_only = HiddenParts {
+        content: false,
+        summary: true,
+        author: false,
+    };
+    s.record_tombstone_event(&hide(w, &revision(9, None), summary_only, by, T0 + 3))
+        .unwrap();
+    s.record_tombstone_event(&hide(w, &comment_item(), CONTENT, by, T0 + 4))
+        .unwrap();
+    assert_eq!(ids(10), vec![block(7), block(5)]);
+    assert!(
+        s.content_hidden_ids(&WikiId::new(), HiddenItemKind::PageRevision, 10)
+            .unwrap()
+            .is_empty()
+    );
+    // An unhide does not take an item off the list: the list is a superset, what is hidden now is read from the events.
+    s.record_tombstone_event(&unhide(&five, by, T0 + 5))
+        .unwrap();
+    assert_eq!(ids(10), vec![block(7), block(5)]);
+}
+
 fn a_tombstone_names_its_item_the_way_its_kind_does<S>(r: &Rig<S>)
 where
     S: GovernanceStore + ProposalStore,
@@ -2451,6 +2502,7 @@ both_stores!(
     a_tombstone_hides_and_an_unhide_restores_exactly,
     the_events_of_one_act_share_one_time_one_person_and_one_kind,
     the_moderation_log_is_newest_first_and_pages_by_event,
+    the_items_whose_content_was_ever_hidden_are_listed_once_each_in_the_order_they_were_first_hidden,
     a_tombstone_names_its_item_the_way_its_kind_does,
     a_hide_that_declined_a_proposal_names_the_decline,
     an_appeal_is_filed_once_per_action_per_person_and_counted,

@@ -26,11 +26,11 @@
 use std::collections::BTreeSet;
 
 use inklkunn_markup::path::{PAGES_DIR, path_to_title};
-use inklkunn_prikk::{Change as PrikkChange, Point, StorageError};
+use inklkunn_prikk::{Change as PrikkChange, StorageError};
 use inklkunn_store::{Base, FileChange, WikiRecord};
 
 use super::history::ChangeInfo;
-use super::{ReadError, ReadService};
+use super::{BlockText, ReadError, ReadService};
 use crate::message::SUMMARY_MAX_CHARS;
 
 /// The most pages one rollback restores. A change that touched more is left to a person to undo by hand.
@@ -73,6 +73,31 @@ pub enum NoRollback {
     NothingToUndo,
     /// The block's parent is not within the part of the log this service reads.
     ParentNotKnown,
+    /// **The text the rollback would write again is hidden by moderation** (RFC 006 D-8; INV-13; decision 22): the pages whose text
+    /// as it was before the change is hidden, by title (never any of the text). A rollback of a change that wrote several pages is
+    /// refused whole when any one is hidden. The text of the change being undone being hidden is no obstacle: it is taken away,
+    /// never written.
+    TextHidden {
+        /// The titles of the pages whose text is hidden.
+        titles: Vec<String>,
+    },
+}
+
+/// What planning a rollback came to, before the pages whose text is hidden are made a refusal.
+pub(super) enum Planned {
+    /// The plan.
+    Plan(Box<RollbackPlan>),
+    /// There is none, and why.
+    No(NoRollback),
+    /// The text of some pages that the rollback would write again is hidden: no plan is made. What is kept is what asking whether
+    /// it would have merged needs (the paths and the blocks, never a text).
+    Hidden {
+        titles: Vec<String>,
+        undoes: String,
+        parent: String,
+        /// Every page the rollback writes, the hidden ones too.
+        paths: Vec<String>,
+    },
 }
 
 /// What asking for a rollback came to.
@@ -148,35 +173,6 @@ fn summary_of(info: &ChangeInfo) -> String {
 }
 
 impl ReadService {
-    /// A page's text at a block: `None` when the page was not there, an error for text that is not text or
-    /// is too large.
-    pub(super) fn text_at(
-        &self,
-        wiki: &WikiRecord,
-        block: &str,
-        path: &str,
-    ) -> Result<Result<Option<String>, NoRollback>, ReadError> {
-        let repo = self.layout.repo_dir(&wiki.id);
-        let point = Point::Block(block.to_owned());
-        match self
-            .storage
-            .read(&repo, &point, path, self.config.page_max_bytes)
-        {
-            Ok(bytes) => Ok(String::from_utf8(bytes)
-                .map(Some)
-                .map_err(|_| NoRollback::NotText)),
-            Err(refused @ StorageError::Refused { .. }) => {
-                // Either there was no such page then, or it is over the size read: `stat` tells.
-                match self.storage.stat(&repo, &point, path) {
-                    Err(StorageError::Refused { .. }) => Ok(Ok(None)),
-                    Ok(_) => Ok(Err(NoRollback::NotText)),
-                    Err(_) => Err(self.storage_error(wiki, refused)),
-                }
-            }
-            Err(e) => Err(self.storage_error(wiki, e)),
-        }
-    }
-
     /// The plan that undoes the change `block_id` of the view (the default view for `None`): the pages it
     /// touched, as they were before it. Reads the change once (`show`) and each touched page twice (`cat`).
     pub fn rollback_plan(
@@ -185,7 +181,24 @@ impl ReadService {
         view: Option<&str>,
         block_id: &str,
     ) -> Result<RollbackOutcome, ReadError> {
-        let no = |why| Ok(RollbackOutcome::No(why));
+        Ok(match self.plan_of(wiki, view, block_id)? {
+            Planned::Plan(plan) => RollbackOutcome::Plan(plan),
+            Planned::No(why) => RollbackOutcome::No(why),
+            Planned::Hidden { titles, .. } => {
+                RollbackOutcome::No(NoRollback::TextHidden { titles })
+            }
+        })
+    }
+
+    /// What planning the rollback of the change came to, **with the pages whose text is hidden told apart**: what the offer of a
+    /// way back for a removed page decides by (it asks whether the rollback would have merged, to say which way back is refused).
+    pub(super) fn plan_of(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        block_id: &str,
+    ) -> Result<Planned, ReadError> {
+        let no = |why| Ok(Planned::No(why));
         let Some(info) = self.change_info(wiki, view, block_id)? else {
             return no(NoRollback::NoSuchChange);
         };
@@ -212,22 +225,47 @@ impl ReadService {
             Err(why) => return no(why),
         };
         let mut files = Vec::new();
+        let mut hidden = Vec::new();
+        let mut withheld = Vec::new();
         for path in paths {
             // A path whose title the wiki could not spell is not a page it can name.
-            if path_to_title(&path).is_none() {
+            let Some(title) = path_to_title(&path) else {
                 return no(NoRollback::NotOnlyPages);
-            }
-            let after = match self.text_at(wiki, block_id, &path)? {
-                Ok(text) => text,
-                Err(why) => return no(why),
             };
-            let before = match self.text_at(wiki, &parent, &path)? {
-                Ok(text) => text,
-                Err(why) => return no(why),
+            // The text after the change is compared and never given: when it is hidden (the change being undone is the one
+            // moderation hid) the page is taken as one the change changed, which the plan then writes as it was before.
+            let after = match self.text_at(wiki, view, block_id, &path)? {
+                BlockText::Text(text) => Some(Some(text)),
+                BlockText::Missing => Some(None),
+                BlockText::NotText | BlockText::TooLarge => return no(NoRollback::NotText),
+                BlockText::Hidden(_) => None,
             };
-            if before != after {
+            // The text before it is what the plan writes: it is never hidden text.
+            let before = match self.text_at(wiki, view, &parent, &path)? {
+                BlockText::Text(text) => Some(text),
+                BlockText::Missing => None,
+                BlockText::NotText | BlockText::TooLarge => return no(NoRollback::NotText),
+                BlockText::Hidden(_) => {
+                    hidden.push(title);
+                    withheld.push(path);
+                    continue;
+                }
+            };
+            if after.as_ref() != Some(&before) {
                 files.push(FileChange { path, text: before });
             }
+        }
+        if !hidden.is_empty() {
+            return Ok(Planned::Hidden {
+                titles: hidden,
+                undoes: info.block_id,
+                parent,
+                paths: files
+                    .into_iter()
+                    .map(|file| file.path)
+                    .chain(withheld)
+                    .collect(),
+            });
         }
         if files.is_empty() {
             return no(NoRollback::NothingToUndo);
@@ -235,7 +273,7 @@ impl ReadService {
         let Some(base) = Base::new(&info.state_id, &info.block_id) else {
             return no(NoRollback::NoSuchChange);
         };
-        Ok(RollbackOutcome::Plan(Box::new(RollbackPlan {
+        Ok(Planned::Plan(Box::new(RollbackPlan {
             undoes: info.block_id.clone(),
             number: info.number,
             summary: summary_of(&info),

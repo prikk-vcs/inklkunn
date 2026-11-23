@@ -7,10 +7,11 @@
 //! A change too large to list, or a file too large to compare, is **refused**, not allowed: what cannot be checked is not
 //! hidden. Reverting or removing the content first, by proposal, is the way (soft security first).
 
-use inklkunn_prikk::{Point, StorageError};
+use inklkunn_prikk::Point;
 use inklkunn_store::WikiRecord;
 
 use super::history::{ChangeInfo, TouchesOf};
+use super::text::Unchecked;
 use super::{ReadError, ReadService};
 
 /// The most files of a change that *show hidden content* lists.
@@ -43,7 +44,6 @@ pub enum TipCheck {
 impl ReadService {
     /// Does any open view's tip hold, at any path, the bytes the change `block_id` wrote?
     pub fn tip_check(&self, wiki: &WikiRecord, block_id: &str) -> Result<TipCheck, ReadError> {
-        let repo = self.layout.repo_dir(&wiki.id);
         let paths = match self.written_paths(wiki, block_id)? {
             TouchesOf::Paths(paths) => paths,
             TouchesOf::TooLarge => return Ok(TipCheck::Unchecked),
@@ -55,17 +55,20 @@ impl ReadService {
             let tip = self.tip(wiki, Some(&view))?;
             for path in &paths {
                 let theirs =
-                    self.bytes_at(wiki, &repo, &Point::Block(tip.block_id.clone()), path)?;
-                let ours = self.bytes_at(wiki, &repo, &Point::Block(block_id.to_owned()), path)?;
+                    self.bytes_unchecked_at(wiki, &Point::Block(tip.block_id.clone()), path)?;
+                let ours =
+                    self.bytes_unchecked_at(wiki, &Point::Block(block_id.to_owned()), path)?;
                 match (ours, theirs) {
-                    (Bytes::Missing, _) | (_, Bytes::Missing) => {}
-                    (Bytes::Large, _) | (_, Bytes::Large) => return Ok(TipCheck::Unchecked),
-                    (Bytes::Held(a), Bytes::Held(b)) if a == b => {
+                    (Unchecked::Missing, _) | (_, Unchecked::Missing) => {}
+                    (Unchecked::Large, _) | (_, Unchecked::Large) => {
+                        return Ok(TipCheck::Unchecked);
+                    }
+                    (Unchecked::Held(a), Unchecked::Held(b)) if a == b => {
                         return Ok(TipCheck::Holds {
                             view: view.strip_prefix("heads/").unwrap_or(&view).to_owned(),
                         });
                     }
-                    (Bytes::Held(_), Bytes::Held(_)) => {}
+                    (Unchecked::Held(_), Unchecked::Held(_)) => {}
                 }
             }
         }
@@ -84,15 +87,14 @@ impl ReadService {
         let Some(info) = self.change_info_raw(wiki, view, block_id)? else {
             return Ok(None);
         };
-        let repo = self.layout.repo_dir(&wiki.id);
         let paths = match self.written_paths(wiki, block_id)? {
             TouchesOf::Paths(paths) => paths,
             TouchesOf::TooLarge => Vec::new(),
         };
         let mut files = Vec::new();
         for path in paths.into_iter().take(MAX_REVEALED_FILES) {
-            if let Bytes::Held(bytes) =
-                self.bytes_at(wiki, &repo, &Point::Block(block_id.to_owned()), &path)?
+            if let Unchecked::Held(bytes) =
+                self.bytes_unchecked_at(wiki, &Point::Block(block_id.to_owned()), &path)?
             {
                 files.push((path, String::from_utf8_lossy(&bytes).into_owned()));
             }
@@ -112,35 +114,4 @@ impl ReadService {
             TouchesOf::TooLarge => None,
         })
     }
-
-    fn bytes_at(
-        &self,
-        wiki: &WikiRecord,
-        repo: &std::path::Path,
-        point: &Point,
-        path: &str,
-    ) -> Result<Bytes, ReadError> {
-        match self
-            .storage
-            .read(repo, point, path, self.config.page_max_bytes)
-        {
-            Ok(bytes) => Ok(Bytes::Held(bytes)),
-            Err(refused @ StorageError::Refused { .. }) => {
-                // Either the file is not there at that point, or it is over the size read: `stat` tells.
-                match self.storage.stat(repo, point, path) {
-                    Err(StorageError::Refused { .. }) => Ok(Bytes::Missing),
-                    Ok(_) => Ok(Bytes::Large),
-                    Err(_) => Err(self.storage_error(wiki, refused)),
-                }
-            }
-            Err(e) => Err(self.storage_error(wiki, e)),
-        }
-    }
-}
-
-/// What reading a file at a point gave.
-enum Bytes {
-    Held(Vec<u8>),
-    Missing,
-    Large,
 }

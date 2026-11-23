@@ -17,7 +17,7 @@ use inklkunn_store::{
     ProposalId, StoreError, WikiId,
 };
 
-use super::model::{Hidden, ProposalHidden};
+use super::model::{Hidden, Mark, ProposalHidden};
 
 /// Why what is hidden could not be read now. The text is for the operator.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,6 +146,35 @@ impl Tombstones {
                 .tombstone_events_of_id(wiki, HiddenItemKind::PageRevision, block)?;
         // An unhide follows its hide in the same item (same reference); the chains are read together.
         Ok(Hidden::of_events(&events))
+    }
+
+    /// **The changes of the wiki whose content is hidden now**, each with the mark of the hiding that covers it (the newest):
+    /// what the one reader of a page's text at a block compares a file with ([`crate::read::ReadService::text_at`]). Asked at
+    /// every read: an unhide is in force at once. Empty when nothing has had its content hidden, which costs one query. A
+    /// wiki with more changes that ever had their content hidden than [`inklkunn_store::MAX_CONTENT_HIDDEN_IDS`] is an error,
+    /// never a list cut short: a reader that cannot tell what is hidden shows nothing.
+    pub fn content_hidden_revisions(
+        &self,
+        wiki: &WikiId,
+    ) -> Result<Vec<(String, Mark)>, Unreadable> {
+        let limit = inklkunn_store::MAX_CONTENT_HIDDEN_IDS;
+        let ids = self.governance.content_hidden_ids(
+            wiki,
+            HiddenItemKind::PageRevision,
+            limit.saturating_add(1),
+        )?;
+        if ids.len() > limit {
+            return Err(Unreadable(format!(
+                "more than {limit} changes have had their content hidden"
+            )));
+        }
+        let mut out = Vec::new();
+        for id in ids {
+            if let Some(mark) = self.of_change(wiki, &id)?.content().cloned() {
+                out.push((id, mark));
+            }
+        }
+        Ok(out)
     }
 
     /// What is hidden of revision `seq` of the proposal: what is recorded on it, and, when it was accepted, what is recorded
