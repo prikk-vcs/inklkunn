@@ -22,7 +22,10 @@ fn log(e: &Env) -> Vec<TombstoneEvent> {
 }
 
 /// The pages a hiding of change 2 touches, as every viewer reads them.
-async fn pages_of_change_two(e: &Env, who: Option<&AccountId>) -> Vec<(String, Vec<u8>)> {
+pub(crate) async fn pages_of_change_two(
+    e: &Env,
+    who: Option<&AccountId>,
+) -> Vec<(String, Vec<u8>)> {
     let b = change(2);
     let mut out = Vec::new();
     for uri in [

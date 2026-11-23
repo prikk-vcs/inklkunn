@@ -10,6 +10,7 @@
 mod common;
 
 mod acts;
+mod appeals;
 mod gate;
 mod surfaces;
 

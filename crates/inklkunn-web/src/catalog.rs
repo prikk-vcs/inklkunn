@@ -2070,6 +2070,10 @@ keys! {
     AppealsMootProposal => "appeals.moot_proposal",
     AppealsMootHidden => "appeals.moot_hidden",
     AppealsMootHiding => "appeals.moot_hiding",
+    LogAppealed => "log.appealed",
+    LogAppealUpheld => "log.appeal_upheld",
+    LogAppealOverturned => "log.appeal_overturned",
+    LogRestoredByAppeal => "log.restored_by_appeal",
 }
 
 /// A typed value for a placeholder. Text is HTML-escaped; a link is an escaped label plus an `href` the

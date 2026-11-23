@@ -11,6 +11,7 @@
 <ul class="change-facts">
 {% for f in row.facts %}<li>{{ f }}</li>
 {% endfor %}{% if let Some(text) = row.declined %}<li>{{ text }}</li>
+{% endif %}{% if let Some(text) = row.appeal %}<li>{{ text }}</li>
 {% endif %}{% if let Some(text) = row.note %}<li>{{ text }}</li>
 {% endif %}</ul>
 {% if let Some(form) = row.restore %}<form method="post" action="{{ form.action }}" class="inline-form">

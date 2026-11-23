@@ -24,14 +24,16 @@
 use std::sync::Arc;
 
 use inklkunn_store::{
-    AccountId, AccountStore, Actor, AuditEvent, AuditOutcome, AuditSink, ClaimThreadStore,
-    CommentId, GovernanceStore, HiddenItem, HiddenItemKind, HiddenParts, ProposalChange,
-    ProposalId, ProposalOp, ProposalState, ProposalStore, ProposalTransition, ReasonCategory, Role,
-    StoreError, TombstoneAct, TombstoneEvent, TombstoneEventId, WikiRecord,
+    AccountId, AccountStore, Actor, AppealedAction, AppealedKind, AuditEvent, AuditOutcome,
+    AuditSink, ClaimThreadStore, CommentId, GovernanceStore, HiddenItem, HiddenItemKind,
+    HiddenParts, ProposalChange, ProposalId, ProposalOp, ProposalState, ProposalStore,
+    ProposalTransition, ReasonCategory, Role, StoreError, TombstoneAct, TombstoneEvent,
+    TombstoneEventId, WikiRecord,
 };
 
 use super::model::{Hidden, Mark};
 use super::reader::{Tombstones, page_item};
+use crate::appeal::AppealMark;
 use crate::authorize::{Action, Authorizer, Holding, Principal, Resource, RestrictionNotice};
 use crate::governance::{ReadFault, Rules, is_valid_reason};
 use crate::notify::Notifier;
@@ -201,6 +203,11 @@ pub struct LogRow {
     pub in_force: bool,
     /// The proposal this hide declined in the same act, when it did.
     pub declined: bool,
+    /// For a hide: **that it was appealed, and how that ended**, and nothing else (RFC 006 D-9: an appeal names a person and a
+    /// grievance, so the log carries no text and no name).
+    pub appeal: Option<AppealMark>,
+    /// For an unhide: it is the overturn of an appeal.
+    pub by_appeal: bool,
 }
 
 /// What *show hidden content* gives back: the hidden parts of one item, and only those.
@@ -1098,6 +1105,22 @@ impl ModerationService {
                 },
                 in_force,
                 declined: e.declined_transition.is_some(),
+                appeal: if e.act == TombstoneAct::Hide {
+                    let appeals = self
+                        .governance
+                        .appeals_about(
+                            &wiki.id,
+                            &AppealedAction {
+                                kind: AppealedKind::Tombstone,
+                                id: e.id.to_string(),
+                            },
+                        )
+                        .map_err(unavailable)?;
+                    AppealMark::of(&appeals)
+                } else {
+                    None
+                },
+                by_appeal: e.appeal.is_some(),
             });
         }
         Ok(rows)

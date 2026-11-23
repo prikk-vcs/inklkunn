@@ -10,6 +10,7 @@ use axum::extract::rejection::{PathRejection, QueryRejection};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
+use inklkunn_core::appeal::AppealMark;
 use inklkunn_core::tombstone::LogRow;
 use inklkunn_store::{HiddenItemKind, TombstoneAct, TombstoneEventId};
 
@@ -44,6 +45,9 @@ struct RowView {
     link: Option<LinkView>,
     facts: Vec<String>,
     declined: Option<String>,
+    /// For a hide that was appealed: **that it was, and how it ended**, in a sentence, and nothing else (RFC 006 D-9). For a
+    /// restoring that an appeal's overturn made: that it was.
+    appeal: Option<String>,
     note: Option<String>,
     restore: Option<Restore>,
 }
@@ -118,6 +122,15 @@ fn row_view(t: T, slug: &str, row: &LogRow, may_restore: bool) -> RowView {
         link,
         facts,
         declined: row.declined.then(|| t.get(Key::LogDeclined)),
+        appeal: match (row.appeal, row.by_appeal) {
+            (Some(mark), _) => Some(t.get(match mark {
+                AppealMark::Appealed => Key::LogAppealed,
+                AppealMark::Upheld => Key::LogAppealUpheld,
+                AppealMark::Overturned => Key::LogAppealOverturned,
+            })),
+            (None, true) => Some(t.get(Key::LogRestoredByAppeal)),
+            (None, false) => None,
+        },
         note: row
             .note
             .as_ref()

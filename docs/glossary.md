@@ -1837,6 +1837,10 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `appeals.moot_proposal` | the same: the proposal moved on since it was declined | "The proposal has changed since it was declined, so reopening it would undo something else. You can still decide that the action stands." | "提案は見送りの後に状態が変わっているため、再び開くと別の操作を取り消すことになります。「措置を維持する」と決定することはできます。" |
 | `appeals.moot_hidden` | the same: the proposal's text is still hidden | "The proposal's latest text is still hidden by moderation, and a proposal nobody can read cannot be reviewed. Reverse that hiding first." | "この提案の最新の本文は、まだモデレーションにより非表示のままです。誰も読めない提案はレビューできません。先にその非表示を取り消してください。" |
 | `appeals.moot_hiding` | the same: the hiding was reversed already | "This hiding has been reversed already, so there is nothing to reverse. You can still decide that the action stands." | "この非表示はすでに取り消されているため、取り消すものがありません。「措置を維持する」と決定することはできます。" |
+| `log.appealed` | in a row of the moderation log: the hiding was appealed and the appeal waits | "This hiding was appealed. The appeal is waiting for a decision." | "この非表示には申し立てがあり、決定を待っています。" |
+| `log.appeal_upheld` | the same: the appeal was decided and the hiding stands | "This hiding was appealed. The appeal was decided: the hiding stands." | "この非表示には申し立てがありました。決定は、非表示を維持するものでした。" |
+| `log.appeal_overturned` | the same: the appeal was decided and the hiding was reversed | "This hiding was appealed. The appeal was decided: the hiding was reversed." | "この非表示には申し立てがありました。決定は、非表示を取り消すものでした。" |
+| `log.restored_by_appeal` | in a row of the log for a restoring: it was made because an appeal was decided | "Restored because an appeal was decided." | "申し立ての決定により、元に戻しました。" |
 
 ## 3. Words the interface does not say
 

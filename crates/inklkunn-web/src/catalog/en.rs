@@ -4171,4 +4171,20 @@ pub const CATALOG: &[Entry] = &[
         "appeals.moot_hiding",
         "This hiding has been reversed already, so there is nothing to reverse. You can still decide that the action stands.",
     ),
+    msg(
+        "log.appealed",
+        "This hiding was appealed. The appeal is waiting for a decision.",
+    ),
+    msg(
+        "log.appeal_upheld",
+        "This hiding was appealed. The appeal was decided: the hiding stands.",
+    ),
+    msg(
+        "log.appeal_overturned",
+        "This hiding was appealed. The appeal was decided: the hiding was reversed.",
+    ),
+    msg(
+        "log.restored_by_appeal",
+        "Restored because an appeal was decided.",
+    ),
 ];
