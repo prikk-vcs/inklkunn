@@ -387,7 +387,8 @@ impl Rig {
         let authorizer = Authorizer::new(
             Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(reads.clone())),
             audit.clone(),
-        );
+        )
+        .with_protections(store.clone(), crate::governance::PlatformLimits::default());
         let proposals = Arc::new(
             ProposalService::new(
                 store.clone(),

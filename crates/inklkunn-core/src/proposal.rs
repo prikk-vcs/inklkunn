@@ -797,6 +797,20 @@ impl ProposalService {
             .map_err(|e| ProposalError::BaseUnavailable(e.to_string()))
     }
 
+    /// The protections in force at `at` on the pages a change touches (repository paths: what it writes, removes or renames to
+    /// or from), under `rules` (RFC 006 D-7). Read from the store each time, never held.
+    pub(crate) fn protections_for_change(
+        &self,
+        wiki: &WikiRecord,
+        touched: &[String],
+        rules: &Rules,
+        at: i64,
+    ) -> Result<Vec<crate::protection::Notice>> {
+        self.authorizer
+            .protections_for_change(&wiki.id, touched, rules, at)
+            .map_err(|e| ProposalError::BaseUnavailable(e.to_string()))
+    }
+
     /// The rung `principal` holds in the wiki now and the block of the rules it holds it under.
     pub(crate) fn standing(&self, principal: &Principal, wiki: &WikiRecord) -> Result<Standing> {
         self.authorizer

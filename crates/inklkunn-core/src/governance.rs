@@ -110,7 +110,9 @@ pub use fault::{Fault, GovernanceFile, Limit, OrderingPair, ReadFault, Refusal};
 pub use limits::{LIMIT_DAYS_MAX, LIMIT_DAYS_MIN, Lowered, PlatformLimits};
 pub use model::{Acceptance, AppealRung, Entry, GrantUpTo, Rungs, SelfAcceptance};
 pub use policy::Policy;
-pub use protect::{Protection, Require, Target, is_canonical_title, namespace_covers};
+pub use protect::{
+    Protection, Require, Target, is_canonical_title, is_valid_reason, namespace_covers,
+};
 pub use rules::{DEFAULTS_WORD, Rules, SHORT_BLOCK_CHARS, short_block};
 pub use validate::{
     ViewPlace, is_below_governance, is_governance_path, mixes_rules_with_other_paths,

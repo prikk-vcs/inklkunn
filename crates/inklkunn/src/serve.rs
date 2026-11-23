@@ -160,10 +160,14 @@ fn prepare_probing(
         .with_platform_limits(web.governance),
     );
     // `authorize()` reads the rules of a wiki through the read service, and only through it: a handler cannot pass one.
-    let authorizer = Arc::new(Authorizer::new(
-        Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(read.clone())),
-        store.clone() as Arc<dyn AuditSink>,
-    ));
+    let authorizer = Arc::new(
+        Authorizer::new(
+            Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(read.clone())),
+            store.clone() as Arc<dyn AuditSink>,
+        )
+        // The temporary protections of the `moderate` rung are kept in the same store, and last no longer than the operator's limit.
+        .with_protections(store.clone(), web.governance),
+    );
     let inbox = Arc::new(Inbox::new(
         store.clone(),
         store.clone(),

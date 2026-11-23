@@ -56,6 +56,7 @@ pub mod lease;
 pub mod merge;
 pub mod notify;
 pub mod proposal;
+pub mod protection;
 pub mod read;
 pub mod reconcile;
 pub mod recovery;
@@ -78,8 +79,8 @@ pub use acceptance::{
 pub use assurance::Assurance;
 pub use authorize::{
     AccountPrincipal, Action, Authorizer, AuthzSource, Decision, IdentityAuthority, Principal,
-    Resource, RulesSource, Snapshot, SourceError, Standing, StoreAuthz, SystemPrincipal, decide,
-    decide_under, rung_of,
+    ProtectError, Resource, RulesSource, Setting, Snapshot, SourceError, Standing, StoreAuthz,
+    SystemPrincipal, decide, decide_under, rung_of,
 };
 pub use check::{
     CONCURRENT_CHECKS, CheckOutcome, Checked, Declined, MIN_RECHECK_SECS, NotChecked,

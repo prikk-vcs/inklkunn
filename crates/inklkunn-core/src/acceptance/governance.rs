@@ -61,6 +61,7 @@ use crate::governance::{
     refuse_unknown_files, validate_constitution_bytes, validate_policy_bytes,
 };
 use crate::proposal::{Invalid, ProposalError};
+use crate::protection::{Demand, Lack};
 
 /// How an acceptance was authorized: what the acceptance record says about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +142,26 @@ impl ProposalAcceptor {
                 .approvals()
                 .max(required.map_or(0, |r| r.approvals))
         };
+        // The protections of the pages the change touches (RFC 006 D-7), standing and temporary, read now with the rules of the
+        // state it is signed on and the clock of this act, never cached: the stricter of them decides. A change to the rules
+        // touches no page, so the hatch meets none.
+        let notices = proposals.protections_for_change(wiki, touched, rules, (self.clock)())?;
+        let demand = Demand::of(&notices);
+        if !demand.rung_met(Some(rung)) {
+            let asked = demand.rung.unwrap_or(rung);
+            return Err(AcceptFailure::Protected {
+                notices,
+                lack: Lack::Rung(asked),
+            });
+        }
+        // One approval is the least a review asks, **whatever `acceptance.approvals` says**: the greater of the two applies,
+        // so the policy's own count (below) stands when it asks for one or more.
+        if demand.review && needed == 0 && self.approvals(principal, wiki, proposal, rules)? == 0 {
+            return Err(AcceptFailure::Protected {
+                notices,
+                lack: Lack::Review,
+            });
+        }
         if needed > 0 {
             let have = self.approvals(principal, wiki, proposal, rules)?;
             if have < usize::from(needed) {

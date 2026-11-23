@@ -33,7 +33,9 @@ use inklkunn_markup::{path_to_title, title_to_path};
 use inklkunn_store::Role;
 use unicode_normalization::UnicodeNormalization;
 
+use super::MAX_REASON_CHARS;
 use super::MAX_TARGET_CHARS;
+use super::chars::is_forbidden;
 
 /// What a protection covers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -152,4 +154,13 @@ impl Target {
     pub fn covers_path(&self, path: &str) -> bool {
         path_to_title(path).is_some_and(|title| self.covers_title(&title))
     }
+}
+
+/// Is `reason` a reason a protection may be shown with: not empty once trimmed, at most [`MAX_REASON_CHARS`]
+/// characters, one line, and no control, bidirectional or line-separator character? The policy's `reason` is read by the
+/// same rule; a temporary protection's is checked by this function, so that one text means one thing in both.
+pub fn is_valid_reason(reason: &str) -> bool {
+    !reason.trim().is_empty()
+        && reason.chars().count() <= MAX_REASON_CHARS
+        && !reason.chars().any(is_forbidden)
 }

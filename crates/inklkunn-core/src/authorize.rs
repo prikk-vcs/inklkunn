@@ -36,6 +36,13 @@
 //!   writes of a person and are decided as before. Whoever may read the wiki can be told why ([`Authorizer::write_refusal`]);
 //!   everyone else gets the existence-neutral answer they always got.
 //!
+//! - **A protection of a page is an outcome of `authorize()`** (RFC 006 D-7; threat model C-3g), standing (the policy's `protect`
+//!   list) or temporary (a record of the `moderate` rung, kept by [`Authorizer::with_protections`]): `authorize(_, accept, page)`
+//!   denies an account whose rung is below the one a protection asks of whoever accepts a change to the page, and **the stricter of
+//!   all that apply decides**. `authorize(_, propose, page)` is decided as it is without protections (a protection asks something of
+//!   the acceptance, never of who may propose), and what an acceptance lacks of the rest (the approval a review asks) is the
+//!   acceptance's, from the same notices. See [`protection`](crate::protection). **No template and no handler evaluates one.**
+//!
 //! A wiki that is not there, and a `restricted` wiki the caller holds no role in, produce **the same
 //! answer** (and, for a consequential action, the same audit event), so a decision cannot be used to find
 //! out which wikis exist (RFC 002 D-2; planeter RFC 002).
@@ -49,6 +56,10 @@
 //! "privileged principals"): the gate catches the shortcut in review, the types refuse it in the compiler.
 
 use std::sync::Arc;
+
+mod protections;
+
+pub use protections::{ProtectError, Setting};
 
 use crate::governance::{GovernanceFile, ReadFault, Rules};
 use inklkunn_signer::message::SystemLabel;
@@ -580,6 +591,8 @@ pub struct Authorizer {
     clock: fn() -> i64,
     /// The rules of a wiki that has none (and what a decision uses when the rules cannot matter to it).
     defaults: Arc<Rules>,
+    /// Where temporary protections are kept (RFC 006 D-7); none until [`Authorizer::with_protections`].
+    protections: Option<protections::Book>,
 }
 
 impl std::fmt::Debug for Authorizer {
@@ -604,6 +617,7 @@ impl Authorizer {
             audit,
             clock: inklkunn_store::record::now_secs,
             defaults: Arc::new(Rules::defaults()),
+            protections: None,
         }
     }
 
@@ -779,6 +793,8 @@ impl Authorizer {
                     action,
                     is_governance_file(resource),
                 );
+                // A protection of the page asks a rung of whoever accepts a change to it (RFC 006 D-7; C-3g).
+                let decision = self.protected(decision, &facts, principal, action, resource);
                 let outcome = if decision.is_allowed() {
                     AuditOutcome::Allowed
                 } else {

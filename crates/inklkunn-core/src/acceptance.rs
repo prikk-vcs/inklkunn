@@ -133,6 +133,8 @@ pub mod words {
     pub const GOVERNANCE_RUNG: &str = "governance-rung";
     /// The rules of this wiki ask for more approvals than the revision has (RFC 006 D-2, D-4).
     pub const APPROVALS_MISSING: &str = "approvals-missing";
+    /// A protection of a page the change touches asks what the acceptance lacks (RFC 006 D-7): a higher rung, or a review.
+    pub const PROTECTED: &str = "protected";
     /// A governance file of this wiki cannot be read, so every write refuses until it is repaired (RFC 006 D-1).
     pub const RULES_UNREADABLE: &str = "rules-unreadable";
     /// A change that touches `governance/` and something else is refused: a change to the rules is its own proposal
@@ -336,6 +338,16 @@ pub enum AcceptFailure {
         /// What the latest revision has.
         have: usize,
     },
+    /// **A protection** of a page the change touches asks what this acceptance lacks (RFC 006 D-7; threat model C-3g): a higher
+    /// rung of the acceptor, or one approval of the latest revision from someone other than the proposer. Every protection that
+    /// applies is carried, each once, with its kind, its reason and its end, so that the refusal can say what stopped the change
+    /// and why. Nothing was done.
+    Protected {
+        /// Every protection in force on the pages the change touches.
+        notices: Vec<crate::protection::Notice>,
+        /// What the acceptance lacks of what they ask.
+        lack: crate::protection::Lack,
+    },
     /// A governance file of this wiki cannot be read, so **every write refuses** until it is repaired (RFC 006 D-1, threat
     /// model C-3d), and this change is not the repair: the refusal names the file and the line. Only whoever may read the wiki
     /// is told. Nothing was done.
@@ -387,6 +399,7 @@ impl AcceptFailure {
             AcceptFailure::GovernanceInvalid(_) => words::GOVERNANCE_INVALID,
             AcceptFailure::GovernanceRung(_) => words::GOVERNANCE_RUNG,
             AcceptFailure::ApprovalsMissing { .. } => words::APPROVALS_MISSING,
+            AcceptFailure::Protected { .. } => words::PROTECTED,
             AcceptFailure::RulesUnreadable(_) => words::RULES_UNREADABLE,
             AcceptFailure::Failed { word, .. } => word,
             AcceptFailure::Proposal(ProposalError::Invalid(Invalid::GovernanceMixed)) => {
@@ -456,6 +469,15 @@ impl std::fmt::Display for AcceptFailure {
             AcceptFailure::ApprovalsMissing { needed, have } => write!(
                 f,
                 "refused: the rules of this wiki ask for {needed} approval(s) of the latest revision, and it has {have}"
+            ),
+            AcceptFailure::Protected { notices, lack } => write!(
+                f,
+                "refused: {} protection(s) of the pages this change touches ask for {}",
+                notices.len(),
+                match lack {
+                    crate::protection::Lack::Rung(rung) => format!("the {} rung", rung.as_str()),
+                    crate::protection::Lack::Review => "a review".to_owned(),
+                }
             ),
             AcceptFailure::RulesUnreadable(fault) => {
                 write!(f, "refused: the rules of this wiki cannot be read: {fault}")
