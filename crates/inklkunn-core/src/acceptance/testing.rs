@@ -470,6 +470,40 @@ impl Rig {
             .with_notifier(self.notifier.clone())
     }
 
+    /// An acceptor whose authorizer reads restrictions and protections by `clock` (the rig's own reads the wall clock): for a
+    /// test that has a restriction begin and end.
+    pub(crate) fn acceptor_at(&self, clock: fn() -> i64) -> ProposalAcceptor {
+        let store = self.store.clone();
+        let authorizer = Authorizer::new(
+            Arc::new(
+                StoreAuthz::new(store.clone(), store.clone())
+                    .with_rules(self.reads.clone())
+                    .with_restrictions(store.clone()),
+            ),
+            self.audit.clone(),
+        )
+        .with_clock(clock)
+        .with_protections(store.clone(), crate::governance::PlatformLimits::default());
+        let proposals = Arc::new(
+            ProposalService::new(
+                store.clone(),
+                store.clone(),
+                store.clone(),
+                authorizer,
+                Arc::new(FakeBase(self.fake.clone())),
+                QuotaConfig::default(),
+            )
+            .with_roles(store)
+            .with_clock(clock),
+        );
+        let mut parts = self.parts(self.double.clone());
+        parts.proposals = proposals;
+        ProposalAcceptor::new(parts)
+            .with_reconciliation(false)
+            .with_notifier(self.notifier.clone())
+            .with_clock(clock)
+    }
+
     pub(crate) fn parts(&self, signer: Arc<dyn Accept>) -> AcceptanceParts {
         AcceptanceParts {
             proposals: self.proposals.clone(),
