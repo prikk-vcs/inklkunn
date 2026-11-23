@@ -179,3 +179,17 @@ details and tests are in the result. In short:
 
 Hand back as `006-governance-g-t1-corrections-review-request.md`. **G-T2 – G-T3 start when it is approved.**
 
+## G-T1's corrections reviewed; D-1; G-T2 – G-T3 assignable (2026-11-23)
+
+C-1 – C-7 are **Conditionally Approved** (`.git-exclude/reviewed/006-governance-g-t1-corrections-review-result.md`) and
+pushed. **G-T2 – G-T3 are assignable now.**
+
+**D-1 (binding, beside them).** Under `governance/`, a change writes only the two files but may delete any path. So an
+admin's repair can clear something that stands at or below a governance path (C-5's `not-a-file`) and write the file.
+- Tests: a real-prikk repair from a directory at `governance/policy.yaml`.
+- Mutations: an unknown write still refused; a deletion beside a page still `governance-mixed`.
+- The CHANGELOG says the repair.
+
+Hand back as `006-governance-g-t1-d1-review-request.md`, alone or with G-T2 – G-T3's request
+(`006-governance-g-t2-g-t3-review-request.md`).
+

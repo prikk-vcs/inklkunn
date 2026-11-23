@@ -680,6 +680,17 @@
   - **Supply chain:** RUSTSEC-2026-0592 (`url` 2.5.8, through `ammonia`; not exploitable here) is fixed by `url` 2.5.9
     (`7c587f3`).
 
+- **2026-11-23 — G-T1's corrections C-1 – C-7 Conditionally Approved** (`bc85b63`, pushed).
+  - A change to the rules is its own proposal, and the hatch covers only that.
+  - Under the lease the rules are read fresh.
+  - The broken-rules state refuses every write but the repair.
+  - Disabled accounts' approvals do not count.
+  - A non-file at a governance path fails closed.
+  - The policy block no longer drifts.
+  - OpenAPI names the new refusals, with a test tying them to the server.
+  - **D-1** (beside G-T2 – G-T3): a repair can delete what stands where a governance file belongs. Otherwise a wiki in
+    that state could never be repaired, since only the signer holds the key.
+
 ## Pending on the owner
 
 - **Nothing now.** Next: the 0.4.0 cut, when the architect proposes it (target 2026-12-10).
@@ -701,7 +712,7 @@ M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and h
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **0.3.0 released 2026-11-19.** **The dev team's order now:**
-**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 conditionally approved (2026-11-23). Now: G-T1's corrections C-1 – C-7; then G-T2 – G-T7. The test by a person using
+**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). Now: G-T2 – G-T3 (grants, restrictions, protections) beside G-T1's D-1; then G-T2 – G-T7. The test by a person using
 assistive technology is planned before 1.0 or the first public deployment (owner, 2026-11-18).
 
 ## Issue register
