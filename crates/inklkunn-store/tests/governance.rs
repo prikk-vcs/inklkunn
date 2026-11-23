@@ -522,6 +522,67 @@ where
     assert_eq!(active(T0 + 210), [other, short]);
 }
 
+fn the_restrictions_in_force_in_a_wiki_are_read_in_one_query_and_end_by_the_clock<S>(r: &Rig<S>)
+where
+    S: GovernanceStore,
+{
+    let (s, w) = (&r.store, &r.wiki);
+    let by = (&r.maintainer, Role::Maintainer);
+    // Two people restricted, one of them twice over (the first is renewed, so only the renewal is in force), and a
+    // restriction that has ended.
+    let first = restriction(
+        w,
+        MeasureEvent::Set,
+        &r.person,
+        by,
+        T0,
+        Some(T0 + 100),
+        None,
+    );
+    let renewed = restriction(
+        w,
+        MeasureEvent::Renewed,
+        &r.person,
+        by,
+        T0 + 10,
+        Some(T0 + 500),
+        Some(&first),
+    );
+    let other = restriction(
+        w,
+        MeasureEvent::Set,
+        &r.admin,
+        (&r.maintainer, Role::Maintainer),
+        T0,
+        Some(T0 + 300),
+        None,
+    );
+    for e in [&first, &renewed, &other] {
+        s.record_restriction_event(e).unwrap();
+    }
+    let in_force = |at: i64, limit: usize| s.active_restrictions_in(w, at, limit).unwrap();
+    assert_eq!(in_force(T0 + 20, 10), [renewed.clone(), other.clone()]);
+    assert_eq!(
+        in_force(T0 + 299, 10),
+        [renewed.clone(), other.clone()],
+        "the second before the end of one"
+    );
+    assert_eq!(
+        in_force(T0 + 300, 10),
+        std::slice::from_ref(&renewed),
+        "at the end of one it is not in force, and nothing was written for that"
+    );
+    assert!(in_force(T0 + 500, 10).is_empty());
+    assert!(in_force(T0 - 1, 10).is_empty(), "before they begin");
+    assert_eq!(in_force(T0 + 20, 1), [renewed], "bounded by the limit");
+    assert!(
+        s.active_restrictions_in(&WikiId::new(), T0 + 20, 10)
+            .unwrap()
+            .is_empty(),
+        "another wiki has none"
+    );
+}
+
 fn a_restriction_chain_keeps_to_its_account_and_its_time<S>(r: &Rig<S>)
 where
     S: GovernanceStore,
@@ -2010,6 +2071,7 @@ both_stores!(
     grants_are_recorded_and_applied_in_one_step,
     a_malformed_or_unknown_grant_decision_is_refused,
     a_restriction_ends_by_the_clock_and_its_chain_is_a_line,
+    the_restrictions_in_force_in_a_wiki_are_read_in_one_query_and_end_by_the_clock,
     a_restriction_chain_keeps_to_its_account_and_its_time,
     a_temporary_protection_ends_by_the_clock_and_is_found_by_exactly_its_target,
     a_protection_event_is_well_formed_or_refused,

@@ -399,6 +399,38 @@ impl GovernanceStore for MemoryStore {
         .collect())
     }
 
+    fn active_restrictions_in(
+        &self,
+        wiki: &WikiId,
+        at: i64,
+        limit: usize,
+    ) -> Result<Vec<RestrictionEvent>> {
+        let g = self.governance_lock();
+        let of_wiki: Vec<RestrictionEvent> = g
+            .restrictions
+            .iter()
+            .filter(|r| r.wiki == *wiki)
+            .cloned()
+            .collect();
+        Ok(in_force(
+            &of_wiki,
+            at,
+            |e| e.id.as_str(),
+            |e| {
+                (
+                    e.event,
+                    e.at,
+                    e.expires_at,
+                    e.of_event.as_ref().map(RestrictionEventId::as_str),
+                )
+            },
+        )
+        .into_iter()
+        .take(clamp(limit))
+        .cloned()
+        .collect())
+    }
+
     fn record_protection_event(&self, event: &ProtectionEvent) -> Result<()> {
         event.validate()?;
         self.protection_refs(event)?;

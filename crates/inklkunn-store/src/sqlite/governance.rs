@@ -619,6 +619,23 @@ impl GovernanceStore for SqliteStore {
         )
     }
 
+    fn active_restrictions_in(
+        &self,
+        wiki: &WikiId,
+        at: i64,
+        limit: usize,
+    ) -> Result<Vec<RestrictionEvent>> {
+        self.governance_rows(
+            "SELECT r.id, r.wiki_id, r.at, r.event, r.account, r.actor, r.actor_rung, r.policy_block, r.reason, \
+             r.expires_at, r.of_event, r.appeal_id FROM restrictions r WHERE r.wiki_id = ?1 \
+             AND r.event IN ('set', 'renewed') AND r.at <= ?2 AND r.expires_at > ?2 \
+             AND NOT EXISTS (SELECT 1 FROM restrictions n WHERE n.of_event = r.id) \
+             ORDER BY r.expires_at DESC, r.seq DESC LIMIT ?3",
+            params![wiki.as_str(), at, limit_of(limit)],
+            restriction_of,
+        )
+    }
+
     fn record_protection_event(&self, event: &ProtectionEvent) -> Result<()> {
         self.governance_write(|tx| insert_protection(tx, event))
     }

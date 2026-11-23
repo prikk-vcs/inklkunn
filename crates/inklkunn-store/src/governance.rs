@@ -916,6 +916,16 @@ pub trait GovernanceStore: Send + Sync {
         at: i64,
     ) -> Result<Vec<RestrictionEvent>>;
 
+    /// The restrictions of **every account of the wiki** in force at `at`, as [`GovernanceStore::active_restrictions`] reads
+    /// them, the one that ends last first, at most `limit` (never more than [`MAX_PAGE`], at least one): what the moderators'
+    /// listing of who is restricted reads.
+    fn active_restrictions_in(
+        &self,
+        wiki: &WikiId,
+        at: i64,
+        limit: usize,
+    ) -> Result<Vec<RestrictionEvent>>;
+
     /// Record one event of a temporary protection, with the rules of [`GovernanceStore::record_restriction_event`] (an
     /// event after the first follows one of the same page or namespace).
     fn record_protection_event(&self, event: &ProtectionEvent) -> Result<()>;
