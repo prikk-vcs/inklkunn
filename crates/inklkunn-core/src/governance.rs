@@ -111,7 +111,8 @@ pub use limits::{LIMIT_DAYS_MAX, LIMIT_DAYS_MIN, Lowered, PlatformLimits};
 pub use model::{Acceptance, AppealRung, Entry, GrantUpTo, Rungs, SelfAcceptance};
 pub use policy::Policy;
 pub use protect::{
-    Protection, Require, Target, is_canonical_title, is_valid_reason, namespace_covers,
+    Protection, Require, Target, holds_only_allowed_characters, is_canonical_title,
+    is_valid_reason, namespace_covers,
 };
 pub use rules::{DEFAULTS_WORD, Rules, SHORT_BLOCK_CHARS, short_block};
 pub use validate::{

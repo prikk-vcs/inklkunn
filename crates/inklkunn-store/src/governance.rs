@@ -38,7 +38,7 @@ use crate::{Result, StoreError};
 pub const MAX_REASON_BYTES: usize = 4096;
 /// The longest appeal, in bytes: a comment's bound.
 pub const MAX_APPEAL_BYTES: usize = 16 * 1024;
-/// The longest protected path or namespace, or item reference (a page's path), in bytes: a path's bound.
+/// The longest protected title or namespace, or item reference (a page's path), in bytes: a path's bound.
 pub const MAX_TARGET_BYTES: usize = 1024;
 /// The longest one of the two governance files kept in a snapshot, in bytes (a page's bound). A longer file is a fault,
 /// not a text kept.
@@ -259,7 +259,7 @@ impl RestrictionEvent {
 /// What a protection protects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ProtectionKind {
-    /// One page, by its path.
+    /// One page, by its **title** (what the page's path spells, `Help/Start`; not the repository path).
     Page,
     /// Every page under a namespace. **Which paths a namespace covers is `inklkunn-core`'s question**; the store holds the
     /// text and matches it exactly.
@@ -307,8 +307,8 @@ pub struct ProtectionEvent {
     pub event: MeasureEvent,
     /// A page or a namespace.
     pub kind: ProtectionKind,
-    /// The page's path, or the namespace, as written (1 - [`MAX_TARGET_BYTES`] bytes). Every event of a chain names the
-    /// same one.
+    /// The page's **title** (what its path spells: `Help/Start`, not `pages/Help/Start.md`), or the namespace, as written
+    /// (1 - [`MAX_TARGET_BYTES`] bytes). Every event of a chain names the same one.
     pub target: String,
     /// What it requires: required when it is put in place, and nothing that ends it has one.
     pub requirement: Option<ProtectionRequirement>,

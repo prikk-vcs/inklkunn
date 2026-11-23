@@ -336,7 +336,19 @@ fn a_reason_is_one_trimmed_bounded_line_counted_in_characters() {
         Err(ReasonFault::TooLong),
         "one more is too many"
     );
-    for bad in ["a\nb", "a\rb", "a\u{2028}b", "a\u{0}b", "a\tb"] {
+    // One rule for every reason (F-5): the characters a protection's reason refuses are refused here too (a bidirectional
+    // control or format character, the byte-order mark).
+    for bad in [
+        "a\nb",
+        "a\rb",
+        "a\u{2028}b",
+        "a\u{0}b",
+        "a\tb",
+        "a\u{202e}b",
+        "a\u{2066}b",
+        "a\u{200f}b",
+        "a\u{feff}b",
+    ] {
         assert_eq!(clean_reason(bad), Err(ReasonFault::NotOneLine), "{bad:?}");
     }
 }

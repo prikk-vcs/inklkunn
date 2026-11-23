@@ -855,6 +855,20 @@ impl Authorizer {
         action: Action,
         resource: &Resource,
     ) -> Decision {
+        self.authorize_noting(principal, action, resource, None)
+    }
+
+    /// [`Authorizer::authorize`] with **what the person typed** to name whom the act is about, kept in the decision's audit
+    /// detail after the rung and the block (`; typed=<text>`): a person who asks of the moderating acts whether an account
+    /// exists leaves the question in the trail whether or not the account is there (RFC 006 decision 7). The text is the
+    /// caller's, already bounded and made safe; the trail keeps one line of it, as it keeps every field.
+    pub fn authorize_noting(
+        &self,
+        principal: &Principal,
+        action: Action,
+        resource: &Resource,
+        typed: Option<&str>,
+    ) -> Decision {
         let (decision, outcome, detail) = match self.facts(principal, action, resource.wiki()) {
             Ok(facts) => {
                 let decision = decide_under(
@@ -869,7 +883,12 @@ impl Authorizer {
                 } else {
                     AuditOutcome::Denied
                 };
-                (decision, outcome, authority_detail(principal, &facts))
+                let mut detail = authority_detail(principal, &facts);
+                if let Some(typed) = typed {
+                    detail.push_str("; typed=");
+                    detail.push_str(typed);
+                }
+                (decision, outcome, detail)
             }
             Err(_) => (
                 Decision::Deny,

@@ -2,6 +2,8 @@
 
 use inklkunn_store::record::is_line_or_control;
 
+use crate::governance::holds_only_allowed_characters;
+
 /// The most characters of a reason: a sentence or two. (The store's own bound is in bytes and is larger, so that a
 /// reason of this many characters in any script fits it.)
 pub const MAX_REASON_CHARS: usize = 500;
@@ -13,7 +15,7 @@ pub enum ReasonFault {
     Missing,
     /// The reason is longer than [`MAX_REASON_CHARS`].
     TooLong,
-    /// The reason is more than one line, or holds a control character.
+    /// The reason is more than one line, or holds a control, bidirectional or line-separator character.
     NotOneLine,
 }
 
@@ -25,7 +27,7 @@ pub fn clean_reason(reason: &str) -> Result<Option<String>, ReasonFault> {
     if reason.is_empty() {
         return Ok(None);
     }
-    if reason.chars().any(is_line_or_control) {
+    if reason.chars().any(is_line_or_control) || !holds_only_allowed_characters(reason) {
         return Err(ReasonFault::NotOneLine);
     }
     if reason.chars().count() > MAX_REASON_CHARS {

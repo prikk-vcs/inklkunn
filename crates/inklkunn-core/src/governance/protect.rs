@@ -162,5 +162,13 @@ impl Target {
 pub fn is_valid_reason(reason: &str) -> bool {
     !reason.trim().is_empty()
         && reason.chars().count() <= MAX_REASON_CHARS
-        && !reason.chars().any(is_forbidden)
+        && holds_only_allowed_characters(reason)
+}
+
+/// Does `text` hold no control, bidirectional, line-separator or byte-order-mark character? **The one rule of the characters of
+/// every reason a person writes** (a protection's, a restriction's, a grant's: each is shown to other people, and a
+/// bidirectional character can make one read as another): [`is_valid_reason`] has it, and a reason with a length of its own
+/// (a restriction's and a grant's reason may be longer than a protection's) asks it by itself.
+pub fn holds_only_allowed_characters(text: &str) -> bool {
+    !text.chars().any(is_forbidden)
 }

@@ -12,3 +12,4 @@ mod races;
 mod restrictions;
 mod rules;
 mod support;
+mod typed;

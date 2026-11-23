@@ -365,6 +365,9 @@ fn a_restriction_has_a_reason_that_is_one_bounded_line() {
             ("   ", ReasonFault::Missing),
             (long.as_str(), ReasonFault::TooLong),
             ("two\nlines", ReasonFault::NotOneLine),
+            // One rule for every reason (F-5): a protection's reason refuses these, and so does a restriction's.
+            ("looks\u{202e}reversed", ReasonFault::NotOneLine),
+            ("hidden\u{2066}isolate", ReasonFault::NotOneLine),
         ] {
             assert_eq!(
                 w.people
@@ -792,9 +795,9 @@ fn each_restriction_act_is_audited_with_the_rung_and_the_block_and_the_record_na
         assert_eq!(
             details,
             [
-                format!("rung=maintainer; policy={short}"),
-                format!("rung=admin; policy={short}"),
-                format!("rung=admin; policy={short}"),
+                format!("rung=maintainer; policy={short}; typed={}", person.id),
+                format!("rung=admin; policy={short}; typed={}", person.id),
+                format!("rung=admin; policy={short}; typed={}", person.id),
             ]
         );
         assert!(moderate.iter().all(|e| e.outcome == AuditOutcome::Allowed));

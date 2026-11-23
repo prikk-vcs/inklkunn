@@ -382,6 +382,17 @@ fn a_reason_that_is_too_long_or_not_one_line_refuses_the_grant_and_changes_nothi
             ),
             Err(PeopleError::Reason(ReasonFault::NotOneLine))
         );
+        // One rule for every reason (F-5): a bidirectional control character is refused here as in a protection's reason.
+        assert_eq!(
+            w.people.grant(
+                &admin.principal,
+                &w.wiki,
+                &who,
+                Some(Role::Observer),
+                "looks\u{202e}reversed"
+            ),
+            Err(PeopleError::Reason(ReasonFault::NotOneLine))
+        );
         assert_eq!(w.grant_of(&someone), None);
         assert!(
             w.store
@@ -424,7 +435,11 @@ fn each_grant_is_an_audited_act_naming_the_rung_the_block_and_what_changed_and_i
                 .clone()
         };
         let decision = find("admin", &admin);
-        assert_eq!(decision.detail, format!("rung=admin; policy={short}"));
+        // The decision also keeps what the person typed to name the account (F-5).
+        assert_eq!(
+            decision.detail,
+            format!("rung=admin; policy={short}; typed={}", a.id)
+        );
         assert_eq!(decision.outcome, inklkunn_store::AuditOutcome::Allowed);
         let act = find("grant", &admin);
         assert_eq!(act.resource, format!("member:{}:{}", w.wiki.id, a.id));
@@ -433,7 +448,10 @@ fn each_grant_is_an_audited_act_naming_the_rung_the_block_and_what_changed_and_i
             format!("rung=admin; policy={short}; from=none; to=reviewer")
         );
         let decision = find("moderate", &maintainer);
-        assert_eq!(decision.detail, format!("rung=maintainer; policy={short}"));
+        assert_eq!(
+            decision.detail,
+            format!("rung=maintainer; policy={short}; typed={}", b.id)
+        );
         let act = find("revoke", &maintainer);
         assert_eq!(
             act.detail,

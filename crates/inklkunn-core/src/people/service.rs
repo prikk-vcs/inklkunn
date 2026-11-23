@@ -23,7 +23,7 @@ use super::text::{ReasonFault, clean_reason};
 use crate::authorize::{
     Action, Authorizer, Holding, Principal, Resource, RestrictionNotice, entry_rung,
 };
-use crate::governance::{PlatformLimits, ReadFault, Rules};
+use crate::governance::{PlatformLimits, ReadFault, Rules, holds_only_allowed_characters};
 
 /// Why an act was refused. Every variant is one plain fact.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,6 +79,26 @@ impl std::error::Error for PeopleError {}
 fn unavailable(e: impl std::fmt::Display) -> PeopleError {
     PeopleError::Unavailable(e.to_string())
 }
+
+/// What a person typed to name an account, as the decision's trail keeps it: at most [`TYPED_IN_TRAIL_CHARS`] characters, with a
+/// control or bidirectional character shown as `?`. (It is what they typed, whether or not it names an account.)
+fn typed_for_trail(typed: &str) -> String {
+    typed
+        .trim()
+        .chars()
+        .take(TYPED_IN_TRAIL_CHARS)
+        .map(|c| {
+            if holds_only_allowed_characters(&c.to_string()) {
+                c
+            } else {
+                '?'
+            }
+        })
+        .collect()
+}
+
+/// The most characters of a typed name the trail keeps (the trail's own field is 200, and holds the rung and the block first).
+const TYPED_IN_TRAIL_CHARS: usize = 100;
 
 /// The one word the trail's *failed* event gives for why a record was not made.
 fn failure_word(e: &PeopleError) -> &'static str {
@@ -229,20 +249,21 @@ impl PeopleService {
         })
     }
 
-    /// Authorize `action` on the wiki, **recording the decision** (rung and block), or say why not: the restriction when it
-    /// is the reason, else *not allowed*.
+    /// Authorize `action` on the wiki, **recording the decision** (rung and block, and the sign-in name or id the person
+    /// typed to name whom the act is about), or say why not: the restriction when it is the reason, else *not allowed*.
     fn authorize(
         &self,
         principal: &Principal,
         wiki: &WikiRecord,
         action: Action,
+        typed: &str,
     ) -> Result<(), PeopleError> {
         let resource = Resource::Wiki {
             wiki: wiki.id.clone(),
         };
         if self
             .authorizer
-            .authorize(principal, action, &resource)
+            .authorize_noting(principal, action, &resource, Some(&typed_for_trail(typed)))
             .is_allowed()
         {
             return Ok(());
@@ -359,7 +380,7 @@ impl PeopleService {
         } else {
             Action::Moderate
         };
-        self.authorize(principal, wiki, action)?;
+        self.authorize(principal, wiki, action, who)?;
         let reason = clean_reason(reason).map_err(PeopleError::Reason)?;
         let target = self.find(who)?;
         let current = self.roles.role(&target.id, &wiki.id).map_err(unavailable)?;
@@ -697,7 +718,7 @@ impl PeopleService {
         who: &str,
     ) -> Result<(Acting, Role, AccountId, Option<RestrictionEvent>), PeopleError> {
         let acting = self.begin(principal, wiki)?;
-        self.authorize(principal, wiki, Action::Moderate)?;
+        self.authorize(principal, wiki, Action::Moderate, who)?;
         // Allowed to moderate means a rung; the authorizer would have refused otherwise.
         let Some(rung) = acting.rung() else {
             return Err(PeopleError::NotAllowed);
