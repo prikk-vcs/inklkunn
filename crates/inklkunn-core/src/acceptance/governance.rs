@@ -38,6 +38,7 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use inklkunn_signer::PreparedFile;
 use inklkunn_store::{AccountId, DecisionKind, ProposalRecord, Role, WikiRecord};
@@ -45,7 +46,7 @@ use inklkunn_store::{AccountId, DecisionKind, ProposalRecord, Role, WikiRecord};
 use super::{AcceptFailure, ProposalAcceptor};
 use crate::authorize::Principal;
 use crate::governance::{
-    Fault, GovernanceChange, GovernanceFile, Requirement, ViewPlace, is_governance_path,
+    Fault, GovernanceChange, GovernanceFile, Requirement, Rules, ViewPlace, is_governance_path,
     mixes_rules_with_other_paths, refuse_outside_default_view, refuse_unknown_files,
     validate_constitution_bytes, validate_policy_bytes,
 };
@@ -76,6 +77,11 @@ impl ProposalAcceptor {
     /// In this order: a wiki whose governance cannot be read refuses everything but the repair; a change to `governance/`
     /// needs the constitution's rung (the hatch excepted); the approvals the policy and the constitution ask for are
     /// counted; and the proposer's own acceptance is judged by `acceptance.self`. Nothing is written.
+    ///
+    /// **`rules` are the rules the caller judges by**: before the lease, the rules as the service holds them (an advisory
+    /// answer); under the lease, **the rules of the default view's state the caller has just read** ([`ProposalAcceptor::rules_now`]),
+    /// never the held ones, so that the change is judged by the rules of the state it is signed on (C-2). The rung, the
+    /// approvals' rung and the block the record names are all theirs.
     pub(super) fn judge(
         &self,
         principal: &Principal,
@@ -83,10 +89,10 @@ impl ProposalAcceptor {
         proposal: &ProposalRecord,
         acceptor: &AccountId,
         touched: &[String],
+        rules: &Arc<Rules>,
     ) -> Result<Judged, AcceptFailure> {
         let proposals = &self.parts.proposals;
-        let rules = proposals.rules(wiki)?;
-        let standing = proposals.standing(principal, wiki)?;
+        let standing = proposals.standing_under(principal, wiki, rules)?;
         let rung = standing.rung.ok_or(AcceptFailure::NotAllowed)?;
         let kinds = kinds_of(touched);
         // The hatch is an admin's: the rung, and a credential that carries it (a token of a narrower scope does not).
@@ -126,7 +132,7 @@ impl ProposalAcceptor {
                 .max(required.map_or(0, |r| r.approvals))
         };
         if needed > 0 {
-            let have = self.approvals(principal, wiki, proposal)?;
+            let have = self.approvals(principal, wiki, proposal, rules)?;
             if have < usize::from(needed) {
                 return Err(AcceptFailure::ApprovalsMissing { needed, have });
             }
@@ -158,6 +164,7 @@ impl ProposalAcceptor {
         principal: &Principal,
         wiki: &WikiRecord,
         proposal: &ProposalRecord,
+        rules: &Arc<Rules>,
     ) -> Result<usize, AcceptFailure> {
         let proposals = &self.parts.proposals;
         let latest = proposals
@@ -177,7 +184,7 @@ impl ProposalAcceptor {
             .collect();
         Ok(reviewers
             .iter()
-            .filter(|reviewer| proposals.holds_review(reviewer, wiki, &proposal.id))
+            .filter(|reviewer| proposals.holds_review(reviewer, wiki, &proposal.id, rules))
             .count())
     }
 

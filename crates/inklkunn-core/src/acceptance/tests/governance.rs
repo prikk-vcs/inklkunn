@@ -304,6 +304,107 @@ fn a_decision_records_the_rung_and_the_block_it_was_made_under() {
     assert!(decision.policy_block.is_some(), "{block}");
 }
 
+#[test]
+fn under_the_lease_the_rules_are_those_of_the_state_just_read_and_never_the_tip_the_service_holds()
+{
+    let rig = ruled(&[]);
+    let (_, maintainer) = rig.person("Maya", Some(Role::Maintainer));
+    let (_, author) = rig.person("Noor", Some(Role::Contributor));
+    let (_, reviewer) = rig.person("Rin", Some(Role::Reviewer));
+    let text = change_text();
+    let p = rig.propose(&author, "Say it", &[("pages/Home.md", Some(&text))]);
+    // The service holds the default view's tip, and with it the rules of a wiki that has none ...
+    assert_eq!(
+        rig.reads
+            .rules_of(&rig.wiki)
+            .unwrap()
+            .policy()
+            .acceptance()
+            .approvals(),
+        0
+    );
+    // ... while the repository has moved on without this process knowing (another process sealed, or an older state was put
+    // back in the cache): the policy now asks for one approval. The service's cache is not told.
+    rig.fake.set_files(&[(
+        "governance/policy.yaml".to_owned(),
+        "acceptance:\n  approvals: 1\n".to_owned(),
+    )]);
+    assert_eq!(
+        rig.reads
+            .rules_of(&rig.wiki)
+            .unwrap()
+            .policy()
+            .acceptance()
+            .approvals(),
+        0,
+        "the held tip is still the old one"
+    );
+    // The early judgement is the held rules' and lets it pass; the one under the lease reads the state and refuses.
+    assert_eq!(
+        refused(rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1)),
+        AcceptFailure::ApprovalsMissing { needed: 1, have: 0 }
+    );
+    assert!(rig.double.calls().is_empty(), "the signer was asked");
+    assert!(rig.store.acceptances_of(&p.id, 1).unwrap().is_empty());
+    // With the approval it is accepted, and the record names the block that set the rules it was judged by.
+    approve(&rig, &reviewer, &p.id, 1);
+    assert!(matches!(
+        rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1),
+        Ok(Accepted::Signed(_))
+    ));
+    let record = rig
+        .store
+        .acceptances_of(&p.id, 1)
+        .unwrap()
+        .pop()
+        .unwrap()
+        .acceptance;
+    assert_eq!(
+        record.policy_block.as_deref(),
+        Some(rig.fake.block_id().as_str())
+    );
+}
+
+#[test]
+fn a_proposal_in_another_view_is_judged_under_the_lease_by_the_rules_of_the_default_view_as_it_is_now()
+ {
+    let rig = ruled(&[]);
+    rig.fake.add_view("heads/other");
+    let (_, maintainer) = rig.person("Maya", Some(Role::Maintainer));
+    let (_, author) = rig.person("Noor", Some(Role::Contributor));
+    let text = change_text();
+    let id = ProposalId::new();
+    rig.proposals
+        .create_named(
+            id.clone(),
+            &author,
+            &rig.wiki,
+            Some("heads/other"),
+            ProposalEdit {
+                summary: "Say it elsewhere".to_owned(),
+                files: vec![inklkunn_store::FileChange {
+                    path: "pages/Home.md".to_owned(),
+                    text: Some(text),
+                }],
+                ..ProposalEdit::default()
+            },
+        )
+        .unwrap();
+    rig.proposals.submit(&author, &rig.wiki, &id).unwrap();
+    // The service holds the default view's tip and its rules; the repository's default view then moves to a policy that asks
+    // for an approval, which this process was not told.
+    rig.reads.rules_of(&rig.wiki).unwrap();
+    rig.fake.set_files(&[(
+        "governance/policy.yaml".to_owned(),
+        "acceptance:\n  approvals: 1\n".to_owned(),
+    )]);
+    assert_eq!(
+        refused(rig.acceptor().accept(&maintainer, &rig.wiki, &id, 1)),
+        AcceptFailure::ApprovalsMissing { needed: 1, have: 0 }
+    );
+    assert!(rig.double.calls().is_empty(), "the signer was asked");
+}
+
 // ------------------------------------------------------------------------------------------- acceptance.self
 
 #[test]
@@ -651,7 +752,8 @@ fn the_hatch_checks_for_itself_that_every_path_it_covers_is_a_governance_file() 
     let acceptor = rig.acceptor();
     let judge = |touched: &[&str]| {
         let touched: Vec<String> = touched.iter().map(|p| (*p).to_owned()).collect();
-        acceptor.judge(&admin, &rig.wiki, &p, &admin_id, &touched)
+        let rules = rig.reads.rules_of(&rig.wiki).unwrap();
+        acceptor.judge(&admin, &rig.wiki, &p, &admin_id, &touched, &rules)
     };
     // The rules alone: the hatch, with no approvals.
     assert!(judge(&["governance/policy.yaml"]).unwrap().hatch);

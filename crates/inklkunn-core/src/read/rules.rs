@@ -129,8 +129,21 @@ impl ReadService {
     /// The rules in force for the wiki: **those of the default view's tip** (RFC 006 D-1), from memory, else from the
     /// derived store, else built from the repository. An error is *could not be read now*, and the decision it was for is
     /// deny.
+    ///
+    /// The tip is **held for a few seconds** ([`ReadConfig::tip_ttl`](super::ReadConfig)), so this answers what the rules were
+    /// a moment ago. That is right for a decision that is advisory or that a later one repeats; what *decides* an act that is
+    /// about to be signed reads the rules of the tip it has just read from the repository ([`ReadService::rules_at`]).
     pub fn rules_of(&self, wiki: &WikiRecord) -> Result<Arc<Rules>, ReadError> {
         let tip = self.tip(wiki, None)?;
+        self.rules_at(wiki, &tip)
+    }
+
+    /// The rules in force at `tip`, **a tip of the wiki's default view that the caller has just read from the repository**,
+    /// never the held tip (handoff G-T1 correction C-2): from memory when the rules of this state are held, else from the
+    /// derived store, else built from the repository. It is what a decision made under the write lease uses, so that the
+    /// rules it judges by are the rules of the state the change is signed on, whatever the tip cache holds and whichever
+    /// process sealed last.
+    pub fn rules_at(&self, wiki: &WikiRecord, tip: &Tip) -> Result<Arc<Rules>, ReadError> {
         if let Some(rules) = self.rules.held(&wiki.id, &tip.state_id) {
             return Ok(rules);
         }
@@ -141,11 +154,11 @@ impl ReadService {
         if let Some(rules) = self.rules.held(&wiki.id, &tip.state_id) {
             return Ok(rules);
         }
-        if let Some(rules) = self.stored_rules(wiki, &tip) {
+        if let Some(rules) = self.stored_rules(wiki, tip) {
             self.rules.hold(&wiki.id, &tip.state_id, &rules);
             return Ok(rules);
         }
-        let snapshot = self.build_snapshot(wiki, &tip)?;
+        let snapshot = self.build_snapshot(wiki, tip)?;
         if let Some(store) = &self.governance
             && store
                 .put_governance_snapshot(

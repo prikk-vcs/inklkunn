@@ -53,14 +53,14 @@ use inklkunn_store::{
 };
 
 use crate::authorize::Principal;
-use crate::governance::{Fault as GovernanceFault, ReadFault};
+use crate::governance::{Fault as GovernanceFault, ReadFault, Rules};
 use crate::knowledge::check::Refusal as KnowledgeRefusal;
 use crate::lease::{Busy, BusyWhy, Lease, LeaseError, Purpose, WikiLeases};
 use crate::notify::Notifier;
 use crate::proposal::{
     Invalid, ProposalError, ProposalService, QuotaLimit, QuotaRefusal, Reset, machine,
 };
-use crate::read::ReadService;
+use crate::read::{ReadService, Tip};
 use crate::reconcile::Finding;
 
 mod claims;
@@ -724,7 +724,9 @@ impl ProposalAcceptor {
         // writes (an early refusal; the one that counts is made again under the lease, from what is about to be signed).
         let touched = self.revision_paths(principal, wiki, id, revision)?;
         governance::refuse_mixed(&touched)?;
-        self.judge(principal, wiki, &proposal, &acceptor, &touched)?;
+        // The rules as the service holds them (the tip is held for a few seconds): advisory. The lease's judge reads them anew.
+        let held = self.parts.proposals.rules(wiki)?;
+        self.judge(principal, wiki, &proposal, &acceptor, &touched, &held)?;
 
         // 1. The lease.
         let lease = self
@@ -932,6 +934,32 @@ impl ProposalAcceptor {
         })
     }
 
+    /// The rules in force for the wiki **now**, with the lease held (C-2): those of the default view's state as the repository has
+    /// it, read for this act and never taken from the tip the service holds for a few seconds (which a seal by another
+    /// process, or a state put back after a forgotten wiki, leaves behind). `read` is the tip of the proposal's view, just read
+    /// as `(block, state)`: when that is the default view it is the state itself; otherwise the default view's is read here.
+    fn rules_now(
+        &self,
+        wiki: &WikiRecord,
+        proposal_view: &str,
+        read: (&str, &str),
+    ) -> Result<Arc<Rules>, AcceptFailure> {
+        let (block_id, state_id) = if proposal_view == wiki.default_view {
+            (read.0.to_owned(), read.1.to_owned())
+        } else {
+            self.tip_block(wiki, &wiki.default_view)?
+        };
+        let tip = Tip {
+            view: wiki.default_view.clone(),
+            state_id,
+            block_id,
+        };
+        self.parts
+            .reads
+            .rules_at(wiki, &tip)
+            .map_err(|e| AcceptFailure::Unavailable(e.to_string()))
+    }
+
     fn actor(&self, id: &AccountId) -> Result<Actor, AcceptFailure> {
         let account = self
             .parts
@@ -1061,12 +1089,16 @@ impl ProposalAcceptor {
         // files, which a change to `governance/` has none of); then who may accept what is about to be signed, by the rules in
         // force *now*, which the lease has kept from changing under it.
         self.check_governance(wiki, &proposal, &files, &renames)?;
+        // The rules are those of the default view's state read just now, with the lease held: the state the change is signed on
+        // when it is the default view's, and never the tip the service holds (C-2).
+        let rules = self.rules_now(wiki, &proposal.view, (&tip, &tip_state))?;
         let judged = self.judge(
             principal,
             wiki,
             &proposal,
             acceptor,
             &governance::touched_paths(&files, &renames),
+            &rules,
         )?;
         self.check_knowledge(wiki, &repo, &tip, &files, &renames, stating)?;
         self.observe(AcceptStep::Prepared);

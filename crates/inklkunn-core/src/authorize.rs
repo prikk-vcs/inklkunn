@@ -626,6 +626,18 @@ impl Authorizer {
         action: Action,
         wiki: &WikiId,
     ) -> Result<Facts, SourceError> {
+        self.facts_under(principal, action, wiki, None)
+    }
+
+    /// [`Authorizer::facts`] with the rules **given** (`Some`), where the source would be asked for them: the acceptance
+    /// judges by the rules of the state it has just read (C-2), whatever the source holds.
+    fn facts_under(
+        &self,
+        principal: &Principal,
+        action: Action,
+        wiki: &WikiId,
+        given: Option<&Arc<Rules>>,
+    ) -> Result<Facts, SourceError> {
         let visibility = self.source.visibility(wiki)?;
         // The role is looked up for every account whether or not the wiki exists, so that an absent wiki and
         // a private one cost the same to ask about.
@@ -642,7 +654,10 @@ impl Authorizer {
             && matches!(principal, Principal::Account(_))
             && visibility.is_some_and(|v| role.is_some() || v != Visibility::Restricted);
         let rules = if rules_matter {
-            self.source.rules(wiki)?
+            match given {
+                Some(rules) => Arc::clone(rules),
+                None => self.source.rules(wiki)?,
+            }
         } else {
             Arc::clone(&self.defaults)
         };
@@ -660,8 +675,18 @@ impl Authorizer {
     /// The rung `principal` holds in `wiki` now and the block that set the rules it holds it under: what a decision record
     /// names (RFC 006 D-5; criterion 12). Nothing is recorded. An error is *could not be read now*.
     pub fn standing(&self, principal: &Principal, wiki: &WikiId) -> Result<Standing, SourceError> {
+        self.standing_under(principal, wiki, None)
+    }
+
+    /// [`Authorizer::standing`] under the rules **given**, which the caller has just read for the state it acts on (C-2).
+    pub fn standing_under(
+        &self,
+        principal: &Principal,
+        wiki: &WikiId,
+        rules: Option<&Arc<Rules>>,
+    ) -> Result<Standing, SourceError> {
         // A write is asked, so that the rules are read: the rung is theirs.
-        let facts = self.facts(principal, Action::Propose, wiki)?;
+        let facts = self.facts_under(principal, Action::Propose, wiki, rules)?;
         let rung = match principal {
             Principal::Account(_) => rung_of(facts.snapshot, &facts.rules),
             Principal::Anonymous | Principal::System(_) => None,
@@ -702,6 +727,17 @@ impl Authorizer {
         action: Action,
         resource: &Resource,
     ) -> bool {
+        self.account_may_under(account, action, resource, None)
+    }
+
+    /// [`Authorizer::account_may`] under the rules **given**, where the source would be asked for them (C-2).
+    pub(crate) fn account_may_under(
+        &self,
+        account: &AccountId,
+        action: Action,
+        resource: &Resource,
+        rules: Option<&Arc<Rules>>,
+    ) -> bool {
         if action.is_consequential() {
             return false;
         }
@@ -709,7 +745,7 @@ impl Authorizer {
             id: account.clone(),
             scope: Scope::Admin,
         });
-        self.facts(&principal, action, resource.wiki())
+        self.facts_under(&principal, action, resource.wiki(), rules)
             .is_ok_and(|facts| {
                 decide_under(
                     facts.snapshot,

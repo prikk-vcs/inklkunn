@@ -801,16 +801,34 @@ impl ProposalService {
             .map_err(|e| ProposalError::BaseUnavailable(e.to_string()))
     }
 
-    /// Does this account hold the review rung on the proposal **now**, under the rules now in force? What an approval needs
-    /// for it to count when the proposal is accepted (RFC 006 D-4): a person who has since lost the rung does not approve.
+    /// [`ProposalService::standing`] under `rules`, which the acceptance has just read for the state it signs on (C-2).
+    pub(crate) fn standing_under(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        rules: &Arc<Rules>,
+    ) -> Result<Standing> {
+        self.authorizer
+            .standing_under(principal, &wiki.id, Some(rules))
+            .map_err(|e| ProposalError::BaseUnavailable(e.to_string()))
+    }
+
+    /// Does this account hold the review rung on the proposal under `rules`, the rules in force for the state the acceptance
+    /// signs on? What an approval needs for it to count when the proposal is accepted (RFC 006 D-4): a person who has since
+    /// lost the rung does not approve.
     pub(crate) fn holds_review(
         &self,
         account: &AccountId,
         wiki: &WikiRecord,
         id: &ProposalId,
+        rules: &Arc<Rules>,
     ) -> bool {
-        self.authorizer
-            .account_may(account, Action::Review, &Self::proposal_resource(wiki, id))
+        self.authorizer.account_may_under(
+            account,
+            Action::Review,
+            &Self::proposal_resource(wiki, id),
+            Some(rules),
+        )
     }
 
     fn proposal_resource(wiki: &WikiRecord, id: &ProposalId) -> Resource {
