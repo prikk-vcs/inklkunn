@@ -339,14 +339,17 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/views/compare/{*title}", Read),
             ("/{slug}/-/protect", Moderate),
             ("/{slug}/-/people", Read),
-            ("/{slug}/-/people/grant", Moderate),
+            // A role is no `Action` of its own: a maintainer's change of one depends on the rung and `grant_up_to` alone (F-7),
+            // so the form is read like the page, and the core authorizes the act.
+            ("/{slug}/-/people/grant", Read),
             ("/{slug}/-/people/restrict", Moderate),
             ("/{slug}/-/people/renew", Moderate),
             ("/{slug}/-/people/lift", Moderate),
         ]
     );
     // Whatever a route writes, it declares the writing methods only where it declares a non-read action or is
-    // one of the read pages that take a form (the verification check, marking the inbox read, following a page).
+    // one of the read pages that take a form (the verification check, marking the inbox read, following a page, and a change
+    // of a role, which is no `Action` of its own).
     for (e, action) in table.guarded().filter(|(e, _)| !e.path.contains("/-/api/")) {
         if e.methods.contains(&"POST") {
             assert!(
@@ -354,7 +357,8 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
                     || [
                         "/{slug}/-/verification",
                         "/-/inbox",
-                        "/{slug}/-/watch/{*title}"
+                        "/{slug}/-/watch/{*title}",
+                        "/{slug}/-/people/grant"
                     ]
                     .contains(&e.path),
                 "{}: a write is guarded by the action it makes",

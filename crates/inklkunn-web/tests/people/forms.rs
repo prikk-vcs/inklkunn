@@ -76,6 +76,32 @@ async fn the_grant_form_offers_the_roles_up_to_the_reach_with_the_promotion_text
 }
 
 #[tokio::test]
+async fn a_policy_that_asks_an_admin_to_moderate_still_lets_a_maintainer_reach_the_grant_form_and_grant_but_not_restrict()
+ {
+    // `moderate: admin` and `grant_up_to: reviewer`: one key does not undo the other (F-7).
+    let e = env_under("rungs:\n  moderate: admin\n  grant_up_to: reviewer\n");
+    let a = as_(&e, &e.maintainer, GRANT).await;
+    assert_eq!(a.status, StatusCode::OK);
+    assert!(
+        main_of(&a).contains("You can give roles up to reviewer."),
+        "{}",
+        main_of(&a)
+    );
+    let a = post_form(
+        &e.w,
+        GRANT,
+        Some(&e.maintainer),
+        &set_form(&e.newcomer.to_string(), "reviewer", ""),
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
+    assert_eq!(grant_of(&e, &e.newcomer), Some(Role::Reviewer));
+    // Restricting is the `moderate` rung's, and the maintainer is not it here.
+    let a = as_(&e, &e.maintainer, RESTRICT).await;
+    assert_eq!(a.status, StatusCode::FORBIDDEN, "{}", a.body());
+}
+
+#[tokio::test]
 async fn a_maintainer_sets_a_role_within_reach_and_it_is_recorded_with_who_acted_and_their_role() {
     let e = env_under(POLICY);
     let who = e.newcomer.to_string();

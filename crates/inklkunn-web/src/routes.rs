@@ -234,8 +234,13 @@ fn moderation_specs() -> Vec<Spec> {
 /// The people of a wiki (RFC 006 D-6, D-7; handoff G-T2): the page, and the four forms that change a role, restrict a
 /// person, renew and lift a restriction. **Web only**: nothing here is in the API. Each begins with the wiki's read check, so
 /// a wiki the visitor may not read answers as one that is not there; the forms then ask the core, which authorizes the act:
-/// `moderate` for a restriction and for a maintainer's change of a role (which is the lowest of the two actions a change of
-/// a role is, an admin's being `admin`).
+/// `moderate` for a restriction, `admin` for an admin's change of a role and `grant` (the rung `maintainer` and `grant_up_to`)
+/// for a maintainer's.
+///
+/// **The grant form is guarded by `read`, not by `moderate`** (handoff G-T1 correction F-7): a maintainer's change of a role
+/// depends on the rung `maintainer` and on `rungs.grant_up_to` and on nothing else, so a policy that asks `admin` of whoever
+/// moderates must not close the form to a maintainer; and a role is no `Action` of its own. The handler reads the wiki as every
+/// page does, then asks the core, which authorizes the act (`admin` for an admin; `grant` for a maintainer).
 fn people_specs() -> Vec<Spec> {
     vec![
         Spec {
@@ -247,7 +252,7 @@ fn people_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/people/grant",
             methods: &["GET", "HEAD", "POST"],
-            guard: Guard::Action(Action::Moderate),
+            guard: Guard::Action(Action::Read),
             handler: form_route!(
                 people::acts::grant_form,
                 people::acts::grant_post,

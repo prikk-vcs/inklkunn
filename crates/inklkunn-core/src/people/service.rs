@@ -352,7 +352,8 @@ impl PeopleService {
 
     /// Change the rung `who` holds through a grant to `new` (`None`: take it away), with an optional reason.
     ///
-    /// An admin acts as `admin`, a maintainer as `moderate`, and [`check_grant`] decides the rest.
+    /// An admin acts as `admin`, a maintainer as `grant` (which depends on the rung `maintainer` and on `rungs.grant_up_to`, and
+    /// on nothing else), and [`check_grant`] decides the rest.
     pub fn grant(
         &self,
         principal: &Principal,
@@ -375,12 +376,17 @@ impl PeopleService {
                 _ => PeopleError::NotAllowed,
             });
         };
-        let action = if rung == Role::Admin {
-            Action::Admin
-        } else {
-            Action::Moderate
-        };
-        self.authorize(principal, wiki, action, who)?;
+        // An admin's change of a rung is the `admin` action. **A maintainer's depends on holding `maintainer` and on
+        // `rungs.grant_up_to` alone, never on `rungs.moderate`** (F-7), and is audited as `grant`.
+        if rung == Role::Admin {
+            self.authorize(principal, wiki, Action::Admin, who)?;
+        } else if !self
+            .authorizer
+            .authorize_grant(principal, &wiki.id, Some(&typed_for_trail(who)))
+            .is_allowed()
+        {
+            return Err(PeopleError::NotAllowed);
+        }
         let reason = clean_reason(reason).map_err(PeopleError::Reason)?;
         let target = self.find(who)?;
         let current = self.roles.role(&target.id, &wiki.id).map_err(unavailable)?;

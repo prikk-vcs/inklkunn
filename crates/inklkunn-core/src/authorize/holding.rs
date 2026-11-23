@@ -7,9 +7,14 @@
 
 use std::sync::Arc;
 
-use inklkunn_store::{RestrictionEvent, RestrictionEventId, Role, WikiId};
+use inklkunn_store::{
+    AuditEvent, AuditOutcome, RestrictionEvent, RestrictionEventId, Role, Scope, WikiId,
+};
 
-use super::{Action, Authorizer, Principal, Resource, Rules, Snapshot, SourceError, decide_under};
+use super::{
+    Action, Authorizer, Decision, Principal, Resource, Rules, Snapshot, SourceError,
+    authority_detail, decide_under,
+};
 use super::{entry_rung, is_governance_file, rung_of};
 
 /// A restriction as the restricted person is told of it: the reason and the end. (The id is the hook for *contest this*,
@@ -112,6 +117,81 @@ impl Authorizer {
                 .map(RestrictionNotice::of),
             policy_block: facts.rules.block().map(str::to_owned),
         })
+    }
+
+    /// **May `principal` change the rung somebody holds through a grant, as a maintainer?** (F-7) The answer depends on **two
+    /// things and no more**: the principal holds `maintainer` or more (after a restriction: a restricted maintainer holds
+    /// `observer`), and the wiki's `rungs.grant_up_to` lets a maintainer grant at least one rung. **Not on `rungs.moderate`**: one
+    /// key must not quietly undo another, and a policy that asks `admin` of whoever restricts still lets a maintainer grant
+    /// what `grant_up_to` says. (Which rungs, for whom, is the people service's rule; an admin's act is the `admin` action.)
+    ///
+    /// The decision is **audited as `grant`**, allowed or not, with the rung and the block, and `typed` (what the person typed to
+    /// name whom the act is about), as every consequential decision is; an allowed one whose record cannot be written is denied.
+    pub fn authorize_grant(
+        &self,
+        principal: &Principal,
+        wiki: &WikiId,
+        typed: Option<&str>,
+    ) -> Decision {
+        // A write is asked, so that the rules and the restriction are read.
+        let (decision, outcome, detail) = match self.facts(principal, Action::Moderate, wiki) {
+            Ok(facts) => {
+                let allowed = match principal {
+                    // The credential carries at least what a maintainer's acts need (`accept`); a session carries the
+                    // account's whole authority.
+                    Principal::Account(a) => {
+                        a.scope >= Scope::Accept
+                            && facts.rules.fault().is_none()
+                            && facts
+                                .rules
+                                .policy()
+                                .rungs()
+                                .grant_up_to()
+                                .highest()
+                                .is_some()
+                            && rung_of(facts.snapshot, &facts.rules)
+                                .is_some_and(|rung| rung >= Role::Maintainer)
+                    }
+                    Principal::Anonymous | Principal::System(_) => false,
+                };
+                let mut detail = authority_detail(principal, &facts);
+                if let Some(typed) = typed {
+                    detail.push_str("; typed=");
+                    detail.push_str(typed);
+                }
+                let outcome = if allowed {
+                    AuditOutcome::Allowed
+                } else {
+                    AuditOutcome::Denied
+                };
+                (
+                    if allowed {
+                        Decision::Allow
+                    } else {
+                        Decision::Deny
+                    },
+                    outcome,
+                    detail,
+                )
+            }
+            Err(_) => (
+                Decision::Deny,
+                AuditOutcome::Failed,
+                "the facts for the decision could not be read".to_owned(),
+            ),
+        };
+        let event = AuditEvent::new(
+            (self.clock)(),
+            &principal.audit_name(),
+            "grant",
+            &Resource::Wiki { wiki: wiki.clone() }.audit_name(),
+            outcome,
+            &detail,
+        );
+        if self.audit.record(&event).is_err() && decision.is_allowed() {
+            return Decision::Deny;
+        }
+        decision
     }
 
     /// **Is the restriction the reason `principal` may not do `action` to `resource`?** `Some` only when the principal is

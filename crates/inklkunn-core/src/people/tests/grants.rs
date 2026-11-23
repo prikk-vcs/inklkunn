@@ -211,9 +211,66 @@ fn a_maintainer_in_a_wiki_whose_rules_let_maintainers_grant_none_is_not_allowed_
                 .is_empty()
         );
         assert!(
-            w.audit.events().iter().all(|e| e.action != "moderate"),
+            w.audit
+                .events()
+                .iter()
+                .all(|e| e.action != "moderate" && e.action != "grant"),
             "a person who could never grant is told so before an act is decided"
         );
+    }
+}
+
+#[test]
+fn a_maintainers_grant_depends_on_the_rung_and_grant_up_to_alone_and_not_on_what_moderating_asks() {
+    for kind in KINDS {
+        // Moderating asks an admin, and a maintainer may grant up to reviewer: the two keys are not one.
+        let w = World::under(kind, "rungs:\n  moderate: admin\n  grant_up_to: reviewer\n");
+        let maintainer = w.person("Mia", Some(Role::Maintainer));
+        let sam = w.person("Sam", None);
+        let made = w
+            .people
+            .grant(
+                &maintainer.principal,
+                &w.wiki,
+                &sam.id.to_string(),
+                Some(Role::Reviewer),
+                "",
+            )
+            .expect("a maintainer grants what grant_up_to says, whatever moderating asks");
+        assert_eq!(made.after, Some(Role::Reviewer));
+        assert_eq!(w.grant_of(&sam), Some(Role::Reviewer));
+        // Audited as `grant`, naming the rung and the block.
+        let resource = format!("wiki:{}", w.wiki.id);
+        let decisions: Vec<_> = w
+            .audit
+            .events()
+            .into_iter()
+            .filter(|e| e.resource == resource)
+            .collect();
+        let [decision] = decisions.as_slice() else {
+            panic!("one decision: {decisions:?}");
+        };
+        assert_eq!(decision.action, "grant");
+        assert_eq!(decision.outcome, inklkunn_store::AuditOutcome::Allowed);
+        assert!(decision.detail.starts_with("rung=maintainer; policy="));
+        // The same maintainer does not restrict: that is `moderate`, which this policy gives to admins.
+        let pat = w.person("Pat", Some(Role::Contributor));
+        assert_eq!(
+            w.people
+                .restrict(
+                    &maintainer.principal,
+                    &w.wiki,
+                    &pat.id.to_string(),
+                    3,
+                    "Why."
+                )
+                .map(|_| ()),
+            Err(PeopleError::NotAllowed)
+        );
+        // And the people page still offers the maintainer the form for the rungs `grant_up_to` allows, and not the other.
+        let view = w.people.view(&maintainer.principal, &w.wiki).unwrap();
+        assert_eq!(view.may_grant_up_to, Some(Role::Reviewer));
+        assert!(!view.may_restrict);
     }
 }
 
@@ -447,7 +504,9 @@ fn each_grant_is_an_audited_act_naming_the_rung_the_block_and_what_changed_and_i
             act.detail,
             format!("rung=admin; policy={short}; from=none; to=reviewer")
         );
-        let decision = find("moderate", &maintainer);
+        // A maintainer's change of a rung is decided as `grant` (F-7), not as `moderate`.
+        let decision = find("grant", &maintainer);
+        assert_eq!(decision.resource, format!("wiki:{}", w.wiki.id));
         assert_eq!(
             decision.detail,
             format!("rung=maintainer; policy={short}; typed={}", b.id)
