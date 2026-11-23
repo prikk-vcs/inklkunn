@@ -407,7 +407,7 @@ async fn a_rollback_of_the_change_that_took_the_data_out_is_refused_and_a_hidden
 }
 
 #[tokio::test]
-async fn why_is_this_here_does_not_follow_a_page_across_a_hidden_text() {
+async fn why_is_this_here_quotes_nothing_of_a_hidden_text_and_still_follows_the_page_across_it() {
     let s = story();
     for uri in ["/handbook/-/why/Foo", "/handbook/-/api/v1/provenance/Foo"] {
         let a = s.get(uri, None).await;
@@ -425,22 +425,15 @@ async fn why_is_this_here_does_not_follow_a_page_across_a_hidden_text() {
             nothing_hidden_in(&a, uri);
         }
     }
+    // The reading is the same: a hidden change is still a change of the page's history, and what it said is not what is printed
+    // (the paragraphs are the tip's).
     let after = s
         .get("/handbook/-/api/v1/provenance/Foo", None)
         .await
         .body();
-    assert_ne!(
-        followed, after,
-        "the reading does not go across the text that is hidden"
-    );
-    assert!(after.contains("unfollowed"), "{after}");
-    s.unhide_all().await;
     assert_eq!(
-        followed,
-        s.get("/handbook/-/api/v1/provenance/Foo", None)
-            .await
-            .body(),
-        "an unhide restores it exactly"
+        followed, after,
+        "the page is followed across the hidden text"
     );
 }
 

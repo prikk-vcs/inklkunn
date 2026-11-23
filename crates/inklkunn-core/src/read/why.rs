@@ -145,26 +145,22 @@ enum Past {
     Text(String),
     /// No file then, or not text.
     Absent,
-    /// The text is hidden by moderation (RFC 006 D-8): it is not read, and the trace does not go across it.
-    Hidden,
 }
 
 impl ReadService {
-    /// The page's text at a block, through the one reader of a text at a block ([`ReadService::text_at`]).
+    /// The page's text at a block, for the trace to align (see [`ReadService::file_for_trace`]): the reading says which change wrote
+    /// a paragraph and never what it said, so a change that is hidden is still followed across and is shown with its tombstone.
     fn past_text(
         &self,
         wiki: &inklkunn_store::WikiRecord,
         block: &str,
         path: &str,
     ) -> Result<Past, ReadError> {
-        Ok(
-            match self.file_at(wiki, None, block, path, self.config.page_max_bytes)? {
-                FileAt::Held(bytes) => String::from_utf8(bytes).map_or(Past::Absent, Past::Text),
-                FileAt::Missing => Past::Absent,
-                FileAt::TooLarge(refused) => return Err(self.storage_error(wiki, refused)),
-                FileAt::Hidden(_) => Past::Hidden,
-            },
-        )
+        Ok(match self.file_for_trace(wiki, block, path)? {
+            FileAt::Held(bytes) => String::from_utf8(bytes).map_or(Past::Absent, Past::Text),
+            FileAt::Missing | FileAt::Hidden(_) => Past::Absent,
+            FileAt::TooLarge(refused) => return Err(self.storage_error(wiki, refused)),
+        })
     }
 
     /// The paragraphs of the page titled `title` at the view's tip, each with the change that last changed it and
@@ -223,8 +219,8 @@ impl ReadService {
                     Past::Text(text) => Some(text),
                     // Absent, or not text: only a page that was deleted or moved away is absent.
                     Past::Absent if absent_after(&before.events) => None,
-                    // Absent otherwise, or hidden: what the page was then is not read, so not followed across.
-                    Past::Absent | Past::Hidden => {
+                    // Absent otherwise: what the page was then is not known, so not followed across.
+                    Past::Absent => {
                         unfollowed = true;
                         break;
                     }
@@ -238,7 +234,7 @@ impl ReadService {
                 };
                 match self.past_text(wiki, parent, &path_before(row))? {
                     Past::Text(text) => Some(text),
-                    Past::Absent | Past::Hidden => {
+                    Past::Absent => {
                         unfollowed = true;
                         break;
                     }

@@ -1406,6 +1406,7 @@ keys! {
     WhyAttachedCited => "why.attached_cited",
     WhyAttachedTooLarge => "why.attached_too_large",
     WhyAttachedUnreadable => "why.attached_unreadable",
+    WhyAttachedHidden => "why.attached_hidden",
     WhyAttachedMore => "why.attached_more",
     // Why is this here? (K-T7): end
     // knowledge: claims and sources in the proposal path (handoff 005 K-T5): start

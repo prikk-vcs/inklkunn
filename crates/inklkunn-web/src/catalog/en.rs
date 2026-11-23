@@ -2516,6 +2516,10 @@ pub const CATALOG: &[Entry] = &[
         "{count} source file added in this change cannot be read.",
         "{count} source files added in this change cannot be read.",
     ),
+    msg(
+        "why.attached_hidden",
+        "The sources this change attached are hidden by moderation.",
+    ),
     plural_msg(
         "why.attached_more",
         "{count} more source attached in this change is not listed here.",

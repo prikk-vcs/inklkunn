@@ -184,7 +184,7 @@ pub(super) fn schemas() -> Map<String, Value> {
     out.insert(
         "AttachedSources".to_owned(),
         object(
-            "The source files a change created under `knowledge/sources/`, read at that change: what the change wrote, not what the source says now. An empty `sources` with nothing counted means the change attached none.",
+            "The source files a change created under `knowledge/sources/`, read at that change: what the change wrote, not what the source says now. An empty `sources` with nothing counted means the change attached none. When moderation hides the text of the change that wrote them (RFC 006 D-8), none is read: `sources` is empty and the object also has `hidden`, `tombstone` and `tombstones` as every description of a hidden thing does.",
             json!({
                 "sources": {"type": "array", "maxItems": 10, "items": schema_ref("AttachedSource"), "description": "The files that were read, in the order the change says them, at most 10 for a change and 40 for the whole request."},
                 "unreadable": {"type": "integer", "minimum": 0, "description": "How many of the files read could not be read as a source (not text, too large, a bidirectional control or another reason the format refuses). Never shown."},

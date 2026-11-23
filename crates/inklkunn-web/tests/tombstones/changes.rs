@@ -13,9 +13,10 @@ use inklkunn_store::{
     ProposalTransition, Role,
 };
 
-use super::{AUTHOR, HIDING, HOME, borrowed, proposal_item, propose};
+use super::{AUTHOR, HIDING, HOME, borrowed, nothing_hidden_in, proposal_item, propose};
 use crate::common::{
-    Answer, NOW, World, add_person, block_id, get_as, op, person, post_form, shown, with_accounts,
+    Answer, NOW, World, add_person, block_id, get_as, op, person, post_form, service_text, shown,
+    with_accounts,
 };
 
 const TEXT_ONE: &str = "---\ntitle: Home\n---\n\nFirst paragraph.\n\nOne more paragraph.\n";
@@ -390,3 +391,139 @@ async fn why_is_this_here_does_not_name_a_hidden_proposer_in_the_review_of_their
         assert!(body.contains(STAND), "{body}");
     }
 }
+
+// ------------------------------------------------------------------------------------ H-4: what a hidden change attached
+
+/// `Home` with these two paragraphs (the first is the block `^b1`).
+fn two_paragraphs(first: &str, second: &str) -> String {
+    crate::common::page(
+        &["title: Home", &format!("id: {}", crate::common::HOME_ID)],
+        &format!("{first} ^b1\n\n{second}\n"),
+    )
+}
+
+/// A wiki whose change 2 reworded `Home` and attached a source whose reference carries `ZEBRA`, and whose change 3 reworded `Home`
+/// again and edited that source (so neither file of change 2 is the tip's, and change 2's content may be hidden).
+fn attaching() -> (World, AccountId) {
+    use inklkunn_core::knowledge::{Reference, ReferenceForm, SourceKind, source_path};
+    let w = with_accounts(World::new(
+        "handbook",
+        "The Handbook",
+        &[(
+            "pages/Home.md",
+            &two_paragraphs("The bridge opened.", "It crosses the river."),
+        )],
+    ));
+    let maintainer = person(4);
+    add_person(&w, &maintainer, "Mika Ito", Some(Role::Maintainer));
+    w.fake.say(1, "Create the handbook");
+    w.fake
+        .show(1, shown(vec![op("create-file", &["pages/Home.md"])]));
+    let mut s = crate::common::source(1, SourceKind::Primary);
+    s.reference = Some(Reference {
+        form: ReferenceForm::Citation,
+        value: "ZEBRA harbour survey, page 12".to_owned(),
+    });
+    let path = source_path(&s.id);
+    w.fake.set_files(&[
+        (
+            "pages/Home.md",
+            &two_paragraphs("The bridge opened.", "It crosses the wide river."),
+        ),
+        (path.as_str(), &s.to_yaml()),
+    ]);
+    w.fake.say(2, &service_text("Reword it and cite a source"));
+    w.fake.show(
+        2,
+        shown(vec![
+            op("edit-text", &["pages/Home.md"]),
+            op("create-file", &[path.as_str()]),
+        ]),
+    );
+    let mut edited = s.clone();
+    edited.availability = inklkunn_core::knowledge::Availability::Available;
+    w.fake.set_files(&[
+        (
+            "pages/Home.md",
+            &two_paragraphs(
+                "The bridge was opened in 1950.",
+                "It crosses the wide river.",
+            ),
+        ),
+        (path.as_str(), &edited.to_yaml()),
+    ]);
+    w.fake.say(3, &service_text("Reword it again"));
+    w.fake.show(
+        3,
+        shown(vec![
+            op("edit-text", &["pages/Home.md"]),
+            op("edit-text", &[path.as_str()]),
+        ]),
+    );
+    (w, maintainer)
+}
+
+#[tokio::test]
+async fn the_sources_a_hidden_change_attached_are_not_read_or_quoted_and_the_line_says_they_are_hidden()
+ {
+    let (w, maintainer) = attaching();
+    let urls = ["/handbook/-/why/Home", "/handbook/-/api/v1/provenance/Home"];
+    for uri in urls {
+        let a = get_as(&w, uri, None).await;
+        assert_eq!(a.status, StatusCode::OK, "{uri}: {}", a.body());
+        assert!(
+            a.body().contains("ZEBRA harbour survey"),
+            "{uri}: {}",
+            a.body()
+        );
+    }
+    let a = post_form(
+        &w,
+        "/handbook/-/moderate",
+        Some(&maintainer),
+        &[
+            ("kind", "page-revision"),
+            ("block", block_id(2).as_str()),
+            ("part_content", "1"),
+            ("category", "personal-data"),
+            ("note", ""),
+        ],
+    )
+    .await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    for uri in urls {
+        for who in [None, Some(&maintainer)] {
+            let a = get_as(&w, uri, who).await;
+            assert_eq!(a.status, StatusCode::OK, "{uri}: {}", a.body());
+            nothing_hidden_in(&a, uri);
+            assert!(!a.body().contains("harbour survey"), "{uri}: {}", a.body());
+        }
+    }
+    let page = get_as(&w, "/handbook/-/why/Home", None).await.body();
+    assert!(
+        page.contains("The sources this change attached are hidden by moderation."),
+        "{page}"
+    );
+    assert!(page.contains(HIDING_FACT), "{page}");
+    let api: serde_json::Value = serde_json::from_slice(
+        &get_as(&w, "/handbook/-/api/v1/provenance/Home", None)
+            .await
+            .bytes,
+    )
+    .expect("json");
+    let hidden = api
+        .get("changes")
+        .and_then(|c| c.as_array())
+        .into_iter()
+        .flatten()
+        .find_map(|c| {
+            let at = c.get("attached_sources")?;
+            at.get("hidden").map(|h| (at.clone(), h.clone()))
+        })
+        .expect("a change whose attached sources are hidden");
+    assert_eq!(hidden.1, serde_json::json!(["content"]));
+    assert_eq!(hidden.0.get("sources"), Some(&serde_json::json!([])));
+}
+
+/// A line of the tombstone the page draws for a hidden text (the part, the reason, the role, the date).
+const HIDING_FACT: &str = "personal data";

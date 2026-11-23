@@ -262,18 +262,31 @@ pub(super) async fn provenance(
                 let attached =
                     crate::knowledge::why::attached_of(services, wiki, &info.block_id, &mut left)
                         .map_err(|e| from_read(services, wiki, e))?;
-                change.insert(
-                    "attached_sources".to_owned(),
-                    json!({
-                        "sources": attached.sources.iter().map(|s| json!({
-                            "id": s.id,
-                            "reference": s.reference.as_deref().map(shortened),
-                        })).collect::<Vec<_>>(),
-                        "unreadable": attached.unreadable,
-                        "omitted": attached.omitted,
-                        "too_large": attached.too_large,
-                    }),
+                let mut listed = serde_json::Map::new();
+                listed.insert(
+                    "sources".to_owned(),
+                    json!(
+                        attached
+                            .sources
+                            .iter()
+                            .map(|s| json!({
+                                "id": s.id,
+                                "reference": s.reference.as_deref().map(shortened),
+                            }))
+                            .collect::<Vec<_>>()
+                    ),
                 );
+                listed.insert("unreadable".to_owned(), json!(attached.unreadable));
+                listed.insert("omitted".to_owned(), json!(attached.omitted));
+                listed.insert("too_large".to_owned(), json!(attached.too_large));
+                // The text of the change that wrote them is hidden: none of it is read, and the tombstone says so.
+                if let Some(mark) = attached.hidden.clone() {
+                    shape::tombstones(
+                        &mut listed,
+                        &inklkunn_core::tombstone::Hidden::from_marks([mark]),
+                    );
+                }
+                change.insert("attached_sources".to_owned(), Value::Object(listed));
                 changes.push(Value::Object(change));
             }
             Reply::json(&json!({

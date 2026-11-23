@@ -26,7 +26,10 @@
 //! - [`ReadService::bytes_at_tip`]: **a view's tip**. The content of a view's tip cannot be hidden (D-8), and the tip check
 //!   (RFC 006 D-8; `tipcheck`) is what keeps it so;
 //! - [`ReadService::rules_bytes_at`]: **a governance file**, which is the rules and not a revision's text;
-//! - [`ReadService::bytes_unchecked_at`]: the tip check's comparison and the one audited act that shows hidden content.
+//! - [`ReadService::bytes_unchecked_at`]: the tip check's comparison and the one audited act that shows hidden content;
+//! - [`ReadService::file_for_trace`]: *Why is this here?* aligns one version of a page with the next and says which change wrote a
+//!   paragraph, never what it said (a hidden change is still a change of the page's history, with its tombstone);
+//! - the verdict of whether a rollback would merge, which is a boolean.
 //!
 //! **Cost.** A wiki in which nothing has had its content hidden pays one store query for a read, nothing else. A wiki in
 //! which some change has is asked a digest of the file at the block (one `cat`) and of each file the hidden changes wrote
@@ -222,6 +225,32 @@ impl ReadService {
         self.storage
             .read(&self.layout.repo_dir(&wiki.id), point, path, max)
             .map_err(|e| self.storage_error(wiki, e))
+    }
+
+    /// A page's text at a block **for *Why is this here?* to align**, whatever moderation hides of it: the reading compares one
+    /// version of the page with the next to say which change wrote each paragraph, and says only *which change* (a number). What
+    /// it prints of a paragraph is the paragraph of the tip, which cannot be hidden, and what it prints of a change is the change as
+    /// every surface gives it (masked). **No text read here leaves the comparison.**
+    pub(super) fn file_for_trace(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+        path: &str,
+    ) -> Result<FileAt, ReadError> {
+        let point = Point::Block(block_id.to_owned());
+        match self.bytes_unchecked_at(wiki, &point, path)? {
+            Unchecked::Held(bytes) => Ok(FileAt::Held(bytes)),
+            Unchecked::Missing => Ok(FileAt::Missing),
+            Unchecked::Large => match self.storage.read(
+                &self.layout.repo_dir(&wiki.id),
+                &point,
+                path,
+                self.config.page_max_bytes,
+            ) {
+                Err(refused) => Ok(FileAt::TooLarge(refused)),
+                Ok(bytes) => Ok(FileAt::Held(bytes)),
+            },
+        }
     }
 
     /// The file at a point, **unchecked**, for the two things that must see what is hidden: the comparison of a change's files

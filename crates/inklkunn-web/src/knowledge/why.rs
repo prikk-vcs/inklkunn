@@ -365,6 +365,11 @@ impl Reading<'_> {
             })
             .collect();
         let mut notes = Vec::new();
+        // The change that wrote them has its text hidden (RFC 006 D-8; H-4): what they said is not read, and the tombstone says why.
+        if let Some(mark) = &found.hidden {
+            notes.push(t.get(Key::WhyAttachedHidden));
+            notes.extend(crate::tombstone::mark_facts(t, mark));
+        }
         if found.too_large {
             notes.push(t.get(Key::WhyAttachedTooLarge));
         }
