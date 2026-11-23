@@ -131,6 +131,8 @@ T6, RFC 004) take the word from here and do not choose their own.
 | The role that accepts proposals and moderates | maintainer | メンテナー | yes | Beside レビュアー; already the word of the pages that say who accepts | Drafted · ja: loanword; reviewed by the owner with the messages of the release |
 | The role that looks after the wiki | admin | 管理者 | yes | An admin of a wiki; the person who runs the server is a different person and is called *the person who runs this server* | Drafted · ja: reviewed by the owner with the messages of the release |
 | What holds a person to reading until a date, with a reason they are told | restriction | 制限 | yes | Said of a person (制限されている), never of a wiki (a wiki that only people who were granted a role can read is not *restricted* to a reader); an upper bound is 上限, so the two never meet | Drafted · ja: reviewed by the owner with the messages of the release |
+| What a person writes to ask that a decision about them be looked at again, and the act of writing it | appeal | 申し立て | yes | RFC 006 D-9 (decision request 29). The person's own words against one decision, decided once by someone who did not take it; never *complaint* or *objection*, and never 異議 or 不服, which say more than the person asked | Drafted · ja: reviewed by the owner with the messages of the release |
+| The link beside a decision that affects a person, which opens the form that appeals it | contest this | これに申し立てをする | yes | One link for every kind of decision the person may appeal; it is the act of the appeal, said as the person's own action (decision request 33) | Drafted · ja: reviewed by the owner with the messages of the release |
 
 ## 2. Messages
 
