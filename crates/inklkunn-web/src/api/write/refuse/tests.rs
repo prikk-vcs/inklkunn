@@ -227,6 +227,7 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
             Code::Forbidden,
             None,
         ),
+        (protected_failure(), Code::Forbidden, None),
         (
             AcceptFailure::RulesUnreadable(unreadable_rules()),
             Code::Forbidden,
@@ -300,6 +301,33 @@ fn each_way_an_acceptance_can_stop_is_one_problem_a_program_can_act_on() {
     assert_eq!(at(&body(&approvals), "reason"), "approvals-missing");
     assert_eq!(at(&body(&approvals), "needed"), 2);
     assert_eq!(at(&body(&approvals), "have"), 1);
+    let (protected, _) = failure_problem(protected_failure());
+    let protected = body(&protected);
+    assert_eq!(at(&protected, "reason"), "protected");
+    assert_eq!(at(&protected, "lacks"), "role");
+    assert_eq!(at(&protected, "needs"), "admin");
+    let listed = at(&protected, "protections").as_array().unwrap().clone();
+    assert_eq!(listed.len(), 2);
+    assert_eq!(
+        *listed.first().unwrap(),
+        serde_json::json!({
+            "kind": "temporary", "on": "page", "title": "Home", "requires": "rung", "role": "admin",
+            "reason": "Dispute.", "until": "2023-11-14T22:13:20Z",
+        })
+    );
+    assert_eq!(
+        *listed.get(1).unwrap(),
+        serde_json::json!({
+            "kind": "standing", "on": "namespace", "title": "Policies", "requires": "review", "role": null,
+            "reason": "Rules are read first.", "until": null,
+        })
+    );
+    let (review, _) = failure_problem(AcceptFailure::Protected {
+        notices: Vec::new(),
+        lack: Lack::Review,
+    });
+    assert_eq!(at(&body(&review), "lacks"), "approval");
+    assert!(body(&review).get("needs").is_none());
     let (unreadable, logged) = failure_problem(AcceptFailure::RulesUnreadable(unreadable_rules()));
     assert_eq!(at(&body(&unreadable), "reason"), "rules-unreadable");
     assert_eq!(
@@ -355,4 +383,26 @@ fn a_busy_wiki_is_never_told_to_retry_in_no_time() {
         why: BusyWhy::Waited,
     }));
     assert_eq!(busy.retry_after_secs(), Some(1));
+}
+
+/// A refusal by two protections: a temporary one on a page and a standing one on a namespace.
+fn protected_failure() -> AcceptFailure {
+    use inklkunn_core::governance::{Require, Target};
+    use inklkunn_core::protection::Notice;
+    AcceptFailure::Protected {
+        notices: vec![
+            Notice::temporary(
+                Target::Path("Home".to_owned()),
+                Require::Rung(inklkunn_store::Role::Admin),
+                "Dispute.",
+                1_700_000_000,
+            ),
+            Notice::standing(
+                Target::Namespace("Policies".to_owned()),
+                Require::Review,
+                "Rules are read first.",
+            ),
+        ],
+        lack: Lack::Rung(inklkunn_store::Role::Admin),
+    }
 }

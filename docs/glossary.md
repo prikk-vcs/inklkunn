@@ -123,6 +123,12 @@ T6, RFC 004) take the word from here and do not choose their own.
 | Redirects or replacements that lead back to themselves | circle | 循環 | yes | Never ぐるぐると回り続ける or 輪になっている | Named by the architect's final check (M60) |
 | A change recorded under the wiki service's signature, as the subject of a sentence | is signed into the history | 署名されて履歴に記録 | yes | The change does not sign: 署名されて履歴に記録されます; never 署名して… for a change | Named by the architect's final check (M60) |
 | Looking after what others wrote: the role that may do it, and the act | moderate | モデレーション | yes | The usual loanword; RFC 006 gives a role the act, and the rules of a wiki set which role. Said only of the role in the rules, never of a person's standing | Drafted · ja: loanword; reviewed by the owner with the messages of the release |
+| A page, or the pages below a title, that asks more of whoever accepts a change to it | protection | 保護 | yes | Said of the page and what it asks, never of a person: what a person cannot do for a time is another word. *By this wiki's rules* is このウィキのルールによる保護 and a temporary one is 一時的な保護 | Drafted · ja: reviewed by the owner with the messages of the release (RFC 006 D-7) |
+| The lowest role of a wiki: it may read and nothing else | observer | オブザーバー | yes | The usual loanword, beside レビュアー and メンテナー | Drafted · ja: loanword; reviewed by the owner with the messages of the release (RFC 006 D-2) |
+| The role that may comment | questioner | 質問者 | yes | The one who asks: the role comments and does not propose | Drafted · ja: reviewed by the owner with the messages of the release (RFC 006 D-2) |
+| The role that may propose | contributor | コントリビューター | yes | The usual loanword | Drafted · ja: loanword; reviewed by the owner with the messages of the release (RFC 006 D-2) |
+| The role that may accept | maintainer | メンテナー | yes | Beside レビュアー and 管理者; the role of a wiki, not a person who looks after a repository | Drafted · ja: loanword; reviewed by the owner with the messages of the release (RFC 006 D-2) |
+| The highest role of a wiki | admin | 管理者 | yes | Always said as a role of a wiki (…の役割); the person who runs the server is このサーバーの管理者, and a sentence that could mean either says このウィキの管理者 | Drafted · ja: reviewed by the owner with the messages of the release (RFC 006 D-2) |
 
 ## 2. Messages
 
@@ -1488,6 +1494,54 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `invalid.governance_path` | the refusal of a proposal that writes a path under governance/ that is not one of the two files, or renames one | "Under governance/ a proposal may write constitution.yaml and policy.yaml and nothing else, and cannot rename them." | "governance/ の下に書けるのは constitution.yaml と policy.yaml だけで、名前を変えることもできません。" |
 | `invalid.governance_mixed` | the refusal of a proposal that changes a governance file and also changes a page or anything else: a change to the rules is proposed on its own | "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml or policy.yaml cannot change a page or anything else." | "このウィキのルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。" |
 | `proposal.approvals_unreachable` | the warning on a proposal's page when the rules ask for more approvals than the people who could give them (counted by the number asked for) | "The rules of this wiki ask for {count} approval from someone other than the proposer, and not enough people can give it yet. No proposal can be accepted until more people hold the role that reviews." / "The rules of this wiki ask for {count} approvals from people other than the proposer, and not enough people can give them yet. No proposal can be accepted until more people hold the role that reviews." | "このウィキのルールでは、提案者以外の人からの承認が {count} 件必要ですが、承認できる人がまだ足りません。レビューできる役割を持つ人が増えるまで、どの提案も受け入れられません。" |
+| `protection.heading` | the heading of the protections shown on a page, on a proposal form and on a proposal's page | "Protections" | "保護" |
+| `protection.note` | under that heading, once: who may still propose and what a protection is for | "Anyone who may propose can still propose a change. A protection says what it takes to accept one." | "提案できる人は、これまでどおり変更を提案できます。保護は、変更を受け入れるために何が必要かを定めています。" |
+| `protection.kind_standing` | the kind of a protection that is part of the rules of the wiki | "By this wiki's rules" | "このウィキのルールによる保護" |
+| `protection.kind_temporary` | the kind of a protection that someone put in place for a time; `{until}` is when it ends | "Temporarily, until {until}" | "{until} までの一時的な保護" |
+| `protection.on_page` | what a protection is on, when it is on one page; `{title}` is the page | "On the page {title}." | "ページ {title} が対象です。" |
+| `protection.on_namespace` | what a protection is on, when it is on the pages below a title; `{title}` is the title | "On every page below {title}." | "{title} の下にあるすべてのページが対象です。" |
+| `protection.requires_review` | what a protection asks: an approval first | "A change here is accepted only after someone other than the proposer has approved it." | "ここへの変更は、提案者以外の人が承認した後でなければ受け入れられません。" |
+| `protection.requires_rung` | what a protection asks: a role; `{role}` is the role | "A change here is accepted only by {role} or a higher role." | "ここへの変更を受け入れられるのは、{role} の役割か、それより上の役割の人だけです。" |
+| `protection.reason` | the reason of a protection, as its author wrote it; `{reason}` is the text | "Reason: {reason}" | "理由: {reason}" |
+| `rung.observer` | the name of the lowest role: it may read and nothing else | "observer" | "オブザーバー" |
+| `rung.questioner` | the name of the role that may comment | "questioner" | "質問者" |
+| `rung.contributor` | the name of the role that may propose | "contributor" | "コントリビューター" |
+| `rung.reviewer` | the name of the role that may review | "reviewer" | "レビュアー" |
+| `rung.maintainer` | the name of the role that may accept | "maintainer" | "メンテナー" |
+| `rung.admin` | the name of the highest role in a wiki | "admin" | "管理者" |
+| `outcome.protected` | the outcome of an acceptance held back by a protection of a page the change touches | "Not signed: a protection holds it" | "署名されませんでした: 保護により保留されています" |
+| `outcome_note.protected_rung` | under that outcome, when the protection asks a higher role; `{role}` is the role | "A protection on a page this change touches says it is accepted only by {role} or a higher role. Nothing was changed, and the proposal is still held for review." | "この変更が触れるページの保護により、受け入れられるのは {role} の役割か、それより上の役割の人だけです。何も変更しておらず、提案はレビュー待ちで保持されたままです。" |
+| `outcome_note.protected_review` | under that outcome, when the protection asks for an approval first | "A protection on a page this change touches asks first for an approval from someone other than the proposer. Nothing was changed, and the proposal is still held for review." | "この変更が触れるページの保護により、先に提案者以外の人の承認が必要です。何も変更しておらず、提案はレビュー待ちで保持されたままです。" |
+| `title.protect` | the title of the page that puts a protection in place | "Protect a page · {wiki} · {product}" | "ページを保護 · {wiki} · {product}" |
+| `protect.link` | the link on a page, offered to those who may moderate | "Protect this page" | "このページを保護する" |
+| `protect.heading` | the heading of that page | "Protect a page" | "ページを保護する" |
+| `protect.intro` | the first paragraph of that page | "A protection asks more of whoever accepts a change to the page. It ends by itself on the day you set, and everyone who can read the page sees it with its reason. A protection that is part of the rules of this wiki is changed by proposing a change to the rules." | "保護は、ページへの変更を受け入れる人に、より多くを求めます。設定した日に自動で終了し、そのページを読める人全員に理由とともに表示されます。このウィキのルールの一部である保護は、ルールの変更を提案して変更します。" |
+| `protect.target_legend` | the legend of the choice of what to protect | "What to protect" | "保護の対象" |
+| `protect.target_page` | the choice to protect one page | "This page only" | "このページだけ" |
+| `protect.target_namespace` | the choice to protect the pages below a title, not the page of that title | "Every page below this title, and not the page itself" | "このタイトルの下にあるすべてのページ（このタイトルのページ自体は含みません）" |
+| `protect.title_label` | the label of the field for the title | "Title" | "タイトル" |
+| `protect.require_legend` | the legend of the choice of what the protection asks | "What it asks" | "求めること" |
+| `protect.require_review` | the choice to ask for an approval first | "An approval first: someone other than the proposer approves before a change is accepted" | "先に承認を求める: 変更を受け入れる前に、提案者以外の人が承認する" |
+| `protect.require_rung` | the choice to ask for a role | "A role: only this role or a higher one accepts a change" | "役割を求める: この役割か、それより上の役割の人だけが変更を受け入れる" |
+| `protect.rung_label` | the label of the choice of the role | "Role" | "役割" |
+| `protect.reason_label` | the label of the reason's field | "Reason, shown to everyone who reads the page" | "理由（このページを読む人全員に表示されます）" |
+| `protect.days_label` | the label of the field for how long; `{limit}` is the most days | "Days it lasts, at most {limit}" | "期間（日数。最長 {limit} 日）" |
+| `protect.in_force` | above the form when a temporary protection is in force on the target | "A temporary protection is in force here. Renewing replaces what it asks, its reason and its end. Lifting ends it now." | "一時的な保護がすでに有効です。更新すると、求めること、理由、終了日が置き換わります。解除すると、すぐに終了します。" |
+| `protect.set` | the button that puts a protection in place | "Protect" | "保護する" |
+| `protect.renew` | the button that renews it | "Renew" | "更新する" |
+| `protect.lift` | the button that lifts it | "Lift the protection" | "保護を解除する" |
+| `protect.problem_title` | a problem: the title is not one a page or a namespace has | "Give a title as the wiki writes it, with no slash at either end." | "タイトルは、ウィキでの書き方のとおりに、前後にスラッシュを付けずに入力してください。" |
+| `protect.problem_require` | a problem: what the protection asks was not chosen | "Choose what the protection asks." | "保護で求めることを選んでください。" |
+| `protect.problem_rung` | a problem: the role was not chosen | "Choose a role." | "役割を選んでください。" |
+| `protect.problem_reason` | a problem: the reason is empty or is not one line; `{limit}` is the most characters | "Give a reason of one line, at most {limit} characters." | "理由は 1 行で、{limit} 文字までで入力してください。" |
+| `protect.problem_days` | a problem: the days are not a number of days; `{limit}` is the most | "Give a whole number of days from 1 to {limit}." | "日数は、1 から {limit} までの整数で入力してください。" |
+| `protect.problem_too_long` | a problem: the days are above what the platform allows; `{limit}` is the most days | "A protection lasts at most {limit} days. The person who runs this server sets that limit (INKLKUNN_GOVERNANCE_LIMIT_DAYS)." | "保護の期間は {limit} 日までです。この上限は、このサーバーの管理者が設定しています（INKLKUNN_GOVERNANCE_LIMIT_DAYS）。" |
+| `protect.problem_in_force` | a problem: a temporary protection is there already | "A temporary protection is in force here already. Renew it or lift it." | "一時的な保護がすでに有効です。更新するか、解除してください。" |
+| `protect.problem_not_in_force` | a problem: there is no temporary protection to renew or lift | "No temporary protection is in force here, so there is nothing to renew or lift." | "有効な一時的な保護がないため、更新も解除もできません。" |
+| `protect.not_allowed` | under the outcome not allowed, on that page | "Only people who hold the role that moderates in this wiki can protect a page. Nothing was changed." | "このウィキでモデレーションを行える役割を持つ人だけが、ページを保護できます。何も変更していません。" |
+| `protect.not_kept` | the page when this server keeps no temporary protections | "This server does not keep temporary protections, so nothing was changed." | "このサーバーは一時的な保護を保存しないため、何も変更していません。" |
+| `protect.unavailable` | the page when the records could not be used | "The protection could not be recorded just now. Nothing was changed. Try again in a little while; if it keeps happening, tell the person who runs this server." | "保護を記録できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。" |
+| `protect.back` | the link back to the page that was being protected | "Back to the page" | "ページに戻る" |
 
 ## 3. Words the interface does not say
 

@@ -7,8 +7,9 @@
 //! caller may not see (a draft is its author's alone).
 
 use inklkunn_core::acceptance::AcceptFailure;
-use inklkunn_core::governance::{Fault, ReadFault};
+use inklkunn_core::governance::{Fault, ReadFault, Require, Target};
 use inklkunn_core::proposal::{Invalid, ProposalError, QuotaRefusal, Reset};
+use inklkunn_core::protection::{Lack, Notice};
 use serde_json::json;
 
 use super::Request;
@@ -237,6 +238,7 @@ pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> 
             .named("reason", "approvals-missing")
             .member("needed", json!(needed))
             .member("have", json!(have)),
+        AcceptFailure::Protected { notices, lack } => protected_problem(&notices, lack),
         AcceptFailure::RulesUnreadable(fault) => {
             log(&format!(
                 "an acceptance was refused, the rules of the wiki cannot be read: {fault}"
@@ -315,6 +317,40 @@ fn governance_problem(faults: &[Fault]) -> Problem {
     Problem::new(Code::Unacceptable)
         .named("reason", "governance-invalid")
         .member("refusals", json!(refusals))
+}
+
+/// `403 forbidden`, `protected` (RFC 006 D-7; threat model C-3g): what the acceptance lacked (`lacks`: `role`, and `needs` the role,
+/// or `approval`) and **every protection that applies, once each**, as the pages show them: the kind, what it is on, what it asks, its
+/// reason and, for a temporary one, its end. The reason is the words of whoever set it, as the pages show it.
+fn protected_problem(notices: &[Notice], lack: Lack) -> Problem {
+    let listed: Vec<_> = notices
+        .iter()
+        .map(|n| {
+            let (on, title) = match n.target() {
+                Target::Path(title) => ("page", title),
+                Target::Namespace(title) => ("namespace", title),
+            };
+            let (requires, role) = match n.require() {
+                Require::Review => ("review", None),
+                Require::Rung(role) => ("rung", Some(role.as_str())),
+            };
+            json!({
+                "kind": if n.until().is_some() { "temporary" } else { "standing" },
+                "on": on,
+                "title": title,
+                "requires": requires,
+                "role": role,
+                "reason": n.reason(),
+                "until": n.until().map(crate::time::rfc3339),
+            })
+        })
+        .collect();
+    let problem = Problem::new(Code::Forbidden).named("reason", "protected");
+    let problem = match lack {
+        Lack::Rung(role) => problem.named("lacks", "role").named("needs", role.as_str()),
+        Lack::Review => problem.named("lacks", "approval"),
+    };
+    problem.member("protections", json!(listed))
 }
 
 /// `403 forbidden`, `rules-unreadable`: every write of the wiki is refused until its governance file is repaired; the file,

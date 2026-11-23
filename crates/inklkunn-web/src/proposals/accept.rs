@@ -117,6 +117,14 @@ pub enum AcceptOutcome {
         /// What the latest revision has.
         have: usize,
     },
+    /// A protection of a page the change touches asks what the acceptance lacked (RFC 006 D-7): every protection that applies, and
+    /// what was lacking.
+    Protected {
+        /// Each protection in force on the pages the change touches.
+        notices: Vec<inklkunn_core::protection::Notice>,
+        /// What the acceptance lacked of what they ask.
+        lack: inklkunn_core::protection::Lack,
+    },
     /// A governance file of this wiki cannot be read, so every write is refused until it is repaired (RFC 006 D-1).
     RulesUnreadable(ReadFault),
     /// Nothing was changed, and the fixed word says why.
@@ -214,6 +222,9 @@ pub(crate) fn outcome_of(
         Err(AcceptFailure::GovernanceRung(rung)) => AcceptOutcome::GovernanceRung(rung),
         Err(AcceptFailure::ApprovalsMissing { needed, have }) => {
             AcceptOutcome::ApprovalsMissing { needed, have }
+        }
+        Err(AcceptFailure::Protected { notices, lack }) => {
+            AcceptOutcome::Protected { notices, lack }
         }
         Err(ref failure @ AcceptFailure::RulesUnreadable(ref fault)) => {
             log(&format!(
@@ -330,6 +341,12 @@ pub fn render_accept_outcome(
             Key::OutcomeApprovalsMissing,
             vec![governance::approvals_note(t, *needed, *have)],
         ),
+        AcceptOutcome::Protected { notices, lack } => {
+            // The sentence for what was lacking, then every protection that applies, once each, as the pages show them.
+            let mut paragraphs = vec![crate::protections::lack_note(t, *lack)];
+            paragraphs.extend(crate::protections::paragraphs(t, notices));
+            (StatusCode::FORBIDDEN, Key::OutcomeProtected, paragraphs)
+        }
         AcceptOutcome::RulesUnreadable(fault) => (
             StatusCode::SERVICE_UNAVAILABLE,
             Key::OutcomeRulesUnreadable,

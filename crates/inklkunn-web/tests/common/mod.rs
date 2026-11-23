@@ -749,10 +749,17 @@ pub fn assemble(
     );
     let verifier = Arc::new(Verifier::new(storage, store.clone(), layout).with_clock(|| NOW));
     let audit = Arc::new(MemoryAudit::new());
-    let authorizer = Arc::new(Authorizer::new(
-        Arc::new(StoreAuthz::new(store.clone(), store.clone())),
-        audit.clone(),
-    ));
+    let authorizer = Arc::new(
+        Authorizer::new(
+            Arc::new(StoreAuthz::new(store.clone(), store.clone())),
+            audit.clone(),
+        )
+        // Temporary protections (RFC 006 D-7) are kept in the same store, under the operator's default limit.
+        .with_protections(
+            store.clone(),
+            inklkunn_core::governance::PlatformLimits::default(),
+        ),
+    );
     let log = Arc::new(Mutex::new(Vec::new()));
     let sink = log.clone();
     let inbox = Arc::new(

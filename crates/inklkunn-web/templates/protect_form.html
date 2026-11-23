@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}<p>{{ intro }}</p>
+{% include "protections.html" %}{% if let Some(text) = in_force %}<p class="note" role="note">{{ text }}</p>
+{% endif %}<form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}
+<fieldset>
+<legend>{{ target_legend }}</legend>
+{% for c in targets %}<p><input id="protect-target-{{ c.value }}" type="radio" name="{{ target_field }}" value="{{ c.value }}"{% if c.selected %} checked{% endif %}> <label for="protect-target-{{ c.value }}">{{ c.label }}</label></p>
+{% endfor %}</fieldset>
+<div class="field">
+<label for="protect-title">{{ title_label }}</label>
+<input id="protect-title" name="{{ title_field }}" type="text" value="{{ typed_title }}" autocomplete="off">
+</div>
+<fieldset>
+<legend>{{ require_legend }}</legend>
+{% for c in requires %}<p><input id="protect-require-{{ c.value }}" type="radio" name="{{ require_field }}" value="{{ c.value }}"{% if c.selected %} checked{% endif %}> <label for="protect-require-{{ c.value }}">{{ c.label }}</label></p>
+{% endfor %}<div class="field">
+<label for="protect-rung">{{ rung_label }}</label>
+<select id="protect-rung" name="{{ rung_field }}">
+{% for c in rungs %}<option value="{{ c.value }}"{% if c.selected %} selected{% endif %}>{{ c.label }}</option>
+{% endfor %}</select>
+</div>
+</fieldset>
+<div class="field">
+<label for="protect-reason">{{ reason_label }}</label>
+<input id="protect-reason" name="{{ reason_field }}" type="text" value="{{ typed_reason }}" maxlength="{{ reason_max }}" autocomplete="off">
+</div>
+<div class="field">
+<label for="protect-days">{{ days_label }}</label>
+<input id="protect-days" name="{{ days_field }}" type="text" inputmode="numeric" value="{{ typed_days }}" autocomplete="off">
+</div>
+<p class="buttons">{% for b in buttons %}<button type="submit" name="{{ act_field }}" value="{{ b.value }}">{{ b.label }}</button> {% endfor %}</p>
+</form>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

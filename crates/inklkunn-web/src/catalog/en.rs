@@ -3361,4 +3361,115 @@ pub const CATALOG: &[Entry] = &[
         "The rules of this wiki ask for {count} approval from someone other than the proposer, and not enough people can give it yet. No proposal can be accepted until more people hold the role that reviews.",
         "The rules of this wiki ask for {count} approvals from people other than the proposer, and not enough people can give them yet. No proposal can be accepted until more people hold the role that reviews.",
     ),
+    msg("protection.heading", "Protections"),
+    msg(
+        "protection.note",
+        "Anyone who may propose can still propose a change. A protection says what it takes to accept one.",
+    ),
+    msg("protection.kind_standing", "By this wiki's rules"),
+    msg("protection.kind_temporary", "Temporarily, until {until}"),
+    msg("protection.on_page", "On the page {title}."),
+    msg("protection.on_namespace", "On every page below {title}."),
+    msg(
+        "protection.requires_review",
+        "A change here is accepted only after someone other than the proposer has approved it.",
+    ),
+    msg(
+        "protection.requires_rung",
+        "A change here is accepted only by {role} or a higher role.",
+    ),
+    msg("protection.reason", "Reason: {reason}"),
+    msg("rung.observer", "observer"),
+    msg("rung.questioner", "questioner"),
+    msg("rung.contributor", "contributor"),
+    msg("rung.reviewer", "reviewer"),
+    msg("rung.maintainer", "maintainer"),
+    msg("rung.admin", "admin"),
+    msg("outcome.protected", "Not signed: a protection holds it"),
+    msg(
+        "outcome_note.protected_rung",
+        "A protection on a page this change touches says it is accepted only by {role} or a higher role. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg(
+        "outcome_note.protected_review",
+        "A protection on a page this change touches asks first for an approval from someone other than the proposer. Nothing was changed, and the proposal is still held for review.",
+    ),
+    msg("title.protect", "Protect a page · {wiki} · {product}"),
+    msg("protect.link", "Protect this page"),
+    msg("protect.heading", "Protect a page"),
+    msg(
+        "protect.intro",
+        "A protection asks more of whoever accepts a change to the page. It ends by itself on the day you set, and everyone who can read the page sees it with its reason. A protection that is part of the rules of this wiki is changed by proposing a change to the rules.",
+    ),
+    msg("protect.target_legend", "What to protect"),
+    msg("protect.target_page", "This page only"),
+    msg(
+        "protect.target_namespace",
+        "Every page below this title, and not the page itself",
+    ),
+    msg("protect.title_label", "Title"),
+    msg("protect.require_legend", "What it asks"),
+    msg(
+        "protect.require_review",
+        "An approval first: someone other than the proposer approves before a change is accepted",
+    ),
+    msg(
+        "protect.require_rung",
+        "A role: only this role or a higher one accepts a change",
+    ),
+    msg("protect.rung_label", "Role"),
+    msg(
+        "protect.reason_label",
+        "Reason, shown to everyone who reads the page",
+    ),
+    msg("protect.days_label", "Days it lasts, at most {limit}"),
+    msg(
+        "protect.in_force",
+        "A temporary protection is in force here. Renewing replaces what it asks, its reason and its end. Lifting ends it now.",
+    ),
+    msg("protect.set", "Protect"),
+    msg("protect.renew", "Renew"),
+    msg("protect.lift", "Lift the protection"),
+    msg(
+        "protect.problem_title",
+        "Give a title as the wiki writes it, with no slash at either end.",
+    ),
+    msg(
+        "protect.problem_require",
+        "Choose what the protection asks.",
+    ),
+    msg("protect.problem_rung", "Choose a role."),
+    msg(
+        "protect.problem_reason",
+        "Give a reason of one line, at most {limit} characters.",
+    ),
+    msg(
+        "protect.problem_days",
+        "Give a whole number of days from 1 to {limit}.",
+    ),
+    msg(
+        "protect.problem_too_long",
+        "A protection lasts at most {limit} days. The person who runs this server sets that limit (INKLKUNN_GOVERNANCE_LIMIT_DAYS).",
+    ),
+    msg(
+        "protect.problem_in_force",
+        "A temporary protection is in force here already. Renew it or lift it.",
+    ),
+    msg(
+        "protect.problem_not_in_force",
+        "No temporary protection is in force here, so there is nothing to renew or lift.",
+    ),
+    msg(
+        "protect.not_allowed",
+        "Only people who hold the role that moderates in this wiki can protect a page. Nothing was changed.",
+    ),
+    msg(
+        "protect.not_kept",
+        "This server does not keep temporary protections, so nothing was changed.",
+    ),
+    msg(
+        "protect.unavailable",
+        "The protection could not be recorded just now. Nothing was changed. Try again in a little while; if it keeps happening, tell the person who runs this server.",
+    ),
+    msg("protect.back", "Back to the page"),
 ];

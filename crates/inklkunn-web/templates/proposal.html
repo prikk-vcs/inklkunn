@@ -9,7 +9,7 @@
 {% endif %}<ul class="proposal-facts">
 {% for f in facts %}<li>{{ f }}</li>
 {% endfor %}</ul>
-{% if let Some(overlaps) = overlaps %}{% include "proposal_overlaps.html" %}{% endif %}{% if !sources.is_empty() %}<section aria-labelledby="sources">
+{% include "protections.html" %}{% if let Some(overlaps) = overlaps %}{% include "proposal_overlaps.html" %}{% endif %}{% if !sources.is_empty() %}<section aria-labelledby="sources">
 <h2 id="sources">{{ sources_heading }}</h2>
 <ul>
 {% for s in sources %}<li>{{ s }}</li>

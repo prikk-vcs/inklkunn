@@ -9,11 +9,14 @@ use std::time::Duration;
 
 use axum::http::StatusCode;
 use inklkunn_core::acceptance::{Reconciled, words};
-use inklkunn_core::governance::{Fault, GovernanceFile, ReadFault, Refusal as GovernanceRefusal};
+use inklkunn_core::governance::{
+    Fault, GovernanceFile, ReadFault, Refusal as GovernanceRefusal, Require, Target,
+};
 use inklkunn_core::lease::{Busy, BusyWhy};
 use inklkunn_core::proposal::{
     Invalid, ProposalEdit, ProposalError, QuotaLimit, QuotaRefusal, Reset,
 };
+use inklkunn_core::protection::{Lack, Notice};
 use inklkunn_core::{AcceptFailure, Accepted, IdentityAuthority, Principal, Signed};
 use inklkunn_store::{
     AcceptanceId, AccountId, ActStore, FileChange, OverlapRecord, OverlapText, ProposalId,
@@ -454,6 +457,72 @@ fn cases() -> Vec<Case> {
             japanese: &[
                 "<h1>署名されませんでした: 承認がまだ足りません</h1>",
                 "最新の修正版への承認が 2 件必要です。現在は 1 件です。",
+            ],
+        },
+        Case {
+            name: "a protection of a page the change touches asks a higher role",
+            answer: || {
+                Err(AcceptFailure::Protected {
+                    notices: vec![
+                        Notice::temporary(
+                            Target::Path("Home".to_owned()),
+                            Require::Rung(Role::Admin),
+                            "Only the admin, this week.",
+                            1_700_086_400,
+                        ),
+                        Notice::standing(
+                            Target::Namespace("Policies".to_owned()),
+                            Require::Review,
+                            "Rules are read first.",
+                        ),
+                    ],
+                    lack: Lack::Rung(Role::Admin),
+                })
+            },
+            status: StatusCode::FORBIDDEN,
+            english: &[
+                "<h1>Not signed: a protection holds it</h1>",
+                "is accepted only by admin or a higher role. Nothing was changed, and the proposal is still held for review.",
+                "Temporarily, until 2023-11-15 22:13 UTC",
+                "On the page Home.",
+                "Reason: Only the admin, this week.",
+                "By this wiki&#39;s rules",
+                "On every page below Policies.",
+                "A change here is accepted only after someone other than the proposer has approved it.",
+                "Reason: Rules are read first.",
+            ],
+            japanese: &[
+                "<h1>署名されませんでした: 保護により保留されています</h1>",
+                "受け入れられるのは 管理者 の役割か、それより上の役割の人だけです。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+                "2023-11-15 22:13 UTC までの一時的な保護",
+                "ページ Home が対象です。",
+                "理由: Only the admin, this week.",
+                "このウィキのルールによる保護",
+                "Policies の下にあるすべてのページが対象です。",
+                "理由: Rules are read first.",
+            ],
+        },
+        Case {
+            name: "a protection of a page the change touches asks an approval first",
+            answer: || {
+                Err(AcceptFailure::Protected {
+                    notices: vec![Notice::standing(
+                        Target::Path("Home".to_owned()),
+                        Require::Review,
+                        "The front page is looked at twice.",
+                    )],
+                    lack: Lack::Review,
+                })
+            },
+            status: StatusCode::FORBIDDEN,
+            english: &[
+                "<h1>Not signed: a protection holds it</h1>",
+                "asks first for an approval from someone other than the proposer. Nothing was changed",
+                "Reason: The front page is looked at twice.",
+            ],
+            japanese: &[
+                "先に提案者以外の人の承認が必要です。何も変更しておらず",
+                "理由: The front page is looked at twice.",
             ],
         },
         Case {

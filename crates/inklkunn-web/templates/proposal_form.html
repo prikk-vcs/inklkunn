@@ -13,7 +13,7 @@
 {% endfor %}{% if let Some(more) = problem_links.more %}<p class="note">{{ more }}</p>
 {% endif %}</div>
 {% endif %}<p>{{ intro }}</p>
-{% if let Some(text) = scope %}<p>{{ text }}</p>
+{% include "protections.html" %}{% if let Some(text) = scope %}<p>{{ text }}</p>
 {% endif %}{% if let Some(link) = choose %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
 {% endif %}<form method="post" action="{{ action }}" class="proposal-form">
 {% include "csrf.html" %}

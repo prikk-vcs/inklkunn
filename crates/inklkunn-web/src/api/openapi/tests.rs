@@ -353,8 +353,9 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
  {
     use crate::api::write::refuse::{acceptance_problem, invalid_word};
     use inklkunn_core::AcceptFailure;
-    use inklkunn_core::governance::{Fault, GovernanceFile, ReadFault, Refusal};
+    use inklkunn_core::governance::{Fault, GovernanceFile, ReadFault, Refusal, Require, Target};
     use inklkunn_core::proposal::Invalid;
+    use inklkunn_core::protection::{Lack, Notice};
     use inklkunn_store::Role;
 
     let document = document(&real_table(), &docs()).unwrap();
@@ -372,6 +373,15 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
         problem(AcceptFailure::GovernanceInvalid(vec![fault])),
         problem(AcceptFailure::GovernanceRung(Role::Admin)),
         problem(AcceptFailure::ApprovalsMissing { needed: 2, have: 1 }),
+        problem(AcceptFailure::Protected {
+            notices: vec![Notice::temporary(
+                Target::Path("Home".to_owned()),
+                Require::Rung(Role::Admin),
+                "Why.",
+                1_700_086_400,
+            )],
+            lack: Lack::Rung(Role::Admin),
+        }),
         problem(AcceptFailure::RulesUnreadable(unreadable)),
     ];
     // What the acceptance refuses with, from the problems, and what a person proposing is refused with, from the words.
@@ -386,6 +396,7 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
             "governance-invalid",
             "governance-rung",
             "approvals-missing",
+            "protected",
             "rules-unreadable",
             "governance-mixed"
         ]

@@ -21,7 +21,7 @@ use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
     account, api, changes, csrf, discover, health, history, inbox, knowledge, probe, proposals,
-    raw, search, signin, style, views, watch, wiki,
+    protections, raw, search, signin, style, views, watch, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -51,6 +51,7 @@ fn page_specs() -> Vec<Spec> {
     specs.extend(account_specs());
     specs.extend(wiki_specs());
     specs.extend(view_specs());
+    specs.extend(moderation_specs());
     specs
 }
 
@@ -212,6 +213,21 @@ fn view_specs() -> Vec<Spec> {
             handler: || get(views::compare::compare_page),
         },
     ]
+}
+
+/// The moderation forms (RFC 006 D-7; handoff G-T3): put a temporary protection in place, renew it, lift it. **Web only**: there
+/// is no write API for moderation (RFC 006 D-12). Each carries the action the authorizer decides it with.
+fn moderation_specs() -> Vec<Spec> {
+    vec![Spec {
+        path: "/{slug}/-/protect",
+        methods: &["GET", "HEAD", "POST"],
+        guard: Guard::Action(Action::Moderate),
+        handler: form_route!(
+            protections::form::protect_form,
+            protections::form::protect_post,
+            protections::form::FORM_LIMIT
+        ),
+    }]
 }
 
 /// Signing in and out, joining, an invitation and the account page (the sign-in handoff's U1 and U2). None

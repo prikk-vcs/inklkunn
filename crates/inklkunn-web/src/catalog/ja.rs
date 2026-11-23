@@ -3420,4 +3420,121 @@ pub const CATALOG: &[Entry] = &[
         "proposal.approvals_unreachable",
         "このウィキのルールでは、提案者以外の人からの承認が {count} 件必要ですが、承認できる人がまだ足りません。レビューできる役割を持つ人が増えるまで、どの提案も受け入れられません。",
     ),
+    msg("protection.heading", "保護"),
+    msg(
+        "protection.note",
+        "提案できる人は、これまでどおり変更を提案できます。保護は、変更を受け入れるために何が必要かを定めています。",
+    ),
+    msg("protection.kind_standing", "このウィキのルールによる保護"),
+    msg("protection.kind_temporary", "{until} までの一時的な保護"),
+    msg("protection.on_page", "ページ {title} が対象です。"),
+    msg(
+        "protection.on_namespace",
+        "{title} の下にあるすべてのページが対象です。",
+    ),
+    msg(
+        "protection.requires_review",
+        "ここへの変更は、提案者以外の人が承認した後でなければ受け入れられません。",
+    ),
+    msg(
+        "protection.requires_rung",
+        "ここへの変更を受け入れられるのは、{role} の役割か、それより上の役割の人だけです。",
+    ),
+    msg("protection.reason", "理由: {reason}"),
+    msg("rung.observer", "オブザーバー"),
+    msg("rung.questioner", "質問者"),
+    msg("rung.contributor", "コントリビューター"),
+    msg("rung.reviewer", "レビュアー"),
+    msg("rung.maintainer", "メンテナー"),
+    msg("rung.admin", "管理者"),
+    msg(
+        "outcome.protected",
+        "署名されませんでした: 保護により保留されています",
+    ),
+    msg(
+        "outcome_note.protected_rung",
+        "この変更が触れるページの保護により、受け入れられるのは {role} の役割か、それより上の役割の人だけです。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+    ),
+    msg(
+        "outcome_note.protected_review",
+        "この変更が触れるページの保護により、先に提案者以外の人の承認が必要です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+    ),
+    msg("title.protect", "ページを保護 · {wiki} · {product}"),
+    msg("protect.link", "このページを保護する"),
+    msg("protect.heading", "ページを保護する"),
+    msg(
+        "protect.intro",
+        "保護は、ページへの変更を受け入れる人に、より多くを求めます。設定した日に自動で終了し、そのページを読める人全員に理由とともに表示されます。このウィキのルールの一部である保護は、ルールの変更を提案して変更します。",
+    ),
+    msg("protect.target_legend", "保護の対象"),
+    msg("protect.target_page", "このページだけ"),
+    msg(
+        "protect.target_namespace",
+        "このタイトルの下にあるすべてのページ（このタイトルのページ自体は含みません）",
+    ),
+    msg("protect.title_label", "タイトル"),
+    msg("protect.require_legend", "求めること"),
+    msg(
+        "protect.require_review",
+        "先に承認を求める: 変更を受け入れる前に、提案者以外の人が承認する",
+    ),
+    msg(
+        "protect.require_rung",
+        "役割を求める: この役割か、それより上の役割の人だけが変更を受け入れる",
+    ),
+    msg("protect.rung_label", "役割"),
+    msg(
+        "protect.reason_label",
+        "理由（このページを読む人全員に表示されます）",
+    ),
+    msg("protect.days_label", "期間（日数。最長 {limit} 日）"),
+    msg(
+        "protect.in_force",
+        "一時的な保護がすでに有効です。更新すると、求めること、理由、終了日が置き換わります。解除すると、すぐに終了します。",
+    ),
+    msg("protect.set", "保護する"),
+    msg("protect.renew", "更新する"),
+    msg("protect.lift", "保護を解除する"),
+    msg(
+        "protect.problem_title",
+        "タイトルは、ウィキでの書き方のとおりに、前後にスラッシュを付けずに入力してください。",
+    ),
+    msg(
+        "protect.problem_require",
+        "保護で求めることを選んでください。",
+    ),
+    msg("protect.problem_rung", "役割を選んでください。"),
+    msg(
+        "protect.problem_reason",
+        "理由は 1 行で、{limit} 文字までで入力してください。",
+    ),
+    msg(
+        "protect.problem_days",
+        "日数は、1 から {limit} までの整数で入力してください。",
+    ),
+    msg(
+        "protect.problem_too_long",
+        "保護の期間は {limit} 日までです。この上限は、このサーバーの管理者が設定しています（INKLKUNN_GOVERNANCE_LIMIT_DAYS）。",
+    ),
+    msg(
+        "protect.problem_in_force",
+        "一時的な保護がすでに有効です。更新するか、解除してください。",
+    ),
+    msg(
+        "protect.problem_not_in_force",
+        "有効な一時的な保護がないため、更新も解除もできません。",
+    ),
+    msg(
+        "protect.not_allowed",
+        "このウィキでモデレーションを行える役割を持つ人だけが、ページを保護できます。何も変更していません。",
+    ),
+    msg(
+        "protect.not_kept",
+        "このサーバーは一時的な保護を保存しないため、何も変更していません。",
+    ),
+    msg(
+        "protect.unavailable",
+        "保護を記録できませんでした。何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。",
+    ),
+    msg("protect.back", "ページに戻る"),
 ];

@@ -92,6 +92,8 @@ struct ProposalTpl<'a> {
     state: String,
     notes: Vec<Rich>,
     facts: Vec<String>,
+    /// The protections in force on the pages the proposal touches, in the one display.
+    protections: Vec<crate::protections::NoticeView>,
     sources_heading: String,
     sources: Vec<String>,
     signed: Option<(String, Option<LinkView>)>,
@@ -828,6 +830,35 @@ pub(crate) fn draw(
     } else {
         record.summary.clone()
     };
+    // The protections of the pages this proposal touches, while it can still be accepted (RFC 006 D-7): what its acceptance will
+    // ask, in the one display. Asked of the authorizer, which decides nothing here.
+    let protections = if record.state.is_open() {
+        let touched: Vec<String> = r
+            .revisions
+            .last()
+            .map(|rev| {
+                rev.content
+                    .files
+                    .iter()
+                    .map(|f| f.path.clone())
+                    .chain(
+                        rev.content
+                            .renames
+                            .iter()
+                            .flat_map(|x| [x.from.clone(), x.to.clone()]),
+                    )
+                    .collect()
+            })
+            .unwrap_or_default();
+        crate::protections::views(
+            t,
+            &ctx.services
+                .authorizer
+                .protections_on_change(&ctx.principal, &ctx.wiki.id, &touched),
+        )
+    } else {
+        Vec::new()
+    };
     let rendered = ProposalTpl {
         page: &head,
         shell: &shell,
@@ -841,6 +872,7 @@ pub(crate) fn draw(
         state: t.get(words::state_label(record.state)),
         notes,
         facts,
+        protections,
         sources_heading: t.get(Key::SourcesHeading),
         sources: record.sources.clone(),
         signed,

@@ -21,6 +21,7 @@ use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
+use inklkunn_core::protection::{Notice, titles_of};
 use inklkunn_core::read::Via;
 use inklkunn_core::read::{
     PageOutcome, PageProblem, Presentation, ReadError, RedirectProblem, RedirectedBy,
@@ -178,6 +179,10 @@ struct PageTpl<'a> {
     view_note: Option<String>,
     notes: Vec<String>,
     stale: Option<String>,
+    /// The protections in force on the page, in the one display.
+    protections: Vec<crate::protections::NoticeView>,
+    /// The way to the form that puts a temporary protection in place, for whoever may.
+    protect: Option<Choice>,
     contents_label: String,
     toc: Vec<TocItem>,
     body_lang: Option<String>,
@@ -406,6 +411,10 @@ pub(crate) enum Shown {
         view_name: Option<String>,
         /// The claims said in the page's paragraphs, from the knowledge index of the tip.
         claims: Vec<ParagraphClaim>,
+        /// The protections in force on the page, for whoever may read it (RFC 006 D-7): one display for both kinds.
+        protections: Vec<Notice>,
+        /// May the reader put a temporary protection in place? Only a hint for a link: the form and the act ask again.
+        may_protect: bool,
     },
     Missing {
         wiki: Box<WikiRecord>,
@@ -462,13 +471,24 @@ fn read_page(services: &Services, headers: &HeaderMap, t: T, slug: &str, raw_res
         .read
         .page(&wiki, view_full.as_deref(), &address.title, &links)
     {
-        Ok(PageOutcome::Found(view)) => Shown::Found {
-            claims: marks::for_page(services, &wiki, view_full.as_deref(), &view),
-            wiki,
-            view,
-            asked: address.title,
-            view_name,
-        },
+        Ok(PageOutcome::Found(view)) => {
+            // Asked of the authorizer, which answers only a reader of the wiki and decides nothing here (C-3g).
+            let principal = services.identity.principal(headers);
+            let protections = services.authorizer.protections_on_change(
+                &principal,
+                &wiki.id,
+                std::slice::from_ref(&view.path),
+            );
+            Shown::Found {
+                claims: marks::for_page(services, &wiki, view_full.as_deref(), &view),
+                protections,
+                may_protect: services.authorizer.may_moderate(&principal, &wiki.id),
+                wiki,
+                view,
+                asked: address.title,
+                view_name,
+            }
+        }
         Ok(PageOutcome::Missing { title }) => Shown::Missing { wiki, title },
         Ok(PageOutcome::Ambiguous { candidates }) => Shown::Ambiguous {
             candidates: candidates
@@ -505,6 +525,8 @@ fn read_page(services: &Services, headers: &HeaderMap, t: T, slug: &str, raw_res
                     asked: address.title,
                     view_name,
                     claims: Vec::new(),
+                    protections: Vec::new(),
+                    may_protect: false,
                 },
                 None => Shown::Unavailable { wiki },
             }
@@ -558,7 +580,24 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
             asked,
             view_name,
             claims,
-        } => found(page, &wiki, &view, &asked, view_name.as_deref(), &claims),
+            protections,
+            may_protect,
+        } => found_marked(
+            page,
+            &wiki,
+            &view,
+            &asked,
+            view_name.as_deref(),
+            Variant {
+                title: None,
+                banner: None,
+            },
+            &claims,
+            Protected {
+                notices: &protections,
+                may_protect,
+            },
+        ),
         Shown::Missing { wiki, title } => notice(
             page,
             &wiki,
@@ -663,28 +702,6 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
     }
 }
 
-fn found(
-    page: &Page,
-    wiki: &WikiRecord,
-    view: &PageView,
-    asked: &str,
-    view_name: Option<&str>,
-    claims: &[ParagraphClaim],
-) -> Response {
-    found_marked(
-        page,
-        wiki,
-        view,
-        asked,
-        view_name,
-        Variant {
-            title: None,
-            banner: None,
-        },
-        claims,
-    )
-}
-
 /// A page, drawn: the page view, and the permalink, which differs in its title and its banner and offers no
 /// proposal (a change is proposed against the page as it is).
 pub(crate) fn found_with(
@@ -695,10 +712,30 @@ pub(crate) fn found_with(
     view_name: Option<&str>,
     variant: Variant,
 ) -> Response {
-    found_marked(page, wiki, view, asked, view_name, variant, &[])
+    found_marked(
+        page,
+        wiki,
+        view,
+        asked,
+        view_name,
+        variant,
+        &[],
+        Protected {
+            notices: &[],
+            may_protect: false,
+        },
+    )
 }
 
-/// [`found_with`], with the claims said in the page's paragraphs: each claimed paragraph carries its one link.
+/// What a page says of its protections: the notices in force and whether to offer the form that sets one.
+struct Protected<'a> {
+    notices: &'a [Notice],
+    may_protect: bool,
+}
+
+/// [`found_with`], with the claims said in the page's paragraphs (each claimed paragraph carries its one link) and the
+/// protections in force on the page.
+#[allow(clippy::too_many_arguments)]
 fn found_marked(
     page: &Page,
     wiki: &WikiRecord,
@@ -707,6 +744,7 @@ fn found_marked(
     view_name: Option<&str>,
     variant: Variant,
     claims: &[ParagraphClaim],
+    protected: Protected<'_>,
 ) -> Response {
     let t = page.t();
     let shell = Shell::of(wiki);
@@ -731,6 +769,11 @@ fn found_marked(
         .clone()
         .unwrap_or_else(|| wiki.default_license.clone());
     let heading = view.meta.title.clone();
+    // The title the repository path spells: what a protection is set on (not the title the page's information block says).
+    let page_title = titles_of([view.path.as_str()])
+        .into_iter()
+        .next()
+        .unwrap_or_default();
     let page = &page.wiki_head(
         wiki,
         Subject::Page {
@@ -739,6 +782,7 @@ fn found_marked(
             block: (!view.stale).then_some(view.tip.block_id.as_str()),
         },
     );
+    let on_permalink = variant.banner.is_some();
     let rendered = PageTpl {
         page,
         shell: &shell,
@@ -776,6 +820,11 @@ fn found_marked(
         view_note: view_name.map(|v| t.msg(Key::WikiViewInUse).with("view", v).text()),
         notes,
         stale: view.stale.then(|| page.get(Key::PageStale)),
+        protections: crate::protections::views(t, protected.notices),
+        protect: (protected.may_protect && !on_permalink).then(|| Choice {
+            label: page.get(Key::ProtectLink),
+            href: crate::protections::paths::form_for(wiki.slug.as_str(), false, &page_title),
+        }),
         contents_label: page.get(Key::PageContents),
         toc: view
             .toc

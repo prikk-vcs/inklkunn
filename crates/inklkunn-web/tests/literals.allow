@@ -522,3 +522,12 @@ exact :: knowledge.rs :: now :: a placeholder name of a catalog message (K66)
 exact :: claims.rs :: day :: a placeholder name of a catalog message (the day the old reference was last checked, K72)
 exact :: curate.rs :: reviewed :: the name of a member of a source in the write API's body (`sources[i].reviewed`), named in a refusal; data, not a sentence (K72)
 exact :: curate.rs :: checked.day :: the name of a member of a source in the write API's body (`sources[i].checked.day`), named in a refusal; data, not a sentence (K72)
+
+# --- G-T3: protections (RFC 006 D-7). `protections/paths.rs` and `protections/fields.rs` are scoped above by their names.
+exact :: protections.rs :: until :: a placeholder name of a catalog message
+exact :: protections.rs :: title :: a placeholder name of a catalog message
+exact :: protections.rs :: role :: a placeholder name of a catalog message
+exact :: protections.rs :: reason :: a placeholder name of a catalog message
+exact :: form.rs :: wiki :: a placeholder name of a catalog message
+exact :: form.rs :: limit :: a placeholder name of a catalog message
+exact :: form.rs :: a protection could not be recorded: {why} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it

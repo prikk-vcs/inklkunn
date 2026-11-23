@@ -100,6 +100,8 @@ struct FormTpl<'a> {
     saved: Option<String>,
     problems: Vec<String>,
     problem_links: crate::knowledge::curate::Offers,
+    /// The protections in force on the pages the form changes, in the one display.
+    protections: Vec<crate::protections::NoticeView>,
     action: String,
     hidden: Vec<Hidden>,
     fields: Vec<FieldView>,
@@ -430,6 +432,29 @@ pub(super) fn render_form(
         Some(Link::Challenges) => t.get(Key::AttachIntroChallenges),
         None => t.get(Key::ProposeIntro),
     };
+    // What the protections of these pages ask of whoever accepts the change, said before the person writes (RFC 006 D-7): the
+    // pages the form holds and both ends of each rename, asked of the authorizer, which decides nothing here.
+    let touched: Vec<String> = state
+        .pages
+        .iter()
+        .filter_map(|p| {
+            p.path
+                .clone()
+                .or_else(|| inklkunn_markup::title_to_path(p.title.trim()).ok())
+        })
+        .chain(
+            state
+                .renames
+                .iter()
+                .flat_map(|r| [r.from.clone(), r.to.clone()]),
+        )
+        .collect();
+    let protections = crate::protections::views(
+        t,
+        &ctx.services
+            .authorizer
+            .protections_on_change(&ctx.principal, &ctx.wiki.id, &touched),
+    );
     let rendered = FormTpl {
         page: &page.wiki_head(&ctx.wiki, Subject::Wiki),
         shell: &shell,
@@ -446,6 +471,7 @@ pub(super) fn render_form(
         saved: state.saved.then(|| t.get(Key::ProposeSaved)),
         problems: state.problems,
         problem_links: state.knowledge.curate.clone(),
+        protections,
         action: state.action,
         hidden,
         fields: field_views,

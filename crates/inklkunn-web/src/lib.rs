@@ -40,6 +40,7 @@ pub mod pages;
 mod present;
 mod probe;
 pub mod proposals;
+mod protections;
 mod raw;
 pub mod routes;
 mod search;
