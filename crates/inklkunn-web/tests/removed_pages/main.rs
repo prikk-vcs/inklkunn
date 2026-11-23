@@ -685,7 +685,19 @@ async fn a_page_that_cannot_be_restored_says_why_in_its_own_sentence_for_each_ca
         "further back than the history this wiki reads",
         "履歴よりも前にある",
     ];
-    for (way, mine, other) in [("not text", not_text, beyond), ("beyond", beyond, not_text)] {
+    // The text that comes back is read where the removal's parent holds it, through the one reader of a text at a block (G-T4
+    // correction H-1), so a page whose last text is far behind the history this wiki reads is **not** a page that cannot be
+    // restored: the text is there, readable and not hidden. The sentence for *further back than the history* is for a removal
+    // that has no parent to read it at, which no history this service reads can show; it stays the form's answer to that.
+    {
+        let who = person(1);
+        let w = unrestorable("beyond");
+        let form = restore_form_in(&w, &who, "en").await;
+        assert_eq!(form.status, 200, "{}", form.body());
+        assert!(form.body().contains("name=\"mode\""), "{}", form.body());
+        assert!(!form.body().contains(beyond[0]), "{}", form.body());
+    }
+    for (way, mine, other) in [("not text", not_text, beyond)] {
         let who = person(1);
         for ((lang, mine_here), other_here) in ["en", "ja"].into_iter().zip(mine).zip(other) {
             // A world of its own for each request: how far back a request reads is bounded for it, and the blocks it has read are

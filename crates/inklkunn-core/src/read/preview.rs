@@ -86,10 +86,7 @@ impl ReadService {
         if meta.size > MAX_FILE_BYTES as u64 {
             return Ok(Some(Readability::Unreadable(Unreadable::TooLong)));
         }
-        match self
-            .storage
-            .read(&repo, &point, path, MAX_FILE_BYTES as u64)
-        {
+        match self.bytes_for_readability(&repo, &point, path, MAX_FILE_BYTES as u64) {
             Ok(bytes) => Ok(Some(readability(path, meta.size, &bytes))),
             // It is there (`stat` found it), is within the bound, and its bytes cannot be had: nothing is known of it, and a
             // file nothing is known of is not one the wiki reads.

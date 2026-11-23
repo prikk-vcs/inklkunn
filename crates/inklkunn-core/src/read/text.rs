@@ -253,6 +253,20 @@ impl ReadService {
         }
     }
 
+    /// The raw bytes of a knowledge file at a block, **unchecked**, to decide only whether the wiki can read it
+    /// ([`super::preview`]'s `knowledge_readability_at`, G-T6 correction S-2): at most `bound` bytes, and the verdict is all
+    /// that leaves the caller, never the bytes. A knowledge file is judged where it stands at a view's tip (the content of a
+    /// tip cannot be hidden), and a file the service cannot read at all is the very case this is asked about.
+    pub(super) fn bytes_for_readability(
+        &self,
+        repo: &std::path::Path,
+        point: &Point,
+        path: &str,
+        bound: u64,
+    ) -> Result<Vec<u8>, StorageError> {
+        self.storage.read(repo, point, path, bound)
+    }
+
     /// The file at a point, **unchecked**, for the two things that must see what is hidden: the comparison of a change's files
     /// with the views' tips (what the content of a tip is) and the one audited act that shows hidden content. Nothing else
     /// may read through it.
