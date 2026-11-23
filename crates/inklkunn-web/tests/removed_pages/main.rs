@@ -9,8 +9,8 @@
 mod common;
 
 use common::{
-    APP, CONTENT, World, accept_by_hand, add_person, block_id, get, get_as, op, page, person,
-    post_form, request, shown, with_accounts,
+    APP, Asked, CONTENT, World, accept_by_hand, add_person, block_id, get, get_as, op, page,
+    person, post_form, request, shown, with_accounts,
 };
 use inklkunn_store::{AccountId, FileChange, Role, Visibility};
 
@@ -192,7 +192,18 @@ async fn the_api_member_is_a_410_problem_with_when_which_proposal_and_why() {
         member(&json, "reason"),
         "Remove the guide: it is out of date"
     );
-    assert_eq!(member(&json, "restore"), "rollback");
+    // Anonymous: nobody who may not propose is offered the restoring (by the rung alone, no way back is worked out).
+    assert_eq!(member(&json, "restore"), "none");
+    let proposer = get_as(&w, "/handbook/-/api/v1/pages/Guide", Some(&person(1))).await;
+    assert_eq!(proposer.status, 410, "{}", proposer.body());
+    let json: serde_json::Value = serde_json::from_slice(&proposer.bytes).unwrap();
+    assert_eq!(member(&json, "restore"), "offered", "{json}");
+    let observer = person(9);
+    add_person(&w, &observer, "A reader", Some(Role::Observer));
+    let seen = get_as(&w, "/handbook/-/api/v1/pages/Guide", Some(&observer)).await;
+    let json: serde_json::Value = serde_json::from_slice(&seen.bytes).unwrap();
+    assert_eq!(member(&json, "restore"), "none", "{json}");
+    let json: serde_json::Value = serde_json::from_slice(&a.bytes).unwrap();
     assert!(
         member(&json, "detail")
             .as_str()
@@ -290,12 +301,6 @@ async fn whoever_may_propose_is_offered_the_restoring_proposal_and_whoever_may_n
         "{}",
         a.body()
     );
-    assert!(
-        a.body()
-            .contains("Restoring it is a proposal that takes that change back."),
-        "{}",
-        a.body()
-    );
     // An observer may read and may not propose: no link, and the reason in the refusal's own words.
     let observer = person(9);
     add_person(&w, &observer, "A reader", Some(Role::Observer));
@@ -373,9 +378,14 @@ async fn the_restore_form_offers_the_last_text_when_later_changes_block_the_roll
     let contributor = person(1);
     let a = get_as(&w, "/handbook/Guide", Some(&contributor)).await;
     assert_eq!(a.status, 410, "{}", a.body());
+    // The page of the removal says nothing of which way back there is: the link, and the form works it out.
     assert!(
+        a.body().contains("/handbook/-/restore/Guide"),
+        "{}",
         a.body()
-            .contains("Later changes stand in the way of taking that change back"),
+    );
+    assert!(
+        !a.body().contains("Later changes stand in the way"),
         "{}",
         a.body()
     );
@@ -432,4 +442,87 @@ async fn the_restore_form_of_a_page_that_is_not_removed_is_what_the_page_is() {
     // Signed out: an account is needed, said in words.
     let anonymous = get(&w, "/handbook/-/restore/Guide").await;
     assert_eq!(anonymous.status, 403, "{}", anonymous.body());
+}
+
+/// A wiki whose second change removed `count` pages at once (`P0` ... ), with no proposal behind it.
+fn bulk(count: usize) -> World {
+    let paths: Vec<String> = (0..count).map(|i| format!("pages/P{i}.md")).collect();
+    let texts: Vec<String> = (0..count)
+        .map(|i| page(&[&format!("title: P{i}")], "Text.\n"))
+        .collect();
+    let mut files: Vec<(&str, &str)> = paths
+        .iter()
+        .map(String::as_str)
+        .zip(texts.iter().map(String::as_str))
+        .collect();
+    let home_text = home("Welcome.\n");
+    files.push((HOME, &home_text));
+    let w = World::new("bulk", "Bulk", &files);
+    let creates: Vec<_> = paths.iter().map(|p| op("create-file", &[p])).collect();
+    w.fake.say(1, "Create the wiki");
+    w.fake.show(1, shown(creates));
+    let gone: Vec<&str> = paths.iter().map(String::as_str).collect();
+    w.fake.apply(&[], &gone);
+    w.fake.say(2, "Remove them all");
+    let deletes: Vec<_> = paths.iter().map(|p| op("delete-node", &[p])).collect();
+    w.fake.show(2, shown(deletes));
+    let w = with_accounts(w);
+    add_person(&w, &person(1), "Mika Tanaka", Some(Role::Contributor));
+    w
+}
+
+/// The calls that cost a process for each page, asked for by the first visit (of a fresh wiki, nothing held) to `P0` of a wiki
+/// whose change removed `count` pages, on `host` at `uri`, as an anonymous visitor or as `who`; and by the same visit again.
+async fn visit(
+    count: usize,
+    host: &str,
+    uri: &str,
+    who: Option<&inklkunn_store::AccountId>,
+) -> [Asked; 2] {
+    let extra: Vec<(&str, &str)> = who
+        .map(|a| ("x-test-account", a.as_str()))
+        .into_iter()
+        .collect();
+    let w = bulk(count);
+    let mut out = Vec::new();
+    for _ in 0..2 {
+        let before = w.fake.asked();
+        let a = request(&w, host, "GET", uri, &extra).await;
+        assert_eq!(a.status, 410, "{uri}: {}", a.body());
+        out.push(w.fake.asked().since(before));
+    }
+    out.try_into().expect("two visits")
+}
+
+/// **S-1: a visit to a removed page costs what a visit costs.** The 410 reads the removal and nothing else: the calls it makes
+/// are the same for a change that removed 200 pages as for one that removed one page, on the page, the raw 410 and the API,
+/// and they are these (no `cat` at all: the way back, a rollback plan and the history behind each page, is the form that
+/// restores's, behind its `propose` guard).
+#[tokio::test]
+async fn a_visit_to_a_removed_page_costs_the_same_whatever_the_change_removed() {
+    /// The first visit: the view's history twice and the changes it names.
+    const FIRST: Asked = Asked {
+        shows: 2,
+        cats: 0,
+        logs: 2,
+    };
+    /// A repeated visit: held by id.
+    const AGAIN: Asked = Asked {
+        shows: 0,
+        cats: 0,
+        logs: 0,
+    };
+    for (host, uri) in [
+        (APP, "/bulk/P0"),
+        (CONTENT, "/bulk/-/raw/P0"),
+        (APP, "/bulk/-/api/v1/pages/P0"),
+    ] {
+        // As a visitor who is not signed in, and as a person who may propose (who is only offered the link).
+        for who in [None, Some(person(1))] {
+            let one = visit(1, host, uri, who.as_ref()).await;
+            let many = visit(200, host, uri, who.as_ref()).await;
+            assert_eq!(one, many, "{uri}: the cost followed the pages removed");
+            assert_eq!(many, [FIRST, AGAIN], "{uri} as {who:?}");
+        }
+    }
 }

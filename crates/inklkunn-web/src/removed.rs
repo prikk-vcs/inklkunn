@@ -4,8 +4,10 @@
 //! **The difference is the history's** ([`inklkunn_core::read::ReadService::removed_page`]): a title that was never a page
 //! is the `404` that invites it, as before; a page whose newest change removed it is `410`, says when (the change, and the
 //! moment its proposal was accepted when this wiki keeps the proposal), by which proposal and for what reason, and offers to
-//! *propose restoring it*: a rollback of that change when it merges cleanly, or a proposal that writes the page again with its
-//! last text when later changes block that (the form is [`crate::restore`]). **It is the wiki's own page, behind the wiki's
+//! *propose restoring it*, as a link to whoever may propose (the form is [`crate::restore`]). **The page reads the removal and
+//! nothing else** (G-T6 correction S-1): which way back there is (a rollback of the change, the page's last text, or none,
+//! and whether the text is hidden) is worked out on that form alone, behind its `propose` guard, because working it out
+//! costs a process for each page the change removed and a visitor's request may not. **It is the wiki's own page, behind the wiki's
 //! own read check**: a wiki the visitor may not read answers as one that is not there, before anything here runs, so a
 //! restricted wiki's removed page is the absent wiki's answer to a stranger, byte for byte.
 //!
@@ -15,12 +17,12 @@
 //! **The reason is read in one place**, [`inklkunn_core::read::RemovedPage::reason`], which the tombstones of RFC 006 D-8
 //! wrap; this module never reads the change's summary itself. A hidden summary is the tombstone's lines in its place. The page
 //! names no author: the proposal is a link, and the people of the change are on the change's own page. When the text that
-//! restoring would write again is hidden, the page says so and offers the empty new page only (INV-13).
+//! restoring would write again is hidden (INV-13), the form says so and offers the empty new page only.
 
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::proposal::ProposalError;
-use inklkunn_core::read::{ReadError, Reason, RemovedPage, Restore};
+use inklkunn_core::read::{ReadError, Reason, RemovedPage};
 use inklkunn_core::{Action, Resource};
 use inklkunn_store::WikiRecord;
 
@@ -154,12 +156,6 @@ pub(crate) fn present(page: &Page, gone: Gone) -> Response {
         Reason::Hidden(mark) => paragraphs.extend(crate::tombstone::mark_facts(t, mark)),
         Reason::NotGiven => paragraphs.push(t.get(Key::RemovedNoReason)),
     }
-    paragraphs.push(match &removed.restore {
-        Restore::Rollback { .. } => t.get(Key::RemovedRestoreRollback),
-        Restore::LastText { .. } => t.get(Key::RemovedRestoreLastText),
-        Restore::NotOffered => t.get(Key::RemovedRestoreNotOffered),
-        Restore::TextHidden { titles } => crate::restore::text_hidden_words(t, titles),
-    });
     let mut choices = vec![
         Choice {
             label: t.msg(Key::RemovedLinkChange).with("number", number).text(),
@@ -179,20 +175,15 @@ pub(crate) fn present(page: &Page, gone: Gone) -> Response {
             },
         );
     }
+    // The link is the rung's alone; what the form then offers is the form's to work out.
     let offer = if !may_propose {
         paragraphs.push(t.get(Key::RemovedCannotPropose));
         paragraphs.extend(why_not);
         None
     } else {
-        Some(match removed.restore {
-            Restore::Rollback { .. } | Restore::LastText { .. } => Choice {
-                label: t.get(Key::RemovedRestoreLink),
-                href: crate::restore::path(slug, &removed.title, view),
-            },
-            Restore::NotOffered | Restore::TextHidden { .. } => Choice {
-                label: t.get(Key::ProposeNewPageLink),
-                href: proposal_paths::new_page(slug, Some(&removed.title)),
-            },
+        Some(Choice {
+            label: t.get(Key::RemovedRestoreLink),
+            href: crate::restore::path(slug, &removed.title, view),
         })
     };
     notice(

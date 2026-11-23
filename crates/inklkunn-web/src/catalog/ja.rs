@@ -3892,16 +3892,12 @@ pub const CATALOG: &[Entry] = &[
     msg("removed.link_proposal", "削除した提案"),
     msg("removed.restore_link", "このページの復元を提案する"),
     msg(
-        "removed.restore_rollback",
-        "復元は、その変更を取り消す提案です。その後の変更がほかのページに加えたことは、そのまま残ります。",
-    ),
-    msg(
-        "removed.restore_last_text",
-        "その後の変更があるため、その変更は取り消せません。そこで復元は、このページが最後に持っていた本文でページを作り直す提案になります。",
-    ),
-    msg(
-        "removed.restore_not_offered",
+        "removed.restore_not_text",
         "このページの最後の本文はテキストとして読めないため、提案による復元はできません。同じタイトルで新しいページを提案できます。",
+    ),
+    msg(
+        "removed.restore_beyond_history",
+        "このページの最後の本文を書いた変更が、このウィキが読み取る履歴よりも前にあるため、提案による復元はできません。同じタイトルで新しいページを提案できます。",
     ),
     msg(
         "removed.cannot_propose",
@@ -3933,11 +3929,11 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.page_gone.title", "ページは削除されました"),
     msg(
         "problem.page_gone.detail",
-        "ページ {page} は、変更 {change} で削除されました。メンバー `change_id`、`proposal`、`reason` は、どの変更を、どの提案が、なぜ行ったかを示し、`restore` は提供されている復元方法（`rollback`、`last-text`、`none`）を示します。",
+        "ページ {page} は、変更 {change} で削除されました。メンバー `change_id`、`proposal`、`reason` は、どの変更を、どの提案が、なぜ行ったかを示し、`restore` は、復元があなたに提供されているか（このウィキで変更を提案できるなら `offered`、できないなら `none`）を示します。どの方法で復元するかは、復元のフォームが示します。",
     ),
     msg(
         "problem.page_gone.hint",
-        "ページを元に戻すには、あらためて提案します。ウィキ上のこのアドレスのページが、削除の取り消し、または最後の本文でのページの作り直しを提案する手段を示します。",
+        "ページを元に戻すには、あらためて提案します。`restore` が `offered` のとき、ウィキ上のこのアドレスのページに、その提案を行うフォームへのリンクがあります。",
     ),
     msg(
         "claim.retired",

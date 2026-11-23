@@ -56,9 +56,13 @@ pub enum Restore {
         /// The block the text is read at (the removal's parent: the last state the page had).
         from: String,
     },
-    /// Neither can be made (the text is not text, or is larger than a page may be, or the revision that wrote it cannot be
-    /// found within the history this reads): the person starts the page anew.
-    NotOffered,
+    /// **The last text cannot be read as text** (it is not UTF-8, or it is larger than a page may be): no way back is
+    /// offered, and the person starts the page anew.
+    NotText,
+    /// **The revision that wrote the text is beyond what the page reads** (it is not found within [`MAX_REMOVAL_STEPS`]
+    /// steps of the page's history, or the history this wiki reads ends before it): nothing is guessed at, no way back is
+    /// offered, and the person starts the page anew. This is not [`Restore::NotText`]: the text may well be text.
+    BeyondHistory,
     /// **The text that would come back was hidden by moderation** (RFC 006 D-8; INV-13): no way back is offered, and a request
     /// for one is refused. The person starts the page anew. For a rollback of a change that wrote several pages, any one hidden
     /// refuses the whole.
@@ -90,8 +94,6 @@ pub struct RemovedPage {
     pub tip: Tip,
     /// The change that removed it: its number, its block, the proposal its message names and its summary.
     pub removal: ChangeInfo,
-    /// The way back.
-    pub restore: Restore,
 }
 
 impl RemovedPage {
@@ -123,7 +125,9 @@ enum TextToReturn {
 impl ReadService {
     /// Is the title `title`, which leads to no page at the tip of `view`, a page that was removed? `Ok(None)` when it is not
     /// (it was never a page, was moved, or its removal is older than the history this reads), and when the title leads to a
-    /// page after all. The caller asks only after [`ReadService::page`] answered *missing*.
+    /// page after all. The caller asks only after [`ReadService::page`] answered *missing*. **Only the removal is read**: the
+    /// calls are a constant of the history's steps, however many pages the removing change removed (the way back is
+    /// [`ReadService::way_back`]).
     pub fn removed_page(
         &self,
         wiki: &WikiRecord,
@@ -156,26 +160,25 @@ impl ReadService {
         let Some(removal) = removal else {
             return Ok(None);
         };
-        let restore = self.restore_of(wiki, view, &tip, &removal, &path)?;
         Ok(Some(RemovedPage {
             title,
             path,
             tip,
             removal,
-            restore,
         }))
     }
 
-    /// The way back for the page at `path` that `removal` removed: a rollback when it merges cleanly over `tip`, else the
-    /// last text, else nothing; and **nothing but a refusal when the text that would be written again is hidden**.
-    fn restore_of(
+    /// **The way back for a removed page**, as it is offered now: a rollback of the removing change when it merges cleanly
+    /// over the tip, else the page's last text, else nothing; and **nothing but a refusal when the text that would be written
+    /// again is hidden**. It is the costly half of a removed page (see the module's account), so it is asked on the form that
+    /// restores, behind the `propose` guard, and by no answer that a visitor gets for the asking.
+    pub fn way_back(
         &self,
         wiki: &WikiRecord,
         view: Option<&str>,
-        tip: &Tip,
-        removal: &ChangeInfo,
-        path: &str,
+        removed: &RemovedPage,
     ) -> Result<Restore, ReadError> {
+        let (tip, removal, path) = (&removed.tip, &removed.removal, removed.path.as_str());
         if let RollbackOutcome::Plan(plan) = self.rollback_plan(wiki, view, &removal.block_id)?
             && self.merges_over(wiki, tip, &plan.undoes, &plan.files)?
         {
@@ -192,15 +195,15 @@ impl ReadService {
                         undoes: plan.undoes,
                     },
                     TextToReturn::Hidden(titles) => Restore::TextHidden { titles },
-                    TextToReturn::Unknown => Restore::NotOffered,
+                    TextToReturn::Unknown => Restore::BeyondHistory,
                 },
             );
         }
         let Some(parent) = removal.parent.as_deref() else {
-            return Ok(Restore::NotOffered);
+            return Ok(Restore::BeyondHistory);
         };
         if !matches!(self.text_at(wiki, parent, path)?, Ok(Some(_))) {
-            return Ok(Restore::NotOffered);
+            return Ok(Restore::NotText);
         }
         Ok(
             match self.text_to_return(wiki, tip, &removal.block_id, &[path])? {
@@ -208,7 +211,7 @@ impl ReadService {
                     from: parent.to_owned(),
                 },
                 TextToReturn::Hidden(titles) => Restore::TextHidden { titles },
-                TextToReturn::Unknown => Restore::NotOffered,
+                TextToReturn::Unknown => Restore::BeyondHistory,
             },
         )
     }

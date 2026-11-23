@@ -3852,16 +3852,12 @@ pub const CATALOG: &[Entry] = &[
     msg("removed.link_proposal", "The proposal that removed it"),
     msg("removed.restore_link", "Propose restoring this page"),
     msg(
-        "removed.restore_rollback",
-        "Restoring it is a proposal that takes that change back. What later changes did to other pages stays as it is.",
-    ),
-    msg(
-        "removed.restore_last_text",
-        "Later changes stand in the way of taking that change back, so restoring it is a proposal that writes the page again with the text it had last.",
-    ),
-    msg(
-        "removed.restore_not_offered",
+        "removed.restore_not_text",
         "This page cannot be restored by a proposal, because its last text cannot be read as text. You can propose a new page with this title.",
+    ),
+    msg(
+        "removed.restore_beyond_history",
+        "This page cannot be restored by a proposal, because the change that wrote its last text is further back than the history this wiki reads. You can propose a new page with this title.",
     ),
     msg(
         "removed.cannot_propose",
@@ -3893,11 +3889,11 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.page_gone.title", "The page was removed"),
     msg(
         "problem.page_gone.detail",
-        "The page {page} was removed by change {change}. The members `change_id`, `proposal` and `reason` say which change, which proposal made it and why, and `restore` says which way back is offered: `rollback`, `last-text` or `none`.",
+        "The page {page} was removed by change {change}. The members `change_id`, `proposal` and `reason` say which change, which proposal made it and why, and `restore` says whether restoring is offered to you: `offered` when you may propose changes in this wiki, `none` when you may not. Which way back there is, is for the form that restores to say.",
     ),
     msg(
         "problem.page_gone.hint",
-        "To bring the page back, propose it again: the page of this address in the wiki offers a proposal that undoes the removal or writes the page again with its last text.",
+        "To bring the page back, propose it again: when `restore` is `offered`, the page of this address in the wiki links to the form that proposes it.",
     ),
     msg(
         "claim.retired",

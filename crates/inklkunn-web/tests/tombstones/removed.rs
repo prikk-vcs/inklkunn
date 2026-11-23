@@ -408,16 +408,26 @@ pub(crate) async fn surface_restore_offer() {
             (g.proposals(&author), g.proposals(&maintainer)),
             "a draft was made"
         );
-        // The page of the removal offers the empty new page and not the restore.
+        // The page of the removal works none of it out (G-T6 correction S-1): it links to the form, which says it, and it holds
+        // no byte of the text.
         let gone_page = g.get("/handbook/Guide", Some(&author)).await;
         assert_eq!(gone_page.status, StatusCode::GONE);
-        assert!(gone_page.body().contains(SENTENCE), "{}", gone_page.body());
+        assert!(!gone_page.body().contains(SENTENCE), "{}", gone_page.body());
         assert!(
-            !gone_page.body().contains("/handbook/-/restore/"),
+            gone_page.body().contains("/handbook/-/restore/Guide"),
             "{}",
             gone_page.body()
         );
         no_text(&gone_page, "the page of the removal");
+        // The API says by the rung alone: offered to whoever may propose, none to a stranger.
+        let api = g.get("/handbook/-/api/v1/pages/Guide", Some(&author)).await;
+        let json: serde_json::Value = serde_json::from_slice(&api.bytes).expect("json");
+        assert_eq!(
+            json.get("restore"),
+            Some(&serde_json::json!("offered")),
+            "{json}"
+        );
+        no_text(&api, "the API's page-gone");
         let api = g.get("/handbook/-/api/v1/pages/Guide", None).await;
         let json: serde_json::Value = serde_json::from_slice(&api.bytes).expect("json");
         assert_eq!(
@@ -536,9 +546,14 @@ async fn a_rollback_of_two_pages_is_refused_whole_naming_the_page() {
         "{}",
         form.body()
     );
-    // The page itself is no secret: the page of the removal says so as well.
+    // The page of the removal works none of it out (G-T6 correction S-1): the link, and the form says why there is no offer.
     let page = g.get("/handbook/Guide", Some(&author)).await;
-    assert!(page.body().contains(SENTENCE), "{}", page.body());
+    assert!(!page.body().contains(SENTENCE), "{}", page.body());
+    assert!(
+        page.body().contains("/handbook/-/restore/Guide"),
+        "{}",
+        page.body()
+    );
 }
 
 /// No byte of the answer holds the hidden text of a page.

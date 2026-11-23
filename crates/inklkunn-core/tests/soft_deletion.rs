@@ -453,8 +453,11 @@ fn criterion_10_a_removed_page_is_found_by_its_history_and_is_restored_by_a_roll
         removed.reason(),
         Reason::Given("Remove the guide: it is out of date")
     );
-    let Restore::Rollback { undoes } = removed.restore.clone() else {
-        panic!("a clean rollback was expected: {:?}", removed.restore);
+    let Restore::Rollback { undoes } = way_back(&w, &removed) else {
+        panic!(
+            "a clean rollback was expected: {:?}",
+            way_back(&w, &removed)
+        );
     };
     assert_eq!(undoes, removing_block);
     // A title that was never a page stays so.
@@ -522,10 +525,10 @@ fn criterion_10_when_later_changes_block_the_rollback_the_page_comes_back_with_i
         .unwrap()
         .expect("the page was removed");
     assert_eq!(removed.removal.block_id, removing_block);
-    let Restore::LastText { from } = removed.restore.clone() else {
+    let Restore::LastText { from } = way_back(&w, &removed) else {
         panic!(
             "the rollback is blocked, so the last text is offered: {:?}",
-            removed.restore
+            way_back(&w, &removed)
         );
     };
     let text = w
@@ -613,6 +616,13 @@ fn unhide(w: &World, hide: &TombstoneEventId) {
         .unwrap_or_else(|e| panic!("unhide: {e}"));
 }
 
+/// The way back of a removed page, as the form that restores works it out (the removal itself carries none).
+fn way_back(w: &World, removed: &inklkunn_core::read::RemovedPage) -> Restore {
+    w.reads
+        .way_back(&w.wiki, None, removed)
+        .expect("a way back")
+}
+
 fn removed_now(w: &World) -> inklkunn_core::read::RemovedPage {
     w.reads
         .removed_page(&w.wiki, None, "Guide")
@@ -638,17 +648,23 @@ fn inv_13_a_rollback_never_writes_hidden_text_again_and_a_hidden_summary_is_a_to
     );
     let removing = signed(w.accept(&w.maintainer, &removal.id));
     w.reads.forget_wiki(&w.wiki);
-    assert!(matches!(removed_now(&w).restore, Restore::Rollback { .. }));
+    assert!(matches!(
+        way_back(&w, &removed_now(&w)),
+        Restore::Rollback { .. }
+    ));
 
     // A hidden summary or author of the revision that wrote the text leaves the text free.
     let soft = hide(&w, &written, false, true, true);
-    assert!(matches!(removed_now(&w).restore, Restore::Rollback { .. }));
+    assert!(matches!(
+        way_back(&w, &removed_now(&w)),
+        Restore::Rollback { .. }
+    ));
     unhide(&w, &soft);
 
     // Its content hidden: neither way back is offered, and the page says which page (by title), live, with no cache to forget.
     let hidden = hide(&w, &written, true, false, false);
     assert_eq!(
-        removed_now(&w).restore,
+        way_back(&w, &removed_now(&w)),
         Restore::TextHidden {
             titles: vec!["Guide".to_owned()]
         }
@@ -656,8 +672,8 @@ fn inv_13_a_rollback_never_writes_hidden_text_again_and_a_hidden_summary_is_a_to
     // Un-hidden: the offer is the same as before, and the rollback restores the text exactly.
     unhide(&w, &hidden);
     let removed = removed_now(&w);
-    let Restore::Rollback { undoes } = removed.restore.clone() else {
-        panic!("{:?}", removed.restore);
+    let Restore::Rollback { undoes } = way_back(&w, &removed) else {
+        panic!("{:?}", way_back(&w, &removed));
     };
     assert_eq!(undoes, removing);
     let RollbackOutcome::Plan(plan) = w.reads.rollback_plan(&w.wiki, None, &undoes).unwrap() else {
@@ -714,19 +730,22 @@ fn inv_13_the_last_text_is_never_offered_when_it_is_hidden() {
     );
     signed(w.accept(&w.maintainer, &later.id));
     w.reads.forget_wiki(&w.wiki);
-    assert!(matches!(removed_now(&w).restore, Restore::LastText { .. }));
+    assert!(matches!(
+        way_back(&w, &removed_now(&w)),
+        Restore::LastText { .. }
+    ));
 
     let hidden = hide(&w, &written, true, false, false);
     assert_eq!(
-        removed_now(&w).restore,
+        way_back(&w, &removed_now(&w)),
         Restore::TextHidden {
             titles: vec!["Guide".to_owned()]
         }
     );
     unhide(&w, &hidden);
     let removed = removed_now(&w);
-    let Restore::LastText { from } = removed.restore.clone() else {
-        panic!("{:?}", removed.restore);
+    let Restore::LastText { from } = way_back(&w, &removed) else {
+        panic!("{:?}", way_back(&w, &removed));
     };
     assert_eq!(
         w.reads

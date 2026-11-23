@@ -178,22 +178,38 @@ pub(super) fn ambiguous(candidates: &[IndexEntry]) -> Problem {
 }
 
 /// What a title that leads to no page comes to: `page-gone` (410) for a page that was removed, with when (the change), by
-/// which proposal and why, and the way back that is offered; else `page-not-found` (404), as it always was (RFC 006 D-10). The
-/// difference is the page's history's, so it cannot be forged: a title that was never a page is not a removed page.
-fn missing(services: &Services, wiki: &WikiRecord, view: &View, title: &str) -> Problem {
+/// which proposal and why, and whether restoring is offered; else `page-not-found` (404), as it always was (RFC 006 D-10).
+/// The difference is the page's history's, so it cannot be forged: a title that was never a page is not a removed page.
+/// **Only the removal is read** (G-T6 correction S-1): the `restore` member is `offered` when the caller may propose in this
+/// wiki and `none` when not, by the rung alone, so that the answer costs what a visit costs; which way back there is (and
+/// whether its text is hidden) is the page of the form that restores to say, behind the same rung.
+fn missing(
+    services: &Services,
+    principal: &inklkunn_core::Principal,
+    wiki: &WikiRecord,
+    view: &View,
+    title: &str,
+) -> Problem {
     let Ok(Some(removed)) = services
         .read
         .removed_page(wiki, view.full.as_deref(), title)
     else {
         return Problem::new(Code::PageNotFound);
     };
-    // `none` is also what a way back is when the text it would write again was hidden by moderation (INV-13): nothing is
-    // offered, and which pages it is never said here.
-    let restore = match removed.restore {
-        inklkunn_core::read::Restore::Rollback { .. } => "rollback",
-        inklkunn_core::read::Restore::LastText { .. } => "last-text",
-        inklkunn_core::read::Restore::NotOffered
-        | inklkunn_core::read::Restore::TextHidden { .. } => "none",
+    let restore = if services
+        .authorizer
+        .authorize(
+            principal,
+            inklkunn_core::Action::Propose,
+            &inklkunn_core::Resource::Wiki {
+                wiki: wiki.id.clone(),
+            },
+        )
+        .is_allowed()
+    {
+        "offered"
+    } else {
+        "none"
     };
     // The reason is the words, or null and the tombstone of the hiding in place of them (never a name, never the note).
     let reason = match removed.reason() {
@@ -232,7 +248,9 @@ fn page_of(
         .page(wiki, view.full.as_deref(), &title, &links)
     {
         Ok(PageOutcome::Found(found)) => Ok(*found),
-        Ok(PageOutcome::Missing { .. }) => Err(missing(services, wiki, view, &title)),
+        Ok(PageOutcome::Missing { .. }) => {
+            Err(missing(services, &ctx.principal, wiki, view, &title))
+        }
         Ok(PageOutcome::Ambiguous { candidates }) => Err(ambiguous(&candidates)),
         Ok(PageOutcome::BrokenRedirect { .. }) => Err(Problem::new(Code::RedirectBroken)),
         Err(inklkunn_core::ReadError::CouldNotBeReadNow(cause)) => {

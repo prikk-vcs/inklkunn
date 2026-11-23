@@ -52,6 +52,9 @@ struct State {
     diffs: Vec<(Point, Point, Vec<String>)>,
     /// How many `show`s were asked.
     show_calls: usize,
+    /// How many `cat`s (`stat` and `read`) and `log`s (`history`) were asked.
+    file_calls: usize,
+    history_calls: usize,
     /// The message of the newest change (the tip's block).
     tip_message: String,
     /// Older changes of each view, newest first: `(block id, message)`.
@@ -66,6 +69,25 @@ struct State {
     touch_shows: usize,
     /// Make `show` fail.
     fail_show: bool,
+}
+
+/// How many of the calls that cost a process for each page were asked ([`Fake::asked`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Asked {
+    pub shows: usize,
+    pub cats: usize,
+    pub logs: usize,
+}
+
+impl Asked {
+    /// The calls made since `earlier`.
+    pub fn since(self, earlier: Asked) -> Asked {
+        Asked {
+            shows: self.shows - earlier.shows,
+            cats: self.cats - earlier.cats,
+            logs: self.logs - earlier.logs,
+        }
+    }
 }
 
 /// A one-view repository whose files can be changed, whose `branch list` can fail, and whose `verify` says
@@ -179,6 +201,16 @@ impl Fake {
     /// How many `show`s were asked.
     pub fn shows_asked(&self) -> usize {
         self.state().show_calls
+    }
+
+    /// The calls asked so far that a visit to a removed page could multiply: `show`s, `cat`s and `log`s.
+    pub fn asked(&self) -> Asked {
+        let s = self.state();
+        Asked {
+            shows: s.show_calls,
+            cats: s.file_calls,
+            logs: s.history_calls,
+        }
     }
 
     pub fn fail_views(&self, e: Option<StorageError>) {
@@ -367,7 +399,8 @@ impl Storage for Fake {
     }
 
     fn stat(&self, _: &Path, point: &Point, path: &str) -> Result<FileMeta> {
-        let s = self.state();
+        let mut s = self.state();
+        s.file_calls += 1;
         let Point::Block(id) = point else {
             return unsupported("cat");
         };
@@ -394,7 +427,8 @@ impl Storage for Fake {
     }
 
     fn read(&self, _: &Path, point: &Point, path: &str, _: u64) -> Result<Vec<u8>> {
-        let s = self.state();
+        let mut s = self.state();
+        s.file_calls += 1;
         let files = match point {
             Point::Block(id) => s
                 .snapshots
@@ -415,7 +449,8 @@ impl Storage for Fake {
     }
 
     fn history(&self, _: &Path, view: &Point, limit: Option<u64>) -> Result<History> {
-        let s = self.state();
+        let mut s = self.state();
+        s.history_calls += 1;
         let scripted = !s.tip_message.is_empty() || s.older.contains_key(view.as_arg());
         let blocks: Vec<HistoryBlock> = if scripted {
             let block = |id: String, state: String, seq: u64, message: &str| HistoryBlock {

@@ -5,6 +5,11 @@
 //! never taken from the form. The form carries only the way it was offered (`mode`), so that a click on what has since
 //! become another offer is refused and shown again (409) instead of making a proposal the person did not read about.
 //!
+//! **The way back is worked out here and nowhere else** ([`inklkunn_core::read::ReadService::way_back`], G-T6 correction S-1):
+//! it costs a process for each page the removing change wrote, so the page of the removal, the raw 410 and the API's
+//! `page-gone` offer only the link, by the `propose` rung, and this form (behind that rung) says which way there is and why
+//! there is none (the text is not text, the revision that wrote it is beyond the history this wiki reads, or it was hidden).
+//!
 //! * **A rollback** of the change that removed the page (RFC 004 D-8), when it merges cleanly over the tip.
 //! * **The page again, with the text it had last**, a proposal like any new page, when later changes block that.
 //!
@@ -59,6 +64,8 @@ struct Subject_ {
     view_full: Option<String>,
     view_name: Option<String>,
     removed: RemovedPage,
+    /// The way back, worked out here and nowhere else (G-T6 correction S-1): a visit to the removed page costs none of it.
+    restore: Restore,
 }
 
 /// How reading the removed page came out, before anything is drawn.
@@ -94,13 +101,22 @@ fn find(ctx: &Ctx, t: T, title: &str, view: Option<&str>) -> Result<Found, Box<R
         }
         Err(_) => return Ok(Found::Never),
     }
-    match read.removed_page(&ctx.wiki, view_full.as_deref(), title) {
-        Ok(Some(removed)) => Ok(Found::Removed(Box::new(Subject_ {
+    let removed = match read.removed_page(&ctx.wiki, view_full.as_deref(), title) {
+        Ok(Some(removed)) => removed,
+        Ok(None) => return Ok(Found::Never),
+        Err(ReadError::CouldNotBeReadNow(cause)) => {
+            ctx.log(&format!("a history could not be read now: {cause}"));
+            return Ok(Found::Unavailable);
+        }
+        Err(_) => return Ok(Found::Never),
+    };
+    match read.way_back(&ctx.wiki, view_full.as_deref(), &removed) {
+        Ok(restore) => Ok(Found::Removed(Box::new(Subject_ {
             view_full,
             view_name,
             removed,
+            restore,
         }))),
-        Ok(None) => Ok(Found::Never),
         Err(ReadError::CouldNotBeReadNow(cause)) => {
             ctx.log(&format!("a history could not be read now: {cause}"));
             Ok(Found::Unavailable)
@@ -148,7 +164,7 @@ fn mode_of(restore: &Restore) -> Option<&'static str> {
     match restore {
         Restore::Rollback { .. } => Some(MODE_ROLLBACK),
         Restore::LastText { .. } => Some(MODE_LAST_TEXT),
-        Restore::NotOffered | Restore::TextHidden { .. } => None,
+        Restore::NotText | Restore::BeyondHistory | Restore::TextHidden { .. } => None,
     }
 }
 
@@ -160,23 +176,29 @@ pub(crate) fn text_hidden_words(t: T, titles: &[String]) -> String {
         .text()
 }
 
-/// The answer when no mode can be offered: for hidden text, the page that says so (`status`) and the empty new page; else
-/// the way on is the new page.
+/// The answer when no mode can be offered: the page that says why (`status`): the text was hidden, is not text, or was written
+/// beyond the history this wiki reads; and the way on is the empty new page.
 fn no_mode(page: &Page, ctx: &Ctx, subject: &Subject_, status: StatusCode) -> Response {
     let t = page.t();
     let removed = &subject.removed;
-    let Restore::TextHidden { titles } = &removed.restore else {
-        return see(&crate::proposals::paths::new_page(
-            ctx.slug(),
-            Some(&removed.title),
-        ));
+    let words = match &subject.restore {
+        Restore::TextHidden { titles } => text_hidden_words(t, titles),
+        Restore::NotText => t.get(Key::RemovedRestoreNotText),
+        Restore::BeyondHistory => t.get(Key::RemovedRestoreBeyondHistory),
+        // An offer is a form, not a notice: the caller asks this only when there is no way.
+        Restore::Rollback { .. } | Restore::LastText { .. } => {
+            return see(&crate::proposals::paths::new_page(
+                ctx.slug(),
+                Some(&removed.title),
+            ));
+        }
     };
     notice(
         page,
         &ctx.wiki,
         status,
         Key::RemovedHeading,
-        vec![text_hidden_words(t, titles)],
+        vec![words],
         vec![Choice {
             label: t.get(Key::RestoreBack),
             href: WikiLinks::new(t, ctx.slug(), subject.view_name.as_deref())
@@ -284,7 +306,7 @@ pub(crate) async fn restore_form(
             return response;
         }
         match find(&ctx, page.t(), &title, params.get(VIEW).map(String::as_str)) {
-            Ok(Found::Removed(subject)) => match mode_of(&subject.removed.restore) {
+            Ok(Found::Removed(subject)) => match mode_of(&subject.restore) {
                 Some(mode) => form_page(page, &ctx, &subject, mode, Vec::new(), StatusCode::OK),
                 // Nothing can restore it: the way on is the new page (and, for hidden text, the words that say why).
                 None => no_mode(page, &ctx, &subject, StatusCode::OK),
@@ -329,7 +351,7 @@ pub(crate) async fn restore_post(
             Err(response) => return *response,
         };
         // Whatever mode the form names: hidden text is refused before the mode is looked at.
-        let Some(mode) = mode_of(&subject.removed.restore) else {
+        let Some(mode) = mode_of(&subject.restore) else {
             return no_mode(page, &ctx, &subject, StatusCode::CONFLICT);
         };
         if asked != mode {
@@ -364,7 +386,7 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {
             None,
         ))
     };
-    let made = match &removed.restore {
+    let made = match &subject.restore {
         Restore::Rollback { undoes } => {
             match services.read.rollback_plan(&ctx.wiki, view, undoes) {
                 Ok(RollbackOutcome::Plan(plan)) => {
@@ -390,7 +412,9 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {
                 .proposals
                 .create(&ctx.principal, &ctx.wiki, view, edit)
         }
-        Restore::NotOffered | Restore::TextHidden { .. } => return changed(page, ctx, subject),
+        Restore::NotText | Restore::BeyondHistory | Restore::TextHidden { .. } => {
+            return changed(page, ctx, subject);
+        }
     };
     match made {
         Ok(record) => see(&crate::proposals::paths::proposal(
@@ -402,7 +426,7 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {
 }
 
 fn changed(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {
-    match mode_of(&subject.removed.restore) {
+    match mode_of(&subject.restore) {
         Some(mode) => form_page(
             page,
             ctx,
