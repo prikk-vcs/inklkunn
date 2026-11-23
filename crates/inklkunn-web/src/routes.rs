@@ -21,7 +21,7 @@ use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
     account, api, changes, csrf, discover, health, history, inbox, knowledge, people, probe,
-    proposals, protections, raw, search, signin, style, tombstone, views, watch, wiki,
+    proposals, protections, raw, restore, search, signin, style, tombstone, views, watch, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -176,6 +176,17 @@ fn proposal_specs() -> Vec<Spec> {
             methods: &["GET", "HEAD"],
             guard: Guard::Action(Action::Read),
             handler: || get(proposals::list::discussion),
+        },
+        // --- handoff G-T6 (RFC 006 D-10): the proposal that restores a removed page.
+        Spec {
+            path: "/{slug}/-/restore/{*title}",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Propose),
+            handler: form_route!(
+                restore::restore_form,
+                restore::restore_post,
+                restore::FORM_LIMIT
+            ),
         },
     ]
 }

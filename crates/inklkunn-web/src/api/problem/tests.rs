@@ -82,6 +82,7 @@ fn the_registry_is_complete() {
     let named = |code: Code| match code {
         Code::NotFound
         | Code::PageNotFound
+        | Code::PageGone
         | Code::AmbiguousTitle
         | Code::RedirectBroken
         | Code::PageUnreadable
@@ -117,7 +118,7 @@ fn the_registry_is_complete() {
         | Code::SigningNotConfigured
         | Code::RetirementUnfinished => 1,
     };
-    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 36);
+    assert_eq!(Code::ALL.iter().map(|c| named(*c)).sum::<usize>(), 37);
 }
 
 #[test]
@@ -128,6 +129,8 @@ fn every_code_has_a_title_a_detail_and_a_hint_in_both_languages_with_no_stray_ma
                 .named("parameter", "limit")
                 .named("view", "draft")
                 .named("member", "summary")
+                .named("page", "Home")
+                .named("change", "7")
                 .named("limit", "open-proposals")
                 .named("state", "draft")
                 .named("word", "refused")

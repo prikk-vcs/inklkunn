@@ -422,6 +422,8 @@ pub(crate) enum Shown {
         wiki: Box<WikiRecord>,
         title: String,
     },
+    /// A page that was removed (RFC 006 D-10): the page that says so, `410`.
+    Removed(Box<crate::removed::Gone>),
     Ambiguous {
         wiki: Box<WikiRecord>,
         title: String,
@@ -491,7 +493,22 @@ fn read_page(services: &Services, headers: &HeaderMap, t: T, slug: &str, raw_res
                 view_name,
             }
         }
-        Ok(PageOutcome::Missing { title }) => Shown::Missing { wiki, title },
+        Ok(PageOutcome::Missing { title }) => {
+            // The history says whether the title was a page that was removed (410), or never one (404, as before).
+            match crate::removed::look(
+                services,
+                headers,
+                t,
+                &wiki,
+                view_full.as_deref(),
+                view_name.as_deref(),
+                &title,
+            ) {
+                crate::removed::Look::Gone(gone) => Shown::Removed(gone),
+                crate::removed::Look::Never => Shown::Missing { wiki, title },
+                crate::removed::Look::Unavailable => Shown::Unavailable { wiki },
+            }
+        }
         Ok(PageOutcome::Ambiguous { candidates }) => Shown::Ambiguous {
             candidates: candidates
                 .iter()
@@ -618,6 +635,7 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
                 href: crate::proposals::paths::new_page(wiki.slug.as_str(), Some(title.as_str())),
             }),
         ),
+        Shown::Removed(gone) => crate::removed::present(page, *gone),
         Shown::Ambiguous {
             wiki,
             title,

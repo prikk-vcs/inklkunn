@@ -3839,4 +3839,60 @@ pub const CATALOG: &[Entry] = &[
     msg("show.author_label", "Author"),
     msg("show.files_label", "Pages"),
     msg("show.nothing", "There is nothing to show for this hiding."),
+    msg("removed.heading", "This page was removed"),
+    msg("removed.body", "The page {title} was removed from {wiki}."),
+    msg("removed.by_change", "It was removed by change {number}."),
+    msg(
+        "removed.accepted_at",
+        "The proposal that made the change was accepted on {when}.",
+    ),
+    msg("removed.reason", "Reason given: {reason}"),
+    msg("removed.no_reason", "The change gives no reason."),
+    msg("removed.link_change", "Change {number}, which removed it"),
+    msg("removed.link_proposal", "The proposal that removed it"),
+    msg("removed.restore_link", "Propose restoring this page"),
+    msg(
+        "removed.restore_rollback",
+        "Restoring it is a proposal that takes that change back. What later changes did to other pages stays as it is.",
+    ),
+    msg(
+        "removed.restore_last_text",
+        "Later changes stand in the way of taking that change back, so restoring it is a proposal that writes the page again with the text it had last.",
+    ),
+    msg(
+        "removed.restore_not_offered",
+        "This page cannot be restored by a proposal, because its last text cannot be read as text. You can propose a new page with this title.",
+    ),
+    msg(
+        "removed.cannot_propose",
+        "Restoring a page is proposed like any change, and you cannot propose changes in this wiki.",
+    ),
+    msg(
+        "removed.raw",
+        "This page was removed. Its source is no longer served. Open the page's address on the wiki to see when it was removed, and why.",
+    ),
+    msg("restore.heading", "Propose restoring {title}"),
+    msg(
+        "restore.intro_rollback",
+        "This opens a draft proposal that takes back change {number}, which removed the page. A draft is yours alone until you send it for review: you can read it and change it first.",
+    ),
+    msg(
+        "restore.intro_last_text",
+        "This opens a draft proposal that writes the page again with the text it had before change {number} removed it. A draft is yours alone until you send it for review: you can read it and change it first.",
+    ),
+    msg("restore.open_draft", "Open the draft"),
+    msg(
+        "restore.changed",
+        "This page changed after you opened this form, so what the proposal would be has changed too. Read what is offered now, and ask again.",
+    ),
+    msg("restore.back", "Back to the removed page"),
+    msg("problem.page_gone.title", "The page was removed"),
+    msg(
+        "problem.page_gone.detail",
+        "The page {page} was removed by change {change}. The members `change_id`, `proposal` and `reason` say which change, which proposal made it and why, and `restore` says which way back is offered: `rollback`, `last-text` or `none`.",
+    ),
+    msg(
+        "problem.page_gone.hint",
+        "To bring the page back, propose it again: the page of this address in the wiki offers a proposal that undoes the removal or writes the page again with its last text.",
+    ),
 ];

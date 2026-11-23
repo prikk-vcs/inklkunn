@@ -3876,4 +3876,63 @@ pub const CATALOG: &[Entry] = &[
     msg("show.author_label", "作成者"),
     msg("show.files_label", "ページ"),
     msg("show.nothing", "この非表示で表示できるものはありません。"),
+    msg("removed.heading", "このページは削除されました"),
+    msg(
+        "removed.body",
+        "ページ「{title}」は {wiki} から削除されました。",
+    ),
+    msg("removed.by_change", "変更 {number} で削除されました。"),
+    msg(
+        "removed.accepted_at",
+        "この変更をした提案は、{when} に受け入れられました。",
+    ),
+    msg("removed.reason", "示された理由: {reason}"),
+    msg("removed.no_reason", "この変更には理由が書かれていません。"),
+    msg("removed.link_change", "削除した変更 {number}"),
+    msg("removed.link_proposal", "削除した提案"),
+    msg("removed.restore_link", "このページの復元を提案する"),
+    msg(
+        "removed.restore_rollback",
+        "復元は、その変更を取り消す提案です。その後の変更がほかのページに加えたことは、そのまま残ります。",
+    ),
+    msg(
+        "removed.restore_last_text",
+        "その後の変更があるため、その変更は取り消せません。そこで復元は、このページが最後に持っていた本文でページを作り直す提案になります。",
+    ),
+    msg(
+        "removed.restore_not_offered",
+        "このページの最後の本文はテキストとして読めないため、提案による復元はできません。同じタイトルで新しいページを提案できます。",
+    ),
+    msg(
+        "removed.cannot_propose",
+        "ページの復元は、ほかの変更と同じく提案で行いますが、あなたはこのウィキで変更を提案できません。",
+    ),
+    msg(
+        "removed.raw",
+        "このページは削除されました。ソースはもう提供されていません。ウィキ上のこのページのアドレスを開くと、いつ、なぜ削除されたかが分かります。",
+    ),
+    msg("restore.heading", "{title} の復元を提案する"),
+    msg(
+        "restore.intro_rollback",
+        "変更 {number}（このページを削除した変更）を取り消す下書きの提案を作成します。下書きはレビューに送るまであなただけが閲覧できます。先に内容を確認し、変更することもできます。",
+    ),
+    msg(
+        "restore.intro_last_text",
+        "変更 {number} で削除される前の本文で、このページを作り直す下書きの提案を作成します。下書きはレビューに送るまであなただけが閲覧できます。先に内容を確認し、変更することもできます。",
+    ),
+    msg("restore.open_draft", "下書きを作成する"),
+    msg(
+        "restore.changed",
+        "このフォームを開いたあとにページの状況が変わり、提案の内容も変わりました。いま示されている内容を確認して、あらためて操作してください。",
+    ),
+    msg("restore.back", "削除されたページに戻る"),
+    msg("problem.page_gone.title", "ページは削除されました"),
+    msg(
+        "problem.page_gone.detail",
+        "ページ {page} は、変更 {change} で削除されました。メンバー `change_id`、`proposal`、`reason` は、どの変更を、どの提案が、なぜ行ったかを示し、`restore` は提供されている復元方法（`rollback`、`last-text`、`none`）を示します。",
+    ),
+    msg(
+        "problem.page_gone.hint",
+        "ページを元に戻すには、あらためて提案します。ウィキ上のこのアドレスのページが、削除の取り消し、または最後の本文でのページの作り直しを提案する手段を示します。",
+    ),
 ];

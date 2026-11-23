@@ -828,6 +828,7 @@ pub(super) async fn build(extra: &[(&str, &str)], out: &mut Out) {
         .iter()
         .chain(super::past_states::SCENARIOS)
         .chain(super::knowledge_states::SCENARIOS)
+        .chain(super::removed_states::SCENARIOS)
     {
         let w = common::with_accounts(handbook());
         let router = site_with(&config, Some(w.services.clone())).unwrap();

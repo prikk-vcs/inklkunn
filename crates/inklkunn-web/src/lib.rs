@@ -43,6 +43,8 @@ mod probe;
 pub mod proposals;
 mod protections;
 mod raw;
+mod removed;
+mod restore;
 pub mod routes;
 mod search;
 pub mod serve;

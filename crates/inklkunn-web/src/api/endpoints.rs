@@ -177,6 +177,30 @@ pub(super) fn ambiguous(candidates: &[IndexEntry]) -> Problem {
     )
 }
 
+/// What a title that leads to no page comes to: `page-gone` (410) for a page that was removed, with when (the change), by
+/// which proposal and why, and the way back that is offered; else `page-not-found` (404), as it always was (RFC 006 D-10). The
+/// difference is the page's history's, so it cannot be forged: a title that was never a page is not a removed page.
+fn missing(services: &Services, wiki: &WikiRecord, view: &View, title: &str) -> Problem {
+    let Ok(Some(removed)) = services
+        .read
+        .removed_page(wiki, view.full.as_deref(), title)
+    else {
+        return Problem::new(Code::PageNotFound);
+    };
+    let restore = match removed.restore {
+        inklkunn_core::read::Restore::Rollback { .. } => "rollback",
+        inklkunn_core::read::Restore::LastText { .. } => "last-text",
+        inklkunn_core::read::Restore::NotOffered => "none",
+    };
+    Problem::new(Code::PageGone)
+        .named("page", &removed.title)
+        .named("change", removed.removal.number.to_string())
+        .member("change_id", json!(removed.removal.block_id))
+        .member("proposal", json!(removed.removal.proposal))
+        .member("reason", json!(removed.reason()))
+        .member("restore", json!(restore))
+}
+
 /// The page a title leads to, or why not; a page the server could not ask for is the last one it has, labelled
 /// (the same serve-stale rule as the page view, OP-03).
 fn page_of(
@@ -192,7 +216,7 @@ fn page_of(
         .page(wiki, view.full.as_deref(), &title, &links)
     {
         Ok(PageOutcome::Found(found)) => Ok(*found),
-        Ok(PageOutcome::Missing { .. }) => Err(Problem::new(Code::PageNotFound)),
+        Ok(PageOutcome::Missing { .. }) => Err(missing(services, wiki, view, &title)),
         Ok(PageOutcome::Ambiguous { candidates }) => Err(ambiguous(&candidates)),
         Ok(PageOutcome::BrokenRedirect { .. }) => Err(Problem::new(Code::RedirectBroken)),
         Err(inklkunn_core::ReadError::CouldNotBeReadNow(cause)) => {

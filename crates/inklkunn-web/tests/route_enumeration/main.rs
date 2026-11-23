@@ -104,6 +104,8 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
             // (The write API's endpoints are the same acts under the API's prefix, and take `POST`.)
             let writes = (entry.path.contains("/-/proposals/")
                 && entry.path != "/{slug}/-/proposals/{id}")
+                // The proposal that restores a removed page (RFC 006 D-10; handoff G-T6) is a proposal.
+                || entry.path == "/{slug}/-/restore/{*title}"
                 || (entry.path.starts_with("/{slug}/-/api/v1/proposals")
                     && entry.methods == ["POST"]);
             // A view's creation is its own action (RFC 005 part 2 D-9; handoff 005 K-T8).

@@ -9,13 +9,14 @@
 //! the revision's base (see [`crate::read::RollbackPlan`]), which is the message's `Base:` trailer, so the history
 //! names the undone change.
 
-use inklkunn_store::{AccountId, ProposalId, WikiRecord};
+use inklkunn_store::{AccountId, Base, FileChange, ProposalId, WikiRecord};
 
 use super::{
     Action, Principal, ProposalEdit, ProposalError, ProposalRecord, ProposalService, Resource,
     Result, viewer_of,
 };
-use crate::read::{NoRollback, ReadError, ReadService, RollbackOutcome, RollbackPlan};
+use crate::message::SUMMARY_MAX_CHARS;
+use crate::read::{NoRollback, ReadError, ReadService, RollbackOutcome, RollbackPlan, Tip};
 
 /// Where a rollback plan comes from. [`ReadService`] answers from the repository; a test answers from a
 /// fixture.
@@ -81,6 +82,40 @@ pub fn rollback_edit(plan: &RollbackPlan) -> ProposalEdit {
         automated: false,
         base: Some(plan.base.clone()),
     }
+}
+
+/// The edit that restores a removed page when later changes block a rollback (RFC 006 D-10; handoff G-T6): the page written
+/// again, at the path its title spells, with the text it had last (`text`, read at the removing change's parent). It is written
+/// against the tip it was asked at (`tip`): a path the base does not have is a new page, so nothing of what later changes did
+/// is touched. The summary is *Restore: <title>*, cut to the summary's bound. Nothing is minor and nothing is
+/// machine-assisted: a person asked for it. `None` when the tip is not a base a proposal can name.
+pub fn restore_edit(title: &str, path: &str, text: String, tip: &Tip) -> Option<ProposalEdit> {
+    let mut summary: String = format!("Restore: {title}")
+        .chars()
+        .map(|c| {
+            if inklkunn_store::record::is_line_or_control(c) {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    if summary.chars().count() > SUMMARY_MAX_CHARS {
+        summary = summary.chars().take(SUMMARY_MAX_CHARS - 1).collect();
+        summary.push('…');
+    }
+    Some(ProposalEdit {
+        summary,
+        sources: Vec::new(),
+        files: vec![FileChange {
+            path: path.to_owned(),
+            text: Some(text),
+        }],
+        renames: Vec::new(),
+        minor: false,
+        automated: false,
+        base: Some(Base::new(&tip.state_id, &tip.block_id)?),
+    })
 }
 
 impl ProposalService {

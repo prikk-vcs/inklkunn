@@ -296,6 +296,7 @@ const CHANGES_PARAMS: &[Param] = &[VIEW, LIMIT, CURSOR, CHANGES_NAMESPACE, AUTOM
 
 const PAGE_PROBLEMS: &[Code] = &[
     Code::PageNotFound,
+    Code::PageGone,
     Code::AmbiguousTitle,
     Code::RedirectBroken,
     Code::PageUnreadable,

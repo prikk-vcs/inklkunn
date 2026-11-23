@@ -309,6 +309,7 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/proposals/{id}/ask", Accept),
             ("/{slug}/-/proposals/{id}/withdraw", Propose),
             ("/{slug}/-/discussion/{*title}", Read),
+            ("/{slug}/-/restore/{*title}", Propose),
             ("/-/wikis", Read),
             ("/-/inbox", Read),
             ("/{slug}/-/watch/{*title}", Read),

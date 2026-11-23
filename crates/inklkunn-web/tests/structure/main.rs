@@ -19,6 +19,7 @@ mod dom;
 mod knowledge_states;
 mod past_states;
 mod proposal_states;
+mod removed_states;
 mod rules;
 #[path = "../views/stubs.rs"]
 mod view_stubs;
@@ -197,6 +198,7 @@ const EXPECTED_PAGES: usize = VISITS.len()
     + wiki_states::SCENARIOS.len()
     + past_states::SCENARIOS.len()
     + knowledge_states::SCENARIOS.len()
+    + removed_states::SCENARIOS.len()
     + proposal_states::count()
     + claim_forms_states::count()
     + views_states::count();

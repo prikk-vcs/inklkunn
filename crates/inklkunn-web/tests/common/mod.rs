@@ -133,6 +133,29 @@ impl Fake {
         s.snapshots.insert(v, f);
     }
 
+    /// Remove a file in one block: the tip moves once.
+    pub fn remove(&self, path: &str) {
+        let mut s = self.state();
+        s.files.remove(path).expect("a file to remove");
+        s.version += 1;
+        let (v, f) = (s.version, s.files.clone());
+        s.snapshots.insert(v, f);
+    }
+
+    /// Write some files and remove others in one block: the tip moves once.
+    pub fn apply(&self, write: &[(&str, &str)], remove: &[&str]) {
+        let mut s = self.state();
+        for (path, text) in write {
+            s.files.insert((*path).to_owned(), text.as_bytes().to_vec());
+        }
+        for path in remove {
+            s.files.remove(*path).expect("a file to remove");
+        }
+        s.version += 1;
+        let (v, f) = (s.version, s.files.clone());
+        s.snapshots.insert(v, f);
+    }
+
     /// The message the block of `version` was sealed with.
     pub fn say(&self, version: u64, message: &str) {
         self.state().messages.insert(version, message.to_owned());

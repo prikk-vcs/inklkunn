@@ -20,6 +20,8 @@ pub(crate) enum Code {
     NotFound,
     /// The wiki has no page with this title.
     PageNotFound,
+    /// The page was removed: the title was a page, and the newest change that touched it took it away (RFC 006 D-10).
+    PageGone,
     /// Several pages match the title and none is nearer.
     AmbiguousTitle,
     /// The title is a redirect whose chain cannot be followed to a page.
@@ -98,6 +100,7 @@ impl Code {
     pub(crate) const ALL: &'static [Code] = &[
         Code::NotFound,
         Code::PageNotFound,
+        Code::PageGone,
         Code::AmbiguousTitle,
         Code::RedirectBroken,
         Code::PageUnreadable,
@@ -139,6 +142,7 @@ impl Code {
         match self {
             Code::NotFound => "not-found",
             Code::PageNotFound => "page-not-found",
+            Code::PageGone => "page-gone",
             Code::AmbiguousTitle => "ambiguous-title",
             Code::RedirectBroken => "redirect-broken",
             Code::PageUnreadable => "page-unreadable",
@@ -189,6 +193,7 @@ impl Code {
             | Code::RedirectBroken
             | Code::NoSuchView
             | Code::ChangeNotFound => StatusCode::NOT_FOUND,
+            Code::PageGone => StatusCode::GONE,
             Code::AmbiguousTitle => StatusCode::MULTIPLE_CHOICES,
             Code::PageUnreadable => StatusCode::UNPROCESSABLE_ENTITY,
             Code::InvalidTitle
@@ -242,6 +247,11 @@ impl Code {
                 Key::ProblemPageNotFoundTitle,
                 Key::ProblemPageNotFoundDetail,
                 Key::ProblemPageNotFoundHint,
+            ),
+            Code::PageGone => (
+                Key::ProblemPageGoneTitle,
+                Key::ProblemPageGoneDetail,
+                Key::ProblemPageGoneHint,
             ),
             Code::AmbiguousTitle => (
                 Key::ProblemAmbiguousTitleTitle,

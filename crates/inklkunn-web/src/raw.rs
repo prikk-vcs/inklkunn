@@ -60,15 +60,35 @@ pub(crate) async fn raw_content(
     };
     let language = negotiate_from_headers(&headers);
     let request_headers = headers.clone();
+    let asked = title.clone();
     let read = blocking(move || {
         let wiki = open(&services, &request_headers, &slug)?;
         let raw = services.read.raw(&wiki, None, &title);
-        Some((wiki, raw))
+        // A title that leads to no page may be a page that was removed (RFC 006 D-10): the same answer as the page's own, `410`.
+        let gone = matches!(raw, Ok(None))
+            && matches!(services.read.removed_page(&wiki, None, &title), Ok(Some(_)));
+        Some((wiki, raw, gone))
     })
     .await
     .flatten();
+    if let Some((wiki, _, true)) = &read {
+        let mut res = pages::plain(
+            StatusCode::GONE,
+            language,
+            T::new(language).get(Key::RemovedRaw),
+        );
+        if let Ok(link) = HeaderValue::from_str(&format!(
+            "<{}>; rel=\"canonical\"",
+            state
+                .origins
+                .app(&format!("/{}/{}", wiki.slug, encode_title(&asked)))
+        )) {
+            res.headers_mut().insert(header::LINK, link);
+        }
+        return res;
+    }
     let (wiki, raw) = match read {
-        Some((wiki, Ok(Some(raw)))) => (wiki, raw),
+        Some((wiki, Ok(Some(raw)), _)) => (wiki, raw),
         Some((
             _,
             Ok(None)
@@ -77,11 +97,12 @@ pub(crate) async fn raw_content(
                 | ReadError::NoSuchView(_)
                 | ReadError::PageUnreadable(_),
             ),
+            _,
         ))
         | None => {
             return nothing(&headers);
         }
-        Some((_, Err(ReadError::CouldNotBeReadNow(_)))) => {
+        Some((_, Err(ReadError::CouldNotBeReadNow(_)), _)) => {
             return with_retry_after(pages::plain(
                 StatusCode::SERVICE_UNAVAILABLE,
                 language,

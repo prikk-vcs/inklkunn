@@ -150,7 +150,7 @@ fn summary_of(info: &ChangeInfo) -> String {
 impl ReadService {
     /// A page's text at a block: `None` when the page was not there, an error for text that is not text or
     /// is too large.
-    fn text_at(
+    pub(super) fn text_at(
         &self,
         wiki: &WikiRecord,
         block: &str,
