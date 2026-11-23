@@ -656,25 +656,20 @@ fn a_protection_that_restricts_acceptance_to_a_rung_refuses_below_it_and_the_adm
         &setting("Home", Require::Rung(Role::Admin), "Only the admin.", 7),
     )
     .unwrap();
-    // `authorize(_, accept, page)` itself says so, with no acceptance and no template.
+    // `authorize()` does not look at protections (F-3): the acceptance's `judge` is the one place that enforces them, and a
+    // protection limits acceptance only. Another page, proposing and reading are as they were.
     let home = home_for(&c);
     assert!(
-        !desk
-            .authorize(&c.maintainer, Action::Accept, &home)
-            .is_allowed()
-    );
-    assert!(desk.authorize(&c.admin, Action::Accept, &home).is_allowed());
-    // Another page is as it was, and proposing and reading are unchanged.
-    assert!(
-        desk.authorize(&c.maintainer, Action::Accept, &c.resource("pages/Other.md"))
-            .is_allowed()
+        desk.authorize(&c.maintainer, Action::Accept, &home)
+            .is_allowed(),
+        "the rule of authorize() is the policy's, whatever protects the page"
     );
     assert!(
         desk.authorize(&c.author, Action::Propose, &home)
             .is_allowed()
     );
     assert!(desk.authorize(&c.author, Action::Read, &home).is_allowed());
-    // The acceptance says the same and names the protection.
+    // The acceptance refuses and names the protection.
     let p = c.propose_home();
     match refused(c.accept(clock, &c.maintainer, &p)) {
         AcceptFailure::Protected {
@@ -745,27 +740,17 @@ fn a_temporary_protection_ends_by_itself_the_second_before_it_still_holds_and_th
     .unwrap();
     let until = T0 + DAY;
     let p = c.propose_home();
-    let home = home_for(&c);
-    // The second before: refused by the acceptance, by `authorize`, and shown.
+    // The second before: refused by the acceptance, and shown.
     NOW.store(until - 1, Ordering::SeqCst);
     assert!(matches!(
         refused(c.accept(clock, &c.maintainer, &p)),
         AcceptFailure::Protected { .. }
     ));
-    assert!(
-        !desk
-            .authorize(&c.maintainer, Action::Accept, &home)
-            .is_allowed()
-    );
     assert_eq!(desk.protections_on(&c.author, wiki, "Home").len(), 1);
     // The instant of expiry: nothing is written, and the protection is gone from every reading of it.
     let records = c.rig.store.protection_events(wiki, 10).unwrap().len();
     NOW.store(until, Ordering::SeqCst);
     assert!(desk.protections_on(&c.author, wiki, "Home").is_empty());
-    assert!(
-        desk.authorize(&c.maintainer, Action::Accept, &home)
-            .is_allowed()
-    );
     assert!(matches!(
         c.accept(clock, &c.maintainer, &p),
         Ok(Accepted::Signed(_))
@@ -857,15 +842,6 @@ fn a_standing_protection_does_the_same_through_the_policy_and_is_shown_as_by_thi
             ..
         }
     ));
-    assert!(
-        !desk
-            .authorize(
-                &c.maintainer,
-                Action::Accept,
-                &c.resource("pages/Help/Start.md")
-            )
-            .is_allowed()
-    );
     assert!(matches!(
         c.accept(clock, &c.admin, &p),
         Ok(Accepted::Signed(_))
@@ -1157,6 +1133,42 @@ fn an_authorizer_that_keeps_protections_but_has_none_decides_every_action_on_a_p
             );
         }
     }
+}
+
+#[test]
+fn a_protection_limits_acceptance_only_so_declining_asking_for_a_revision_and_superseding_stay_with_the_policy()
+ {
+    static NOW: AtomicI64 = AtomicI64::new(T0);
+    fn clock() -> i64 {
+        NOW.load(Ordering::SeqCst)
+    }
+    let c = cast(&[], "");
+    let desk = desk(&c.rig, clock, 90);
+    desk.protect(
+        &c.maintainer,
+        &c.rig.wiki.id,
+        &setting("Home", Require::Rung(Role::Admin), "Only the admin.", 7),
+    )
+    .unwrap();
+    let proposals = &c.rig.proposals;
+    let wiki = &c.rig.wiki;
+    // The maintainer may not accept a change to Home, and may still decline one, ask for a revision of one, and see one
+    // superseded: none of them changes the page (decision 13).
+    let (first, second, third) = (c.propose_home(), c.propose_home(), c.propose_home());
+    assert!(matches!(
+        refused(c.accept(clock, &c.maintainer, &first)),
+        AcceptFailure::Protected { .. }
+    ));
+    proposals
+        .decline(&c.maintainer, wiki, &first.id, "Not this.")
+        .unwrap();
+    proposals
+        .ask_for_revision(&c.maintainer, wiki, &second.id, "Say more.")
+        .unwrap();
+    let newer = c.propose_home();
+    proposals
+        .supersede(&c.author, wiki, &third.id, &newer.id)
+        .unwrap();
 }
 
 #[test]

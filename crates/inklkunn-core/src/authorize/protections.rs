@@ -1,14 +1,16 @@
-//! Protections inside `authorize()` (RFC 006 D-7; handoff G-T3; threat model C-3g): where the temporary ones are kept, how a
-//! decision reads them, how the pages read them, and the three acts of the `moderate` rung that set, renew and lift one.
+//! Protections beside `authorize()` (RFC 006 D-7; handoff G-T3; threat model C-3g): where the temporary ones are kept, how the
+//! pages read them, and the three acts of the `moderate` rung that set, renew and lift one.
 //!
-//! **What is decided where.** The rung a protection asks of the acceptor is decided by `authorize(_, accept, page)`
-//! ([`Authorizer::authorize`]), and by [`Authorizer::protections_for_change`] for the acceptance, which asks about every
-//! page a change touches and under the rules and the clock of its own act. The review a protection asks is a fact of one
-//! proposal (its approvals), so the acceptance counts it, as it counts `acceptance.approvals`, with the notices this module
-//! hands it. **Nothing here is a template's or a handler's**: the web layer only draws the notices.
+//! **What is decided where.** The rung a protection asks of the acceptor is enforced by the acceptance's `judge`, and nowhere
+//! else (handoff G-T1 correction F-3: the product authorizes *accept* on a proposal, never on a page, so a check inside
+//! `authorize()` would never be reached). The judge asks [`Authorizer::protections_for_change`] about every page a change touches,
+//! under the rules and the clock of its own act, before the lease and under it. The review a protection asks is a fact of one
+//! proposal (its approvals), so the acceptance counts it, as it counts `acceptance.approvals`, with the notices this module hands
+//! it. A protection limits **acceptance only**. **Nothing here is a template's or a handler's**: the web layer only draws the
+//! notices.
 //!
-//! **Fails closed.** Where a protection cannot be read (the store is down), `authorize(_, accept, page)` denies. The display
-//! shows what can be read and says nothing of the rest, because it decides nothing.
+//! **Fails closed.** Where a protection cannot be read (the store is down), the acceptance is refused. The display shows what
+//! can be read and says nothing of the rest, because it decides nothing.
 //!
 //! **Existence-neutral.** [`Authorizer::protections_on`] answers only a principal who may read the wiki; to anyone else, and
 //! for a wiki that is not there, it answers with none, in the same cost, as every other read does.
@@ -22,13 +24,12 @@ use inklkunn_store::{
 };
 
 use super::{
-    Action, Authorizer, Decision, Facts, Principal, Resource, SourceError, authority_detail,
-    decide_under, rung_of,
+    Action, Authorizer, Principal, Resource, SourceError, authority_detail, decide_under, rung_of,
 };
 use crate::governance::{
     PlatformLimits, Require, Rules, Target, is_canonical_title, is_valid_reason,
 };
-use crate::protection::{Demand, Notice, notices_for, titles_of};
+use crate::protection::{Notice, notices_for, titles_of};
 
 /// Where an [`Authorizer`] keeps and reads temporary protections: the governance store, and the platform's limit on how long
 /// one may last.
@@ -243,35 +244,6 @@ impl Authorizer {
         };
         self.protections_for_titles(wiki, titles, &rules, (self.clock)())
             .unwrap_or_default()
-    }
-
-    /// Does a protection leave `decision` standing? **The rung a protection asks of the acceptor of a change to the page**:
-    /// only for an account that accepts a page, and an answer that could not be read is a denial. Called by
-    /// [`Authorizer::authorize`] and by nothing else.
-    pub(super) fn protected(
-        &self,
-        decision: Decision,
-        facts: &Facts,
-        principal: &Principal,
-        action: Action,
-        resource: &Resource,
-    ) -> Decision {
-        let (Decision::Allow, Action::Accept, Principal::Account(_), Resource::Page { wiki, path }) =
-            (decision, action, principal, resource)
-        else {
-            return decision;
-        };
-        match self.protections_for_change(
-            wiki,
-            std::slice::from_ref(path),
-            &facts.rules,
-            (self.clock)(),
-        ) {
-            Ok(notices) if Demand::of(&notices).rung_met(rung_of(facts.snapshot, &facts.rules)) => {
-                Decision::Allow
-            }
-            Ok(_) | Err(_) => Decision::Deny,
-        }
     }
 
     /// Would a request to protect a page be heard? **A hint for what to show** (the link on a page, the form), decided as the

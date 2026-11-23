@@ -37,12 +37,14 @@
 //!   writes of a person and are decided as before. Whoever may read the wiki can be told why ([`Authorizer::write_refusal`]);
 //!   everyone else gets the existence-neutral answer they always got.
 //!
-//! - **A protection of a page is an outcome of `authorize()`** (RFC 006 D-7; threat model C-3g), standing (the policy's `protect`
-//!   list) or temporary (a record of the `moderate` rung, kept by [`Authorizer::with_protections`]): `authorize(_, accept, page)`
-//!   denies an account whose rung is below the one a protection asks of whoever accepts a change to the page, and **the stricter of
-//!   all that apply decides**. `authorize(_, propose, page)` is decided as it is without protections (a protection asks something of
-//!   the acceptance, never of who may propose), and what an acceptance lacks of the rest (the approval a review asks) is the
-//!   acceptance's, from the same notices. See [`protection`](crate::protection). **No template and no handler evaluates one.**
+//! - **A protection of a page is enforced at acceptance, by the acceptance's `judge`, and nowhere else** (RFC 006 D-7; threat model
+//!   C-3g; handoff G-T1 correction F-3): standing (the policy's `protect` list) or temporary (a record of the `moderate` rung,
+//!   kept by [`Authorizer::with_protections`]), it asks a rung of whoever accepts a change to the page and, where it says so, a
+//!   review, and **the stricter of all that apply decides**. The product authorizes *accept* on a proposal, never on a page, so
+//!   `authorize()` does not look at protections: the acceptance asks `Authorizer::protections_for_change` about every page the
+//!   change touches, before the lease and under it. **A protection limits acceptance only** (decision 13): to propose, to
+//!   decline, to ask for a revision and to supersede a proposal on a protected page stay with whoever the policy lets do them,
+//!   because none of them changes the page. See [`protection`](crate::protection). **No template and no handler evaluates one.**
 //!
 //! A wiki that is not there, and a `restricted` wiki the caller holds no role in, produce **the same
 //! answer** (and, for a consequential action, the same audit event), so a decision cannot be used to find
@@ -862,8 +864,6 @@ impl Authorizer {
                     action,
                     is_governance_file(resource),
                 );
-                // A protection of the page asks a rung of whoever accepts a change to it (RFC 006 D-7; C-3g).
-                let decision = self.protected(decision, &facts, principal, action, resource);
                 let outcome = if decision.is_allowed() {
                     AuditOutcome::Allowed
                 } else {

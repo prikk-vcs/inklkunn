@@ -23,7 +23,8 @@
 //! any proposal that **touches** the page (writes, removes, or renames it from or to a title it covers):
 //!
 //! - [`Require::Rung`]`(r)`: the account that accepts must hold the rung `r` or higher, **on top of** `rungs.accept`
-//!   (the higher of the two decides). It is decided by `authorize(_, accept, page)` itself.
+//!   (the higher of the two decides). It is decided by the acceptance's `judge`, before the lease and under it, and nowhere else
+//!   (`authorize()` does not look at protections: the product authorizes *accept* on a proposal, never on a page).
 //! - [`Require::Review`]: the proposal's latest revision needs **at least one approval** before acceptance, from an account
 //!   other than the proposer that still holds the review rung and is not disabled, counted exactly as the acceptance counts
 //!   `acceptance.approvals`, and **whatever `acceptance.approvals` says**: the greater of the two applies.
