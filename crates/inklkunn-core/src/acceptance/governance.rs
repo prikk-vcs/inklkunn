@@ -154,9 +154,9 @@ impl ProposalAcceptor {
         })
     }
 
-    /// How many people other than the proposer approved the proposal's latest revision and still hold the review rung under
-    /// the rules in force now (RFC 004 D-3: a decision is bound to the revision it was made on, and a later revision
-    /// starts the count again).
+    /// How many people other than the proposer approved the proposal's latest revision, **have an account that is not
+    /// disabled** and still hold the review rung under the rules in force now (RFC 004 D-3: a decision is bound to the
+    /// revision it was made on, and a later revision starts the count again).
     fn approvals(
         &self,
         principal: &Principal,
@@ -180,10 +180,21 @@ impl ProposalAcceptor {
             })
             .map(|d| d.reviewer)
             .collect();
-        Ok(reviewers
-            .iter()
-            .filter(|reviewer| proposals.holds_review(reviewer, wiki, &proposal.id, rules))
-            .count())
+        let mut counted = 0;
+        for reviewer in &reviewers {
+            // A disabled account's approval stays recorded and stops counting (C-4): an operator who disables a reviewer they no
+            // longer trust expects what that reviewer approved to stop being enough. An account the store does not know counts
+            // for nothing either.
+            let enabled = self
+                .parts
+                .accounts
+                .account(reviewer)?
+                .is_some_and(|account| !account.disabled);
+            if enabled && proposals.holds_review(reviewer, wiki, &proposal.id, rules) {
+                counted += 1;
+            }
+        }
+        Ok(counted)
     }
 
     /// Judge the governance files the change is about to write (RFC 006 D-4), before the signer is asked: a proposal in

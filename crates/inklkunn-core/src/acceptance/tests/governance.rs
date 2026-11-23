@@ -248,6 +248,36 @@ fn an_approval_from_someone_who_no_longer_holds_the_review_role_does_not_count()
 }
 
 #[test]
+fn an_approval_from_a_disabled_account_does_not_count_and_counts_again_when_it_is_enabled() {
+    let a = approvals(2);
+    let id = &a.proposal.id;
+    approve(&a.rig, &a.reviewers[0].1, id, 1);
+    approve(&a.rig, &a.reviewers[1].1, id, 1);
+    // Both approved. The operator disables one of them: that approval stays recorded and stops counting, and the signer is not asked.
+    a.rig.store.set_disabled(&a.reviewers[0].0, true).unwrap();
+    assert_eq!(
+        refused(a.rig.acceptor().accept(&a.maintainer, &a.rig.wiki, id, 1)),
+        AcceptFailure::ApprovalsMissing { needed: 2, have: 1 }
+    );
+    assert!(a.rig.double.calls().is_empty());
+    assert_eq!(
+        a.rig
+            .proposals
+            .decisions(&a.maintainer, &a.rig.wiki, id)
+            .unwrap()
+            .len(),
+        2,
+        "what was approved stays recorded"
+    );
+    // The same account enabled again: its approval counts, as it did.
+    a.rig.store.set_disabled(&a.reviewers[0].0, false).unwrap();
+    assert!(matches!(
+        a.rig.acceptor().accept(&a.maintainer, &a.rig.wiki, id, 1),
+        Ok(Accepted::Signed(_))
+    ));
+}
+
+#[test]
 fn the_proposers_own_approval_is_never_counted_even_when_the_proposer_holds_the_review_role() {
     let rig = policy("acceptance:\n  approvals: 1\n");
     let (_, maintainer) = rig.person("Maya", Some(Role::Maintainer));
