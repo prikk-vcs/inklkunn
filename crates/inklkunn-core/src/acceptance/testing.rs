@@ -385,7 +385,11 @@ impl Rig {
             .with_governance_snapshots(store.clone()),
         );
         let authorizer = Authorizer::new(
-            Arc::new(StoreAuthz::new(store.clone(), store.clone()).with_rules(reads.clone())),
+            Arc::new(
+                StoreAuthz::new(store.clone(), store.clone())
+                    .with_rules(reads.clone())
+                    .with_restrictions(store.clone()),
+            ),
             audit.clone(),
         )
         .with_protections(store.clone(), crate::governance::PlatformLimits::default());

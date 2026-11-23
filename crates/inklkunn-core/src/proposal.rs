@@ -748,6 +748,24 @@ impl ProposalService {
             .restriction_refusal(principal, action, resource)
     }
 
+    /// **Why the acceptor no longer holds the rung to accept**, asked under the lease with the rules of the state the change is
+    /// signed on (F-1): the restriction in force when it is the cause (the person would hold the rung without it), and `None`
+    /// when the cause is anything else (a grant taken away or lowered, a rule that now asks for more).
+    pub(crate) fn accept_restriction_under(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+        rules: &Arc<Rules>,
+    ) -> Option<RestrictionNotice> {
+        self.authorizer.restriction_refusal_under(
+            principal,
+            Action::Accept,
+            &Self::proposal_resource(wiki, id),
+            Some(rules),
+        )
+    }
+
     fn allow(&self, principal: &Principal, action: Action, resource: &Resource) -> Result<()> {
         if self
             .authorizer

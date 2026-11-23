@@ -1184,4 +1184,5 @@ fn a_rollback_proposal_is_signed_as_a_rollback_with_the_undone_block_as_its_base
 }
 
 mod governance;
+mod lease_rung;
 mod protections;

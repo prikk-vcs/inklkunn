@@ -5,9 +5,11 @@
 //! [`Authorizer`] and cannot assert anything about a wiki. **A restriction is told to the restricted person alone**: every
 //! function here is about the principal asking, and nothing here names anyone else's.
 
+use std::sync::Arc;
+
 use inklkunn_store::{RestrictionEvent, RestrictionEventId, Role, WikiId};
 
-use super::{Action, Authorizer, Principal, Resource, Snapshot, SourceError, decide_under};
+use super::{Action, Authorizer, Principal, Resource, Rules, Snapshot, SourceError, decide_under};
 use super::{entry_rung, is_governance_file, rung_of};
 
 /// A restriction as the restricted person is told of it: the reason and the end. (The id is the hook for *contest this*,
@@ -123,7 +125,21 @@ impl Authorizer {
         action: Action,
         resource: &Resource,
     ) -> Option<RestrictionNotice> {
-        let facts = self.facts(principal, action, resource.wiki()).ok()?;
+        self.restriction_refusal_under(principal, action, resource, None)
+    }
+
+    /// [`Authorizer::restriction_refusal`] under the rules **given**, which the caller has just read for the state it acts on
+    /// (C-2): the acceptance asks it under the lease, where the rules are those of the tip the change is signed on.
+    pub fn restriction_refusal_under(
+        &self,
+        principal: &Principal,
+        action: Action,
+        resource: &Resource,
+        rules: Option<&Arc<Rules>>,
+    ) -> Option<RestrictionNotice> {
+        let facts = self
+            .facts_under(principal, action, resource.wiki(), rules)
+            .ok()?;
         let event = facts.restriction.as_ref()?;
         let on_governance_file = is_governance_file(resource);
         let uncapped = Snapshot {

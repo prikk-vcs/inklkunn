@@ -54,7 +54,7 @@ use inklkunn_signer::PreparedFile;
 use inklkunn_store::{AccountId, DecisionKind, ProposalRecord, Role, WikiRecord};
 
 use super::{AcceptFailure, ProposalAcceptor};
-use crate::authorize::Principal;
+use crate::authorize::{Action, Principal};
 use crate::governance::{
     Fault, GovernanceChange, GovernanceFile, Requirement, Rules, ViewPlace, is_governance_path,
     mixes_rules_with_other_paths, only_governance_files, refuse_outside_default_view,
@@ -121,6 +121,16 @@ impl ProposalAcceptor {
             return Err(AcceptFailure::RulesUnreadable(fault.clone()));
         }
         let policy = rules.policy();
+        // **The acceptor must still hold the rung that accepts** (F-1): the early authorization asked it before the lease, and a
+        // restriction or a grant may have changed since, so under the lease it is asked again, of the rung read now under the
+        // rules of the state the change is signed on. It comes before the protections' check, so that each refusal names its own
+        // cause: a restriction says so, with its reason and its end; any other lack is *not allowed*. The hatch is an admin's
+        // and an admin holds every rung.
+        if !hatch && rung < policy.minimum_role(Action::Accept) {
+            return Err(proposals
+                .accept_restriction_under(principal, wiki, &proposal.id, rules)
+                .map_or(AcceptFailure::NotAllowed, AcceptFailure::Restricted));
+        }
         let required: Option<Requirement> = kinds
             .iter()
             .map(|k| k.required(rules.constitution()))
