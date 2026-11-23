@@ -13,13 +13,16 @@
 //!
 //! *Comment* and *decide* are not changes of state, but they are only legal in some states, so they are rows
 //! of the same table: a decision is possible while the proposal is held for review, a comment while it is held
-//! or needs a revision, and neither once it has ended. The four end states have no way out.
+//! or needs a revision, and neither once it has ended. **Three of the four end states have no way out. The fourth,
+//! declined, has exactly one, *reopen*, and it is not an act of the proposal service**: it is what the overturn of an
+//! appeal against the decline does (RFC 006 D-9), so that an overturned decline brings the proposal back to review and
+//! it can be accepted. (A reopened proposal is held for review again, with the revisions and decisions it had.)
 
 use inklkunn_store::{ProposalOp, ProposalState};
 
 use ProposalOp::{
-    Accept, AskForRevision, Comment, Create, Decide, Decline, Revise, SaveDraft, Submit, Supersede,
-    Withdraw,
+    Accept, AskForRevision, Comment, Create, Decide, Decline, Reopen, Revise, SaveDraft, Submit,
+    Supersede, Withdraw,
 };
 use ProposalState::{
     Accepted, Declined, Draft, HeldForReview, NeedsRevision, Superseded, Withdrawn,
@@ -40,6 +43,7 @@ pub const TRANSITIONS: &[(ProposalOp, Option<ProposalState>, ProposalState)] = &
     (Accept, Some(HeldForReview), Accepted),
     (Decline, Some(HeldForReview), Declined),
     (Decline, Some(NeedsRevision), Declined),
+    (Reopen, Some(Declined), HeldForReview),
     (Withdraw, Some(Draft), Withdrawn),
     (Withdraw, Some(HeldForReview), Withdrawn),
     (Withdraw, Some(NeedsRevision), Withdrawn),

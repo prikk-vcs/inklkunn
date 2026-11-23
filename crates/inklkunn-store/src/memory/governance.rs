@@ -733,6 +733,18 @@ impl GovernanceStore for MemoryStore {
             .collect())
     }
 
+    fn recent_appeals(&self, wiki: &WikiId, limit: usize) -> Result<Vec<AppealRecord>> {
+        Ok(self
+            .governance_lock()
+            .appeals
+            .iter()
+            .rev()
+            .filter(|a| a.wiki == *wiki)
+            .take(clamp(limit))
+            .cloned()
+            .collect())
+    }
+
     fn appeals_by(&self, wiki: &WikiId, appellant: &AccountId) -> Result<Vec<AppealRecord>> {
         Ok(self
             .governance_lock()

@@ -997,6 +997,9 @@ pub trait GovernanceStore: Send + Sync {
     fn decide_appeal(&self, id: &AppealId, decision: &AppealDecision) -> Result<()>;
     /// The wiki's open appeals, oldest first, at most `limit` (never more than [`MAX_PAGE`], at least one).
     fn open_appeals(&self, wiki: &WikiId, limit: usize) -> Result<Vec<AppealRecord>>;
+    /// The wiki's appeals of every state, newest first, at most `limit` (never more than [`MAX_PAGE`], at least one): what the
+    /// *appeals* page of the rung that decides them lists, open and decided.
+    fn recent_appeals(&self, wiki: &WikiId, limit: usize) -> Result<Vec<AppealRecord>>;
     /// Every appeal the person made in the wiki, newest first.
     fn appeals_by(&self, wiki: &WikiId, appellant: &AccountId) -> Result<Vec<AppealRecord>>;
     /// Every appeal against the action, oldest first.

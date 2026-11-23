@@ -941,6 +941,16 @@ impl GovernanceStore for SqliteStore {
         )
     }
 
+    fn recent_appeals(&self, wiki: &WikiId, limit: usize) -> Result<Vec<AppealRecord>> {
+        self.governance_rows(
+            &format!(
+                "SELECT {APPEAL_COLUMNS} FROM appeals WHERE wiki_id = ?1 ORDER BY seq DESC LIMIT ?2"
+            ),
+            params![wiki.as_str(), limit_of(limit)],
+            appeal_row,
+        )
+    }
+
     fn appeals_by(&self, wiki: &WikiId, appellant: &AccountId) -> Result<Vec<AppealRecord>> {
         self.governance_rows(
             &format!(

@@ -672,7 +672,7 @@ impl ProposalStore for SqliteStore {
             tx.execute(
                 "UPDATE proposals SET state = ?1, updated_at = ?2, \
                  submitted_at = CASE WHEN ?3 THEN COALESCE(submitted_at, ?2) ELSE submitted_at END, \
-                 closed_at = CASE WHEN ?4 THEN ?2 ELSE closed_at END, \
+                 closed_at = CASE WHEN ?4 THEN ?2 WHEN ?7 THEN NULL ELSE closed_at END, \
                  superseded_by = COALESCE(?5, superseded_by) WHERE id = ?6",
                 params![
                     t.to.as_str(),
@@ -681,6 +681,7 @@ impl ProposalStore for SqliteStore {
                     !t.to.is_open(),
                     change.superseded_by.as_ref().map(ProposalId::as_str),
                     t.proposal.as_str(),
+                    t.op == ProposalOp::Reopen,
                 ],
             )
             .map_err(backend)?;
@@ -754,6 +755,25 @@ impl ProposalStore for SqliteStore {
                 |row| row.get::<_, Option<i64>>(0),
             )
             .map_err(backend)
+        })
+    }
+
+    fn transition_at(
+        &self,
+        wiki: &WikiId,
+        position: i64,
+    ) -> Result<Option<(ProposalId, ProposalTransition)>> {
+        self.with(|conn| {
+            conn.query_row(
+                "SELECT t.proposal_id, t.op, t.from_state, t.to_state, t.actor, t.reason, t.at \
+                 FROM proposal_transitions t JOIN proposals p ON p.id = t.proposal_id \
+                 WHERE t.seq = ?1 AND p.wiki_id = ?2",
+                params![position, wiki.as_str()],
+                row_to_transition,
+            )
+            .optional()
+            .map_err(backend)
+            .map(|found| found.map(|t| (t.proposal.clone(), t)))
         })
     }
 

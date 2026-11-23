@@ -117,11 +117,14 @@ pub enum ProposalOp {
     Withdraw,
     /// A later proposal names this one.
     Supersede,
+    /// The overturn of an appeal brings a declined proposal back to review (RFC 006 D-9). **Only an appeal's decision does
+    /// this**: no act of the proposal service reopens anything.
+    Reopen,
 }
 
 impl ProposalOp {
     /// Every operation.
-    pub const ALL: [ProposalOp; 11] = [
+    pub const ALL: [ProposalOp; 12] = [
         ProposalOp::Create,
         ProposalOp::SaveDraft,
         ProposalOp::Submit,
@@ -133,6 +136,7 @@ impl ProposalOp {
         ProposalOp::Decline,
         ProposalOp::Withdraw,
         ProposalOp::Supersede,
+        ProposalOp::Reopen,
     ];
 
     /// The stored name.
@@ -149,6 +153,7 @@ impl ProposalOp {
             ProposalOp::Decline => "decline",
             ProposalOp::Withdraw => "withdraw",
             ProposalOp::Supersede => "supersede",
+            ProposalOp::Reopen => "reopen",
         }
     }
 
@@ -563,6 +568,19 @@ pub trait ProposalStore: Send + Sync {
     fn last_transition_position(&self, _id: &ProposalId) -> Result<Option<i64>> {
         Err(crate::StoreError::Backend(
             "this store does not say where a step of the proposal log stands".to_owned(),
+        ))
+    }
+
+    /// The step of the proposal log at `position` (`proposal_transitions.seq`, from 1) **when it is a step of a proposal of this
+    /// wiki**, with the proposal it belongs to: what an appeal against a decline, which names the step by its position, is
+    /// resolved by. `None` for a position that is not a step of this wiki's proposals.
+    fn transition_at(
+        &self,
+        _wiki: &WikiId,
+        _position: i64,
+    ) -> Result<Option<(ProposalId, ProposalTransition)>> {
+        Err(crate::StoreError::Backend(
+            "this store does not say what a step of the proposal log is".to_owned(),
         ))
     }
 

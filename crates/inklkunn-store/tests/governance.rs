@@ -1284,6 +1284,13 @@ where
     );
     assert_eq!(s.open_appeals(w, 2).unwrap().len(), 2);
     assert_eq!(
+        ids(s.recent_appeals(w, 10).unwrap()),
+        [&other_action, &by_admin, &first].map(|a| a.id.clone()),
+        "the wiki's appeals of every state, newest first"
+    );
+    assert_eq!(s.recent_appeals(w, 2).unwrap().len(), 2);
+    assert!(s.recent_appeals(&WikiId::new(), 10).unwrap().is_empty());
+    assert_eq!(
         ids(s.appeals_by(w, &r.person).unwrap()),
         [&other_action, &first].map(|a| a.id.clone()),
         "a person's own, newest first"

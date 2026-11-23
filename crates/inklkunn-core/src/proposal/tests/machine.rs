@@ -8,8 +8,8 @@ use inklkunn_store::{ProposalOp, ProposalState};
 use crate::proposal::machine::{Illegal, TRANSITIONS, apply, is_logged, legal_in};
 
 use ProposalOp::{
-    Accept, AskForRevision, Comment, Create, Decide, Decline, Revise, SaveDraft, Submit, Supersede,
-    Withdraw,
+    Accept, AskForRevision, Comment, Create, Decide, Decline, Reopen, Revise, SaveDraft, Submit,
+    Supersede, Withdraw,
 };
 use ProposalState::{
     Accepted, Declined, Draft, HeldForReview, NeedsRevision, Superseded, Withdrawn,
@@ -27,6 +27,8 @@ fn named(state: Option<ProposalState>, op: ProposalOp) -> Option<ProposalState> 
         (Some(HeldForReview), AskForRevision) => Some(NeedsRevision),
         (Some(HeldForReview), Accept) => Some(Accepted),
         (Some(HeldForReview | NeedsRevision), Decline) => Some(Declined),
+        // The overturn of an appeal against a decline (RFC 006 D-9), and nothing else leaves an end state.
+        (Some(Declined), Reopen) => Some(HeldForReview),
         (Some(Draft | HeldForReview | NeedsRevision), Withdraw) => Some(Withdrawn),
         (Some(HeldForReview | NeedsRevision), Supersede) => Some(Superseded),
         _ => None,
@@ -75,13 +77,19 @@ fn every_pair_of_state_and_act_is_either_a_named_transition_or_refused() {
 }
 
 #[test]
-fn the_four_end_states_have_no_way_out_and_a_creation_is_only_ever_from_nothing() {
-    for end in [Accepted, Declined, Withdrawn, Superseded] {
+fn three_end_states_have_no_way_out_declined_has_one_and_a_creation_is_only_ever_from_nothing() {
+    for end in [Accepted, Withdrawn, Superseded] {
         assert!(legal_in(end).is_empty(), "{end} is an end");
         assert!(!end.is_open());
         for op in ProposalOp::ALL {
             assert!(apply(Some(end), op).is_err(), "{end} {op}");
         }
+    }
+    // A declined proposal has exactly one way back: the reopening an appeal's overturn makes (RFC 006 D-9).
+    assert!(!Declined.is_open());
+    assert_eq!(legal_in(Declined), vec![Reopen]);
+    for op in ProposalOp::ALL.into_iter().filter(|op| *op != Reopen) {
+        assert!(apply(Some(Declined), op).is_err(), "Declined {op}");
     }
     for open in [Draft, HeldForReview, NeedsRevision] {
         assert!(open.is_open());
@@ -120,7 +128,10 @@ fn no_sequence_of_acts_reaches_a_state_the_rfc_does_not_name() {
             match apply(Some(state), op) {
                 Ok(to) => {
                     assert_eq!(named(Some(state), op), Some(to));
-                    assert!(state.is_open(), "an end state was left by {op}");
+                    assert!(
+                        state.is_open() || (state, op) == (Declined, Reopen),
+                        "an end state was left by {op}"
+                    );
                     walk(to, depth - 1, reached, all);
                 }
                 Err(_) => assert_eq!(named(Some(state), op), None),
@@ -164,7 +175,8 @@ fn only_the_acts_that_change_the_proposal_are_logged() {
             Accept,
             Decline,
             Withdraw,
-            Supersede
+            Supersede,
+            Reopen
         ]
     );
 }

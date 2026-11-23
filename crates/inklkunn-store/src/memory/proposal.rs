@@ -446,6 +446,9 @@ impl ProposalStore for MemoryStore {
         }
         if !t.to.is_open() {
             p.closed_at = Some(t.at);
+        } else if t.op == ProposalOp::Reopen {
+            // A proposal brought back is not closed any more.
+            p.closed_at = None;
         }
         if change.superseded_by.is_some() {
             p.superseded_by.clone_from(&change.superseded_by);
@@ -494,6 +497,25 @@ impl ProposalStore for MemoryStore {
             .iter()
             .rposition(|t| t.proposal == *id)
             .and_then(|at| i64::try_from(at + 1).ok()))
+    }
+
+    fn transition_at(
+        &self,
+        wiki: &WikiId,
+        position: i64,
+    ) -> Result<Option<(ProposalId, ProposalTransition)>> {
+        let d = self.proposals_lock();
+        let Some(index) = usize::try_from(position)
+            .ok()
+            .and_then(|n| n.checked_sub(1))
+        else {
+            return Ok(None);
+        };
+        Ok(d.transitions.get(index).and_then(|t| {
+            d.find(&t.proposal)
+                .filter(|p| p.wiki == *wiki)
+                .map(|_| (t.proposal.clone(), t.clone()))
+        }))
     }
 
     fn add_comment(&self, comment: &CommentRecord, states: &[ProposalState]) -> Result<()> {
