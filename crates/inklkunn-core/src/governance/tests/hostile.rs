@@ -346,7 +346,13 @@ fn generated_policies_are_read_back_as_themselves() {
         let comment = pick(&mut rng, Role::Observer, Role::Admin);
         let create_view = pick(&mut rng, Role::Observer, Role::Admin);
         let entry = rng.pick(Entry::ALL);
-        let appeal = rng.pick(AppealRung::ALL);
+        // The rung that decides appeals is at least the rung that moderates (A-4).
+        let deciders: Vec<AppealRung> = AppealRung::ALL
+            .iter()
+            .copied()
+            .filter(|a| a.role() >= moderate)
+            .collect();
+        let appeal = rng.pick(&deciders);
         let grant = rng.pick(GrantUpTo::ALL);
         let text = format!(
             "entry: {}\nrungs:\n  comment: {}\n  propose: {}\n  review: {}\n  create_view: {}\n  accept: {}\n  moderate: {}\n  decide_appeal: {}\n  grant_up_to: {}\nacceptance:\n  approvals: {}\n  self: {}\n",

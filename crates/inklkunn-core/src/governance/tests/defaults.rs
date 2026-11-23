@@ -90,6 +90,8 @@ fn the_other_defaults_are_what_0_3_0_does() {
     assert_eq!(policy.entry().rung(), None);
     // No appeals existed; an admin decides. Only an admin grants.
     assert_eq!(policy.rungs().decide_appeal().role(), Role::Admin);
+    // The ordering rule holds for the defaults (criterion 1): whoever decides appeals may moderate (admin >= maintainer).
+    assert!(policy.rungs().decide_appeal().role() >= policy.rungs().moderate());
     for rung in Role::ALL {
         assert!(!policy.rungs().grant_up_to().maintainer_may_grant(rung));
     }

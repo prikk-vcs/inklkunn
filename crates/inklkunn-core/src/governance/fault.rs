@@ -56,8 +56,8 @@ impl GovernanceFile {
     }
 }
 
-/// Which two rungs of the ordering rule (RFC 006 D-2: `propose` ≤ `review` ≤ `accept`, and `moderate` ≥ `reviewer`)
-/// a policy puts the wrong way round.
+/// Which two rungs of the ordering rule (RFC 006 D-2: `propose` ≤ `review` ≤ `accept`, `moderate` ≥ `reviewer`, and
+/// `decide_appeal` ≥ `moderate`) a policy puts the wrong way round.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum OrderingPair {
     /// `rungs.propose` is above `rungs.review`: someone could open a proposal that nobody they could ask may review.
@@ -66,6 +66,9 @@ pub enum OrderingPair {
     ReviewAboveAccept,
     /// `rungs.moderate` is below reviewer: someone who may not review proposals could hide what is in them.
     ModerateBelowReviewer,
+    /// `rungs.decide_appeal` is below `rungs.moderate`: someone who may not moderate could, by overturning an appeal, undo what a
+    /// moderator did (a hiding, a restriction), which an overturn is the reversal of (A-4).
+    DecideAppealBelowModerate,
 }
 
 /// A limit of the platform constitution (RFC 006 D-3): one of the operator's two settings.
@@ -135,7 +138,7 @@ pub enum Refusal {
 impl Refusal {
     /// Every refusal, in the order of the declaration. [`Refusal::from_name`] reads this list, and a test holds that it
     /// is complete (a refusal that is not here is one the stored name of a snapshot could not be read back as).
-    pub const ALL: [Refusal; 19] = [
+    pub const ALL: [Refusal; 20] = [
         Refusal::NotText,
         Refusal::TooLong,
         Refusal::WrongShape,
@@ -150,6 +153,7 @@ impl Refusal {
         Refusal::Ordering(OrderingPair::ProposeAboveReview),
         Refusal::Ordering(OrderingPair::ReviewAboveAccept),
         Refusal::Ordering(OrderingPair::ModerateBelowReviewer),
+        Refusal::Ordering(OrderingPair::DecideAppealBelowModerate),
         Refusal::PlatformLimit(Limit::EntryMax),
         Refusal::PlatformLimit(Limit::LimitDays),
         Refusal::OutsideDefaultView,
@@ -180,6 +184,9 @@ impl Refusal {
             Refusal::Ordering(OrderingPair::ReviewAboveAccept) => "ordering-review-above-accept",
             Refusal::Ordering(OrderingPair::ModerateBelowReviewer) => {
                 "ordering-moderate-below-reviewer"
+            }
+            Refusal::Ordering(OrderingPair::DecideAppealBelowModerate) => {
+                "ordering-decide-appeal-below-moderate"
             }
             Refusal::PlatformLimit(Limit::EntryMax) => "platform-limit-entry-max",
             Refusal::PlatformLimit(Limit::LimitDays) => "platform-limit-limit-days",
@@ -216,6 +223,9 @@ impl Refusal {
             }
             Refusal::Ordering(OrderingPair::ModerateBelowReviewer) => {
                 "the ordering rule is broken: the rung that moderates is below reviewer"
+            }
+            Refusal::Ordering(OrderingPair::DecideAppealBelowModerate) => {
+                "the ordering rule is broken: the rung that decides appeals is below the rung that moderates"
             }
             Refusal::PlatformLimit(Limit::EntryMax) => {
                 "the entry rung is above INKLKUNN_GOVERNANCE_ENTRY_MAX, the highest the operator allows"

@@ -314,7 +314,7 @@ fn what_a_change_needs_is_the_constitutions_word() {
 
 #[test]
 fn a_written_out_policy_is_read_back_as_the_same_policy() {
-    let text = "entry: questioner\nrungs:\n  comment: observer\n  propose: questioner\n  review: contributor\n  create_view: maintainer\n  accept: reviewer\n  moderate: admin\n  decide_appeal: maintainer\n  grant_up_to: contributor\nacceptance:\n  approvals: 3\n  self: never\nknowledge:\n  review_after: 90\npromotion:\n  reviewer: \"Read \\\"carefully\\\" # always.\"\n  maintainer: \"Trusted for a year.\"\nprotect:\n  - namespace: Policies\n    require: review\n    reason: \"Rules are read first.\"\n  - path: Home\n    require:\n      rung: admin\n    reason: \"The front page: one hand.\"\n";
+    let text = "entry: questioner\nrungs:\n  comment: observer\n  propose: questioner\n  review: contributor\n  create_view: maintainer\n  accept: reviewer\n  moderate: reviewer\n  decide_appeal: maintainer\n  grant_up_to: contributor\nacceptance:\n  approvals: 3\n  self: never\nknowledge:\n  review_after: 90\npromotion:\n  reviewer: \"Read \\\"carefully\\\" # always.\"\n  maintainer: \"Trusted for a year.\"\nprotect:\n  - namespace: Policies\n    require: review\n    reason: \"Rules are read first.\"\n  - path: Home\n    require:\n      rung: admin\n    reason: \"The front page: one hand.\"\n";
     let p = policy(text);
     assert_eq!(p.entry(), Entry::Questioner);
     assert_eq!(p.protections().len(), 2);

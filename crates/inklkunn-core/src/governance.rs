@@ -54,7 +54,8 @@
 //!     reason: "Rules of the community are read before they change."
 //! ```
 //!
-//! **The ordering rule** (D-2): `propose` ≤ `review` ≤ `accept`, and `moderate` ≥ `reviewer`; the refusal says which
+//! **The ordering rule** (D-2): `propose` ≤ `review` ≤ `accept`, `moderate` ≥ `reviewer`, and `decide_appeal` ≥ `moderate`
+//! (whoever decides appeals can reverse what a moderator did, so they must be able to do it); the refusal says which
 //! pair ([`OrderingPair`]). **The admin actions stay `admin` and reading stays `observer`**, and no policy changes
 //! them ([`Policy::minimum_role`]). **Promotion texts are guidance**: nothing promotes by them.
 //!

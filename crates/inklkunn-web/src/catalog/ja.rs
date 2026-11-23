@@ -3361,6 +3361,10 @@ pub const CATALOG: &[Entry] = &[
         "役割の順序が崩れています。モデレーションを行える役割が、レビュアーより下になっています。",
     ),
     msg(
+        "governance.rule_ordering_decide_appeal_below_moderate",
+        "役割の順序が崩れています。申し立てを決定する役割が、モデレーションを行える役割より下になっているため、モデレーターの行ったことを取り消せません。",
+    ),
+    msg(
         "governance.rule_platform_limit_entry_max",
         "サインインしているすべてのアカウントが持つ役割が、このサーバーの管理者が許す上限を超えています。",
     ),

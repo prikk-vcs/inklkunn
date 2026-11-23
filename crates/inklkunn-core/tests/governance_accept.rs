@@ -505,6 +505,10 @@ fn criterion_3_each_refusal_of_a_change_to_the_rules_is_by_name_and_leaves_the_r
             "rungs:\n  moderate: contributor\n",
             "ordering-moderate-below-reviewer",
         ),
+        (
+            "rungs:\n  moderate: admin\n  decide_appeal: maintainer\n",
+            "ordering-decide-appeal-below-moderate",
+        ),
     ] {
         let p = w.propose("Rules", &[("governance/policy.yaml", Some(text))]);
         let failure = refused_untouched(&w, &p, &w.maintainer);

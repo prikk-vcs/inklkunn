@@ -944,6 +944,10 @@ fn a_governance_file_of_the_wrong_shape_an_unknown_key_and_the_ordering_rule_are
             "rungs:\n  moderate: contributor\n",
             "ordering-moderate-below-reviewer",
         ),
+        (
+            "rungs:\n  moderate: admin\n  decide_appeal: maintainer\n",
+            "ordering-decide-appeal-below-moderate",
+        ),
     ] {
         let failure = refusal_of(&[("governance/policy.yaml", text)]);
         assert_eq!(names(&failure), [name], "{text:?}");

@@ -194,6 +194,43 @@ fn the_ordering_rule_is_enforced_for_each_pair_by_name() {
         assert_eq!(f.field, "rungs.moderate");
         assert_eq!(f.line, Some(2));
     }
+    // decide_appeal >= moderate (A-4): the one who decides appeals can do what an overturn does, which is undo a moderator's act.
+    // `moderate: admin` beside `decide_appeal: maintainer` would let a maintainer undo an admin's hiding or restriction.
+    let f = policy_fault("rungs:\n  moderate: admin\n  decide_appeal: maintainer\n");
+    assert_eq!(
+        f.refusal,
+        Refusal::Ordering(OrderingPair::DecideAppealBelowModerate)
+    );
+    assert_eq!(f.name(), "ordering-decide-appeal-below-moderate");
+    assert_eq!(f.field, "rungs.decide_appeal");
+    assert_eq!(f.line, Some(3));
+    // Judged over the keys the file leaves out too: the default `decide_appeal` is admin, and a lower one beside the default
+    // `moderate` (maintainer) is the edge that is allowed.
+    let f =
+        policy_fault("rungs:\n  moderate: admin\n  decide_appeal: maintainer\n  accept: admin\n");
+    assert_eq!(
+        f.refusal,
+        Refusal::Ordering(OrderingPair::DecideAppealBelowModerate)
+    );
+    // The edges are allowed: equal rungs, and the defaults.
+    for text in [
+        "rungs:\n  moderate: maintainer\n  decide_appeal: maintainer\n",
+        "rungs:\n  moderate: admin\n  decide_appeal: admin\n",
+        "rungs:\n  moderate: reviewer\n  decide_appeal: maintainer\n",
+        "rungs:\n  moderate: admin\n",
+        "",
+    ] {
+        assert!(
+            validate_policy(text, &PlatformLimits::default()).is_ok(),
+            "{text:?}"
+        );
+    }
+    // The first pair broken is the one named: `moderate` below reviewer comes before it.
+    let f = policy_fault("rungs:\n  moderate: observer\n  decide_appeal: maintainer\n");
+    assert_eq!(
+        f.refusal,
+        Refusal::Ordering(OrderingPair::ModerateBelowReviewer)
+    );
     // The rule is judged over the keys the file leaves out too: `propose: maintainer` alone is above the default
     // `review`.
     let f = policy_fault("rungs:\n  propose: maintainer\n");
@@ -399,6 +436,12 @@ fn a_file_in_the_repository_that_cannot_be_read_is_a_read_fault_that_says_where(
             .refusal(),
         Refusal::Ordering(OrderingPair::ModerateBelowReviewer)
     );
+    assert_eq!(
+        read_policy(b"rungs:\n  moderate: admin\n  decide_appeal: maintainer\n")
+            .unwrap_err()
+            .refusal(),
+        Refusal::Ordering(OrderingPair::DecideAppealBelowModerate)
+    );
     // And a good file is read.
     assert_eq!(read_policy(b"").unwrap(), Policy::default());
     assert_eq!(read_constitution(b"").unwrap(), Constitution::default());
@@ -441,6 +484,7 @@ fn every_refusal_has_one_stable_name_and_a_sentence() {
         Refusal::Ordering(OrderingPair::ProposeAboveReview),
         Refusal::Ordering(OrderingPair::ReviewAboveAccept),
         Refusal::Ordering(OrderingPair::ModerateBelowReviewer),
+        Refusal::Ordering(OrderingPair::DecideAppealBelowModerate),
         Refusal::PlatformLimit(Limit::EntryMax),
         Refusal::PlatformLimit(Limit::LimitDays),
         Refusal::OutsideDefaultView,
@@ -476,6 +520,7 @@ fn every_refusal_is_in_the_list_and_a_stored_name_reads_back_as_the_refusal_it_w
             | Refusal::Ordering(OrderingPair::ProposeAboveReview)
             | Refusal::Ordering(OrderingPair::ReviewAboveAccept)
             | Refusal::Ordering(OrderingPair::ModerateBelowReviewer)
+            | Refusal::Ordering(OrderingPair::DecideAppealBelowModerate)
             | Refusal::PlatformLimit(Limit::EntryMax)
             | Refusal::PlatformLimit(Limit::LimitDays)
             | Refusal::OutsideDefaultView

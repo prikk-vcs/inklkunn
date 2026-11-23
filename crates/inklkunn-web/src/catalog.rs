@@ -1710,6 +1710,7 @@ keys! {
     GovernanceRuleOrderingProposeAboveReview => "governance.rule_ordering_propose_above_review",
     GovernanceRuleOrderingReviewAboveAccept => "governance.rule_ordering_review_above_accept",
     GovernanceRuleOrderingModerateBelowReviewer => "governance.rule_ordering_moderate_below_reviewer",
+    GovernanceRuleOrderingDecideAppealBelowModerate => "governance.rule_ordering_decide_appeal_below_moderate",
     GovernanceRulePlatformLimitEntryMax => "governance.rule_platform_limit_entry_max",
     GovernanceRulePlatformLimitLimitDays => "governance.rule_platform_limit_limit_days",
     GovernanceRuleOutsideDefaultView => "governance.rule_outside_default_view",

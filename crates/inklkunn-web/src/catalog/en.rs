@@ -3300,6 +3300,10 @@ pub const CATALOG: &[Entry] = &[
         "The order of the roles is broken: the role that may moderate is below reviewer.",
     ),
     msg(
+        "governance.rule_ordering_decide_appeal_below_moderate",
+        "The order of the roles is broken: the role that decides appeals is below the role that may moderate, so it could not reverse what a moderator did.",
+    ),
+    msg(
         "governance.rule_platform_limit_entry_max",
         "The role every signed-in account holds is above the highest the person who runs this server allows.",
     ),

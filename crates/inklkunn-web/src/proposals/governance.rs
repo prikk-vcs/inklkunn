@@ -34,6 +34,9 @@ pub(crate) fn rule_key(rule: Rule) -> Key {
         Rule::Ordering(OrderingPair::ModerateBelowReviewer) => {
             Key::GovernanceRuleOrderingModerateBelowReviewer
         }
+        Rule::Ordering(OrderingPair::DecideAppealBelowModerate) => {
+            Key::GovernanceRuleOrderingDecideAppealBelowModerate
+        }
         Rule::PlatformLimit(Limit::EntryMax) => Key::GovernanceRulePlatformLimitEntryMax,
         Rule::PlatformLimit(Limit::LimitDays) => Key::GovernanceRulePlatformLimitLimitDays,
         Rule::OutsideDefaultView => Key::GovernanceRuleOutsideDefaultView,

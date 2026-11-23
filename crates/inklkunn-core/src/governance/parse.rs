@@ -360,8 +360,10 @@ fn protection(file: File, value: &Value) -> Parsed<Protection> {
     })
 }
 
-/// The ordering rule (RFC 006 D-2): `propose` ≤ `review` ≤ `accept`, and `moderate` ≥ reviewer. The first pair
-/// broken, in that order, is the one named.
+/// The ordering rule (RFC 006 D-2): `propose` ≤ `review` ≤ `accept`, `moderate` ≥ reviewer, and `decide_appeal` ≥ `moderate`
+/// (A-4: whoever decides appeals can reverse what a moderator did, so they must be able to do it: `decide_appeal: maintainer`
+/// beside `moderate: admin` would let a maintainer undo an admin's hiding or restriction). The first pair broken, in that
+/// order, is the one named.
 fn ordering(file: File, r: &Rungs) -> Parsed<()> {
     let broken = if r.propose > r.review {
         Some((OrderingPair::ProposeAboveReview, "rungs.propose"))
@@ -369,6 +371,11 @@ fn ordering(file: File, r: &Rungs) -> Parsed<()> {
         Some((OrderingPair::ReviewAboveAccept, "rungs.review"))
     } else if r.moderate < Role::Reviewer {
         Some((OrderingPair::ModerateBelowReviewer, "rungs.moderate"))
+    } else if r.decide_appeal.role() < r.moderate {
+        Some((
+            OrderingPair::DecideAppealBelowModerate,
+            "rungs.decide_appeal",
+        ))
     } else {
         None
     };
