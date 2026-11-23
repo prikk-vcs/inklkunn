@@ -108,6 +108,18 @@ pub fn refuse_unknown_files<'a>(touched: impl IntoIterator<Item = &'a str>) -> R
     }
 }
 
+/// Is every path one of the two governance files, and is there at least one? What the repair of a wiki whose governance cannot
+/// be read is made of (RFC 006 D-1; threat model C-3d): a change that touches the rules and nothing else. The one definition,
+/// for the acceptance's judgement and for the transitions that end a proposal (handoff G-T1 correction C-3).
+pub fn only_governance_files<'a>(touched: impl IntoIterator<Item = &'a str>) -> bool {
+    let (mut any, mut all) = (false, true);
+    for path in touched {
+        any = true;
+        all &= GovernanceFile::of_path(path).is_some();
+    }
+    any && all
+}
+
 /// **A change to the rules is its own proposal** (RFC 006 D-4; handoff G-T1 correction C-1): a change that touches a path
 /// under `governance/` touches nothing else. `touched` is every path the proposal writes, removes or renames to or from;
 /// the answer is *yes* when at least one is under `governance/` and at least one is not. Touching both governance files

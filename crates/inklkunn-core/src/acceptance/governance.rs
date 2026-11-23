@@ -47,8 +47,8 @@ use super::{AcceptFailure, ProposalAcceptor};
 use crate::authorize::Principal;
 use crate::governance::{
     Fault, GovernanceChange, GovernanceFile, Requirement, Rules, ViewPlace, is_governance_path,
-    mixes_rules_with_other_paths, refuse_outside_default_view, refuse_unknown_files,
-    validate_constitution_bytes, validate_policy_bytes,
+    mixes_rules_with_other_paths, only_governance_files, refuse_outside_default_view,
+    refuse_unknown_files, validate_constitution_bytes, validate_policy_bytes,
 };
 use crate::proposal::{Invalid, ProposalError};
 
@@ -102,12 +102,10 @@ impl ProposalAcceptor {
         // change that also touches anything outside `governance/` is not the hatch, whatever reached here.
         let rules_only = !touched.is_empty() && touched.iter().all(|p| is_governance_path(p));
         let hatch = admin && !kinds.is_empty() && rules_only;
-        if let Some(fault) = rules.fault() {
-            let only_governance =
-                !touched.is_empty() && touched.iter().all(|p| GovernanceFile::of_path(p).is_some());
-            if !(hatch && only_governance) {
-                return Err(AcceptFailure::RulesUnreadable(fault.clone()));
-            }
+        if let Some(fault) = rules.fault()
+            && !(hatch && only_governance_files(touched.iter().map(String::as_str)))
+        {
+            return Err(AcceptFailure::RulesUnreadable(fault.clone()));
         }
         let policy = rules.policy();
         let required: Option<Requirement> = kinds

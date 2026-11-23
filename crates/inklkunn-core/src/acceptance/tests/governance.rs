@@ -1161,6 +1161,101 @@ fn the_repair_does_not_open_the_wiki_to_anything_but_the_rules() {
 }
 
 #[test]
+fn while_the_rules_cannot_be_read_an_admin_cannot_decline_send_back_or_set_aside_a_proposal_of_a_page_and_can_one_of_the_rules()
+ {
+    let (rig, _maintainer, admin, author, _) = broken();
+    let text = change_text();
+    // A proposal of a page, as one made before the file broke (the service refuses to make one now).
+    let page = |who: &Principal, what: &str| {
+        rig.propose_unjudged(who, what, &[("pages/Home.md", Some(&text))])
+    };
+    // A proposal of the rules: the repair, which the service allows an admin to make. Another person's is as one made before.
+    let rules = |what: &str| {
+        rig.propose(
+            &admin,
+            what,
+            &[("governance/policy.yaml", Some("entry: none\n"))],
+        )
+    };
+    let others_rules = |what: &str| {
+        rig.propose_unjudged(
+            &author,
+            what,
+            &[("governance/constitution.yaml", Some("entry: none\n"))],
+        )
+    };
+    let unreadable = |result: Result<ProposalRecord, ProposalError>| match result {
+        Err(ProposalError::RulesUnreadable(fault)) => {
+            assert!(
+                fault.to_string().contains("governance/policy.yaml, line 2"),
+                "{fault}"
+            );
+            true
+        }
+        other => {
+            assert!(other.is_ok(), "{other:?}");
+            false
+        }
+    };
+    let proposals = &rig.proposals;
+    let wiki = &rig.wiki;
+
+    // Declined: a page is refused and stays as it was; the rules are declined.
+    let p = page(&author, "A page");
+    assert!(unreadable(proposals.decline(&admin, wiki, &p.id, "No")));
+    assert_eq!(rig.state(&p.id), ProposalState::HeldForReview);
+    let r = rules("The rules");
+    assert!(!unreadable(proposals.decline(&admin, wiki, &r.id, "No")));
+    assert_eq!(rig.state(&r.id), ProposalState::Declined);
+
+    // Sent back for a revision.
+    assert!(unreadable(
+        proposals.ask_for_revision(&admin, wiki, &p.id, "Again")
+    ));
+    assert_eq!(rig.state(&p.id), ProposalState::HeldForReview);
+    let r = rules("The rules, again");
+    assert!(!unreadable(
+        proposals.ask_for_revision(&admin, wiki, &r.id, "Again")
+    ));
+    assert_eq!(rig.state(&r.id), ProposalState::NeedsRevision);
+
+    // Set aside by another: the admin's own proposal of the rules supersedes another person's, and only another proposal of
+    // the rules. (The proposal it replaces is the other's, so the acceptor's rung is asked.)
+    let old_rules = others_rules("Theirs");
+    let new_rules = rules("Mine");
+    assert!(unreadable(proposals.supersede(
+        &admin,
+        wiki,
+        &p.id,
+        &new_rules.id
+    )));
+    assert_eq!(rig.state(&p.id), ProposalState::HeldForReview);
+    let new_page = page(&admin, "My page");
+    assert!(unreadable(proposals.supersede(
+        &admin,
+        wiki,
+        &old_rules.id,
+        &new_page.id
+    )));
+    assert_eq!(rig.state(&old_rules.id), ProposalState::HeldForReview);
+    assert!(!unreadable(proposals.supersede(
+        &admin,
+        wiki,
+        &old_rules.id,
+        &new_rules.id
+    )));
+    assert_eq!(rig.state(&old_rules.id), ProposalState::Superseded);
+    // Nobody else may: a maintainer is refused whatever it is (the rules let no one but an admin accept in this state).
+    let (_, maintainer) = rig.person("Mina", Some(Role::Maintainer));
+    assert!(unreadable(proposals.decline(
+        &maintainer,
+        wiki,
+        &new_rules.id,
+        "No"
+    )));
+}
+
+#[test]
 fn only_someone_who_may_read_the_wiki_is_told_why_it_refuses_writes() {
     let rig = Rig::of_visibility("hidden", Visibility::Restricted);
     rig.fake.derive_changes();

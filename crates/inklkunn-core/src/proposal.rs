@@ -33,7 +33,7 @@ use inklkunn_store::{
 use crate::authorize::{Action, Authorizer, Principal, Resource, Standing};
 use crate::governance::{
     ApprovalsWarning, GovernanceFile, ReadFault, Rules, approvals_warning, is_governance_path,
-    mixes_rules_with_other_paths,
+    mixes_rules_with_other_paths, only_governance_files,
 };
 use crate::notify::Notifier;
 use crate::read::{ReadError, ReadService};
@@ -1500,12 +1500,51 @@ impl ProposalService {
         reason: &str,
     ) -> Result<ProposalRecord> {
         let who = account_of(principal)?;
+        self.allow_accept(principal, wiki, id)?;
+        self.step(wiki, id, ProposalOp::AskForRevision, who, reason)
+    }
+
+    /// *Accept* on a proposal, for a step that is an acceptor's (declining it, sending it back, setting another's aside): the
+    /// rules' own answer, and **while the wiki's rules cannot be read, only for a proposal that touches the two governance
+    /// files and nothing else** (handoff G-T1 correction C-3). The rules let an admin accept then, for the repair's sake;
+    /// every other write refuses (threat model C-3d), and ending or sending back a proposal of a page is one.
+    fn allow_accept(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+    ) -> Result<()> {
         self.allow(
             principal,
             Action::Accept,
             &Self::proposal_resource(wiki, id),
         )?;
-        self.step(wiki, id, ProposalOp::AskForRevision, who, reason)
+        self.refuse_unless_repair(principal, wiki, &[id])
+    }
+
+    /// While the wiki's rules cannot be read ([`Rules::fault`]), refuse with the file and the line unless **every** proposal
+    /// in `ids` touches nothing but the two governance files (what the latest revision writes, removes or renames): the
+    /// definition the acceptance applies to a change ([`only_governance_files`]). Rules that can be read refuse nothing here.
+    fn refuse_unless_repair(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        ids: &[&ProposalId],
+    ) -> Result<()> {
+        let rules = self.rules(wiki)?;
+        let Some(fault) = rules.fault() else {
+            return Ok(());
+        };
+        for id in ids {
+            let revisions = self.revisions(principal, wiki, id)?;
+            let rules_only = revisions
+                .last()
+                .is_some_and(|r| only_governance_files(touched_by(&r.content)));
+            if !rules_only {
+                return Err(ProposalError::RulesUnreadable(fault.clone()));
+            }
+        }
+        Ok(())
     }
 
     /// Decline a proposal, with a reason. An acceptor's act.
@@ -1517,11 +1556,7 @@ impl ProposalService {
         reason: &str,
     ) -> Result<ProposalRecord> {
         let who = account_of(principal)?;
-        self.allow(
-            principal,
-            Action::Accept,
-            &Self::proposal_resource(wiki, id),
-        )?;
+        self.allow_accept(principal, wiki, id)?;
         self.step(wiki, id, ProposalOp::Decline, who, reason)
     }
 
@@ -1556,11 +1591,25 @@ impl ProposalService {
         new: &ProposalId,
     ) -> Result<ProposalRecord> {
         let who = account_of(principal)?;
-        self.allow(
+        match self.allow(
             principal,
             Action::Propose,
             &Self::proposal_resource(wiki, new),
-        )?;
+        ) {
+            Ok(()) => {}
+            // While the rules cannot be read every write refuses but the repair, and setting one repair aside for another is
+            // part of it: allowed to whoever the rules let accept then (an admin), when both proposals touch the rules only.
+            Err(ProposalError::RulesUnreadable(fault)) => {
+                self.allow(
+                    principal,
+                    Action::Accept,
+                    &Self::proposal_resource(wiki, new),
+                )
+                .map_err(|_| ProposalError::RulesUnreadable(fault))?;
+                self.refuse_unless_repair(principal, wiki, &[new, old])?;
+            }
+            Err(other) => return Err(other),
+        }
         if old == new {
             return Err(Invalid::SupersedeSelf.into());
         }
@@ -1570,11 +1619,7 @@ impl ProposalService {
         }
         let old_record = self.load(wiki, old, Some(who))?;
         if old_record.author != *who {
-            self.allow(
-                principal,
-                Action::Accept,
-                &Self::proposal_resource(wiki, old),
-            )?;
+            self.allow_accept(principal, wiki, old)?;
         }
         let to = next(Some(old_record.state), ProposalOp::Supersede)?;
         if !matches!(
