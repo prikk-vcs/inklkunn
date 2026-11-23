@@ -20,7 +20,7 @@
 //!   is under `discussions/` and the manifest's `discussions` stays a statement about page discussions. A thread never
 //!   changes a claim: the bundle carries it beside the claim's file, not instead of it. All are listed in `SHA256SUMS`
 //!   like every other file. (Comments on proposals are not exported here.)
-//! - **What moderation hides is not in it** (RFC 006 D-13; [`suppression`]): an entry with a hidden part is marked
+//! - **What moderation hides is not in it** (RFC 006 D-13; [`Suppressions`]): an entry with a hidden part is marked
 //!   `suppressed` with its `reasons` and omits that part (a history line's `summary` or `authors`, a thread comment's `body`
 //!   or `author`), the manifest declares that the bundle carries such entries, and `users.yaml` lists a person only for what
 //!   is not hidden. An export with nothing hidden is the bundle it was before this existed, byte for byte.
