@@ -235,6 +235,15 @@ pub(crate) fn refused_offering(
             if let Some(said) = said {
                 paragraphs = said;
             }
+            // A person a restriction holds down may contest it from the page that says so.
+            let mut choices = choices;
+            if let ProposalError::Restricted(notice) = error {
+                choices.push(crate::appeals::words::restriction_choice(
+                    page.t(),
+                    ctx.slug(),
+                    notice,
+                ));
+            }
             let response = crate::wiki::notice_offering(
                 page, &ctx.wiki, r.status, r.heading, paragraphs, choices, offers, None,
             );

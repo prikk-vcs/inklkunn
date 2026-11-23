@@ -322,6 +322,7 @@ pub(crate) fn section(
                 body_hidden,
                 tombstone,
                 moderate,
+                contest: None,
                 parent: answers(row),
                 id: format!("k-{}", row.comment.id),
                 depth: 0,

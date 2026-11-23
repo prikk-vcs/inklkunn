@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if let Some(text) = note %}<p class="note" role="status">{{ text }}</p>
+{% endif %}<p>{{ intro }}</p>
+<p><a href="{{ mine.href }}">{{ mine.label }}</a></p>
+<section aria-labelledby="open-appeals">
+<h2 id="open-appeals">{{ open_heading }}</h2>
+{% if open.is_empty() %}<p>{{ open_none }}</p>
+{% else %}<ol class="appeals">
+{% for row in open %}<li>
+<p class="change-head">{{ row.head }}</p>
+<ul class="change-facts">
+{% for f in row.facts %}<li>{{ f }}</li>
+{% endfor %}</ul>
+<p class="note">{{ row.said_label }}</p>
+{% for line in row.said %}<p>{{ line }}</p>
+{% endfor %}{% if let Some(link) = row.proposal %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% if let Some(text) = row.blocked %}<p class="note">{{ text }}</p>
+{% endif %}{% if let Some(form) = row.form %}<form method="post" action="{{ form.action }}" class="proposal-form">
+{% include "csrf.html" %}<input type="hidden" name="{{ form.appeal_field }}" value="{{ form.appeal }}">
+<fieldset>
+<legend>{{ form.legend }}</legend>
+<p><input id="{{ form.id }}-upheld" type="radio" name="{{ form.decision_field }}" value="{{ form.upheld_value }}" required> <label for="{{ form.id }}-upheld">{{ form.upheld_label }}</label></p>
+<p><input id="{{ form.id }}-overturned" type="radio" name="{{ form.decision_field }}" value="{{ form.overturned_value }}"> <label for="{{ form.id }}-overturned">{{ form.overturned_label }}</label></p>
+</fieldset>
+<div class="field">
+<label for="{{ form.id }}-reason">{{ form.reason_label }}</label>
+<input id="{{ form.id }}-reason" name="{{ form.reason_field }}" type="text" aria-describedby="{{ form.id }}-reason-hint" required>
+<p id="{{ form.id }}-reason-hint" class="note">{{ form.reason_hint }}</p>
+</div>
+<p class="buttons"><button type="submit">{{ form.submit }}</button></p>
+</form>
+{% endif %}</li>
+{% endfor %}</ol>
+{% endif %}</section>
+<section aria-labelledby="decided-appeals">
+<h2 id="decided-appeals">{{ decided_heading }}</h2>
+{% if decided.is_empty() %}<p>{{ decided_none }}</p>
+{% else %}<ol class="appeals">
+{% for row in decided %}<li>
+<p class="change-head">{{ row.head }}</p>
+<ul class="change-facts">
+{% for f in row.facts %}<li>{{ f }}</li>
+{% endfor %}{% if let Some(text) = row.decision %}<li>{{ text }}</li>
+{% endif %}</ul>
+<p class="note">{{ row.said_label }}</p>
+{% for line in row.said %}<p>{{ line }}</p>
+{% endfor %}{% if let Some(link) = row.proposal %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}</li>
+{% endfor %}</ol>
+{% endif %}</section>
+{% endblock %}

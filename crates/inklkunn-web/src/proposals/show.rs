@@ -91,6 +91,9 @@ struct ProposalTpl<'a> {
     heading: String,
     state: String,
     notes: Vec<Rich>,
+    /// What the proposer may contest about the proposal (RFC 006 D-9): the decline of it, a temporary protection that holds it
+    /// back. Said to the proposer alone.
+    contests: Vec<crate::appeals::mine::ContestView>,
     facts: Vec<String>,
     /// The protections in force on the pages the proposal touches, in the one display.
     protections: Vec<crate::protections::NoticeView>,
@@ -152,6 +155,11 @@ impl Cast<'_> {
         crate::tombstone::author_of(self.t, || self.name(&c.author), self.hidden.get(&c.id))
     }
 
+    /// *Contest this*, for the author of a comment moderation hid: the link of the first hide of it the person may appeal.
+    fn contest_link(&self, c: &CommentRecord) -> Option<LinkView> {
+        crate::appeals::words::tombstone_contest(self.ctx, self.t, self.hidden.get(&c.id))
+    }
+
     /// The link that hides or restores a comment, offered to the `moderate` rung.
     fn moderate_link(&self, c: &CommentRecord) -> Option<LinkView> {
         self.may_moderate.then(|| LinkView {
@@ -189,6 +197,7 @@ fn comment_view(
         body_hidden,
         tombstone,
         moderate: cast.moderate_link(c),
+        contest: cast.contest_link(c),
         id: format!("k-{}", c.id),
         depth: depth.min(3),
         author: cast.author_of(c),
@@ -340,6 +349,10 @@ fn copy_comment(c: &CommentView) -> CommentView {
         body_hidden: c.body_hidden,
         tombstone: c.tombstone.clone(),
         moderate: c.moderate.as_ref().map(|l| LinkView {
+            href: l.href.clone(),
+            label: l.label.clone(),
+        }),
+        contest: c.contest.as_ref().map(|l| LinkView {
             href: l.href.clone(),
             label: l.label.clone(),
         }),
@@ -981,6 +994,13 @@ pub(crate) fn draw(
         heading: summary,
         state: t.get(words::state_label(record.state)),
         notes,
+        contests: ctx
+            .services
+            .appeals
+            .for_proposal(&ctx.principal, &ctx.wiki, id)
+            .iter()
+            .map(|c| crate::appeals::mine::contest_view(t, slug, c))
+            .collect(),
         facts,
         protections,
         sources_heading: t.get(Key::SourcesHeading),

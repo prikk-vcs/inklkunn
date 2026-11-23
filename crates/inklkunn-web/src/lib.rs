@@ -22,6 +22,7 @@
 
 mod account;
 pub mod api;
+mod appeals;
 pub mod catalog;
 mod changes;
 pub mod config;

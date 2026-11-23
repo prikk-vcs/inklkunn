@@ -66,6 +66,9 @@ struct PeopleTpl<'a> {
     you: Vec<String>,
     grant: Option<LinkView>,
     restrict: Option<LinkView>,
+    /// The way to contest the viewer's own restriction, to their own appeals, and, for the people who decide appeals, to the
+    /// appeals (RFC 006 D-9).
+    appeals: Vec<LinkView>,
     roles_heading: String,
     roles: Vec<RoleRow>,
     restricted_heading: String,
@@ -229,7 +232,37 @@ fn restricted_rows(t: T, slug: &str, view: &PeopleView) -> Vec<RestrictedItem> {
         .collect()
 }
 
-fn render(page: &Page, wiki: &WikiRecord, view: &PeopleView, done: Option<&str>) -> Response {
+/// *Contest this* for the viewer's own restriction, *My appeals* for a signed-in viewer, and *Appeals* for the people who decide them.
+fn appeals_links(t: T, slug: &str, view: &PeopleView, decides: bool) -> Vec<LinkView> {
+    let mut out = Vec::new();
+    if let Some(you) = &view.you {
+        if let Some(notice) = &you.restriction {
+            out.push(LinkView {
+                href: crate::appeals::words::restriction_choice(t, slug, notice).href,
+                label: t.get(Key::ContestLink),
+            });
+        }
+        out.push(LinkView {
+            href: crate::appeals::paths::mine(slug),
+            label: t.get(Key::AppealsMineLink),
+        });
+    }
+    if decides {
+        out.push(LinkView {
+            href: crate::appeals::paths::page(slug),
+            label: t.get(Key::AppealsHeading),
+        });
+    }
+    out
+}
+
+fn render(
+    page: &Page,
+    wiki: &WikiRecord,
+    view: &PeopleView,
+    done: Option<&str>,
+    decides: bool,
+) -> Response {
     let t = page.t();
     let slug = wiki.slug.as_str();
     let shell = Shell::of(wiki);
@@ -262,6 +295,7 @@ fn render(page: &Page, wiki: &WikiRecord, view: &PeopleView, done: Option<&str>)
             href: paths::restrict(slug, None),
             label: head.get(Key::PeopleRestrictLink),
         }),
+        appeals: appeals_links(t, slug, view, decides),
         roles_heading: head.get(Key::PeopleRolesHeading),
         roles: role_rows(t, slug, view),
         restricted_heading: head.get(Key::PeopleRestrictedHeading),
@@ -290,7 +324,13 @@ pub(crate) async fn people(
             return generic_not_found(page);
         };
         match services.people.view(&ctx.principal, &ctx.wiki) {
-            Ok(view) => render(page, &ctx.wiki, &view, done.as_deref()),
+            Ok(view) => render(
+                page,
+                &ctx.wiki,
+                &view,
+                done.as_deref(),
+                services.appeals.may_decide(&ctx.principal, &ctx.wiki),
+            ),
             Err(PeopleError::NotFound) => generic_not_found(page),
             Err(error) => {
                 ctx.log(&format!("the people page could not be drawn: {error}"));

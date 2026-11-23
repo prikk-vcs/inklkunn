@@ -12,7 +12,8 @@
 <h2 id="you">{{ you_heading }}</h2>
 {% for line in you %}<p>{{ line }}</p>
 {% endfor %}</section>
-{% endif %}{% if let Some(link) = grant %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% for link in appeals %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endfor %}{% if let Some(link) = grant %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
 {% endif %}{% if let Some(link) = restrict %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
 {% endif %}<section aria-labelledby="roles">
 <h2 id="roles">{{ roles_heading }}</h2>

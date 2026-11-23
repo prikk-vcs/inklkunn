@@ -4051,4 +4051,188 @@ pub const CATALOG: &[Entry] = &[
         "quota.reset_appeal_decided",
         "このウィキで決定待ちの申し立てのどれかが決定されると、リセットされます。",
     ),
+    msg("contest.link", "これに申し立てをする"),
+    msg(
+        "contest.filed",
+        "これにはすでに申し立てをしています。決定を待っています。",
+    ),
+    msg("title.contest", "決定に申し立てをする · {wiki} · {product}"),
+    msg("contest.heading", "この決定に申し立てをする"),
+    msg(
+        "contest.intro",
+        "この措置を取り消すべき理由を、ご自身の言葉で書いてください。書いた内容を読めるのは、あなたと、申し立てを決定する人だけです。決定は一度だけ行われ、その措置を行っていない人が決定します。",
+    ),
+    msg("contest.text_label", "申し立ての内容"),
+    msg(
+        "contest.text_hint",
+        "プレーンテキストで、必要なら改行も使えます。{limit} KiB までです。",
+    ),
+    msg("contest.submit", "申し立てる"),
+    msg("contest.back", "自分の申し立てに戻る"),
+    msg("contest.proposal_link", "この提案"),
+    msg(
+        "contest.done_filed",
+        "申し立てを受け付けました。読めるのは、申し立てを決定する人と、あなただけです。",
+    ),
+    msg("contest.problem_empty", "申し立てる内容を書いてください。"),
+    msg(
+        "contest.problem_long",
+        "文章が {limit} KiB を超えています。",
+    ),
+    msg(
+        "contest.problem_chars",
+        "保存できない文字（制御文字または方向制御文字）が含まれています。取り除いてから、もう一度お試しください。",
+    ),
+    msg("contest.nothing_heading", "申し立てできるものがありません"),
+    msg(
+        "contest.nothing_body",
+        "この決定はあなたに関するものではないか、すでに効力がありません。",
+    ),
+    msg(
+        "contest.already_open",
+        "これにはすでに申し立てをしていて、決定を待っています。",
+    ),
+    msg("contest.what_decline", "あなたの提案は見送られました。"),
+    msg(
+        "contest.what_tombstone",
+        "あなたが書いたものがモデレーションにより非表示になりました: {part}。理由: {category}。日時: {date}。",
+    ),
+    msg(
+        "contest.what_restriction",
+        "{date} まで制限を受けています。示された理由: {reason}",
+    ),
+    msg(
+        "contest.what_protection",
+        "{target} への一時的な保護が、あなたの提案を保留にしています。保護は {date} に終わります。示された理由: {reason}",
+    ),
+    msg(
+        "contest.what_grant",
+        "あなたの役割は、{date} に「{before}」から「{after}」に変更されました。",
+    ),
+    msg("contest.no_role", "役割なし"),
+    msg("appeals.mine_link", "自分の申し立て"),
+    msg("title.appeals_mine", "自分の申し立て · {wiki} · {product}"),
+    msg(
+        "mine.intro",
+        "このウィキでのあなたの申し立てと、いま申し立てができる決定です。書いた内容を読めるのは、あなたと、申し立てを決定する人だけです。",
+    ),
+    msg("mine.contest_heading", "申し立てができる決定"),
+    msg(
+        "mine.contest_none",
+        "いま申し立てができる決定はありません。",
+    ),
+    msg("mine.appeals_heading", "あなたの申し立て"),
+    msg(
+        "mine.appeals_none",
+        "このウィキで申し立てをしたことはありません。",
+    ),
+    msg(
+        "mine.filed_on",
+        "申し立ての対象: {kind}。申し立てた日時: {date}。",
+    ),
+    msg("mine.open", "決定を待っています。"),
+    msg("title.appeals", "申し立て · {wiki} · {product}"),
+    msg("appeals.heading", "申し立て"),
+    msg(
+        "appeals.intro",
+        "このウィキで行われた申し立てです。決定する人のためのページです。申し立てを読めるのは、申し立てた本人と、申し立てを決定する人だけです。モデレーションのログには、非表示に申し立てがあったことと、その結果だけが示されます。",
+    ),
+    msg("appeals.open_heading", "決定待ち"),
+    msg("appeals.open_none", "決定待ちの申し立てはありません。"),
+    msg("appeals.decided_heading", "決定済み"),
+    msg(
+        "appeals.decided_none",
+        "決定済みの申し立てはまだありません。",
+    ),
+    msg("appeals.row_head", "{person} の申し立て: {action}"),
+    msg("appeals.kind_decline", "提案の見送り"),
+    msg("appeals.kind_tombstone", "モデレーションによる非表示"),
+    msg("appeals.kind_restriction", "制限"),
+    msg("appeals.kind_protection", "一時的な保護"),
+    msg("appeals.kind_grant", "役割の変更"),
+    msg("appeals.filed_by", "{person} が {date} に申し立てました。"),
+    msg("appeals.action_by", "この措置は {person} が行いました。"),
+    msg(
+        "appeals.action_by_operator",
+        "この措置は、このサーバーの管理者がコマンドラインから行いました。",
+    ),
+    msg("appeals.said_label", "申し立ての内容"),
+    msg(
+        "appeals.decision_upheld",
+        "{date} に {person} が決定しました: 措置は維持されます。理由: {reason}",
+    ),
+    msg(
+        "appeals.decision_overturned",
+        "{date} に {person} が決定しました: 措置を取り消しました。理由: {reason}",
+    ),
+    msg("appeals.decide_legend", "決定"),
+    msg("appeals.decide_upheld", "措置を維持する"),
+    msg("appeals.decide_overturned", "措置を取り消す"),
+    msg(
+        "appeals.decide_reason",
+        "理由（1 行。申し立てた人に伝えられます）",
+    ),
+    msg("appeals.decide_submit", "決定する"),
+    msg(
+        "appeals.blocked_appellant",
+        "これはあなたの申し立てなので、別の人が決定します。",
+    ),
+    msg(
+        "appeals.blocked_actor",
+        "あなたが行った措置への申し立てなので、別の人が決定します。",
+    ),
+    msg(
+        "appeals.done_upheld",
+        "決定を記録しました: 措置は維持されます。",
+    ),
+    msg(
+        "appeals.done_overturned",
+        "決定を記録しました: 措置を取り消しました。",
+    ),
+    msg(
+        "appeals.done_reopened",
+        "提案は、再びレビュー待ちになりました。",
+    ),
+    msg("appeals.back", "申し立てに戻る"),
+    msg(
+        "appeals.problem_decision",
+        "措置を維持するか、取り消すかを選んでください。",
+    ),
+    msg("appeals.refused_heading", "決定は記録されていません"),
+    msg(
+        "appeals.refused_no_such",
+        "そのような申し立てはありません。",
+    ),
+    msg(
+        "appeals.refused_decided",
+        "この申し立ては、その間に決定されたため、何も変更していません。",
+    ),
+    msg(
+        "appeals.moot_restriction",
+        "この制限はすでに終わっているため、取り消すものがありません。「措置を維持する」と決定することはできます。",
+    ),
+    msg(
+        "appeals.moot_protection",
+        "この保護はすでに終わっているため、取り消すものがありません。「措置を維持する」と決定することはできます。",
+    ),
+    msg(
+        "appeals.moot_role",
+        "その後、この人の役割が変わっており、以前の役割に戻すとその変更を取り消すことになります。何も決定していません。",
+    ),
+    msg(
+        "appeals.moot_reach",
+        "この役割に戻すことは、あなたが付与できる範囲を超えています。付与できる人が、この申し立てを決定します。何も決定していません。",
+    ),
+    msg(
+        "appeals.moot_proposal",
+        "提案は見送りの後に状態が変わっているため、再び開くと別の操作を取り消すことになります。「措置を維持する」と決定することはできます。",
+    ),
+    msg(
+        "appeals.moot_hidden",
+        "この提案の最新の本文は、まだモデレーションにより非表示のままです。誰も読めない提案はレビューできません。先にその非表示を取り消してください。",
+    ),
+    msg(
+        "appeals.moot_hiding",
+        "この非表示はすでに取り消されているため、取り消すものがありません。「措置を維持する」と決定することはできます。",
+    ),
 ];

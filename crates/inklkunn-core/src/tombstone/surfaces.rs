@@ -246,6 +246,21 @@ pub const SHOWS_NONE: &[(&str, &str)] = &[
         "the form that renews a restriction",
     ),
     ("/{slug}/-/people/lift", "the form that lifts a restriction"),
+    // Appeals: what a person wrote of a grievance, to the person and the rung that decides, and a link to a proposal; never a
+    // revision's content, summary or author, and never anything hidden.
+    (
+        "/{slug}/-/appeals",
+        "the appeals, for the rung that decides them: what the appellants wrote, and the decisions",
+    ),
+    (
+        "/{slug}/-/appeals/mine",
+        "a person's own appeals and what they may contest",
+    ),
+    (
+        "/{slug}/-/appeals/new",
+        "the form that appeals a decision, and the act",
+    ),
+    ("/{slug}/-/appeals/decide", "the act that decides an appeal"),
     (
         "/{slug}/-/protect",
         "the form that protects a page: titles and reasons",

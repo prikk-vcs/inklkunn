@@ -3996,4 +3996,179 @@ pub const CATALOG: &[Entry] = &[
         "quota.reset_appeal_decided",
         "It resets when one of this wiki's open appeals is decided.",
     ),
+    msg("contest.link", "Contest this"),
+    msg(
+        "contest.filed",
+        "You have appealed this. It is waiting for a decision.",
+    ),
+    msg("title.contest", "Contest a decision · {wiki} · {product}"),
+    msg("contest.heading", "Contest this decision"),
+    msg(
+        "contest.intro",
+        "Say, in your own words, why this should be reversed. Only you and the people who decide appeals can read what you write. It is decided once, by someone who did not take the action.",
+    ),
+    msg("contest.text_label", "Your appeal"),
+    msg(
+        "contest.text_hint",
+        "Plain text, with line breaks if you need them, up to {limit} KiB.",
+    ),
+    msg("contest.submit", "File the appeal"),
+    msg("contest.back", "Back to my appeals"),
+    msg("contest.proposal_link", "The proposal"),
+    msg(
+        "contest.done_filed",
+        "Your appeal was filed. The people who decide appeals can read it, and so can you.",
+    ),
+    msg("contest.problem_empty", "Write what you want to say."),
+    msg(
+        "contest.problem_long",
+        "The text is longer than {limit} KiB.",
+    ),
+    msg(
+        "contest.problem_chars",
+        "The text has a character that cannot be kept (a control or direction character). Remove it and try again.",
+    ),
+    msg("contest.nothing_heading", "Nothing to contest here"),
+    msg(
+        "contest.nothing_body",
+        "This decision is not about you, or it is no longer in force.",
+    ),
+    msg(
+        "contest.already_open",
+        "You have already appealed this, and the appeal is waiting for a decision.",
+    ),
+    msg("contest.what_decline", "Your proposal was declined."),
+    msg(
+        "contest.what_tombstone",
+        "Something you wrote was hidden by moderation: {part}. Reason: {category}. Date: {date}.",
+    ),
+    msg(
+        "contest.what_restriction",
+        "You are restricted until {date}. The reason given: {reason}",
+    ),
+    msg(
+        "contest.what_protection",
+        "A temporary protection of {target} holds back a proposal of yours. It ends on {date}. The reason given: {reason}",
+    ),
+    msg(
+        "contest.what_grant",
+        "Your role was changed from {before} to {after} on {date}.",
+    ),
+    msg("contest.no_role", "no role"),
+    msg("appeals.mine_link", "My appeals"),
+    msg("title.appeals_mine", "My appeals · {wiki} · {product}"),
+    msg(
+        "mine.intro",
+        "These are the appeals you made in this wiki, and what you can contest now. Only you and the people who decide appeals can read what you wrote.",
+    ),
+    msg("mine.contest_heading", "What you can contest"),
+    msg(
+        "mine.contest_none",
+        "Nothing that affects you can be contested now.",
+    ),
+    msg("mine.appeals_heading", "Your appeals"),
+    msg(
+        "mine.appeals_none",
+        "You have not made an appeal in this wiki.",
+    ),
+    msg("mine.filed_on", "Appeal against {kind}, filed on {date}."),
+    msg("mine.open", "Waiting for a decision."),
+    msg("title.appeals", "Appeals · {wiki} · {product}"),
+    msg("appeals.heading", "Appeals"),
+    msg(
+        "appeals.intro",
+        "The appeals made in this wiki, for the people who decide them. Only the person who appealed and the people who decide appeals can read one. The moderation log says only that a hiding was appealed and how it ended.",
+    ),
+    msg("appeals.open_heading", "Waiting for a decision"),
+    msg("appeals.open_none", "No appeals are waiting."),
+    msg("appeals.decided_heading", "Decided"),
+    msg("appeals.decided_none", "No appeal has been decided yet."),
+    msg("appeals.row_head", "{person}: appeal against {action}"),
+    msg("appeals.kind_decline", "the decline of a proposal"),
+    msg("appeals.kind_tombstone", "a hiding by moderation"),
+    msg("appeals.kind_restriction", "a restriction"),
+    msg("appeals.kind_protection", "a temporary protection"),
+    msg("appeals.kind_grant", "a change of a role"),
+    msg("appeals.filed_by", "Filed by {person} on {date}."),
+    msg("appeals.action_by", "The action was taken by {person}."),
+    msg(
+        "appeals.action_by_operator",
+        "The action was taken from the command line by the person who runs this server.",
+    ),
+    msg("appeals.said_label", "What they wrote"),
+    msg(
+        "appeals.decision_upheld",
+        "Decided on {date} by {person}: the action stands. Reason: {reason}",
+    ),
+    msg(
+        "appeals.decision_overturned",
+        "Decided on {date} by {person}: the action was reversed. Reason: {reason}",
+    ),
+    msg("appeals.decide_legend", "Your decision"),
+    msg("appeals.decide_upheld", "The action stands"),
+    msg("appeals.decide_overturned", "Reverse the action"),
+    msg(
+        "appeals.decide_reason",
+        "Reason (one line; the person who appealed is told it)",
+    ),
+    msg("appeals.decide_submit", "Decide"),
+    msg(
+        "appeals.blocked_appellant",
+        "You made this appeal, so someone else decides it.",
+    ),
+    msg(
+        "appeals.blocked_actor",
+        "You took this action, so someone else decides the appeal against it.",
+    ),
+    msg(
+        "appeals.done_upheld",
+        "The decision was recorded: the action stands.",
+    ),
+    msg(
+        "appeals.done_overturned",
+        "The decision was recorded: the action was reversed.",
+    ),
+    msg(
+        "appeals.done_reopened",
+        "The proposal is held for review again.",
+    ),
+    msg("appeals.back", "Back to the appeals"),
+    msg(
+        "appeals.problem_decision",
+        "Choose whether the action stands or is reversed.",
+    ),
+    msg("appeals.refused_heading", "The decision was not recorded"),
+    msg("appeals.refused_no_such", "There is no such appeal."),
+    msg(
+        "appeals.refused_decided",
+        "This appeal was decided in the meantime, so nothing was changed.",
+    ),
+    msg(
+        "appeals.moot_restriction",
+        "This restriction has ended already, so there is nothing to reverse. You can still decide that the action stands.",
+    ),
+    msg(
+        "appeals.moot_protection",
+        "This protection has ended already, so there is nothing to reverse. You can still decide that the action stands.",
+    ),
+    msg(
+        "appeals.moot_role",
+        "The person's role has changed since, and restoring the earlier one would undo that. Nothing was decided.",
+    ),
+    msg(
+        "appeals.moot_reach",
+        "Restoring this role is above what you may grant. Someone who may grant it decides this appeal. Nothing was decided.",
+    ),
+    msg(
+        "appeals.moot_proposal",
+        "The proposal has changed since it was declined, so reopening it would undo something else. You can still decide that the action stands.",
+    ),
+    msg(
+        "appeals.moot_hidden",
+        "The proposal's latest text is still hidden by moderation, and a proposal nobody can read cannot be reviewed. Reverse that hiding first.",
+    ),
+    msg(
+        "appeals.moot_hiding",
+        "This hiding has been reversed already, so there is nothing to reverse. You can still decide that the action stands.",
+    ),
 ];

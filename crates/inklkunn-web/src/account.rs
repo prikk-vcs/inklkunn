@@ -83,6 +83,8 @@ struct WikiRow {
     name: String,
     href: String,
     lines: Vec<String>,
+    /// *Contest this* for the restriction and the lowered role, and the way to the person's own appeals (RFC 006 D-9).
+    links: Vec<crate::proposals::render::LinkView>,
 }
 
 struct OptionRow {
@@ -216,7 +218,13 @@ fn acting(state: &PageState, page: &Page, headers: &HeaderMap) -> Result<Acting,
 /// restriction and its end (RFC 006 D-6, D-7): **only the wikis the account may read**, so the list says nothing of a wiki
 /// it may not see, and only the person's own standing, never anyone else's. A wiki whose rules could not be read now is left
 /// out and the operator's log says so.
-async fn holdings(acting: &Acting) -> Vec<(inklkunn_store::WikiRecord, inklkunn_core::Holding)> {
+async fn holdings(
+    acting: &Acting,
+) -> Vec<(
+    inklkunn_store::WikiRecord,
+    inklkunn_core::Holding,
+    Vec<inklkunn_core::appeal::ContestRef>,
+)> {
     let services = acting.services.clone();
     let principal = acting.principal.clone();
     blocking(move || {
@@ -234,7 +242,10 @@ async fn holdings(acting: &Acting) -> Vec<(inklkunn_store::WikiRecord, inklkunn_
                 continue;
             }
             match services.authorizer.holding(&principal, &wiki.id) {
-                Ok(holding) => found.push((wiki, holding)),
+                Ok(holding) => {
+                    let contests = services.appeals.standing_contests(&principal, &wiki);
+                    found.push((wiki, holding, contests));
+                }
                 Err(error) => (services.log)(&format!(
                     "what an account holds in wiki `{}` could not be read now: {error}",
                     wiki.slug
@@ -277,10 +288,18 @@ async fn draw(page: Page, acting: Acting, shown: Shown) -> Response {
     let wikis = holdings(&acting).await;
     let wiki_rows: Vec<WikiRow> = wikis
         .iter()
-        .map(|(wiki, holding)| WikiRow {
+        .map(|(wiki, holding, contests)| WikiRow {
             name: wiki.display_name.as_str().to_owned(),
             href: format!("/{}", wiki.slug),
             lines: crate::people::sentences::holding_paragraphs(t, holding),
+            links: contests
+                .iter()
+                .map(|c| crate::appeals::words::contest_link(t, wiki.slug.as_str(), c))
+                .chain(std::iter::once(crate::proposals::render::LinkView {
+                    href: crate::appeals::paths::mine(wiki.slug.as_str()),
+                    label: t.get(Key::AppealsMineLink),
+                }))
+                .collect(),
         })
         .collect();
     let session_rows = sessions

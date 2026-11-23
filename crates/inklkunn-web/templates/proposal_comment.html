@@ -9,4 +9,5 @@
 {% endif %}{% for f in c.tombstone %}<p class="note tombstone">{{ f }}</p>
 {% endfor %}{% if let Some(link) = c.reply %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
 {% endif %}{% if let Some(link) = c.moderate %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% if let Some(link) = c.contest %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
 {% endif %}</div>

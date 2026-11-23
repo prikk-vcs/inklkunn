@@ -308,12 +308,21 @@ fn ended(page: &Page, ctx: &Ctx, error: &PeopleError) -> Response {
     let t = page.t();
     match error {
         PeopleError::NotFound => generic_not_found(page),
-        PeopleError::Restricted(notice) => refusal_page(
+        // The person may contest the restriction from the page that says so.
+        PeopleError::Restricted(restriction) => crate::wiki::notice(
             page,
-            ctx,
+            &ctx.wiki,
             StatusCode::FORBIDDEN,
             Key::OutcomeNotAllowed,
-            sentences::restriction_paragraphs(t, notice),
+            sentences::restriction_paragraphs(t, restriction),
+            vec![
+                Choice {
+                    label: t.get(Key::PeopleBack),
+                    href: paths::page(ctx.slug()),
+                },
+                crate::appeals::words::restriction_choice(t, ctx.slug(), restriction),
+            ],
+            None,
         ),
         PeopleError::RulesUnreadable(fault) => refusal_page(
             page,

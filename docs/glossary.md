@@ -1764,6 +1764,79 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `quota.appeals_day` | the name of the limit on appeals a person files in a day | "too many appeals in the last day" | "直近 1 日の申し立てが多すぎます" |
 | `quota.appeals_open` | the name of the limit on appeals a wiki holds open | "too many appeals are waiting for a decision in this wiki" | "このウィキで決定待ちの申し立てが多すぎます" |
 | `quota.reset_appeal_decided` | under a refusal by the limit on open appeals | "It resets when one of this wiki's open appeals is decided." | "このウィキで決定待ちの申し立てのどれかが決定されると、リセットされます。" |
+| `contest.link` | the link beside a decision that affects a person: it opens the form that appeals it | "Contest this" | "これに申し立てをする" |
+| `contest.filed` | where a person may contest a decision and has: the appeal is waiting | "You have appealed this. It is waiting for a decision." | "これにはすでに申し立てをしています。決定を待っています。" |
+| `title.contest` | the title of the form that appeals a decision | "Contest a decision · {wiki} · {product}" | "決定に申し立てをする · {wiki} · {product}" |
+| `contest.heading` | the heading of that form | "Contest this decision" | "この決定に申し立てをする" |
+| `contest.intro` | under the heading of that form | "Say, in your own words, why this should be reversed. Only you and the people who decide appeals can read what you write. It is decided once, by someone who did not take the action." | "この措置を取り消すべき理由を、ご自身の言葉で書いてください。書いた内容を読めるのは、あなたと、申し立てを決定する人だけです。決定は一度だけ行われ、その措置を行っていない人が決定します。" |
+| `contest.text_label` | the label of the field of the appeal's text | "Your appeal" | "申し立ての内容" |
+| `contest.text_hint` | under that field; `{limit}` is the most KiB of text | "Plain text, with line breaks if you need them, up to {limit} KiB." | "プレーンテキストで、必要なら改行も使えます。{limit} KiB までです。" |
+| `contest.submit` | the button that files the appeal | "File the appeal" | "申し立てる" |
+| `contest.back` | the way back from the form and from its refusals | "Back to my appeals" | "自分の申し立てに戻る" |
+| `contest.proposal_link` | the link to the proposal an appeal or a decision is about | "The proposal" | "この提案" |
+| `contest.done_filed` | on the page of a person's appeals after one was filed | "Your appeal was filed. The people who decide appeals can read it, and so can you." | "申し立てを受け付けました。読めるのは、申し立てを決定する人と、あなただけです。" |
+| `contest.problem_empty` | beside the form: nothing was written | "Write what you want to say." | "申し立てる内容を書いてください。" |
+| `contest.problem_long` | beside the form: the text is too long; `{limit}` is the most KiB | "The text is longer than {limit} KiB." | "文章が {limit} KiB を超えています。" |
+| `contest.problem_chars` | beside the form: the text has a character that cannot be kept | "The text has a character that cannot be kept (a control or direction character). Remove it and try again." | "保存できない文字（制御文字または方向制御文字）が含まれています。取り除いてから、もう一度お試しください。" |
+| `contest.nothing_heading` | the heading of the page for an action that cannot be contested by this person | "Nothing to contest here" | "申し立てできるものがありません" |
+| `contest.nothing_body` | under that heading | "This decision is not about you, or it is no longer in force." | "この決定はあなたに関するものではないか、すでに効力がありません。" |
+| `contest.already_open` | when a person appeals what they have appealed already | "You have already appealed this, and the appeal is waiting for a decision." | "これにはすでに申し立てをしていて、決定を待っています。" |
+| `contest.what_decline` | on the list of what a person may contest, and on the form: a proposal of theirs was declined | "Your proposal was declined." | "あなたの提案は見送られました。" |
+| `contest.what_tombstone` | the same: something they wrote was hidden; `{part}` is what was hidden, `{category}` the reason's category | "Something you wrote was hidden by moderation: {part}. Reason: {category}. Date: {date}." | "あなたが書いたものがモデレーションにより非表示になりました: {part}。理由: {category}。日時: {date}。" |
+| `contest.what_restriction` | the same: they are restricted; `{reason}` is the reason they were given | "You are restricted until {date}. The reason given: {reason}" | "{date} まで制限を受けています。示された理由: {reason}" |
+| `contest.what_protection` | the same: a temporary protection holds back a proposal of theirs; `{target}` is the page or namespace | "A temporary protection of {target} holds back a proposal of yours. It ends on {date}. The reason given: {reason}" | "{target} への一時的な保護が、あなたの提案を保留にしています。保護は {date} に終わります。示された理由: {reason}" |
+| `contest.what_grant` | the same: their role was lowered or taken away; `{before}` and `{after}` are the roles | "Your role was changed from {before} to {after} on {date}." | "あなたの役割は、{date} に「{before}」から「{after}」に変更されました。" |
+| `contest.no_role` | a role word in the sentence of a lowered role: no role at all | "no role" | "役割なし" |
+| `appeals.mine_link` | the link to a person's own appeals, and the heading of that page | "My appeals" | "自分の申し立て" |
+| `title.appeals_mine` | the title of that page | "My appeals · {wiki} · {product}" | "自分の申し立て · {wiki} · {product}" |
+| `mine.intro` | the first paragraph of that page | "These are the appeals you made in this wiki, and what you can contest now. Only you and the people who decide appeals can read what you wrote." | "このウィキでのあなたの申し立てと、いま申し立てができる決定です。書いた内容を読めるのは、あなたと、申し立てを決定する人だけです。" |
+| `mine.contest_heading` | the heading of the list of what a person can contest | "What you can contest" | "申し立てができる決定" |
+| `mine.contest_none` | under that heading when there is nothing | "Nothing that affects you can be contested now." | "いま申し立てができる決定はありません。" |
+| `mine.appeals_heading` | the heading of the list of a person's appeals | "Your appeals" | "あなたの申し立て" |
+| `mine.appeals_none` | under that heading when there is none | "You have not made an appeal in this wiki." | "このウィキで申し立てをしたことはありません。" |
+| `mine.filed_on` | in a row of a person's appeals; `{kind}` is what it is against | "Appeal against {kind}, filed on {date}." | "申し立ての対象: {kind}。申し立てた日時: {date}。" |
+| `mine.open` | in a row of a person's appeals while it waits | "Waiting for a decision." | "決定を待っています。" |
+| `title.appeals` | the title of the page of the people who decide appeals | "Appeals · {wiki} · {product}" | "申し立て · {wiki} · {product}" |
+| `appeals.heading` | the heading of that page, and the link to it | "Appeals" | "申し立て" |
+| `appeals.intro` | the first paragraph of that page | "The appeals made in this wiki, for the people who decide them. Only the person who appealed and the people who decide appeals can read one. The moderation log says only that a hiding was appealed and how it ended." | "このウィキで行われた申し立てです。決定する人のためのページです。申し立てを読めるのは、申し立てた本人と、申し立てを決定する人だけです。モデレーションのログには、非表示に申し立てがあったことと、その結果だけが示されます。" |
+| `appeals.open_heading` | the heading of the appeals waiting for a decision | "Waiting for a decision" | "決定待ち" |
+| `appeals.open_none` | under that heading when there are none | "No appeals are waiting." | "決定待ちの申し立てはありません。" |
+| `appeals.decided_heading` | the heading of the appeals that were decided | "Decided" | "決定済み" |
+| `appeals.decided_none` | under that heading when there are none | "No appeal has been decided yet." | "決定済みの申し立てはまだありません。" |
+| `appeals.row_head` | the head of a row; `{person}` appealed, `{action}` is what it is against | "{person}: appeal against {action}" | "{person} の申し立て: {action}" |
+| `appeals.kind_decline` | what an appeal can be against: the decline of a proposal; a phrase | "the decline of a proposal" | "提案の見送り" |
+| `appeals.kind_tombstone` | what an appeal can be against: a hiding by moderation | "a hiding by moderation" | "モデレーションによる非表示" |
+| `appeals.kind_restriction` | what an appeal can be against: a restriction | "a restriction" | "制限" |
+| `appeals.kind_protection` | what an appeal can be against: a temporary protection | "a temporary protection" | "一時的な保護" |
+| `appeals.kind_grant` | what an appeal can be against: a change of a role | "a change of a role" | "役割の変更" |
+| `appeals.filed_by` | in a row of the page of the people who decide | "Filed by {person} on {date}." | "{person} が {date} に申し立てました。" |
+| `appeals.action_by` | the same: who took the action that is appealed | "The action was taken by {person}." | "この措置は {person} が行いました。" |
+| `appeals.action_by_operator` | the same, for an action no account took (a role given from the command line) | "The action was taken from the command line by the person who runs this server." | "この措置は、このサーバーの管理者がコマンドラインから行いました。" |
+| `appeals.said_label` | above what the person wrote | "What they wrote" | "申し立ての内容" |
+| `appeals.decision_upheld` | in a row of a decided appeal: the action stands | "Decided on {date} by {person}: the action stands. Reason: {reason}" | "{date} に {person} が決定しました: 措置は維持されます。理由: {reason}" |
+| `appeals.decision_overturned` | in a row of a decided appeal: the action was reversed | "Decided on {date} by {person}: the action was reversed. Reason: {reason}" | "{date} に {person} が決定しました: 措置を取り消しました。理由: {reason}" |
+| `appeals.decide_legend` | the legend of the form that decides an appeal | "Your decision" | "決定" |
+| `appeals.decide_upheld` | the choice that leaves the action as it is | "The action stands" | "措置を維持する" |
+| `appeals.decide_overturned` | the choice that reverses the action | "Reverse the action" | "措置を取り消す" |
+| `appeals.decide_reason` | the label of the field of the reason of a decision | "Reason (one line; the person who appealed is told it)" | "理由（1 行。申し立てた人に伝えられます）" |
+| `appeals.decide_submit` | the button that records the decision | "Decide" | "決定する" |
+| `appeals.blocked_appellant` | in place of the form, for the person who appealed | "You made this appeal, so someone else decides it." | "これはあなたの申し立てなので、別の人が決定します。" |
+| `appeals.blocked_actor` | in place of the form, for the person who took the action | "You took this action, so someone else decides the appeal against it." | "あなたが行った措置への申し立てなので、別の人が決定します。" |
+| `appeals.done_upheld` | on the page after a decision that leaves the action as it is | "The decision was recorded: the action stands." | "決定を記録しました: 措置は維持されます。" |
+| `appeals.done_overturned` | on the page after a decision that reverses the action | "The decision was recorded: the action was reversed." | "決定を記録しました: 措置を取り消しました。" |
+| `appeals.done_reopened` | after that, when a proposal is held for review again | "The proposal is held for review again." | "提案は、再びレビュー待ちになりました。" |
+| `appeals.back` | the way back to the page of the people who decide | "Back to the appeals" | "申し立てに戻る" |
+| `appeals.problem_decision` | when a decision was not one of the two | "Choose whether the action stands or is reversed." | "措置を維持するか、取り消すかを選んでください。" |
+| `appeals.refused_heading` | the heading of the page for a decision that was not recorded | "The decision was not recorded" | "決定は記録されていません" |
+| `appeals.refused_no_such` | when there is no such appeal | "There is no such appeal." | "そのような申し立てはありません。" |
+| `appeals.refused_decided` | when the appeal was decided in the meantime | "This appeal was decided in the meantime, so nothing was changed." | "この申し立ては、その間に決定されたため、何も変更していません。" |
+| `appeals.moot_restriction` | why an overturn was refused: the restriction has ended | "This restriction has ended already, so there is nothing to reverse. You can still decide that the action stands." | "この制限はすでに終わっているため、取り消すものがありません。「措置を維持する」と決定することはできます。" |
+| `appeals.moot_protection` | the same: the protection has ended | "This protection has ended already, so there is nothing to reverse. You can still decide that the action stands." | "この保護はすでに終わっているため、取り消すものがありません。「措置を維持する」と決定することはできます。" |
+| `appeals.moot_role` | the same: the person's role changed since | "The person's role has changed since, and restoring the earlier one would undo that. Nothing was decided." | "その後、この人の役割が変わっており、以前の役割に戻すとその変更を取り消すことになります。何も決定していません。" |
+| `appeals.moot_reach` | the same: the role to restore is above what the person deciding may grant | "Restoring this role is above what you may grant. Someone who may grant it decides this appeal. Nothing was decided." | "この役割に戻すことは、あなたが付与できる範囲を超えています。付与できる人が、この申し立てを決定します。何も決定していません。" |
+| `appeals.moot_proposal` | the same: the proposal moved on since it was declined | "The proposal has changed since it was declined, so reopening it would undo something else. You can still decide that the action stands." | "提案は見送りの後に状態が変わっているため、再び開くと別の操作を取り消すことになります。「措置を維持する」と決定することはできます。" |
+| `appeals.moot_hidden` | the same: the proposal's text is still hidden | "The proposal's latest text is still hidden by moderation, and a proposal nobody can read cannot be reviewed. Reverse that hiding first." | "この提案の最新の本文は、まだモデレーションにより非表示のままです。誰も読めない提案はレビューできません。先にその非表示を取り消してください。" |
+| `appeals.moot_hiding` | the same: the hiding was reversed already | "This hiding has been reversed already, so there is nothing to reverse. You can still decide that the action stands." | "この非表示はすでに取り消されているため、取り消すものがありません。「措置を維持する」と決定することはできます。" |
 
 ## 3. Words the interface does not say
 

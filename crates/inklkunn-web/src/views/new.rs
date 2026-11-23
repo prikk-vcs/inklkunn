@@ -130,18 +130,19 @@ pub fn render_view_outcome(page: &Page, wiki: &WikiRecord, outcome: &ViewOutcome
             vec![t.get(Key::ViewsNewUncertain)],
         ),
     };
-    let response = notice(
-        page,
-        wiki,
-        status,
-        heading,
-        paragraphs,
-        vec![Choice {
-            label: t.get(Key::CompareBack),
-            href: paths::list(wiki.slug.as_str()),
-        }],
-        None,
-    );
+    let mut choices = vec![Choice {
+        label: t.get(Key::CompareBack),
+        href: paths::list(wiki.slug.as_str()),
+    }];
+    // A person a restriction holds down may contest it from the page that says so.
+    if let ViewOutcome::Restricted(restriction) = outcome {
+        choices.push(crate::appeals::words::restriction_choice(
+            t,
+            wiki.slug.as_str(),
+            restriction,
+        ));
+    }
+    let response = notice(page, wiki, status, heading, paragraphs, choices, None);
     match outcome {
         ViewOutcome::Busy
         | ViewOutcome::NeedsRecovery

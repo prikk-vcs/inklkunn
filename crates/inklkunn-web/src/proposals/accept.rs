@@ -404,18 +404,19 @@ pub fn render_accept_outcome(
             ),
         },
     };
-    let response = notice(
-        page,
-        wiki,
-        status,
-        heading,
-        paragraphs,
-        vec![Choice {
-            label: t.get(Key::ProposalBack),
-            href: paths::proposal(wiki.slug.as_str(), proposal.as_str()),
-        }],
-        None,
-    );
+    let mut choices = vec![Choice {
+        label: t.get(Key::ProposalBack),
+        href: paths::proposal(wiki.slug.as_str(), proposal.as_str()),
+    }];
+    // A person a restriction holds down may contest it from the page that says so.
+    if let AcceptOutcome::Restricted(restriction) = outcome {
+        choices.push(crate::appeals::words::restriction_choice(
+            t,
+            wiki.slug.as_str(),
+            restriction,
+        ));
+    }
+    let response = notice(page, wiki, status, heading, paragraphs, choices, None);
     match outcome {
         AcceptOutcome::Busy { retry_after, .. } => retry_after_secs(response, *retry_after),
         AcceptOutcome::NeedsRecovery

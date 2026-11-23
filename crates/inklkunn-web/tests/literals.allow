@@ -595,3 +595,24 @@ exact :: replace.rs :: wiki :: a placeholder name of a catalog message
 exact :: replace.rs :: retired_reason :: the name of a key of a knowledge file, for the core's cleaning of a reason
 exact :: replace.rs :: the knowledge files could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: replace.rs :: a base could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+# --- appeals (RFC 006 D-9; handoff G-T5)
+exact :: contest.rs :: wiki :: a placeholder name of a catalog message
+exact :: contest.rs :: limit :: a placeholder name of a catalog message
+exact :: mine.rs :: kind :: a placeholder name of a catalog message
+exact :: mine.rs :: date :: a placeholder name of a catalog message
+exact :: mine.rs :: wiki :: a placeholder name of a catalog message
+exact :: page.rs :: person :: a placeholder name of a catalog message
+exact :: page.rs :: date :: a placeholder name of a catalog message
+exact :: page.rs :: limit :: a placeholder name of a catalog message
+exact :: page.rs :: action :: a placeholder name of a catalog message
+exact :: page.rs :: wiki :: a placeholder name of a catalog message
+exact :: words.rs :: part :: a placeholder name of a catalog message
+exact :: words.rs :: category :: a placeholder name of a catalog message
+exact :: words.rs :: date :: a placeholder name of a catalog message
+exact :: words.rs :: reason :: a placeholder name of a catalog message
+exact :: words.rs :: target :: a placeholder name of a catalog message
+exact :: words.rs :: before :: a placeholder name of a catalog message
+exact :: words.rs :: after :: a placeholder name of a catalog message
+exact :: words.rs :: person :: a placeholder name of a catalog message
+exact :: page.rs :: appeal-{} :: the id of an element of a form, made from the appeal's id; no sentence a reader sees
+exact :: appeals.rs :: an appeal could not be handled now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it

@@ -20,8 +20,9 @@ use crate::origin::Dispatch;
 use crate::pages::{self, LANGUAGE_PATH, PageState};
 use crate::services::Services;
 use crate::{
-    account, api, changes, csrf, discover, health, history, inbox, knowledge, people, probe,
-    proposals, protections, raw, restore, search, signin, style, tombstone, views, watch, wiki,
+    account, api, appeals, changes, csrf, discover, health, history, inbox, knowledge, people,
+    probe, proposals, protections, raw, restore, search, signin, style, tombstone, views, watch,
+    wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -53,6 +54,7 @@ fn page_specs() -> Vec<Spec> {
     specs.extend(view_specs());
     specs.extend(moderation_specs());
     specs.extend(people_specs());
+    specs.extend(appeal_specs());
     specs
 }
 
@@ -331,6 +333,46 @@ fn people_specs() -> Vec<Spec> {
                 people::acts::lift_post,
                 people::FORM_LIMIT
             ),
+        },
+    ]
+}
+
+/// Appeals (RFC 006 D-9; handoff G-T5): the page of the people who decide them, a person's own, the form that files one and the
+/// decision. **Web only**: there is no write API for appeals (D-12). **Every one is guarded by `read`, and the guard says only what
+/// is true of it:** the handler reads the wiki as every page does (a wiki the visitor may not read answers as one that is not
+/// there), then asks the core, which authorizes the act itself. Filing is authorized by reading and by being the person the action
+/// affects, **never** by `propose` or `comment` (a restricted account appeals its own restriction), and a decision is the rung
+/// `rungs.decide_appeal` names (which is no `Action` of the fixed set). A guard of `moderate` or `comment` here would say a
+/// dependency the acts do not have.
+fn appeal_specs() -> Vec<Spec> {
+    vec![
+        Spec {
+            path: "/{slug}/-/appeals",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(appeals::page::appeals_page),
+        },
+        Spec {
+            path: "/{slug}/-/appeals/mine",
+            methods: &["GET", "HEAD"],
+            guard: Guard::Action(Action::Read),
+            handler: || get(appeals::mine::mine_page),
+        },
+        Spec {
+            path: "/{slug}/-/appeals/new",
+            methods: &["GET", "HEAD", "POST"],
+            guard: Guard::Action(Action::Read),
+            handler: form_route!(
+                appeals::contest::contest_form,
+                appeals::contest::contest_post,
+                appeals::FORM_LIMIT
+            ),
+        },
+        Spec {
+            path: "/{slug}/-/appeals/decide",
+            methods: &["POST"],
+            guard: Guard::Action(Action::Read),
+            handler: post_route!(appeals::page::decide_post, appeals::FORM_LIMIT),
         },
     ]
 }

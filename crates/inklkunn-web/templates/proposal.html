@@ -5,6 +5,11 @@
 <h1>{{ heading }}</h1>
 <p class="proposal-state"><strong>{{ state }}</strong></p>
 {% for n in notes %}<p>{{ n }}</p>
+{% endfor %}{% for c in contests %}<div class="contest">
+{% for line in c.lines %}<p>{{ line }}</p>
+{% endfor %}{% if let Some(link) = c.contest %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}{% if let Some(text) = c.filed %}<p class="note">{{ text }}</p>
+{% endif %}</div>
 {% endfor %}{% if let Some(s) = signed %}<p class="signed">{{ s.0 }}{% if let Some(link) = s.1 %} · <a href="{{ link.href }}">{{ link.label }}</a>{% endif %}</p>
 {% endif %}<ul class="proposal-facts">
 {% for f in facts %}<li>{{ f }}</li>

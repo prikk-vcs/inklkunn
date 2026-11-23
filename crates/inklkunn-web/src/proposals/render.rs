@@ -42,6 +42,8 @@ pub(crate) struct CommentView {
     pub(crate) tombstone: Vec<String>,
     /// Where the `moderate` rung hides or restores it, offered to that rung alone.
     pub(crate) moderate: Option<LinkView>,
+    /// *Contest this*, offered to the person whose comment it is when moderation hid it (RFC 006 D-9), and to no one else.
+    pub(crate) contest: Option<LinkView>,
 }
 
 /// A link.

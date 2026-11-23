@@ -250,6 +250,7 @@ fn flatten(
             body_hidden: crate::tombstone::comment_state(t, marks.get(&c.id)).0,
             tombstone: crate::tombstone::comment_state(t, marks.get(&c.id)).1,
             moderate: None,
+            contest: crate::appeals::words::tombstone_contest(ctx, t, marks.get(&c.id)),
         })
         .collect()
 }

@@ -15,7 +15,8 @@
 {% if wikis.is_empty() %}<p>{{ wikis_none }}</p>
 {% else %}<ul class="account-list">
 {% for w in wikis %}<li><a href="{{ w.href }}">{{ w.name }}</a>{% for line in w.lines %}
-<p>{{ line }}</p>{% endfor %}</li>
+<p>{{ line }}</p>{% endfor %}{% for l in w.links %}
+<p><a href="{{ l.href }}">{{ l.label }}</a></p>{% endfor %}</li>
 {% endfor %}</ul>
 {% endif %}</section>
 <section class="account-section" aria-labelledby="name-heading">

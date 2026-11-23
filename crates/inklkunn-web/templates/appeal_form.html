@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+{% include "wiki_nav.html" %}
+<h1>{{ heading }}</h1>
+{% if !problems.is_empty() %}<div class="form-problems" role="alert">
+<h2 id="problems">{{ page.get(Key::ProposeProblems) }}</h2>
+<ul>
+{% for p in problems %}<li>{{ p }}</li>
+{% endfor %}</ul>
+</div>
+{% endif %}{% for line in what %}<p>{{ line }}</p>
+{% endfor %}{% if let Some(link) = proposal %}<p><a href="{{ link.href }}">{{ link.label }}</a></p>
+{% endif %}<p>{{ intro }}</p>
+<form method="post" action="{{ action }}" class="proposal-form">
+{% include "csrf.html" %}<input type="hidden" name="{{ kind_field }}" value="{{ kind }}">
+<input type="hidden" name="{{ id_field }}" value="{{ id }}">
+<div class="field">
+<label for="appeal-text">{{ text_label }}</label>
+<textarea id="appeal-text" name="{{ text_field }}" rows="8" aria-describedby="appeal-text-hint" required>{{ text }}</textarea>
+<p id="appeal-text-hint" class="note">{{ text_hint }}</p>
+</div>
+<p class="buttons"><button type="submit">{{ submit }}</button></p>
+</form>
+<p><a href="{{ back.href }}">{{ back.label }}</a></p>
+{% endblock %}

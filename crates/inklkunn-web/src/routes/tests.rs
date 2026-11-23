@@ -351,11 +351,15 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
             ("/{slug}/-/people/restrict", Moderate),
             ("/{slug}/-/people/renew", Moderate),
             ("/{slug}/-/people/lift", Moderate),
+            ("/{slug}/-/appeals", Read),
+            ("/{slug}/-/appeals/mine", Read),
+            ("/{slug}/-/appeals/new", Read),
+            ("/{slug}/-/appeals/decide", Read),
         ]
     );
     // Whatever a route writes, it declares the writing methods only where it declares a non-read action or is
     // one of the read pages that take a form (the verification check, marking the inbox read, following a page, and a change
-    // of a role, which is no `Action` of its own).
+    // of a role and an appeal, which are no `Action` of their own).
     for (e, action) in table.guarded().filter(|(e, _)| !e.path.contains("/-/api/")) {
         if e.methods.contains(&"POST") {
             assert!(
@@ -364,7 +368,12 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
                         "/{slug}/-/verification",
                         "/-/inbox",
                         "/{slug}/-/watch/{*title}",
-                        "/{slug}/-/people/grant"
+                        "/{slug}/-/people/grant",
+                        // An appeal is filed by reading and by being the person the action affects, and decided by the rung
+                        // `rungs.decide_appeal` names: neither is an `Action` of the fixed set (RFC 006 D-9), and the core
+                        // authorizes each act itself.
+                        "/{slug}/-/appeals/new",
+                        "/{slug}/-/appeals/decide"
                     ]
                     .contains(&e.path),
                 "{}: a write is guarded by the action it makes",
