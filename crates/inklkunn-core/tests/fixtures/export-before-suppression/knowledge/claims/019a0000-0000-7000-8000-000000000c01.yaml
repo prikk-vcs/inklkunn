@@ -1,0 +1,5 @@
+kind: observation
+lifecycle: proposed
+expressions:
+  - page_id: p1
+    block: b1

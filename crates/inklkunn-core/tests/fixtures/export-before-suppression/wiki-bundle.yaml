@@ -1,0 +1,45 @@
+format: portable-wiki-bundle
+version: '0.4'
+generator:
+  name: inklkunn
+  version: "0.0.0"
+source:
+  name: Notes
+  engine: inklkunn
+lang: en
+languages: [en]
+license: CC-BY-SA-4.0
+visibility_default: public
+markup:
+  profile: portable-wiki-markdown/2
+  link_label_order: target-first
+  hierarchy_separator: /
+  heading_anchor_algorithm: github
+  pages_prefix: pages
+  directives: [toc, children]
+  html_subset: []
+contents:
+  pages: 2
+  attachments: 0
+  history: true
+  discussions: false
+  users: true
+  structured: false
+fidelity:
+  level: 3
+  degraded: []
+  dropped: []
+  note: native; nothing was converted
+extensions_used:
+  - name: inklkunn-knowledge
+    version: "1"
+    directory: extensions/inklkunn-knowledge
+exported_at: "2023-11-14T22:30:00Z"
+interwiki: {}
+checksums: SHA256SUMS
+inklkunn:
+  default_view: heads/main
+  policy_bootstrap: default
+  as_of_block: "b10c000000000000000000000000000000000000000000000000000000000003"
+  history_changes_without_a_page: 2
+  histories_not_written: 0
