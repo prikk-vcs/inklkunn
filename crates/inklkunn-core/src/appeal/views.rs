@@ -19,6 +19,12 @@ use crate::authorize::{Principal, RestrictionNotice};
 /// How many appeals a page lists: the store's page.
 const PAGE: usize = inklkunn_store::governance::MAX_PAGE;
 
+/// **How many open appeals the queue lists**, oldest first. The queue is read on its own, not from the newest appeals of every state,
+/// so that an old open appeal is never pushed off the list by decided ones (A-6); a wiki holds at most 200 (the store's page) open appeals (the
+/// operator's bound is never above it), so what is read is every one of them, and what is not listed is counted
+/// ([`AppealsView::more_open`]).
+pub const QUEUE_BOUND: usize = 100;
+
 /// How many of the wiki's latest moderation records are looked through for what a person may contest.
 const LOG_SCAN: usize = inklkunn_store::governance::MAX_PAGE;
 
@@ -35,8 +41,10 @@ pub struct Queued {
 /// appellant, the action and the decision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppealsView {
-    /// Waiting for a decision, oldest first.
+    /// Waiting for a decision, oldest first: the first [`QUEUE_BOUND`] of them.
     pub open: Vec<Queued>,
+    /// How many more are open than are listed (none unless the operator allows more than [`QUEUE_BOUND`] open in a wiki).
+    pub more_open: u64,
     /// Decided, newest first.
     pub decided: Vec<AppealRow>,
 }
@@ -163,34 +171,45 @@ impl AppealService {
         if !self.may_decide(principal, wiki) {
             return Err(AppealError::NotAllowed);
         }
-        let records = self
+        // The open appeals are their own read, whole (oldest first), and so are not pushed off the list by decided ones.
+        let waiting = self
+            .governance
+            .open_appeals(&wiki.id, PAGE)
+            .map_err(unavailable)?;
+        let more_open =
+            u64::try_from(waiting.len().saturating_sub(QUEUE_BOUND)).unwrap_or(u64::MAX);
+        let mut open = Vec::new();
+        for record in waiting.iter().take(QUEUE_BOUND) {
+            let row = self.row_of(wiki, record)?;
+            let blocked = if record.appellant == acting.account {
+                Some(DeciderRefusal::TheAppellant)
+            } else if record.action_actor.as_ref() == Some(&acting.account)
+                || self
+                    .actors_of(wiki, &record.action)?
+                    .contains(&acting.account)
+            {
+                Some(DeciderRefusal::TheActor)
+            } else {
+                None
+            };
+            open.push(Queued { row, blocked });
+        }
+        // The newest decided ones, newest first (the open ones, which the page lists above, are not among them).
+        let mut decided = Vec::new();
+        for record in self
             .governance
             .recent_appeals(&wiki.id, PAGE)
-            .map_err(unavailable)?;
-        let mut open = Vec::new();
-        let mut decided = Vec::new();
-        for record in &records {
-            let row = self.row_of(wiki, record)?;
-            if record.state == AppealState::Open {
-                let blocked = if record.appellant == acting.account {
-                    Some(DeciderRefusal::TheAppellant)
-                } else if record.action_actor.as_ref() == Some(&acting.account)
-                    || self
-                        .actors_of(wiki, &record.action)?
-                        .contains(&acting.account)
-                {
-                    Some(DeciderRefusal::TheActor)
-                } else {
-                    None
-                };
-                open.push(Queued { row, blocked });
-            } else {
-                decided.push(row);
-            }
+            .map_err(unavailable)?
+            .iter()
+            .filter(|r| r.state != AppealState::Open)
+        {
+            decided.push(self.row_of(wiki, record)?);
         }
-        // The store gives the newest first; the queue is read oldest first.
-        open.reverse();
-        Ok(AppealsView { open, decided })
+        Ok(AppealsView {
+            open,
+            more_open,
+            decided,
+        })
     }
 
     /// The person's own appeals, newest first, **and nobody else's**, and what they may contest now.

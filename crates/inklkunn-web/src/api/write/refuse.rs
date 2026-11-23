@@ -182,6 +182,7 @@ pub(crate) fn quota_problem(q: &QuotaRefusal, now: i64) -> Problem {
         Reset::WhenAProposalCloses => ("when-a-proposal-closes", None),
         Reset::WhenTheQueueMoves => ("when-the-queue-moves", None),
         Reset::WhenAnAppealIsDecided => ("when-an-appeal-is-decided", None),
+        Reset::WhenOneOfYoursIsDecided => ("when-one-of-your-appeals-is-decided", None),
         Reset::Never => ("never", None),
     };
     let problem = Problem::new(Code::RefusedLimit)
@@ -194,7 +195,10 @@ pub(crate) fn quota_problem(q: &QuotaRefusal, now: i64) -> Problem {
     match q.reset {
         Reset::At(at) => problem.retry_after(u64::try_from(at.saturating_sub(now)).unwrap_or(0)),
         Reset::WhenTheQueueMoves => problem.retry_after(QUEUE_RETRY),
-        Reset::WhenAProposalCloses | Reset::WhenAnAppealIsDecided | Reset::Never => problem,
+        Reset::WhenAProposalCloses
+        | Reset::WhenAnAppealIsDecided
+        | Reset::WhenOneOfYoursIsDecided
+        | Reset::Never => problem,
     }
 }
 

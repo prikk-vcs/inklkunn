@@ -39,7 +39,8 @@ pub enum AppealError {
     },
     /// The text is refused.
     Text(TextFault),
-    /// A limit is reached ([`QuotaLimit::AppealsPerDayPerPrincipal`], [`QuotaLimit::OpenAppealsPerWiki`]): the limit by name, the
+    /// A limit is reached ([`QuotaLimit::AppealsPerDayPerPrincipal`], [`QuotaLimit::OpenAppealsPerPerson`],
+    /// [`QuotaLimit::OpenAppealsPerWiki`]): the limit by name, the
     /// numbers and when it ends.
     Quota(QuotaRefusal),
     /// There is no such appeal in this wiki.
@@ -451,6 +452,21 @@ impl AppealService {
                 current: u64::try_from(mine.len()).unwrap_or(u64::MAX),
                 asked: 1,
                 reset,
+            }));
+        }
+        // A person's own open appeals: a few accounts cannot fill the wiki's.
+        let own_bound = self.limits.open_per_person;
+        let own_open = self
+            .governance
+            .open_appeal_count(&wiki.id, appellant)
+            .map_err(unavailable)?;
+        if own_open >= own_bound {
+            return Err(AppealError::Quota(QuotaRefusal {
+                limit: QuotaLimit::OpenAppealsPerPerson,
+                allowed: own_bound,
+                current: own_open,
+                asked: 1,
+                reset: Reset::WhenOneOfYoursIsDecided,
             }));
         }
         let bound = self.limits.open_per_wiki;

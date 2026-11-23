@@ -35,6 +35,7 @@
 </form>
 {% endif %}</li>
 {% endfor %}</ol>
+{% endif %}{% if let Some(text) = open_more %}<p class="note">{{ text }}</p>
 {% endif %}</section>
 <section aria-labelledby="decided-appeals">
 <h2 id="decided-appeals">{{ decided_heading }}</h2>

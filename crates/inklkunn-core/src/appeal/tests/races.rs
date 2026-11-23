@@ -209,6 +209,7 @@ fn two_people_filing_at_once_cannot_both_take_the_last_place_in_a_wiki_s_queue()
         AppealLimits {
             per_person_per_day: 10,
             open_per_wiki: 1,
+            ..AppealLimits::default()
         },
         steady,
     );

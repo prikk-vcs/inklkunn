@@ -57,14 +57,15 @@ mod text;
 mod views;
 
 pub use limits::{
-    AppealLimits, OPEN_PER_WIKI_DEFAULT, OPEN_PER_WIKI_MAX, PER_DAY_DEFAULT, PER_DAY_MAX,
+    AppealLimits, OPEN_PER_PERSON_DEFAULT, OPEN_PER_PERSON_MAX, OPEN_PER_WIKI_DEFAULT,
+    OPEN_PER_WIKI_MAX, PER_DAY_DEFAULT, PER_DAY_MAX,
 };
 pub use model::{AppealMark, AppealRow, ContestRef, DecisionRow, Offer, Outcome};
 pub use service::{
     AppealError, AppealFiled, AppealService, DeciderRefusal, OverturnMade, OverturnRefusal,
 };
 pub use text::{MAX_TEXT_BYTES, TextFault, clean_text};
-pub use views::{AppealsView, ContestWhat, Contestable, MineView, Queued};
+pub use views::{AppealsView, ContestWhat, Contestable, MineView, QUEUE_BOUND, Queued};
 
 pub use inklkunn_store::{AppealId, AppealedAction, AppealedKind};
 

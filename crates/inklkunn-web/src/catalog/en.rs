@@ -4014,8 +4014,16 @@ pub const CATALOG: &[Entry] = &[
         "too many appeals are waiting for a decision in this wiki",
     ),
     msg(
+        "quota.appeals_open_person",
+        "too many of your appeals are waiting for a decision in this wiki",
+    ),
+    msg(
         "quota.reset_appeal_decided",
         "It resets when one of this wiki's open appeals is decided.",
+    ),
+    msg(
+        "quota.reset_appeal_yours_decided",
+        "It resets when one of your open appeals is decided.",
     ),
     msg("contest.link", "Contest this"),
     msg(
@@ -4102,6 +4110,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("appeals.open_heading", "Waiting for a decision"),
     msg("appeals.open_none", "No appeals are waiting."),
+    plural_msg(
+        "appeals.open_more",
+        "and {count} more open. It is listed when one of these is decided.",
+        "and {count} more open. The ones that have waited longest are listed first; the rest are listed as these are decided.",
+    ),
     msg("appeals.decided_heading", "Decided"),
     msg("appeals.decided_none", "No appeal has been decided yet."),
     msg("appeals.row_head", "{person}: appeal against {action}"),

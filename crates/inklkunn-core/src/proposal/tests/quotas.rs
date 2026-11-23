@@ -59,6 +59,7 @@ fn the_limits_have_fixed_distinct_names() {
             "comments-per-hour-per-principal",
             "appeals-per-day-per-principal",
             "open-appeals-per-wiki",
+            "open-appeals-per-person",
         ]
     );
 }

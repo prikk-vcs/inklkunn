@@ -84,11 +84,13 @@ pub enum QuotaLimit {
     AppealsPerDayPerPrincipal,
     /// Too many appeals waiting for a decision in the wiki.
     OpenAppealsPerWiki,
+    /// Too many appeals of one person waiting for a decision in the wiki: a few accounts cannot fill the wiki's open appeals (A-6).
+    OpenAppealsPerPerson,
 }
 
 impl QuotaLimit {
     /// Every limit.
-    pub const ALL: [QuotaLimit; 9] = [
+    pub const ALL: [QuotaLimit; 10] = [
         QuotaLimit::OpenProposals,
         QuotaLimit::RevisionsPerProposal,
         QuotaLimit::AcceptedBytesPerDay,
@@ -98,6 +100,7 @@ impl QuotaLimit {
         QuotaLimit::CommentsPerHourPerPrincipal,
         QuotaLimit::AppealsPerDayPerPrincipal,
         QuotaLimit::OpenAppealsPerWiki,
+        QuotaLimit::OpenAppealsPerPerson,
     ];
 
     /// The fixed name (stable: logs, the API's problem type and the glossary key are made from it).
@@ -112,6 +115,7 @@ impl QuotaLimit {
             QuotaLimit::CommentsPerHourPerPrincipal => "comments-per-hour-per-principal",
             QuotaLimit::AppealsPerDayPerPrincipal => "appeals-per-day-per-principal",
             QuotaLimit::OpenAppealsPerWiki => "open-appeals-per-wiki",
+            QuotaLimit::OpenAppealsPerPerson => "open-appeals-per-person",
         }
     }
 }
@@ -127,6 +131,8 @@ pub enum Reset {
     WhenTheQueueMoves,
     /// When one of the wiki's open appeals is decided.
     WhenAnAppealIsDecided,
+    /// When one of the person's own open appeals is decided (the limit is on theirs, not on the wiki's).
+    WhenOneOfYoursIsDecided,
     /// Not by waiting: the proposal has all the revisions it can have (open a new one), or one request is
     /// larger than the limit allows at all (make it smaller).
     Never,

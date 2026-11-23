@@ -1769,7 +1769,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `replace.problem_nothing` | the page that answers a request to replace a file that cannot be read when the file is not one | "The wiki can read this file, or it is no knowledge file of this wiki, so there is nothing to replace." | "このファイルはウィキが読み取れるか、このウィキの知識ファイルではないため、置き換えるものはありません。" |
 | `quota.appeals_day` | the name of the limit on appeals a person files in a day | "too many appeals in the last day" | "直近 1 日の申し立てが多すぎます" |
 | `quota.appeals_open` | the name of the limit on appeals a wiki holds open | "too many appeals are waiting for a decision in this wiki" | "このウィキで決定待ちの申し立てが多すぎます" |
+| `quota.appeals_open_person` | the name of the limit on appeals one person holds open in a wiki | "too many of your appeals are waiting for a decision in this wiki" | "このウィキで、あなたの決定待ちの申し立てが多すぎます" |
 | `quota.reset_appeal_decided` | under a refusal by the limit on open appeals | "It resets when one of this wiki's open appeals is decided." | "このウィキで決定待ちの申し立てのどれかが決定されると、リセットされます。" |
+| `quota.reset_appeal_yours_decided` | under a refusal by the limit on one person's open appeals | "It resets when one of your open appeals is decided." | "あなたの決定待ちの申し立てのどれかが決定されると、リセットされます。" |
 | `contest.link` | the link beside a decision that affects a person: it opens the form that appeals it | "Contest this" | "これに申し立てをする" |
 | `contest.filed` | where a person may contest a decision and has: the appeal is waiting | "You have appealed this. It is waiting for a decision." | "これにはすでに申し立てをしています。決定を待っています。" |
 | `title.contest` | the title of the form that appeals a decision | "Contest a decision · {wiki} · {product}" | "決定に申し立てをする · {wiki} · {product}" |
@@ -1807,6 +1809,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `appeals.intro` | the first paragraph of that page | "The appeals made in this wiki, for the people who decide them. Only the person who appealed and the people who decide appeals can read one. The moderation log says only that a hiding was appealed and how it ended." | "このウィキで行われた申し立てです。決定する人のためのページです。申し立てを読めるのは、申し立てた本人と、申し立てを決定する人だけです。モデレーションのログには、非表示に申し立てがあったことと、その結果だけが示されます。" |
 | `appeals.open_heading` | the heading of the appeals waiting for a decision | "Waiting for a decision" | "決定待ち" |
 | `appeals.open_none` | under that heading when there are none | "No appeals are waiting." | "決定待ちの申し立てはありません。" |
+| `appeals.open_more` | under the list of open appeals, when the list is cut: how many more are open; `{count}` is that number | "and {count} more open. It is listed when one of these is decided." / "and {count} more open. The ones that have waited longest are listed first; the rest are listed as these are decided." | "ほかに決定待ちの申し立てが {count} 件あります。待ち時間の長いものから順に表示しており、残りは、これらが決定されると表示されます。" |
 | `appeals.decided_heading` | the heading of the appeals that were decided | "Decided" | "決定済み" |
 | `appeals.decided_none` | under that heading when there are none | "No appeal has been decided yet." | "決定済みの申し立てはまだありません。" |
 | `appeals.row_head` | the head of a row; `{person}` appealed, `{action}` is what it is against | "{person}: appeal against {action}" | "{person} の申し立て: {action}" |

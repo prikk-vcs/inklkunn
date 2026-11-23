@@ -69,6 +69,7 @@ struct PageTpl<'a> {
     open_heading: String,
     open_none: String,
     open: Vec<RowView>,
+    open_more: Option<String>,
     decided_heading: String,
     decided_none: String,
     decided: Vec<RowView>,
@@ -204,6 +205,8 @@ pub(crate) async fn appeals_page(
                 .iter()
                 .map(|q| row_view(t, slug, &q.row, Some(q)))
                 .collect(),
+            open_more: (view.more_open > 0)
+                .then(|| t.msg(Key::AppealsOpenMore).n(view.more_open).text()),
             decided_heading: t.get(Key::AppealsDecidedHeading),
             decided_none: t.get(Key::AppealsDecidedNone),
             decided: view

@@ -4066,8 +4066,16 @@ pub const CATALOG: &[Entry] = &[
         "このウィキで決定待ちの申し立てが多すぎます",
     ),
     msg(
+        "quota.appeals_open_person",
+        "このウィキで、あなたの決定待ちの申し立てが多すぎます",
+    ),
+    msg(
         "quota.reset_appeal_decided",
         "このウィキで決定待ちの申し立てのどれかが決定されると、リセットされます。",
+    ),
+    msg(
+        "quota.reset_appeal_yours_decided",
+        "あなたの決定待ちの申し立てのどれかが決定されると、リセットされます。",
     ),
     msg("contest.link", "これに申し立てをする"),
     msg(
@@ -4157,6 +4165,10 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("appeals.open_heading", "決定待ち"),
     msg("appeals.open_none", "決定待ちの申し立てはありません。"),
+    msg(
+        "appeals.open_more",
+        "ほかに決定待ちの申し立てが {count} 件あります。待ち時間の長いものから順に表示しており、残りは、これらが決定されると表示されます。",
+    ),
     msg("appeals.decided_heading", "決定済み"),
     msg(
         "appeals.decided_none",

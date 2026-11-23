@@ -569,20 +569,27 @@ fn the_web_settings_carry_the_platform_limits_and_a_bad_one_is_a_start_up_error(
 }
 
 #[test]
-fn the_two_limits_on_appeals_have_the_documented_defaults_and_named_refusals() {
-    // RFC 006 D-9 and RFC 004 D-11: three a day for one person, fifty open in a wiki.
+fn the_three_limits_on_appeals_have_the_documented_defaults_and_named_refusals() {
+    // RFC 006 D-9 and RFC 004 D-11: three a day for one person, five open for one person, fifty open in a wiki.
     let d = appeal_limits(&env(&[])).unwrap();
     assert_eq!(d, inklkunn_core::appeal::AppealLimits::default());
-    assert_eq!((d.per_person_per_day, d.open_per_wiki), (3, 50));
+    assert_eq!(
+        (d.per_person_per_day, d.open_per_person, d.open_per_wiki),
+        (3, 5, 50)
+    );
     for (name, good, n) in [
         ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "1", 1),
         ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "100", 100),
+        ("INKLKUNN_APPEAL_OPEN_PER_PERSON", "1", 1),
+        ("INKLKUNN_APPEAL_OPEN_PER_PERSON", "50", 50),
         ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "1", 1),
         ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "200", 200),
     ] {
         let l = appeal_limits(&env(&[(name, good)])).unwrap();
         let got = if name.ends_with("DAY") {
             l.per_person_per_day
+        } else if name.ends_with("PERSON") {
+            l.open_per_person
         } else {
             l.open_per_wiki
         };
@@ -593,6 +600,9 @@ fn the_two_limits_on_appeals_have_the_documented_defaults_and_named_refusals() {
         ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "101"),
         ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "three"),
         ("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", ""),
+        ("INKLKUNN_APPEAL_OPEN_PER_PERSON", "0"),
+        ("INKLKUNN_APPEAL_OPEN_PER_PERSON", "51"),
+        ("INKLKUNN_APPEAL_OPEN_PER_PERSON", "five"),
         ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "0"),
         ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "201"),
         ("INKLKUNN_APPEAL_OPEN_PER_WIKI", "-1"),
@@ -602,6 +612,7 @@ fn the_two_limits_on_appeals_have_the_documented_defaults_and_named_refusals() {
     }
     for name in [
         "INKLKUNN_APPEAL_PER_PERSON_PER_DAY",
+        "INKLKUNN_APPEAL_OPEN_PER_PERSON",
         "INKLKUNN_APPEAL_OPEN_PER_WIKI",
     ] {
         assert!(KNOWN.contains(&name), "a file may carry {name}");
@@ -621,4 +632,16 @@ fn the_two_limits_on_appeals_have_the_documented_defaults_and_named_refusals() {
     all.push(("INKLKUNN_APPEAL_PER_PERSON_PER_DAY", "0"));
     let e = WebSettings::load(&env(&all)).unwrap_err().0;
     assert!(e.contains("INKLKUNN_APPEAL_PER_PERSON_PER_DAY"), "{e}");
+    let mut all = base.to_vec();
+    all.push(("INKLKUNN_APPEAL_OPEN_PER_PERSON", "9"));
+    assert_eq!(
+        WebSettings::load(&env(&all))
+            .unwrap()
+            .appeals
+            .open_per_person,
+        9
+    );
+    all.push(("INKLKUNN_APPEAL_OPEN_PER_WIKI", "999"));
+    let e = WebSettings::load(&env(&all)).unwrap_err().0;
+    assert!(e.contains("INKLKUNN_APPEAL_OPEN_PER_WIKI"), "{e}");
 }

@@ -296,3 +296,80 @@ async fn an_appeal_is_decided_by_a_form_from_this_site_with_the_sessions_token()
         AppealState::Open
     );
 }
+
+/// An open appeal of `who` against a restriction that is not there, recorded straight in the store (the filing path's limits are
+/// not what is being tested here).
+fn open_appeal_of(e: &Env, who: &AccountId, at: i64) {
+    e.w.store
+        .file_appeal(&AppealRecord {
+            id: inklkunn_store::AppealId::new(),
+            wiki: e.w.wiki.id.clone(),
+            at,
+            action: inklkunn_store::AppealedAction {
+                kind: inklkunn_store::AppealedKind::Restriction,
+                id: AccountId::new().to_string(),
+            },
+            action_actor: None,
+            appellant: who.clone(),
+            text: "ZEBRA".to_owned(),
+            state: AppealState::Open,
+        })
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_person_holds_so_many_open_appeals_and_the_next_is_refused_naming_that_limit() {
+    let e = env();
+    for _ in 0..5 {
+        open_appeal_of(&e, &e.contributor, common::NOW - 3 * 86_400);
+    }
+    let id = propose(&e, &e.contributor, "A correction").await;
+    decline(&e, &e.maintainer, &id).await;
+    let position = e.w.store.last_transition_position(&id).unwrap().unwrap();
+    let a = file(&e, &e.contributor, "decline", &position.to_string()).await;
+    assert_eq!(a.status, StatusCode::TOO_MANY_REQUESTS, "{}", a.body());
+    let body = a.body();
+    assert!(
+        body.contains("too many of your appeals are waiting for a decision in this wiki"),
+        "{body}"
+    );
+    assert!(body.contains("The limit is 5."), "{body}");
+    assert!(
+        body.contains("It resets when one of your open appeals is decided."),
+        "{body}"
+    );
+    assert_eq!(
+        open_appeals(&e).len(),
+        5,
+        "the refused one was not recorded"
+    );
+}
+
+#[tokio::test]
+async fn the_page_of_the_people_who_decide_says_how_many_more_are_open_when_it_lists_only_the_oldest()
+ {
+    let e = env();
+    // The oldest one is the contributor's; a hundred and five more follow.
+    open_appeal_of(&e, &e.contributor, common::NOW - 10_000);
+    for n in 0..105_u8 {
+        let who = common::person(20 + n);
+        add_person(&e.w, &who, "Some Person", Some(Role::Contributor));
+        open_appeal_of(&e, &who, common::NOW - 5_000 + i64::from(n));
+    }
+    let main = main_of(&as_(&e, &e.admin, "/handbook/-/appeals").await);
+    assert_eq!(main.matches("class=\"change-head\"").count(), 100, "{main}");
+    assert!(
+        main.contains("and 6 more open. The ones that have waited longest are listed first"),
+        "{main}"
+    );
+    let ja = main_of(&as_ja(&e, &e.admin, "/handbook/-/appeals").await);
+    assert!(
+        ja.contains("ほかに決定待ちの申し立てが 6 件あります"),
+        "{ja}"
+    );
+    // With nothing cut, the sentence is not there.
+    let fewer = env();
+    open_appeal_of(&fewer, &fewer.contributor, common::NOW - 100);
+    let main = main_of(&as_(&fewer, &fewer.admin, "/handbook/-/appeals").await);
+    assert!(!main.contains("more open"), "{main}");
+}
