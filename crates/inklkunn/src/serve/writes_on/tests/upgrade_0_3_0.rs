@@ -15,6 +15,12 @@
 //! the passwords chosen in 0.3.0, the signer opens over the key store 0.3.0 made, the open proposal is accepted into the
 //! history, and a new one is proposed, reviewed and accepted.
 //!
+//! **A change of the rules takes effect on the migrated directory** (0.4.0 readiness, R-5 item 2; RFC 006 D-4, D-5): through
+//! the policy form the maintainer 0.3.0 made asks one approval from someone other than the proposer, and accepts that change
+//! under the old rules; the next page proposal is then refused for want of an approval until the reviewer 0.3.0 made gives it;
+//! the record of its acceptance names the block of the new rules, and the policy page says the rule and lists the change. The
+//! run prints each of its stages (`upgrade 0.3.0 -> this tree: ...`), a transcript under `--nocapture`.
+//!
 //! **The pages are compared with 0.3.0's own output.** The pages 0.3.0 served, captured from its process before it stopped
 //! (a page of the wiki, its history and its change, the wiki's sections, the claim's page and its API member, the views, the
 //! *Why is this here?* page, *Sources to review*, the pages of the instance), are compared with the pages this tree serves
@@ -62,6 +68,12 @@ const RULES_CHANGED: [(&str, &str); 2] = [
         ".why-chain, .why-people, .why-review, .why-sources, .why-attached, .why-links { margin-block: 0 0.5rem; padding-inline-start: 1.25rem; }",
     ),
 ];
+
+/// One line of what the run did and saw, printed as it happens (`-- --nocapture` shows the run as a transcript; a failure
+/// shows how far it got).
+fn say(what: &str) {
+    eprintln!("upgrade 0.3.0 -> this tree: {what}");
+}
 
 /// How many rows `table` has, read from the store file as it is on disk.
 fn rows_in(store: &Path, table: &str) -> i64 {
@@ -141,6 +153,7 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
     let store_file = world.settings.store_path();
 
     // ---- 0.3.0 makes the wiki, three accounts, and data in the tables of its own schema
+    say(&format!("the data directory is made by {}", old.display()));
     let (status, created, err) = old_cli(
         &old,
         &world,
@@ -263,6 +276,7 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
         assert!(!has_table(&store_file, table), "{table} exists at 18");
     }
 
+    say("0.3.0's server is stopped; the store is at schema 18 with the knowledge layer's rows");
     // ---- this tree opens the same directory, as `serve` does
     let running = Running::start(&world);
     assert!(
@@ -301,6 +315,9 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
         "the repository holds the blocks 0.3.0 wrote and nothing more: the wiki's first, the edit, the claim, the curation"
     );
 
+    say(
+        "this tree's server opened the directory: schema 19, the repository untouched, the five governance tables empty",
+    );
     // ---- the wiki behaves as before: every page of the sample is 0.3.0's, byte for byte after the masks
     let after = capture(running.browser(), &paths);
     let new_ports = [running.port, running.content_port];
@@ -359,6 +376,10 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
         );
     }
 
+    say(&format!(
+        "{} pages compared with 0.3.0's own output: byte for byte after the masks; one section and one link differ, as named",
+        paths.len()
+    ));
     // ---- the accounts of 0.3.0 sign in with the passwords chosen there
     let mut maya_now = Person {
         login: "maya",
@@ -387,6 +408,7 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
         "the comment of 0.3.0 is in the claim's thread, read over schema 19"
     );
 
+    say("the three accounts of 0.3.0 sign in with their passwords");
     // ---- the proposal 0.3.0 left open is accepted into the history, through the signer over 0.3.0's key store
     let page = noor_now.browser.get(&proposal_page(&p2));
     assert_eq!(page.status, 200, "{}", page.body);
@@ -412,6 +434,7 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
         "the proposal 0.3.0 left open joined it: {help}"
     );
 
+    say("the proposal 0.3.0 left open is accepted, through the signer over 0.3.0's key store");
     // ---- and a new proposal, made on this tree, is reviewed and accepted: a second source against the claim
     let challenge = attach(
         &mut noor_now,
@@ -441,6 +464,118 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
         assert_eq!(rows_in(&store_file, table), 0, "{table} is still empty");
     }
 
+    // ---- a change of the rules, made on the migrated directory, changes who may accept (RFC 006 D-4, D-5; 0.4.0 R-5 item 2)
+    say("upgraded: the wiki follows the default rules, as 0.3.0 had it");
+    let policy = anonymous.get("/handbook/-/policy");
+    assert_eq!(policy.status, 200, "{}", policy.body);
+    assert!(
+        policy.body.contains("follows the default rules")
+            && policy.body.contains("No change to the rules is recorded."),
+        "{}",
+        policy.body
+    );
+    say(
+        "Maya, who holds the maintainer role 0.3.0 gave her, asks one approval from someone other than the proposer, through the policy form",
+    );
+    let page = maya_now.browser.get("/handbook/-/policy/edit");
+    assert_eq!(page.status, 200, "{}", page.body);
+    let mut form = form_to(&page, "/handbook/-/policy/edit");
+    assert_eq!(
+        form.get("approvals"),
+        "0",
+        "the form is filled from the rules in force"
+    );
+    form.set("approvals", "1");
+    let sent = maya_now.browser.submit(&form, Some(("act", "send")));
+    assert_eq!(sent.status, 303, "{}\n{}", sent.head, sent.body);
+    let rules = proposal_id(&sent.location());
+    let before_rules = world.blocks();
+    let shown = maya_now.browser.get(&proposal_page(&rules));
+    assert!(
+        shown
+            .body
+            .contains("Accepting this change takes: maintainer or above, with 0 approvals"),
+        "the change is accepted under the old rules: {}",
+        shown.body
+    );
+    say("she accepts it under the old rules; one block is signed into the history");
+    let signed = maya_now.browser.submit(
+        &form_to(&shown, &format!("{}/accept", proposal_page(&rules))),
+        None,
+    );
+    signed_into_history(&signed);
+    assert_eq!(
+        world.blocks().len(),
+        before_rules.len() + 1,
+        "prikk log: the rules are one more block"
+    );
+    let rules_block = world.blocks().first().cloned().expect("the new rules");
+    say(
+        "Noor proposes a change to a page; Maya tries to accept it and is refused: it needs an approval",
+    );
+    let third = propose_edit(&mut noor_now, "Help", "Say where the licence is", |t| {
+        assert!(t.contains("Unless a page says otherwise"), "{t}");
+        t.replacen(
+            "Unless a page says otherwise",
+            "Unless a page says otherwise in its header",
+            1,
+        )
+    });
+    let accept_third = format!("{}/accept", proposal_page(&third));
+    let hers = maya_now.browser.get(&proposal_page(&third));
+    let held = maya_now
+        .browser
+        .submit(&form_to(&hers, &accept_third), None);
+    assert_eq!(held.status, 409, "{}\n{}", held.head, held.body);
+    assert!(
+        held.body.contains("it needs more approvals"),
+        "{}",
+        held.body
+    );
+    assert_eq!(
+        world.blocks().len(),
+        before_rules.len() + 1,
+        "nothing was signed"
+    );
+    say("Quinn approves it; Maya accepts it; the record names the block of the new rules");
+    let theirs = quinn_now.get(&proposal_page(&third));
+    let mut decide = form_to(&theirs, &format!("{}/decide", proposal_page(&third)));
+    decide.set("body", "Looks right to me.");
+    let decided = quinn_now.submit(&decide, Some(("op", "approve")));
+    assert_eq!(decided.status, 303, "{}\n{}", decided.head, decided.body);
+    let hers = maya_now.browser.get(&proposal_page(&third));
+    let accepted = maya_now
+        .browser
+        .submit(&form_to(&hers, &accept_third), None);
+    signed_into_history(&accepted);
+    assert_eq!(world.blocks().len(), before_rules.len() + 2);
+    let record = maya_now.browser.get(&proposal_page(&third));
+    let named = format!(
+        "Accepted by Maya Maintainer (maintainer), under the rules as of <a href=\"/handbook/-/change/{rules_block}\">{}</a>.",
+        rules_block.get(..12).unwrap_or_default()
+    );
+    assert!(record.body.contains(&named), "{named}: {}", record.body);
+    let policy = anonymous.get("/handbook/-/policy");
+    assert!(
+        policy
+            .body
+            .contains("1 approval from someone other than the proposer")
+            && policy
+                .body
+                .contains(&format!("href=\"/handbook/-/proposals/{rules}\"")),
+        "the policy page says the rule and lists the change: {}",
+        policy.body
+    );
+    say("the policy page says the rule and lists the change with its proposal");
+    for table in GOVERNANCE_TABLES {
+        assert_eq!(
+            rows_in(&store_file, table),
+            0,
+            "{table}: a change of the rules is a change of the repository, and writes none of the five tables"
+        );
+    }
+
+    say("done: nothing of governance written but the rules' own change, and no secret printed");
     // ---- nothing secret was printed by either half
     let printed = [
         old_log,
