@@ -330,6 +330,21 @@ impl DerivedStore for BrokenStore {
     fn reset_writes(&self, _: &WikiId, _: &str) -> inklkunn_store::Result<()> {
         Err(StoreError::Backend("down".into()))
     }
+    fn writes_generation(&self, _: &WikiId, _: &str) -> inklkunn_store::Result<u64> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn block_absent(&self, _: &WikiId, _: &str, _: &str, _: &str) -> inklkunn_store::Result<bool> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn note_block_absent(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> inklkunn_store::Result<()> {
+        Err(StoreError::Backend("down".into()))
+    }
     fn indexed_block(
         &self,
         _: &WikiId,

@@ -474,6 +474,9 @@ pub struct LaterMove {
 /// The most blocks [`DerivedStore::later_moves`] lists.
 pub const MAX_LATER_MOVES: usize = 32;
 
+/// The most blocks a view keeps as *not in its log* ([`DerivedStore::note_block_absent`]).
+pub const MAX_ABSENT_BLOCKS: usize = 1_000;
+
 /// The derived cache. Every implementation passes the same invariant tests (`tests/derived.rs`).
 ///
 /// **A row that cannot be read back is a miss**, never an error and never a made-up value: the cache is
@@ -558,8 +561,30 @@ pub trait DerivedStore: Send + Sync {
         blocks: &[BlockWrites],
         state: &WritesState,
     ) -> Result<()>;
-    /// Drop `view`'s index of `wiki`: the next reader builds it again.
+    /// Drop `view`'s index of `wiki`: the next reader builds it again. **The view's generation moves** ([`DerivedStore::writes_generation`]),
+    /// in the same step.
     fn reset_writes(&self, wiki: &WikiId, view: &str) -> Result<()>;
+    /// **The generation of `view`'s writes index** (RFC 006 D-8; handoff G-T4, correction L-9): a number that [`DerivedStore::reset_writes`]
+    /// and [`DerivedStore::clear`] move forward when they drop the index, and nothing else does, so that a reader who found the index
+    /// `Ready` and went on to read its rows can see, at the end, that the index it read is still the one it began with. It is
+    /// **read before the index's state** and read again after the rows, and a reader whose two numbers differ gives no answer
+    /// (the rows it read may be of a half-dropped index, which says *nobody wrote this* when it only says *nothing is kept*). A view
+    /// that has never been dropped is at 0.
+    fn writes_generation(&self, wiki: &WikiId, view: &str) -> Result<u64>;
+    /// **Was `block` found not to be in `view`'s log, with the view at the block `view_tip`?** (handoff G-T4, correction L-1.) What a
+    /// reader that asked once and found the view without the block keeps, so that the question is not asked again for every request:
+    /// the answer holds **while the view's tip is `view_tip`** (a view that has moved is asked again), and is dropped with the index
+    /// ([`DerivedStore::reset_writes`], [`DerivedStore::clear`]). A view keeps at most [`MAX_ABSENT_BLOCKS`] of them, the oldest dropped.
+    fn block_absent(&self, wiki: &WikiId, view: &str, block: &str, view_tip: &str) -> Result<bool>;
+    /// Keep that `block` is not in `view`'s log with the view at the block `view_tip` (see [`DerivedStore::block_absent`]), replacing
+    /// what was kept for the block.
+    fn note_block_absent(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        block: &str,
+        view_tip: &str,
+    ) -> Result<()>;
     /// The block of `view`'s index with this id: `None` when the index does not hold it (not built that far, or not a block of the
     /// view).
     fn indexed_block(&self, wiki: &WikiId, view: &str, block: &str)

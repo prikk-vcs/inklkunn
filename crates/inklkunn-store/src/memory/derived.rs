@@ -1,13 +1,13 @@
 //! The in-memory derived cache: the reference the SQLite store must agree with.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::PoisonError;
 
 use crate::Result;
 use crate::derived::{
     BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeRows, LastWrite,
-    LaterMove, LaterWrite, MAX_LATER_MOVES, MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter,
-    PageKey, SearchDoc, SearchHit, WriteKind, Writers, WritesState,
+    LaterMove, LaterWrite, MAX_ABSENT_BLOCKS, MAX_LATER_MOVES, MAX_LATER_WRITES, MAX_MAYBE_WRITERS,
+    MaybeWriter, PageKey, SearchDoc, SearchHit, WriteKind, Writers, WritesState,
 };
 use crate::governance::{GovernanceSnapshot, GovernanceSnapshotStore};
 use crate::record::WikiId;
@@ -55,6 +55,10 @@ pub(super) struct Derived {
     seen: HashMap<(WikiId, String), i64>,
     /// `(wiki, view)` → the writes index of the view's log.
     writes: HashMap<(WikiId, String), ViewWrites>,
+    /// `(wiki, view)` → how many times the view's index was dropped (its generation), kept when it is.
+    generations: HashMap<(WikiId, String), u64>,
+    /// `(wiki, view)` → `(block, the view's tip)` that were found not in the view's log, oldest first.
+    absent: HashMap<(WikiId, String), VecDeque<(String, String)>>,
 }
 
 fn id_of(key: &PageKey<'_>) -> PageId {
@@ -144,7 +148,18 @@ impl DerivedStore for MemoryStore {
         d.searches.retain(|(w, _), _| w != wiki);
         d.knowledge.retain(|(w, _), _| w != wiki);
         d.governance.retain(|(w, _), _| w != wiki);
+        // The index of each view is dropped, and the view's generation moves with it.
+        let dropped: Vec<(WikiId, String)> = d
+            .writes
+            .keys()
+            .filter(|(w, _)| w == wiki)
+            .cloned()
+            .collect();
+        for key in dropped {
+            *d.generations.entry(key).or_default() += 1;
+        }
         d.writes.retain(|(w, _), _| w != wiki);
+        d.absent.retain(|(w, _), _| w != wiki);
         let removed = before - count(&d);
         Ok(u64::try_from(removed).unwrap_or(u64::MAX))
     }
@@ -264,9 +279,45 @@ impl DerivedStore for MemoryStore {
     }
 
     fn reset_writes(&self, wiki: &WikiId, view: &str) -> Result<()> {
-        self.derived()
-            .writes
-            .remove(&(wiki.clone(), view.to_owned()));
+        let mut d = self.derived();
+        let key = (wiki.clone(), view.to_owned());
+        d.writes.remove(&key);
+        d.absent.remove(&key);
+        *d.generations.entry(key).or_default() += 1;
+        Ok(())
+    }
+
+    fn writes_generation(&self, wiki: &WikiId, view: &str) -> Result<u64> {
+        Ok(self
+            .derived()
+            .generations
+            .get(&(wiki.clone(), view.to_owned()))
+            .copied()
+            .unwrap_or(0))
+    }
+
+    fn block_absent(&self, wiki: &WikiId, view: &str, block: &str, view_tip: &str) -> Result<bool> {
+        Ok(self
+            .derived()
+            .absent
+            .get(&(wiki.clone(), view.to_owned()))
+            .is_some_and(|kept| kept.iter().any(|(b, tip)| b == block && tip == view_tip)))
+    }
+
+    fn note_block_absent(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        block: &str,
+        view_tip: &str,
+    ) -> Result<()> {
+        let mut d = self.derived();
+        let kept = d.absent.entry((wiki.clone(), view.to_owned())).or_default();
+        kept.retain(|(b, _)| b != block);
+        kept.push_back((block.to_owned(), view_tip.to_owned()));
+        while kept.len() > MAX_ABSENT_BLOCKS {
+            kept.pop_front();
+        }
         Ok(())
     }
 

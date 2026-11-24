@@ -967,6 +967,8 @@ BEGIN SELECT RAISE(ABORT, 'a reply is in the thread of the comment it answers');
 /// Three more tables are **derived** the same way (handoff G-T4, corrections J-1, J-2): `write_state`, `write_blocks` and
 /// `path_writes`, the index of **who wrote each path** in each view's log, which the one reader of a page's text at a block asks
 /// to know whose text it is. They are of blocks, not of tips, and hold no text: paths, block ids and what each block did to them.
+/// Two small tables go with them (corrections L-1, L-9): `write_generation`, how many times a view's index was dropped, and
+/// `write_absent`, the blocks found not to be in a view's log (with the view's tip), so that the question is not asked for every request.
 const V19: &str = "
 -- The two records of a decision that name **the rung it was made at and the rules it was made under** (RFC 006 D-5;
 -- acceptance criterion 12). Added here, in the one migration of this release, so that no later version has to: a column of a
@@ -1294,6 +1296,27 @@ CREATE TABLE IF NOT EXISTS path_writes (
 -- Where a file went: the rows that carry a path from another (a pure rename), found by the path they came from, so that the changes
 -- after a block that moved a page can be followed without reading the history (correction L-6).
 CREATE INDEX IF NOT EXISTS path_writes_by_origin ON path_writes(wiki_id, view, from_path, number) WHERE from_path IS NOT NULL;
+
+-- The generation of a view's index (handoff G-T4, correction L-9): a number that dropping the index (a reset, or the derived store's `clear`)
+-- moves forward and nothing else does. A reader that found the index built reads its generation first and again after the rows, and gives
+-- no answer when the two differ: the rows it read may be those of an index that was being dropped. A view with no row is at 0. Kept when
+-- the index is dropped: it is what tells a reader that it was.
+CREATE TABLE IF NOT EXISTS write_generation (
+    wiki_id    TEXT NOT NULL,
+    view       TEXT NOT NULL,
+    generation INTEGER NOT NULL CHECK (generation >= 0),
+    PRIMARY KEY (wiki_id, view)
+);
+-- The blocks found **not in a view's log** (correction L-1), with the view's tip at the time: a reader that asked once whether a view
+-- holds a block, found that it does not, and need not ask again until the view has moved. At most 1,000 a view (the oldest dropped by the
+-- store), dropped with the view's index.
+CREATE TABLE IF NOT EXISTS write_absent (
+    wiki_id  TEXT NOT NULL,
+    view     TEXT NOT NULL,
+    block_id TEXT NOT NULL,
+    view_tip TEXT NOT NULL,
+    PRIMARY KEY (wiki_id, view, block_id)
+);
 ";
 
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and

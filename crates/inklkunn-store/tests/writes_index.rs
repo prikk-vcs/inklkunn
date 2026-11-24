@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 
 use inklkunn_store::{
-    BlockWrites, DerivedStore, DisplayName, MAX_MAYBE_WRITERS, MaybeWriter, MemoryStore, NewWiki,
-    PathWrite, Slug, SqliteStore, WikiId, WikiStore, WriteKind, WritesState,
+    BlockWrites, DerivedStore, DisplayName, MAX_ABSENT_BLOCKS, MAX_MAYBE_WRITERS, MaybeWriter,
+    MemoryStore, NewWiki, PathWrite, Slug, SqliteStore, WikiId, WikiStore, WriteKind, WritesState,
 };
 
 const VIEW: &str = "heads/main";
@@ -365,6 +365,110 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
 fn both_stores_hold_the_writes_index_invariants() {
     invariants(&MemoryStore::new());
     invariants(&SqliteStore::open_in_memory().expect("open"));
+}
+
+/// **The generation of a view's index moves when the index is dropped, and only then** (correction L-9): a reader that read it before
+/// its rows and reads it again after them sees that the index it read is gone.
+fn generations(store: &(impl DerivedStore + WikiStore)) {
+    let w = wiki(store, "generation");
+    let other = wiki(store, "elsewhere");
+    let at = |wiki: &WikiId, view: &str| store.writes_generation(wiki, view).unwrap();
+    assert_eq!(at(&w, VIEW), 0, "a view never dropped is at 0");
+    let built = |wiki: &WikiId, view: &str| {
+        store
+            .append_writes(
+                wiki,
+                view,
+                &[block(1, vec![write("a", WriteKind::Wrote)])],
+                &state(1, 1, true),
+            )
+            .unwrap();
+    };
+    built(&w, VIEW);
+    built(&w, "heads/second");
+    built(&other, VIEW);
+    // Building and reading move nothing.
+    assert_eq!(at(&w, VIEW), 0);
+    store.last_writes(&w, VIEW, "a", 1).unwrap();
+    assert_eq!(at(&w, VIEW), 0);
+    // A reset moves that view's generation and no other's.
+    store.reset_writes(&w, VIEW).unwrap();
+    assert_eq!(at(&w, VIEW), 1);
+    assert_eq!(at(&w, "heads/second"), 0);
+    assert_eq!(at(&other, VIEW), 0);
+    // The generation outlives the index it counts: built again, the view is still at 1, and a second reset is the next.
+    built(&w, VIEW);
+    assert_eq!(at(&w, VIEW), 1);
+    store.reset_writes(&w, VIEW).unwrap();
+    assert_eq!(at(&w, VIEW), 2);
+    // `clear` moves each view of the wiki that had an index, and no other wiki's.
+    built(&w, VIEW);
+    store.clear(&w).unwrap();
+    assert_eq!(at(&w, VIEW), 3);
+    assert_eq!(at(&w, "heads/second"), 1);
+    assert_eq!(at(&other, VIEW), 0, "another wiki's is kept");
+}
+
+#[test]
+fn both_stores_move_the_generation_of_a_view_when_its_index_is_dropped_and_only_then() {
+    generations(&MemoryStore::new());
+    generations(&SqliteStore::open_in_memory().expect("open"));
+}
+
+/// **What is found not in a view's log is kept with the view's tip** (correction L-1): it holds while the view is at that tip, is
+/// dropped with the index, is bounded, and one view's is not another's.
+fn absences(store: &(impl DerivedStore + WikiStore)) {
+    let w = wiki(store, "absence");
+    let other = wiki(store, "elsewhere");
+    let absent = |view: &str, b: u64, tip: u64| {
+        store
+            .block_absent(&w, view, &block_of(b), &block_of(tip))
+            .unwrap()
+    };
+    let note = |view: &str, b: u64, tip: u64| {
+        store
+            .note_block_absent(&w, view, &block_of(b), &block_of(tip))
+            .unwrap();
+    };
+    assert!(!absent(VIEW, 9, 5));
+    note(VIEW, 9, 5);
+    assert!(absent(VIEW, 9, 5));
+    // Only while the view is where it was.
+    assert!(!absent(VIEW, 9, 6), "the view moved: asked again");
+    assert!(!absent(VIEW, 8, 5), "another block");
+    assert!(!absent("heads/second", 9, 5), "another view");
+    assert!(
+        !store
+            .block_absent(&other, VIEW, &block_of(9), &block_of(5))
+            .unwrap(),
+        "another wiki"
+    );
+    // Noted again at the view's next tip, it holds there (and no longer at the old one).
+    note(VIEW, 9, 6);
+    assert!(absent(VIEW, 9, 6));
+    assert!(!absent(VIEW, 9, 5));
+    // Dropped with the index of its view, and not with another view's.
+    note("heads/second", 9, 5);
+    store.reset_writes(&w, VIEW).unwrap();
+    assert!(!absent(VIEW, 9, 6));
+    assert!(absent("heads/second", 9, 5));
+    store.clear(&w).unwrap();
+    assert!(!absent("heads/second", 9, 5), "`clear` drops the wiki's");
+    // A view keeps at most so many, the oldest dropped.
+    let more = u64::try_from(MAX_ABSENT_BLOCKS).unwrap() + 3;
+    for n in 1..=more {
+        note(VIEW, n, 1);
+    }
+    assert!(!absent(VIEW, 1, 1), "the oldest went");
+    assert!(!absent(VIEW, 3, 1), "the oldest went");
+    assert!(absent(VIEW, 4, 1));
+    assert!(absent(VIEW, more, 1));
+}
+
+#[test]
+fn both_stores_keep_the_blocks_found_not_in_a_views_log_with_its_tip_and_bound_them() {
+    absences(&MemoryStore::new());
+    absences(&SqliteStore::open_in_memory().expect("open"));
 }
 
 struct TempDir(PathBuf);

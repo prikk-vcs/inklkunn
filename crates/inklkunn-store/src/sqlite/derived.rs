@@ -8,9 +8,9 @@ use crate::Result;
 use crate::derived::{
     BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeAnchorRow,
     KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow, KnowledgeRelationRow, KnowledgeRows,
-    KnowledgeSourceRow, LastWrite, LaterMove, LaterWrite, MAX_LATER_MOVES, MAX_LATER_WRITES,
-    MAX_MAYBE_WRITERS, MaybeWriter, PageKey, SearchDoc, SearchHit, SearchKind, WriteKind, Writers,
-    WritesState,
+    KnowledgeSourceRow, LastWrite, LaterMove, LaterWrite, MAX_ABSENT_BLOCKS, MAX_LATER_MOVES,
+    MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter, PageKey, SearchDoc, SearchHit, SearchKind,
+    WriteKind, Writers, WritesState,
 };
 use crate::record::WikiId;
 
@@ -298,6 +298,19 @@ impl DerivedStore for SqliteStore {
                 )
                 .map_err(backend)?;
             }
+            // Each view that had an index moves to its next generation, in the step that drops it.
+            tx.execute(
+                "INSERT INTO write_generation (wiki_id, view, generation) \
+                 SELECT wiki_id, view, 1 FROM write_state WHERE wiki_id = ?1 \
+                 ON CONFLICT (wiki_id, view) DO UPDATE SET generation = generation + 1",
+                params![wiki.as_str()],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "DELETE FROM write_absent WHERE wiki_id = ?1",
+                params![wiki.as_str()],
+            )
+            .map_err(backend)?;
             let writes = tx
                 .execute(
                     "DELETE FROM write_state WHERE wiki_id = ?1",
@@ -673,13 +686,80 @@ impl DerivedStore for SqliteStore {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
-            for table in ["path_writes", "write_blocks", "write_state"] {
+            for table in ["path_writes", "write_blocks", "write_state", "write_absent"] {
                 tx.execute(
                     &format!("DELETE FROM {table} WHERE wiki_id = ?1 AND view = ?2"),
                     params![wiki.as_str(), view],
                 )
                 .map_err(backend)?;
             }
+            tx.execute(
+                "INSERT INTO write_generation (wiki_id, view, generation) VALUES (?1, ?2, 1) \
+                 ON CONFLICT (wiki_id, view) DO UPDATE SET generation = generation + 1",
+                params![wiki.as_str(), view],
+            )
+            .map_err(backend)?;
+            tx.commit().map_err(backend)
+        })
+    }
+
+    fn writes_generation(&self, wiki: &WikiId, view: &str) -> Result<u64> {
+        self.with(|conn| {
+            let found: Option<i64> = conn
+                .query_row(
+                    "SELECT generation FROM write_generation WHERE wiki_id = ?1 AND view = ?2",
+                    params![wiki.as_str(), view],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(backend)?;
+            Ok(found.and_then(|n| u64::try_from(n).ok()).unwrap_or(0))
+        })
+    }
+
+    fn block_absent(&self, wiki: &WikiId, view: &str, block: &str, view_tip: &str) -> Result<bool> {
+        self.with(|conn| {
+            conn.query_row(
+                "SELECT 1 FROM write_absent \
+                 WHERE wiki_id = ?1 AND view = ?2 AND block_id = ?3 AND view_tip = ?4",
+                params![wiki.as_str(), view, block, view_tip],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(backend)
+            .map(|found| found.is_some())
+        })
+    }
+
+    fn note_block_absent(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        block: &str,
+        view_tip: &str,
+    ) -> Result<()> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            // A replaced row is the newest (a new rowid): the oldest go first when a view keeps more than it may.
+            tx.execute(
+                "INSERT OR REPLACE INTO write_absent (wiki_id, view, block_id, view_tip) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![wiki.as_str(), view, block, view_tip],
+            )
+            .map_err(backend)?;
+            tx.execute(
+                "DELETE FROM write_absent WHERE wiki_id = ?1 AND view = ?2 AND rowid NOT IN ( \
+                 SELECT rowid FROM write_absent WHERE wiki_id = ?1 AND view = ?2 \
+                 ORDER BY rowid DESC LIMIT ?3)",
+                params![
+                    wiki.as_str(),
+                    view,
+                    i64::try_from(MAX_ABSENT_BLOCKS).unwrap_or(i64::MAX)
+                ],
+            )
+            .map_err(backend)?;
             tx.commit().map_err(backend)
         })
     }
