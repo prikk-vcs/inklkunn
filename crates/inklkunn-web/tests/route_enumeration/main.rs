@@ -10,6 +10,7 @@
 
 #[path = "../common/mod.rs"]
 mod common;
+mod web_only;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
