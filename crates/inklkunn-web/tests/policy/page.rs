@@ -100,7 +100,7 @@ async fn the_page_is_in_japanese_with_the_japanese_words_and_no_raw_key() {
     assert_eq!(a.status, StatusCode::OK);
     let main = main_of(&a);
     for want in [
-        "このウィキのルール",
+        "この Wiki のルール",
         "提案を受け入れられる人",
         "レビュアー 以上",
         "A few accepted edits.",

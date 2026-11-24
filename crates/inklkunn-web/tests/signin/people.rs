@@ -81,12 +81,12 @@ async fn the_account_page_tells_the_role_in_each_readable_wiki_and_why_and_names
         .await;
     assert!(
         a.body()
-            .contains("あなたはこのウィキで役割を持っていません。読むことはできますが、それ以上のことはできません。"),
+            .contains("あなたはこの Wiki で役割を持っていません。読むことはできますが、それ以上のことはできません。"),
         "{}",
         a.body()
     );
     assert!(
-        a.body().contains("各ウィキでのあなたの役割"),
+        a.body().contains("各 Wiki でのあなたの役割"),
         "{}",
         a.body()
     );

@@ -366,7 +366,7 @@ fn cases() -> Vec<Case> {
                 "2 acceptances are waiting ahead of yours.",
             ],
             japanese: &[
-                "<h1>ウィキは混み合っています</h1>",
+                "<h1>Wiki は混み合っています</h1>",
                 "あなたの前に 2 件の受け入れが待っています。",
             ],
         },
@@ -382,7 +382,7 @@ fn cases() -> Vec<Case> {
             answer: || Err(AcceptFailure::NeedsRecovery(flag())),
             status: StatusCode::SERVICE_UNAVAILABLE,
             english: &["<h1>The wiki needs recovery</h1>"],
-            japanese: &["<h1>ウィキの復旧が必要です</h1>"],
+            japanese: &["<h1>Wiki の復旧が必要です</h1>"],
         },
         Case {
             name: "incomplete",
@@ -396,7 +396,7 @@ fn cases() -> Vec<Case> {
             },
             status: StatusCode::SERVICE_UNAVAILABLE,
             english: &["<h1>The wiki needs recovery</h1>"],
-            japanese: &["<h1>ウィキの復旧が必要です</h1>"],
+            japanese: &["<h1>Wiki の復旧が必要です</h1>"],
         },
         Case {
             name: "in progress",
@@ -428,8 +428,8 @@ fn cases() -> Vec<Case> {
                 "Nothing was changed, and the proposal is still held for review.",
             ],
             japanese: &[
-                "<h1>署名されませんでした: このウィキのルールの変更を受け付けられません</h1>",
-                "governance/policy.yaml の 4 行目: ウィキのルールにはない項目が書かれています。",
+                "<h1>署名されませんでした: この Wiki のルールの変更を受け付けられません</h1>",
+                "governance/policy.yaml の 4 行目: Wiki のルールにはない項目が書かれています。",
                 "何も変更しておらず、提案はレビュー待ちで保持されたままです。",
             ],
         },
@@ -442,8 +442,8 @@ fn cases() -> Vec<Case> {
                 "a change to them is accepted by an admin of the wiki",
             ],
             japanese: &[
-                "<h1>署名されませんでした: このウィキのルールの変更には、より上の役割が必要です</h1>",
-                "ルールの変更を受け入れられるのは、このウィキの管理者です",
+                "<h1>署名されませんでした: この Wiki のルールの変更には、より上の役割が必要です</h1>",
+                "ルールの変更を受け入れられるのは、この Wiki の管理者です",
             ],
         },
         Case {
@@ -510,7 +510,7 @@ fn cases() -> Vec<Case> {
                 "2023-11-15 22:13 UTC までの一時的な保護",
                 "ページ Home が対象です。",
                 "理由: Only the admin, this week.",
-                "このウィキのルールによる保護",
+                "この Wiki のルールによる保護",
                 "Policies/ の下にあるページが対象です（ページ Policies 自体は含みません）。",
                 "理由: Rules are read first.",
             ],
@@ -550,7 +550,7 @@ fn cases() -> Vec<Case> {
                 "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml or policy.yaml cannot change a page or anything else.",
             ],
             japanese: &[
-                "このウィキのルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",
+                "この Wiki のルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",
             ],
         },
         Case {
@@ -569,9 +569,9 @@ fn cases() -> Vec<Case> {
                 "Nothing in this wiki can be changed until the rules are repaired. It can still be read.",
             ],
             japanese: &[
-                "<h1>変更できませんでした: このウィキのルールを読めません</h1>",
-                "governance/constitution.yaml の 2 行目: ファイルが、ウィキのルールの書き方になっていない",
-                "ルールが直るまで、このウィキでは何も変更できません。読むことはできます。",
+                "<h1>変更できませんでした: この Wiki のルールを読めません</h1>",
+                "governance/constitution.yaml の 2 行目: ファイルが、Wiki のルールの書き方になっていない",
+                "ルールが直るまで、この Wiki では何も変更できません。読むことはできます。",
             ],
         },
         Case {
@@ -600,7 +600,7 @@ fn cases() -> Vec<Case> {
                 "Nothing in this wiki can be changed until the rules are repaired.",
             ],
             japanese: &[
-                "このファイルがあるべき場所に、次のものがあります: governance/policy.yaml/inner.txt, governance/policy.yaml/sub/deeper.txt, governance/policy.yaml/evil?name.txt。このウィキの管理者が、これらを削除してファイルを書く変更を提案すると、ルールを直せます。",
+                "このファイルがあるべき場所に、次のものがあります: governance/policy.yaml/inner.txt, governance/policy.yaml/sub/deeper.txt, governance/policy.yaml/evil?name.txt。この Wiki の管理者が、これらを削除してファイルを書く変更を提案すると、ルールを直せます。",
             ],
         },
         Case {
@@ -623,7 +623,7 @@ fn cases() -> Vec<Case> {
             english: &[
                 "governance/policy.yaml/f48, governance/policy.yaml/f49, and 7 more. An admin of the wiki repairs the rules",
             ],
-            japanese: &["governance/policy.yaml/f49, ほか 7 件。このウィキの管理者が"],
+            japanese: &["governance/policy.yaml/f49, ほか 7 件。この Wiki の管理者が"],
         },
         Case {
             name: "nothing to change",
@@ -659,7 +659,7 @@ fn cases() -> Vec<Case> {
             answer: || Err(failed(words::BUSY, "the signer holds the lock")),
             status: StatusCode::SERVICE_UNAVAILABLE,
             english: &["<h1>The wiki is busy</h1>"],
-            japanese: &["<h1>ウィキは混み合っています</h1>"],
+            japanese: &["<h1>Wiki は混み合っています</h1>"],
         },
         Case {
             name: "failed before the change: a key retirement is not finished",
@@ -676,7 +676,7 @@ fn cases() -> Vec<Case> {
                 "the proposal is kept",
             ],
             japanese: &[
-                "<h1>署名されませんでした: このウィキの鍵の更新作業が完了していません</h1>",
+                "<h1>署名されませんでした: この Wiki の鍵の更新作業が完了していません</h1>",
                 "提案はそのまま保たれています",
             ],
         },

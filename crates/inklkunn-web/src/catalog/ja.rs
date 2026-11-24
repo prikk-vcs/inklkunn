@@ -69,10 +69,10 @@ pub const CATALOG: &[Entry] = &[
         "このサーバーは、そのアドレスのページを提供していません。入力したアドレスを確認するか、このサーバーの管理者にお知らせください。",
     ),
     // wiki shell
-    msg("wiki.nav", "このウィキ"),
-    msg("wiki.nav_about", "このウィキについて"),
+    msg("wiki.nav", "この Wiki"),
+    msg("wiki.nav_about", "この Wiki について"),
     msg("wiki.nav_verification", "検証"),
-    msg("wiki.nav_wikis", "ウィキの一覧"),
+    msg("wiki.nav_wikis", "Wiki の一覧"),
     msg("wiki.view_in_use", "ビュー「{view}」を表示しています。"),
     msg("title.page", "{page} · {wiki} · {product}"),
     // a page
@@ -140,7 +140,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "unreadable.advice",
-        "このウィキを書いている人が直すことができます。",
+        "この Wiki を書いている人が直すことができます。",
     ),
     msg("unavailable.heading", "今はこのページを読み込めません"),
     msg(
@@ -150,7 +150,7 @@ pub const CATALOG: &[Entry] = &[
     msg("no_view.heading", "そのビューはありません"),
     msg(
         "no_view.body",
-        "このウィキに「{view}」というビューはありません。",
+        "この Wiki に「{view}」というビューはありません。",
     ),
     msg(
         "invalid_title.heading",
@@ -158,7 +158,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "invalid_title.body",
-        "タイトルを空にすることはできません。スラッシュで区切った部分を空にすることも、ウィキが保存できる長さを超えることもできません。",
+        "タイトルを空にすることはできません。スラッシュで区切った部分を空にすることも、Wiki が保存できる長さを超えることもできません。",
     ),
     // verification
     msg("assurance.verified", "検証済み"),
@@ -170,7 +170,7 @@ pub const CATALOG: &[Entry] = &[
     msg("verification.heading", "検証"),
     msg(
         "explain.verification",
-        "検証では、このウィキの履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、前回の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。",
+        "検証では、この Wiki の履歴を保管しているプログラム prikk に、履歴のすべてと署名を確認してもらいます。「検証済み」は、前回の確認で問題が見つからなかったという意味です。ページの内容が正しいという意味ではありません。",
     ),
     msg("verification.explain_summary", "これはどういう意味ですか"),
     msg(
@@ -179,7 +179,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "verification.state_failed",
-        "前回の確認で、このウィキの履歴に問題が見つかりました。このサーバーの管理者が調べることができます。",
+        "前回の確認で、この Wiki の履歴に問題が見つかりました。このサーバーの管理者が調べることができます。",
     ),
     msg(
         "verification.state_could_not",
@@ -187,7 +187,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "verification.state_unknown",
-        "このウィキはまだ確認されていません。",
+        "この Wiki はまだ確認されていません。",
     ),
     msg("verification.checked_at", "最終確認: {when}。"),
     msg("verification.check_now", "今すぐ確認"),
@@ -226,18 +226,18 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "verification.running",
-        "このウィキの確認はすでに実行中です。終わるまでお待ちになってから、このページをもう一度ご覧ください。",
+        "この Wiki の確認はすでに実行中です。終わるまでお待ちになってから、このページをもう一度ご覧ください。",
     ),
     msg(
         "verification.explained_by_retirement",
-        "確認に失敗した箇所は、鍵 {key} の廃止時に記録されたものだけです。その鍵はこのウィキが信頼する鍵から外されたため、その鍵が署名した部分は確認できなくなっています。ほかに失敗はありません。",
+        "確認に失敗した箇所は、鍵 {key} の廃止時に記録されたものだけです。その鍵はこの Wiki が信頼する鍵から外されたため、その鍵が署名した部分は確認できなくなっています。ほかに失敗はありません。",
     ),
     // about, and the list of wikis
     msg("title.about", "{wiki} について · {product}"),
     msg("about.heading", "{wiki} について"),
     msg(
         "about.license",
-        "ページに別の記載がない限り、このウィキのページはライセンス {license} で共有されています。",
+        "ページに別の記載がない限り、この Wiki のページはライセンス {license} で共有されています。",
     ),
     msg(
         "about.view",
@@ -259,10 +259,10 @@ pub const CATALOG: &[Entry] = &[
         "about.accessibility_languages",
         "日本語訳は、2026-11-19 に inklkunn プロジェクトのオーナーが確認しました（0.3.0 時点のメッセージ）。それ以降に追加されたメッセージは、リリースごとに確認します。",
     ),
-    msg("title.wikis", "ウィキの一覧 · {product}"),
-    msg("wikis.heading", "ウィキの一覧"),
-    msg("wikis.intro", "ここで読めるウィキの一覧です。"),
-    msg("wikis.none", "ここで読めるウィキはまだありません。"),
+    msg("title.wikis", "Wiki の一覧 · {product}"),
+    msg("wikis.heading", "Wiki の一覧"),
+    msg("wikis.intro", "ここで読める Wiki の一覧です。"),
+    msg("wikis.none", "ここで読める Wiki はまだありません。"),
     // transclusion (a page that includes another)
     msg("transclusion.from", "{title} から"),
     msg(
@@ -300,11 +300,11 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.page_not_found.title", "ページが見つかりません"),
     msg(
         "problem.page_not_found.detail",
-        "このウィキには、このタイトルのページがありません。",
+        "この Wiki には、このタイトルのページがありません。",
     ),
     msg(
         "problem.page_not_found.hint",
-        "タイトルを確認するか、ウィキのページの一覧から探してください。",
+        "タイトルを確認するか、Wiki のページの一覧から探してください。",
     ),
     msg("problem.ambiguous_title.title", "複数のページが該当します"),
     msg(
@@ -325,7 +325,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.redirect_broken.hint",
-        "ウィキを管理する人にリダイレクトの修正を依頼するか、行き先のはずのページを直接指定してください。",
+        "Wiki を管理する人にリダイレクトの修正を依頼するか、行き先のはずのページを直接指定してください。",
     ),
     msg("problem.page_unreadable.title", "ページを表示できません"),
     msg(
@@ -351,11 +351,11 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.no_such_view.title", "ビューが見つかりません"),
     msg(
         "problem.no_such_view.detail",
-        "このウィキには、{view} という名前の開いているビューがありません。",
+        "この Wiki には、{view} という名前の開いているビューがありません。",
     ),
     msg(
         "problem.no_such_view.hint",
-        "ビューを指定しなければ、ウィキの既定のビューが使われます。",
+        "ビューを指定しなければ、Wiki の既定のビューが使われます。",
     ),
     msg(
         "problem.invalid_parameter.title",
@@ -405,7 +405,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.unavailable.title", "現在は読み取れません"),
     msg(
         "problem.unavailable.detail",
-        "サーバーが今、ウィキを読み取れませんでした。",
+        "サーバーが今、Wiki を読み取れませんでした。",
     ),
     msg(
         "problem.unavailable.hint",
@@ -452,7 +452,7 @@ pub const CATALOG: &[Entry] = &[
     msg("history.older", "さらに古い変更を見る"),
     msg(
         "history.beyond",
-        "このウィキには一度に読み込める数より多くの変更があります。いちばん古い変更はここには表示されません。",
+        "この Wiki には一度に読み込める数より多くの変更があります。いちばん古い変更はここには表示されません。",
     ),
     msg("history.change_label", "変更 {number}"),
     msg(
@@ -463,7 +463,7 @@ pub const CATALOG: &[Entry] = &[
     msg("people.proposed_by", "提案者: {name}"),
     msg("people.accepted_by", "受け入れた人: {name}"),
     msg("people.made_by", "変更した人: {name}"),
-    msg("people.service", "ウィキサービス"),
+    msg("people.service", "Wiki サービス"),
     msg("people.anonymous", "匿名の投稿者（{token}）"),
     msg(
         "people.unrecorded",
@@ -471,8 +471,8 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("flag.undo", "以前の変更を取り消す変更"),
     msg("flag.import", "インポート"),
-    msg("flag.service", "ウィキサービス自身が行った変更"),
-    msg("flag.first", "このウィキの最初の変更"),
+    msg("flag.service", "Wiki サービス自身が行った変更"),
+    msg("flag.first", "この Wiki の最初の変更"),
     msg("event.created", "ページが作成されました"),
     msg("event.edited", "ページが編集されました"),
     msg("event.deleted", "ページが削除されました"),
@@ -487,9 +487,9 @@ pub const CATALOG: &[Entry] = &[
     msg("change.signed", "署名して履歴に記録済み"),
     msg(
         "change.signed_by",
-        "ウィキサービスが {proposer} に代わって署名し、{acceptor} が受け入れました。",
+        "Wiki サービスが {proposer} に代わって署名し、{acceptor} が受け入れました。",
     ),
-    msg("change.signed_service", "ウィキサービスが署名しました。"),
+    msg("change.signed_service", "Wiki サービスが署名しました。"),
     msg("change.did_heading", "この変更の内容"),
     msg("change.did_none", "この変更に一覧できる内容はありません。"),
     msg("change.did_added", "ページ {title} を追加しました"),
@@ -524,7 +524,7 @@ pub const CATALOG: &[Entry] = &[
     msg("change_none.heading", "そのような変更はありません"),
     msg(
         "change_none.body",
-        "このアドレスに対応する変更は、このウィキにはありません。アドレスを確認するか、ページの履歴を開いてリンクをたどってください。",
+        "このアドレスに対応する変更は、この Wiki にはありません。アドレスを確認するか、ページの履歴を開いてリンクをたどってください。",
     ),
     msg("title.diff", "{page} の変更点 · {wiki} · {product}"),
     msg("diff.heading", "{title} の変更点"),
@@ -580,12 +580,12 @@ pub const CATALOG: &[Entry] = &[
     msg("at.missing_heading", "そのときこのページはありませんでした"),
     msg(
         "at.missing_body",
-        "{change} の後、このウィキに {title} というタイトルのページはありませんでした。",
+        "{change} の後、この Wiki に {title} というタイトルのページはありませんでした。",
     ),
     // handoff 003 T6: changes, feeds, search, health, backlinks, the head of a page
     msg("wiki.nav_changes", "最近の変更"),
     msg("wiki.nav_search", "検索"),
-    msg("wiki.nav_health", "ウィキの健全性"),
+    msg("wiki.nav_health", "Wiki の健全性"),
     msg("title.changes", "最近の変更 · {wiki} · {product}"),
     msg("changes.heading", "最近の変更"),
     msg(
@@ -609,7 +609,7 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.all_views", "すべてのビュー"),
     msg(
         "changes.filter_automated",
-        "ウィキサービス自身または自動化ツールの補助による変更",
+        "Wiki サービス自身または自動化ツールの補助による変更",
     ),
     msg("changes.opt_show", "表示する"),
     msg("changes.opt_hide", "表示しない"),
@@ -624,11 +624,11 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.active_view", "ビュー {view} のみ"),
     msg(
         "changes.active_hide",
-        "ウィキサービス自身または自動化ツールの補助による変更は表示していません",
+        "Wiki サービス自身または自動化ツールの補助による変更は表示していません",
     ),
     msg(
         "changes.active_only",
-        "ウィキサービス自身または自動化ツールの補助による変更のみ",
+        "Wiki サービス自身または自動化ツールの補助による変更のみ",
     ),
     msg("changes.clear", "すべての変更を表示"),
     msg("changes.caption", "変更の一覧（新しい順）"),
@@ -640,7 +640,7 @@ pub const CATALOG: &[Entry] = &[
     msg("changes.accepted_by", "受け入れた人: {person}"),
     msg("changes.made_by", "変更した人: {person}"),
     msg("changes.person_anonymous", "匿名の訪問者（{token}）"),
-    msg("changes.person_service", "ウィキサービス（{label}）"),
+    msg("changes.person_service", "Wiki サービス（{label}）"),
     msg(
         "changes.foreign",
         "このサービスの外で記録されたため、関わった人は不明です。",
@@ -707,11 +707,11 @@ pub const CATALOG: &[Entry] = &[
         "opensearch.description",
         "{wiki} のページをタイトルと別名で検索",
     ),
-    msg("title.health", "ウィキの健全性 · {wiki} · {product}"),
+    msg("title.health", "Wiki の健全性 · {wiki} · {product}"),
     msg("health.heading", "{wiki} の健全性"),
     msg(
         "health.intro",
-        "これらの一覧は、ウィキを改善できる箇所を示します。各行には、解決するための対応が書かれています。",
+        "これらの一覧は、Wiki を改善できる箇所を示します。各行には、解決するための対応が書かれています。",
     ),
     msg("health.wanted_name", "未作成のページ"),
     msg(
@@ -743,7 +743,7 @@ pub const CATALOG: &[Entry] = &[
         "health.stale_desc",
         "最近の変更の中で、最後に変更された時期がいちばん古いページ。",
     ),
-    msg("health.back", "ウィキの健全性の一覧すべて"),
+    msg("health.back", "Wiki の健全性の一覧すべて"),
     msg("health.col_page", "ページ"),
     msg("health.col_wanted", "未作成のタイトル"),
     msg("health.col_linked", "リンクしているページ数"),
@@ -836,13 +836,13 @@ pub const CATALOG: &[Entry] = &[
     msg("health.knowledge_name", "読み取れない知識ファイル"),
     msg(
         "health.knowledge_desc",
-        "ウィキが読める形になっていない、主張と出典のファイル。これらからは何も読み取られず、ページには影響しません。",
+        "Wiki が読める形になっていない、主張と出典のファイル。これらからは何も読み取られず、ページには影響しません。",
     ),
     msg("health.col_file", "ファイル"),
     msg("health.col_rule", "問題の内容"),
     msg(
         "health.knowledge_action",
-        "このウィキでモデレーションを行える役割を持つ人が、読み取れるファイルに置き換えるか、役目を終えたことにできます。",
+        "この Wiki でモデレーションを行える役割を持つ人が、読み取れるファイルに置き換えるか、役目を終えたことにできます。",
     ),
     msg(
         "health.none_knowledge",
@@ -862,7 +862,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_syntax",
-        "テキストが、ウィキが読む単純な YAML の範囲に収まっていません。",
+        "テキストが、Wiki が読む単純な YAML の範囲に収まっていません。",
     ),
     msg("health.rule_missing", "形式で必須のキーがありません。"),
     msg("health.rule_unknown", "形式にないキーがあります。"),
@@ -886,11 +886,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "health.rule_reference",
-        "ウィキにない出典または主張が指定されているか、置き換えの連なりが循環しています。",
+        "Wiki にない出典または主張が指定されているか、置き換えの連なりが循環しています。",
     ),
     msg(
         "health.rule_anchor",
-        "表現が、ウィキにないページまたはページ内の段落を指しています。",
+        "表現が、Wiki にないページまたはページ内の段落を指しています。",
     ),
     msg(
         "health.rule_in_use",
@@ -930,7 +930,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.change_not_found.title", "変更が見つかりません"),
     msg(
         "problem.change_not_found.detail",
-        "このウィキのこのビューには、この ID の変更がありません。",
+        "この Wiki のこのビューには、この ID の変更がありません。",
     ),
     msg(
         "problem.change_not_found.hint",
@@ -964,11 +964,11 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.forbidden.title", "許可されていません"),
     msg(
         "problem.forbidden.detail",
-        "この認証情報ではこの操作はできません。このウィキでのアカウントの役割か、トークンの発行時のスコープが許可していないか、セッション Cookie を伴うリクエストが別のサイトから送られています。",
+        "この認証情報ではこの操作はできません。この Wiki でのアカウントの役割か、トークンの発行時のスコープが許可していないか、セッション Cookie を伴うリクエストが別のサイトから送られています。",
     ),
     msg(
         "problem.forbidden.hint",
-        "ウィキのメンテナーに役割を依頼するか、より広いスコープで発行したトークンを使ってください。",
+        "Wiki のメンテナーに役割を依頼するか、より広いスコープで発行したトークンを使ってください。",
     ),
     msg("problem.base_required.title", "基準が必要です"),
     msg(
@@ -1063,19 +1063,19 @@ pub const CATALOG: &[Entry] = &[
         "problem.refused_limit.hint",
         "待てば解消する場合は Retry-After が待つ秒数を示します。そうでない場合は、ご自身の提案を閉じるか、求める量を減らしてください。",
     ),
-    msg("problem.busy.title", "ウィキは混み合っています"),
+    msg("problem.busy.title", "Wiki は混み合っています"),
     msg(
         "problem.busy.detail",
-        "このウィキでは別の操作が実行中または待機中で、この操作の前に {waiting} 件あります。何も行われていません。",
+        "この Wiki では別の操作が実行中または待機中で、この操作の前に {waiting} 件あります。何も行われていません。",
     ),
     msg(
         "problem.busy.hint",
         "Retry-After が示す時間のあとで、もう一度送ってください。",
     ),
-    msg("problem.needs_recovery.title", "ウィキの復旧が必要です"),
+    msg("problem.needs_recovery.title", "Wiki の復旧が必要です"),
     msg(
         "problem.needs_recovery.detail",
-        "このウィキへの書き込みが完了しませんでした。復旧処理で確認されるまで、ウィキは新しい変更を受け付けません。読み取りはできます。",
+        "この Wiki への書き込みが完了しませんでした。復旧処理で確認されるまで、Wiki は新しい変更を受け付けません。読み取りはできます。",
     ),
     msg(
         "problem.needs_recovery.hint",
@@ -1084,7 +1084,7 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.overlap.title", "変更が重なっています"),
     msg(
         "problem.overlap.detail",
-        "受け入れを停止しました。提案とウィキが同じ箇所（{overlaps} 件）を変更していました。提案は「修正が必要」の状態になり、ウィキは変わっていません。",
+        "受け入れを停止しました。提案と Wiki が同じ箇所（{overlaps} 件）を変更していました。提案は「修正が必要」の状態になり、Wiki は変わっていません。",
     ),
     msg(
         "problem.overlap.hint",
@@ -1096,7 +1096,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.nothing_to_change.detail",
-        "この修正版が求める内容は、すでにウィキにあります。",
+        "この修正版が求める内容は、すでに Wiki にあります。",
     ),
     msg(
         "problem.nothing_to_change.hint",
@@ -1137,15 +1137,15 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "problem.retirement_unfinished.title",
-        "ウィキの鍵の更新作業が完了していません",
+        "Wiki の鍵の更新作業が完了していません",
     ),
     msg(
         "problem.retirement_unfinished.detail",
-        "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しく署名することはできません。変更は行われておらず、提案はそのまま保たれています。",
+        "この Wiki の鍵の更新作業が完了していないため、この Wiki を運営している人がその作業を完了するか取りやめるまで、履歴に新しく署名することはできません。変更は行われておらず、提案はそのまま保たれています。",
     ),
     msg(
         "problem.retirement_unfinished.hint",
-        "このウィキを運営している人にお知らせください。完了または取りやめになったら、もう一度この提案を受け入れてください。",
+        "この Wiki を運営している人にお知らせください。完了または取りやめになったら、もう一度この提案を受け入れてください。",
     ),
     // the inbox, following a page, and the flags of changes (handoff 004 T6)
     msg("title.inbox", "受信箱 · {product}"),
@@ -1204,7 +1204,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "inbox.event_unreadable",
-        "あなたに関わる出来事がありましたが、そのウィキはもう読むことができません。",
+        "あなたに関わる出来事がありましたが、その Wiki はもう読むことができません。",
     ),
     msg("inbox.account_heading", "アカウントが必要です"),
     msg(
@@ -1282,7 +1282,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "state_note.held",
-        "ウィキサービスはこの提案をレビュー待ちとして保持しています。権限のある人が提案を履歴に取り込むまで、ページには何も反映されません。",
+        "Wiki サービスはこの提案をレビュー待ちとして保持しています。権限のある人が提案を履歴に取り込むまで、ページには何も反映されません。",
     ),
     msg(
         "state_note.needs_revision",
@@ -1328,8 +1328,8 @@ pub const CATALOG: &[Entry] = &[
     msg("outcome.signed", "署名して履歴に記録済み"),
     msg("outcome.overlap", "停止: 変更が重なっています"),
     msg("outcome.not_allowed", "許可されていません"),
-    msg("outcome.busy", "ウィキは混み合っています"),
-    msg("outcome.recovery", "ウィキの復旧が必要です"),
+    msg("outcome.busy", "Wiki は混み合っています"),
+    msg("outcome.recovery", "Wiki の復旧が必要です"),
     msg("outcome.refused", "拒否: {limit}"),
     msg("outcome.refused_heading", "拒否されました"),
     msg("outcome_note.signed", "提案は履歴に取り込まれました。"),
@@ -1339,7 +1339,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.not_allowed",
-        "このウィキでのあなたの役割には、提案を受け入れる権限がありません。何も変更していません。",
+        "この Wiki でのあなたの役割には、提案を受け入れる権限がありません。何も変更していません。",
     ),
     msg(
         "outcome_note.busy",
@@ -1351,7 +1351,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.recovery",
-        "ウィキは中断後の確認を行っています。読むことはできますが、確認が終わるまで変更はできません。",
+        "Wiki は中断後の確認を行っています。読むことはできますが、確認が終わるまで変更はできません。",
     ),
     msg(
         "outcome.unchanged_refused",
@@ -1367,7 +1367,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.knowledge_invalid",
-        "この提案の主張または出典のファイルが、ウィキの読める形式になっていません。または、この変更によって、別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちで保持されたままです。ファイルを直してから、もう一度受け入れてください。",
+        "この提案の主張または出典のファイルが、Wiki の読める形式になっていません。または、この変更によって、別のファイルが存在しないものを指すことになります。何も変更しておらず、提案はレビュー待ちで保持されたままです。ファイルを直してから、もう一度受け入れてください。",
     ),
     msg("outcome.too_large", "大きすぎて今は署名できません"),
     msg(
@@ -1376,11 +1376,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome.retirement_unfinished",
-        "署名されませんでした: このウィキの鍵の更新作業が完了していません",
+        "署名されませんでした: この Wiki の鍵の更新作業が完了していません",
     ),
     msg(
         "outcome_note.retirement_unfinished",
-        "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しく署名することはできません。何も変更しておらず、提案はそのまま保たれています。その人にお知らせください。完了または取りやめになったら、もう一度この提案を受け入れてください。",
+        "この Wiki の鍵の更新作業が完了していないため、この Wiki を運営している人がその作業を完了するか取りやめるまで、履歴に新しく署名することはできません。何も変更しておらず、提案はそのまま保たれています。その人にお知らせください。完了または取りやめになったら、もう一度この提案を受け入れてください。",
     ),
     msg("outcome.unavailable", "今は実行できません"),
     msg(
@@ -1430,11 +1430,11 @@ pub const CATALOG: &[Entry] = &[
     msg("overlap.heading", "変更が重なっている箇所"),
     msg(
         "overlap.intro",
-        "ウィキの現在の文面とこの提案が、下の箇所をどちらも変更しています。何も変更していません。両方の文面を見ながら、提案を修正してください。",
+        "Wiki の現在の文面とこの提案が、下の箇所をどちらも変更しています。何も変更していません。両方の文面を見ながら、提案を修正してください。",
     ),
-    msg("overlap.caption", "ウィキと提案の両方で変更された箇所"),
+    msg("overlap.caption", "Wiki と提案の両方で変更された箇所"),
     msg("overlap.col_where", "場所"),
-    msg("overlap.col_theirs", "ウィキの現在の文面"),
+    msg("overlap.col_theirs", "Wiki の現在の文面"),
     msg("overlap.col_ours", "この提案の文面"),
     msg("overlap.nothing", "（削除されています: 何もありません）"),
     msg("overlap.row", "{page}: {place}"),
@@ -1451,7 +1451,7 @@ pub const CATALOG: &[Entry] = &[
     msg("quota.hour_person", "直近 1 時間に出した提案が多すぎます"),
     msg(
         "quota.hour_wiki",
-        "直近 1 時間にこのウィキで出された提案が多すぎます",
+        "直近 1 時間にこの Wiki で出された提案が多すぎます",
     ),
     msg("quota.queue", "待機中の受け入れが多すぎます"),
     msg(
@@ -1489,11 +1489,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "needs_account.advice",
-        "アカウントの作り方は、このウィキを運営している人にお尋ねください。",
+        "アカウントの作り方は、この Wiki を運営している人にお尋ねください。",
     ),
     msg(
         "refused.not_allowed",
-        "このウィキでのあなたの役割には、この操作が含まれていません。何も変更していません。",
+        "この Wiki でのあなたの役割には、この操作が含まれていません。何も変更していません。",
     ),
     msg("refused.not_now_heading", "今はできません"),
     msg("refused.invalid_heading", "保存できませんでした"),
@@ -1626,7 +1626,7 @@ pub const CATALOG: &[Entry] = &[
     msg("propose.heading_revise", "この提案を修正する"),
     msg(
         "propose.intro",
-        "文章を編集し、何をなぜ変更したのかを書いて、レビューに送ってください。権限のある人があなたの提案を履歴に取り込むまで、ウィキは変わりません。",
+        "文章を編集し、何をなぜ変更したのかを書いて、レビューに送ってください。権限のある人があなたの提案を履歴に取り込むまで、Wiki は変わりません。",
     ),
     msg("propose.scope_whole", "ページ全体を変更します。"),
     msg(
@@ -1678,7 +1678,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "propose.front_owned",
-        "ページ先頭の {keys} の行は、このウィキの管理者だけが変更できます。",
+        "ページ先頭の {keys} の行は、この Wiki の管理者だけが変更できます。",
     ),
     msg(
         "propose.title_empty",
@@ -1871,7 +1871,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "lint.container",
-        "{guideline}: このウィキが知らない名前のコンテナがあります。",
+        "{guideline}: この Wiki が知らない名前のコンテナがあります。",
     ),
     msg(
         "lint.heading_top",
@@ -1899,7 +1899,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "lint.prefix",
-        "{guideline}: リンクが、このウィキで使われない接頭辞で場所を指しています。",
+        "{guideline}: リンクが、この Wiki で使われない接頭辞で場所を指しています。",
     ),
     msg(
         "lint.order",
@@ -1957,9 +1957,9 @@ pub const CATALOG: &[Entry] = &[
     msg("sign_in.to_account", "アカウントへ移動"),
     msg(
         "sign_in.invitation_only",
-        "招待が必要な場合は、このウィキを運営している人にお願いしてください。",
+        "招待が必要な場合は、この Wiki を運営している人にお願いしてください。",
     ),
-    msg("sign_in.join", "このウィキに参加する"),
+    msg("sign_in.join", "この Wiki に参加する"),
     msg("title.sign_out", "サインアウト · {product}"),
     msg("sign_out.heading", "サインアウト"),
     msg(
@@ -1968,7 +1968,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("sign_out.not_signed_in", "サインインしていません。"),
     msg("title.join", "参加 · {product}"),
-    msg("join.heading", "このウィキに参加する"),
+    msg("join.heading", "この Wiki に参加する"),
     msg(
         "join.intro",
         "サインイン名とパスワードを決めて、アカウントを作ります。パスワードは、このサーバーの管理者を含め、誰にも読まれません。",
@@ -1977,7 +1977,7 @@ pub const CATALOG: &[Entry] = &[
     msg("join_closed.heading", "参加は受け付けていません"),
     msg(
         "join_closed.body",
-        "ここでのアカウントは、招待から作られます。このウィキを運営している人に招待をお願いしてください。",
+        "ここでのアカウントは、招待から作られます。この Wiki を運営している人に招待をお願いしてください。",
     ),
     msg("title.invite", "招待 · {product}"),
     msg("invite.heading", "招待されています"),
@@ -1989,7 +1989,7 @@ pub const CATALOG: &[Entry] = &[
     msg("invite_unusable.heading", "この招待は使えません"),
     msg(
         "invite_unusable.body",
-        "すでに使われたか、期限が切れた可能性があります。新しい招待を、このウィキを運営している人にお願いしてください。",
+        "すでに使われたか、期限が切れた可能性があります。新しい招待を、この Wiki を運営している人にお願いしてください。",
     ),
     msg("account_form.name_label", "あなたの名前"),
     msg(
@@ -2119,7 +2119,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "sign_in.provider_not_linked",
-        "プロバイダーはあなたを確認しましたが、そのサインインに結び付いたアカウントがここにはありません。招待が必要です。このウィキを運営している人にお願いしてください。",
+        "プロバイダーはあなたを確認しましたが、そのサインインに結び付いたアカウントがここにはありません。招待が必要です。この Wiki を運営している人にお願いしてください。",
     ),
     msg(
         "sign_in.provider_unreachable",
@@ -2263,12 +2263,12 @@ pub const CATALOG: &[Entry] = &[
     msg("claim.decided_link", "決定した提案"),
     msg(
         "claim.decided_unlisted",
-        "このウィキの記録にない提案によって決定されました。",
+        "この Wiki の記録にない提案によって決定されました。",
     ),
     msg("claim.none_heading", "そのような主張はありません"),
     msg(
         "claim.none_body",
-        "このウィキには、そのアドレスの主張がないか、現在は読み取れません。",
+        "この Wiki には、そのアドレスの主張がないか、現在は読み取れません。",
     ),
     msg("why.heading", "なぜここにあるのか"),
     msg("why.back", "{page} に戻る"),
@@ -2277,7 +2277,7 @@ pub const CATALOG: &[Entry] = &[
     msg("views.heading", "ビュー"),
     msg(
         "views.intro",
-        "ビューは、ウィキ全体の名前付きのバージョンです。読者は、別のビューを選ばない限り、既定のビューを見ます。",
+        "ビューは、Wiki 全体の名前付きのバージョンです。読者は、別のビューを選ばない限り、既定のビューを見ます。",
     ),
     msg("views.default_name", "既定のビュー"),
     msg("views.named", "ビュー「{view}」"),
@@ -2298,7 +2298,7 @@ pub const CATALOG: &[Entry] = &[
     msg("views.forked_from", "{view} から分岐しました。"),
     msg(
         "views.no_origin",
-        "このビューの出どころは、ウィキに記録されていません。",
+        "このビューの出どころは、Wiki に記録されていません。",
     ),
     msg("views.read_link", "{view} を読む"),
     msg(
@@ -2311,16 +2311,16 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views.only_default",
-        "このウィキには既定のビューしかありません。",
+        "この Wiki には既定のビューしかありません。",
     ),
     msg("views.create_link", "ビューを作成する"),
     msg("views.compare_link", "2 つのビューを比べる"),
-    msg("views.all_link", "このウィキのすべてのビュー"),
+    msg("views.all_link", "この Wiki のすべてのビュー"),
     msg("title.views_new", "ビューを作成 · {wiki} · {product}"),
     msg("views_new.heading", "ビューを作成"),
     msg(
         "views_new.intro",
-        "ビューは、すでにあるビューから分岐させた、ウィキ全体の名前付きのバージョンです。読める人なら誰でも、そのビューに変更を提案できます。ビューの作成は記録されます（作成した人、時刻、分岐元）。",
+        "ビューは、すでにあるビューから分岐させた、Wiki 全体の名前付きのバージョンです。読める人なら誰でも、そのビューに変更を提案できます。ビューの作成は記録されます（作成した人、時刻、分岐元）。",
     ),
     msg("views_new.name_label", "名前"),
     msg(
@@ -2361,24 +2361,24 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views_new.not_allowed",
-        "このウィキでのあなたの役割には、ビューを作成する権限がありません。何も変更していません。",
+        "この Wiki でのあなたの役割には、ビューを作成する権限がありません。何も変更していません。",
     ),
     msg(
         "views_new.busy",
-        "ウィキに別の変更を加えている最中です。何も変更していません。しばらくしてからもう一度お試しください。",
+        "Wiki に別の変更を加えている最中です。何も変更していません。しばらくしてからもう一度お試しください。",
     ),
     msg("views_new.too_many_heading", "ビューが多すぎます"),
     msg(
         "views_new.too_many",
-        "このウィキにはすでに {bound} 件のビューが開いており、これが上限です。何も変更していません。",
+        "この Wiki にはすでに {bound} 件のビューが開いており、これが上限です。何も変更していません。",
     ),
     msg(
         "views_new.retirement_heading",
-        "作成されませんでした: このウィキの鍵の更新作業が完了していません",
+        "作成されませんでした: この Wiki の鍵の更新作業が完了していません",
     ),
     msg(
         "views_new.retirement",
-        "このウィキの鍵の更新作業が完了していないため、このウィキを運営している人がその作業を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人にお知らせください。完了または取りやめの後に、もう一度ビューを作成してください。",
+        "この Wiki の鍵の更新作業が完了していないため、この Wiki を運営している人がその作業を完了するか取りやめるまで、履歴に新しいものを作れません。何も変更していません。その人にお知らせください。完了または取りやめの後に、もう一度ビューを作成してください。",
     ),
     msg("views_new.failed_heading", "ビューは作成されませんでした"),
     msg(
@@ -2387,7 +2387,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "views_new.uncertain",
-        "ビューができたかどうかは分かりません。作ったあとでウィキのビューを読めなかったか、ビューは一覧にあるものの、作成が完了したことをリポジトリが示しませんでした。ビューができているかもしれませんし、できていないかもしれません。もう一度試す前にビューの一覧を確認し、このサーバーの管理者にお知らせください。その管理者が確認するまで、ウィキは変更を受け付けないことがあります。",
+        "ビューができたかどうかは分かりません。作ったあとで Wiki のビューを読めなかったか、ビューは一覧にあるものの、作成が完了したことをリポジトリが示しませんでした。ビューができているかもしれませんし、できていないかもしれません。もう一度試す前にビューの一覧を確認し、このサーバーの管理者にお知らせください。その管理者が確認するまで、Wiki は変更を受け付けないことがあります。",
     ),
     msg(
         "views_new.not_kept_heading",
@@ -2499,7 +2499,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "why.bounded_none",
-        "一度のリクエストで読めるこのウィキの最新の変更の中に、このページの変更は見つかりませんでした。それより古い変更があり、示されません。",
+        "一度のリクエストで読めるこの Wiki の最新の変更の中に、このページの変更は見つかりませんでした。それより古い変更があり、示されません。",
     ),
     msg(
         "why.spent_none",
@@ -2557,11 +2557,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "why.proposal_unlisted",
-        "この変更のメッセージが示す提案は、あなたが読めるこのウィキの記録にありません。",
+        "この変更のメッセージが示す提案は、あなたが読めるこの Wiki の記録にありません。",
     ),
     msg(
         "why.proposal_unconfirmed",
-        "この提案がこの変更として受け入れられたことは、このウィキの記録からは確認できないため、そのレビューはここに示しません。",
+        "この提案がこの変更として受け入れられたことは、この Wiki の記録からは確認できないため、そのレビューはここに示しません。",
     ),
     msg("why.review_heading", "レビュー"),
     msg(
@@ -2644,7 +2644,7 @@ pub const CATALOG: &[Entry] = &[
     msg("attach.ref_url", "ウェブのアドレス"),
     msg("attach.ref_doi", "DOI"),
     msg("attach.ref_isbn", "ISBN"),
-    msg("attach.ref_page", "このウィキのページ"),
+    msg("attach.ref_page", "この Wiki のページ"),
     msg("attach.ref_citation", "文章で書いた引用情報"),
     msg("attach.label_ref", "参照先"),
     msg(
@@ -2768,7 +2768,7 @@ pub const CATALOG: &[Entry] = &[
     msg("know.removed_source", "出典 {source} を削除します。"),
     msg(
         "know.unreadable",
-        "この提案のファイル {file} は、ウィキが読める形になっていません。{reason}",
+        "この提案のファイル {file} は、Wiki が読める形になっていません。{reason}",
     ),
     msg("know.change_kind", "記述の種類が {kind} になります。"),
     msg(
@@ -2933,14 +2933,14 @@ pub const CATALOG: &[Entry] = &[
     msg("curate.submit", "レビューに送る"),
     msg(
         "curate.nothing",
-        "フォームの内容は、ウィキの現在の内容と変わりません。先に何かを変更してください。",
+        "フォームの内容は、Wiki の現在の内容と変わりません。先に何かを変更してください。",
     ),
     // knowledge: the curation proposal (handoff 005 K-T5): end
     // knowledge: the claims a change touches (handoff 005 K-T5): start
     msg("touch.heading", "この変更が触れる主張"),
     msg(
         "touch.intro",
-        "これらの主張は、この変更で文面が変わる、または削除される段落に書かれています。ウィキは見えることだけを示し、文面が変わった段落が同じ意味かどうかは判断しません。",
+        "これらの主張は、この変更で文面が変わる、または削除される段落に書かれています。Wiki は見えることだけを示し、文面が変わった段落が同じ意味かどうかは判断しません。",
     ),
     msg(
         "touch.reworded",
@@ -3020,7 +3020,7 @@ pub const CATALOG: &[Entry] = &[
     msg("know.rejudged_source", "引用している出典 {source}"),
     msg(
         "know.nothing_changes",
-        "この提案の主張・出典ファイルは、ウィキにすでにあるファイルと同じです。変更はありません。",
+        "この提案の主張・出典ファイルは、Wiki にすでにあるファイルと同じです。変更はありません。",
     ),
     // knowledge: re-judgements shown (handoff 005 corrections K5): end
     msg(
@@ -3087,7 +3087,7 @@ pub const CATALOG: &[Entry] = &[
     msg("health.sources_name", "見直す出典"),
     msg(
         "health.sources_desc",
-        "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が入手できないと記した出典を、それを引用する主張とともに示します。ウィキは何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。",
+        "ずいぶん前に確認されたきり、または一度も確認されていない出典と、確認した人が入手できないと記した出典を、それを引用する主張とともに示します。Wiki は何も確認せず、何も取得しません。人が出典を確かめ、提案でそのことを記します。",
     ),
     msg("health.col_source", "出典"),
     msg("health.col_why", "挙げられている理由"),
@@ -3186,7 +3186,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "api.base_hidden",
-        "この提案の元になっている本文はモデレーションにより非表示のため、それを土台に書くことはできません。ウィキの現在の版を元にして提案してください。",
+        "この提案の元になっている本文はモデレーションにより非表示のため、それを土台に書くことはできません。Wiki の現在の版を元にして提案してください。",
     ),
     msg("claim_thread.in_reply_to_link", "{comment} への返信です。"),
     msg("claim_thread.comment_label", "コメント {number}"),
@@ -3202,7 +3202,7 @@ pub const CATALOG: &[Entry] = &[
     msg("curate.label_superseded", "これを置き換える出典"),
     msg(
         "curate.superseded_hint",
-        "このウィキにある別の出典の識別子です。置き換える出典がなければ空のままにしてください。",
+        "この Wiki にある別の出典の識別子です。置き換える出典がなければ空のままにしてください。",
     ),
     msg(
         "curate.removed_and_changed",
@@ -3214,7 +3214,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "curate.unknown_successor",
-        "置き換える出典は、このウィキにある出典で、識別子の形で書く必要があります。",
+        "置き換える出典は、この Wiki にある出典で、識別子の形で書く必要があります。",
     ),
     msg(
         "curate.successor_cycle",
@@ -3319,7 +3319,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome.governance_invalid",
-        "署名されませんでした: このウィキのルールの変更を受け付けられません",
+        "署名されませんでした: この Wiki のルールの変更を受け付けられません",
     ),
     msg(
         "outcome_note.governance_invalid",
@@ -3330,15 +3330,15 @@ pub const CATALOG: &[Entry] = &[
     msg("governance.rule_not_text", "ファイルが文章ではありません。"),
     msg(
         "governance.rule_too_long",
-        "ファイルが、ウィキのルールとして許される長さを超えています。",
+        "ファイルが、Wiki のルールとして許される長さを超えています。",
     ),
     msg(
         "governance.rule_wrong_shape",
-        "ファイルが、ウィキのルールの書き方になっていないか、値がその項目に合った種類ではありません。",
+        "ファイルが、Wiki のルールの書き方になっていないか、値がその項目に合った種類ではありません。",
     ),
     msg(
         "governance.rule_unknown_key",
-        "ウィキのルールにはない項目が書かれています。",
+        "Wiki のルールにはない項目が書かれています。",
     ),
     msg(
         "governance.rule_repeated_key",
@@ -3354,15 +3354,15 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "governance.rule_bounds",
-        "一覧または文章が、ウィキのルールで許される長さを超えています。",
+        "一覧または文章が、Wiki のルールで許される長さを超えています。",
     ),
     msg(
         "governance.rule_forbidden_character",
-        "ファイルに、制御文字、文字の向きを変える記号、または行の区切り文字があります。ウィキのルールでは使えません。",
+        "ファイルに、制御文字、文字の向きを変える記号、または行の区切り文字があります。Wiki のルールでは使えません。",
     ),
     msg(
         "governance.rule_missing_key",
-        "ウィキのルールに必要な項目がないか、文章が空です。",
+        "Wiki のルールに必要な項目がないか、文章が空です。",
     ),
     msg(
         "governance.rule_duplicate",
@@ -3394,7 +3394,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "governance.rule_outside_default_view",
-        "ウィキのルールを変更できるのは既定のビューだけで、この提案はほかのビューにあります。",
+        "Wiki のルールを変更できるのは既定のビューだけで、この提案はほかのビューにあります。",
     ),
     msg(
         "governance.rule_unknown_file",
@@ -3406,15 +3406,15 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome.governance_rung",
-        "署名されませんでした: このウィキのルールの変更には、より上の役割が必要です",
+        "署名されませんでした: この Wiki のルールの変更には、より上の役割が必要です",
     ),
     msg(
         "outcome_note.governance_rung_maintainer",
-        "このウィキのルールでは、ルールの変更を受け入れられるのは、このウィキのメンテナーまたは管理者です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+        "この Wiki のルールでは、ルールの変更を受け入れられるのは、この Wiki のメンテナーまたは管理者です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
     ),
     msg(
         "outcome_note.governance_rung_admin",
-        "このウィキのルールでは、ルールの変更を受け入れられるのは、このウィキの管理者です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+        "この Wiki のルールでは、ルールの変更を受け入れられるのは、この Wiki の管理者です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
     ),
     msg(
         "outcome.approvals_missing",
@@ -3422,27 +3422,27 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "outcome_note.approvals_missing",
-        "このウィキのルールでは、提案者以外でレビューできる人からの、最新の修正版への承認が {count} 件必要です。現在は {have} 件です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+        "この Wiki のルールでは、提案者以外でレビューできる人からの、最新の修正版への承認が {count} 件必要です。現在は {have} 件です。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
     ),
     msg(
         "outcome_note.author_restricted",
-        "この提案は、このウィキが読めない知識ファイルを置き換える、または取り除くものです。それを提案できるのはこのウィキでモデレーションを行える役割を持つ人だけですが、提案者はいま制限を受けています。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+        "この提案は、この Wiki が読めない知識ファイルを置き換える、または取り除くものです。それを提案できるのはこの Wiki でモデレーションを行える役割を持つ人だけですが、提案者はいま制限を受けています。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
     ),
     msg(
         "outcome_note.author_not_allowed",
-        "この提案は、このウィキが読めない知識ファイルを置き換える、または取り除くものです。それを提案できるのはこのウィキでモデレーションを行える役割を持つ人だけですが、提案者はもうその役割を持っていません。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+        "この提案は、この Wiki が読めない知識ファイルを置き換える、または取り除くものです。それを提案できるのはこの Wiki でモデレーションを行える役割を持つ人だけですが、提案者はもうその役割を持っていません。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
     ),
     msg(
         "outcome.rules_unreadable",
-        "変更できませんでした: このウィキのルールを読めません",
+        "変更できませんでした: この Wiki のルールを読めません",
     ),
     msg(
         "outcome_note.rules_unreadable",
-        "ルールが直るまで、このウィキでは何も変更できません。読むことはできます。このウィキの管理者は、ルールだけを直す変更を提案して、受け入れることができます。",
+        "ルールが直るまで、この Wiki では何も変更できません。読むことはできます。この Wiki の管理者は、ルールだけを直す変更を提案して、受け入れることができます。",
     ),
     msg(
         "outcome_note.rules_unreadable_found",
-        "このファイルがあるべき場所に、次のものがあります: {list}。このウィキの管理者が、これらを削除してファイルを書く変更を提案すると、ルールを直せます。",
+        "このファイルがあるべき場所に、次のものがあります: {list}。この Wiki の管理者が、これらを削除してファイルを書く変更を提案すると、ルールを直せます。",
     ),
     msg("governance.found_more", "ほか {more} 件"),
     msg(
@@ -3451,18 +3451,18 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "invalid.governance_mixed",
-        "このウィキのルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",
+        "この Wiki のルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",
     ),
     msg(
         "proposal.approvals_unreachable",
-        "このウィキのルールでは、提案者以外の人からの承認が {count} 件必要ですが、承認できる人がまだ足りません。レビューできる役割を持つ人が増えるまで、どの提案も受け入れられません。",
+        "この Wiki のルールでは、提案者以外の人からの承認が {count} 件必要ですが、承認できる人がまだ足りません。レビューできる役割を持つ人が増えるまで、どの提案も受け入れられません。",
     ),
     msg("protection.heading", "保護"),
     msg(
         "protection.note",
         "提案できる人は、これまでどおり変更を提案できます。保護は、変更を受け入れるために何が必要かを定めています。",
     ),
-    msg("protection.kind_standing", "このウィキのルールによる保護"),
+    msg("protection.kind_standing", "この Wiki のルールによる保護"),
     msg("protection.kind_temporary", "{until} までの一時的な保護"),
     msg("protection.on_page", "ページ {title} が対象です。"),
     msg(
@@ -3495,7 +3495,7 @@ pub const CATALOG: &[Entry] = &[
     msg("protect.heading", "ページを保護する"),
     msg(
         "protect.intro",
-        "保護は、ページへの変更を受け入れる人に、より多くを求めます。設定した日に自動で終了し、そのページを読める人全員に理由とともに表示されます。このウィキのルールの一部である保護は、ルールの変更を提案して変更します。",
+        "保護は、ページへの変更を受け入れる人に、より多くを求めます。設定した日に自動で終了し、そのページを読める人全員に理由とともに表示されます。この Wiki のルールの一部である保護は、ルールの変更を提案して変更します。",
     ),
     msg("protect.target_legend", "保護の対象"),
     msg("protect.target_page", "このページだけ"),
@@ -3528,7 +3528,7 @@ pub const CATALOG: &[Entry] = &[
     msg("protect.lift", "保護を解除する"),
     msg(
         "protect.problem_title",
-        "タイトルは、ウィキでの書き方のとおりに、前後にスラッシュを付けずに入力してください。",
+        "タイトルは、Wiki での書き方のとおりに、前後にスラッシュを付けずに入力してください。",
     ),
     msg(
         "protect.problem_require",
@@ -3565,7 +3565,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "protect.not_allowed",
-        "このウィキでモデレーションを行える役割を持つ人だけが、ページを保護できます。何も変更していません。",
+        "この Wiki でモデレーションを行える役割を持つ人だけが、ページを保護できます。何も変更していません。",
     ),
     msg(
         "protect.not_kept",
@@ -3584,7 +3584,7 @@ pub const CATALOG: &[Entry] = &[
     msg("role.admin", "管理者"),
     msg(
         "restriction.notice",
-        "このウィキでは制限を受けています。読むことはできますが、制限が終わるまで、コメント、提案、レビューはできません。",
+        "この Wiki では制限を受けています。読むことはできますが、制限が終わるまで、コメント、提案、レビューはできません。",
     ),
     msg("restriction.reason", "示された理由: {reason}"),
     msg("restriction.until", "制限は {date} に終わります。"),
@@ -3593,24 +3593,24 @@ pub const CATALOG: &[Entry] = &[
     msg("people.heading", "人と役割"),
     msg(
         "people.intro",
-        "役割は、このウィキで人ができることを決めます。ここには、役割が低い順に、それぞれの役割を持つ人を示しています。",
+        "役割は、この Wiki で人ができることを決めます。ここには、役割が低い順に、それぞれの役割を持つ人を示しています。",
     ),
     msg("people.roles_heading", "役割"),
     msg(
         "people.entry_none",
-        "サインインした人は、だれかが役割を付与するまで、このウィキでの役割を持ちません。読むことはできますが、それ以上のことはできません。",
+        "サインインした人は、だれかが役割を付与するまで、この Wiki での役割を持ちません。読むことはできますが、それ以上のことはできません。",
     ),
     msg(
         "people.entry_given",
-        "サインインしたすべての人は、付与されなくても、このウィキで {role} の役割を持ちます。",
+        "サインインしたすべての人は、付与されなくても、この Wiki で {role} の役割を持ちます。",
     ),
     msg(
         "people.entry_none_restricted",
-        "このウィキの役割を付与された人だけが、読んだり参加したりできます。",
+        "この Wiki の役割を付与された人だけが、読んだり参加したりできます。",
     ),
     msg(
         "people.entry_no_effect",
-        "このウィキのルールではサインインしたすべての人に {role} の役割が与えられますが、このウィキでは効力がありません。このウィキの役割を付与された人だけが、読んだり参加したりできます。",
+        "この Wiki のルールではサインインしたすべての人に {role} の役割が与えられますが、この Wiki では効力がありません。この Wiki の役割を付与された人だけが、読んだり参加したりできます。",
     ),
     msg(
         "people.promotion_note",
@@ -3623,21 +3623,21 @@ pub const CATALOG: &[Entry] = &[
     msg("people.you_heading", "あなたの役割"),
     msg(
         "people.you_grant",
-        "あなたはこのウィキで {role} の役割を持っています。この役割は付与されたものです。",
+        "あなたはこの Wiki で {role} の役割を持っています。この役割は付与されたものです。",
     ),
     msg(
         "people.you_entry",
-        "あなたはこのウィキで {role} の役割を持っています。このウィキでは、サインインしたすべての人にこの役割が与えられます。",
+        "あなたはこの Wiki で {role} の役割を持っています。この Wiki では、サインインしたすべての人にこの役割が与えられます。",
     ),
     msg(
         "people.you_none",
-        "あなたはこのウィキで役割を持っていません。読むことはできますが、それ以上のことはできません。",
+        "あなたはこの Wiki で役割を持っていません。読むことはできますが、それ以上のことはできません。",
     ),
     msg("people.grant_link", "人の役割を設定する"),
     msg("people.restrict_link", "人を制限する"),
     msg(
         "people.promotion",
-        "このウィキがこの役割を付与する前に見ること: {text}",
+        "この Wiki がこの役割を付与する前に見ること: {text}",
     ),
     msg("people.no_one", "この役割を持つ人はまだいません。"),
     msg("people.holder_count", "この役割を持つ人は {count} 人です。"),
@@ -3650,7 +3650,7 @@ pub const CATALOG: &[Entry] = &[
     msg("people.restricted_heading", "制限されている人"),
     msg(
         "people.restricted_intro",
-        "ここに挙げた人は、示された日まで、このウィキを読むことはできますが、コメント、提案、レビューはできません。制限を見られるのは、制限する権限を持つ人と、制限された本人だけです。",
+        "ここに挙げた人は、示された日まで、この Wiki を読むことはできますが、コメント、提案、レビューはできません。制限を見られるのは、制限する権限を持つ人と、制限された本人だけです。",
     ),
     msg("people.restricted_none", "制限されている人はいません。"),
     msg("people.restricted_row", "{person}、{date} まで。"),
@@ -3659,8 +3659,8 @@ pub const CATALOG: &[Entry] = &[
     msg("people.done_restricted", "制限しました。"),
     msg("people.done_renewed", "制限を更新しました。"),
     msg("people.done_lifted", "制限を解除しました。"),
-    msg("people.back", "このウィキの人と役割に戻る"),
-    msg("about.people_link", "このウィキの人と役割"),
+    msg("people.back", "この Wiki の人と役割に戻る"),
+    msg("about.people_link", "この Wiki の人と役割"),
     msg("title.people_grant", "役割を設定 · {wiki} · {product}"),
     msg("title.people_restrict", "人を制限 · {wiki} · {product}"),
     msg("title.people_renew", "制限を更新 · {wiki} · {product}"),
@@ -3668,7 +3668,7 @@ pub const CATALOG: &[Entry] = &[
     msg("people_grant.heading", "役割を設定する"),
     msg(
         "people_grant.intro",
-        "このウィキでの人の役割を付与し、別の役割に切り替え、または取り消します。この操作には、あなたの名前と役割が記録されます。",
+        "この Wiki での人の役割を付与し、別の役割に切り替え、または取り消します。この操作には、あなたの名前と役割が記録されます。",
     ),
     msg("people_grant.submit", "役割を設定する"),
     msg("people_grant.role_legend", "役割"),
@@ -3680,7 +3680,7 @@ pub const CATALOG: &[Entry] = &[
     msg("people_restrict.heading", "人を制限する"),
     msg(
         "people_restrict.intro",
-        "制限された人は、制限が終わるまで、このウィキを読むことはできますが、コメント、提案、レビューはできません。理由と終了日は本人に伝えられます。",
+        "制限された人は、制限が終わるまで、この Wiki を読むことはできますが、コメント、提案、レビューはできません。理由と終了日は本人に伝えられます。",
     ),
     msg("people_restrict.submit", "制限する"),
     msg("people_renew.heading", "制限を更新する"),
@@ -3723,17 +3723,17 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "people.problem_above_reach",
-        "このウィキのルールでは、メンテナーが付与したり取り消したりできる役割は {role} までです。この操作はそれを超えています。",
+        "この Wiki のルールでは、メンテナーが付与したり取り消したりできる役割は {role} までです。この操作はそれを超えています。",
     ),
     msg(
         "people.problem_last_admin",
-        "この人は、サインインできるこのウィキ最後の管理者です。役割を取り消したり下げたりはできません。先にほかの人に管理者の役割を付与してください。",
+        "この人は、サインインできるこの Wiki 最後の管理者です。役割を取り消したり下げたりはできません。先にほかの人に管理者の役割を付与してください。",
     ),
     msg(
         "people.problem_own_restriction",
         "自分自身の制限は操作できません。",
     ),
-    msg("people.problem_admin", "ウィキの管理者は制限できません。"),
+    msg("people.problem_admin", "Wiki の管理者は制限できません。"),
     msg(
         "people.problem_not_below",
         "制限できるのは、自分より下の役割の人だけです。",
@@ -3762,12 +3762,12 @@ pub const CATALOG: &[Entry] = &[
         "people.problem_reason_lines",
         "理由は 1 行で書いてください。",
     ),
-    msg("account.wikis_heading", "各ウィキでのあなたの役割"),
+    msg("account.wikis_heading", "各 Wiki でのあなたの役割"),
     msg(
         "account.wikis_intro",
-        "読めるウィキごとに、あなたの役割と、その役割の理由を示します。制限がある場合は、理由と終了日もここに示します。",
+        "読める Wiki ごとに、あなたの役割と、その役割の理由を示します。制限がある場合は、理由と終了日もここに示します。",
     ),
-    msg("account.wikis_none", "いま読めるウィキはありません。"),
+    msg("account.wikis_none", "いま読める Wiki はありません。"),
     msg(
         "tombstone.fact",
         "モデレーションにより非表示: {part}。理由: {category}。役割: {role}。日時: {date}。",
@@ -3811,7 +3811,7 @@ pub const CATALOG: &[Entry] = &[
     msg("moderate.heading", "非表示にする・元に戻す"),
     msg(
         "moderate.intro",
-        "非表示にしても、項目の位置は残り、理由が示されます。消去ではないので、あとで元に戻せます。非表示にした内容は、このサイトでは、モデレーションを行う人以外には表示されません。",
+        "非表示にしても、項目の位置は残り、理由が示されます。消去ではないので、あとで元に戻せます。非表示にした内容は、このサイトでは、モデレーションを行う人以外には表示されません。ここでのモデレーションは、内容の非表示、アカウントの一時的な制限、ページの保護のことです。",
     ),
     msg(
         "moderate.still_held",
@@ -3915,7 +3915,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "moderate.not_allowed",
-        "このウィキでモデレーションを行える役割を持つ人だけが、非表示にしたり元に戻したりできます。何も変更していません。",
+        "この Wiki でモデレーションを行える役割を持つ人だけが、非表示にしたり元に戻したりできます。何も変更していません。",
     ),
     msg(
         "moderate.unavailable",
@@ -3936,7 +3936,7 @@ pub const CATALOG: &[Entry] = &[
     msg("log.heading", "モデレーションのログ"),
     msg(
         "log.intro",
-        "このウィキで非表示にされたものと、元に戻されたものです。項目、理由、役割、日時を示します。非表示の内容はここには表示されず、だれの名前も示しません。",
+        "この Wiki で非表示にされたものと、元に戻されたものです。項目、理由、役割、日時を示します。非表示の内容はここには表示されず、だれの名前も示しません。ここでのモデレーションは、内容の非表示、アカウントの一時的な制限、ページの保護のことです。",
     ),
     msg("log.none", "ここで非表示にされたものはありません。"),
     msg("log.hidden", "非表示: {item}"),
@@ -3975,11 +3975,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "removed.cannot_propose",
-        "ページの復元は、ほかの変更と同じく提案で行いますが、あなたはこのウィキで変更を提案できません。",
+        "ページの復元は、ほかの変更と同じく提案で行いますが、あなたはこの Wiki で変更を提案できません。",
     ),
     msg(
         "removed.raw",
-        "このページは削除されました。ソースはもう提供されていません。ウィキ上のこのページのアドレスを開くと、いつ、なぜ削除されたかが分かります。",
+        "このページは削除されました。ソースはもう提供されていません。Wiki 上のこのページのアドレスを開くと、いつ、なぜ削除されたかが分かります。",
     ),
     msg("restore.heading", "{title} の復元を提案する"),
     msg("restore.summary", "復元: {title}"),
@@ -4004,11 +4004,11 @@ pub const CATALOG: &[Entry] = &[
     msg("problem.page_gone.title", "ページは削除されました"),
     msg(
         "problem.page_gone.detail",
-        "ページ {page} は、変更 {change} で削除されました。メンバー `change_id`、`proposal`、`reason` は、どの変更を、どの提案が、なぜ行ったかを示し、`restore` は、復元があなたに提供されているか（このウィキで変更を提案できるなら `offered`、できないなら `none`）を示します。どの方法で復元するかは、復元のフォームが示します。",
+        "ページ {page} は、変更 {change} で削除されました。メンバー `change_id`、`proposal`、`reason` は、どの変更を、どの提案が、なぜ行ったかを示し、`restore` は、復元があなたに提供されているか（この Wiki で変更を提案できるなら `offered`、できないなら `none`）を示します。どの方法で復元するかは、復元のフォームが示します。",
     ),
     msg(
         "problem.page_gone.hint",
-        "ページを元に戻すには、あらためて提案します。`restore` が `offered` のとき、ウィキ上のこのアドレスのページに、その提案を行うフォームへのリンクがあります。",
+        "ページを元に戻すには、あらためて提案します。`restore` が `offered` のとき、Wiki 上のこのアドレスのページに、その提案を行うフォームへのリンクがあります。",
     ),
     msg(
         "claim.retired",
@@ -4074,7 +4074,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "know.unreadable_by_moderate",
-        "読み取れないファイルは、このウィキでモデレーションを行える役割を持つ人が、読み取れるファイルに置き換えるか、役目を終えたことにして対応します。",
+        "読み取れないファイルは、この Wiki でモデレーションを行える役割を持つ人が、読み取れるファイルに置き換えるか、役目を終えたことにして対応します。",
     ),
     msg(
         "health.knowledge_replace_link",
@@ -4083,7 +4083,7 @@ pub const CATALOG: &[Entry] = &[
     msg("replace.heading", "読み取れないファイルを置き換える"),
     msg(
         "replace.intro",
-        "ウィキはファイル {file} を読み取れないため、そこからは何も読み込まれず、何が書かれていたかも分かりません。読み取れるファイルとして書き直すか、役目を終えたことにできます。提案は、知識ファイルへのほかの変更と同じ基準で判定され、受け入れられる人が決めます。",
+        "Wiki はファイル {file} を読み取れないため、そこからは何も読み込まれず、何が書かれていたかも分かりません。読み取れるファイルとして書き直すか、役目を終えたことにできます。提案は、知識ファイルへのほかの変更と同じ基準で判定され、受け入れられる人が決めます。",
     ),
     msg("replace.why", "読み取れない理由: {rule}"),
     msg(
@@ -4095,11 +4095,11 @@ pub const CATALOG: &[Entry] = &[
     msg("replace.choice_retire", "役目を終えたことにする"),
     msg(
         "replace.label_text",
-        "ファイルの全文（ウィキが読み取る形式）",
+        "ファイルの全文（Wiki が読み取る形式）",
     ),
     msg(
         "replace.text_hint",
-        "ファイルの名前、つまり識別子は変わりません。主張または出典のキーだけを書いてください。読み取れない場合は、何が問題かをウィキが示します。",
+        "ファイルの名前、つまり識別子は変わりません。主張または出典のキーだけを書いてください。読み取れない場合は、何が問題かを Wiki が示します。",
     ),
     msg(
         "replace.retire_hint",
@@ -4120,20 +4120,20 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "replace.problem_nothing",
-        "このファイルはウィキが読み取れるか、このウィキの知識ファイルではないため、置き換えるものはありません。",
+        "このファイルは Wiki が読み取れるか、この Wiki の知識ファイルではないため、置き換えるものはありません。",
     ),
     msg("quota.appeals_day", "直近 1 日の申し立てが多すぎます"),
     msg(
         "quota.appeals_open",
-        "このウィキで決定待ちの申し立てが多すぎます",
+        "この Wiki で決定待ちの申し立てが多すぎます",
     ),
     msg(
         "quota.appeals_open_person",
-        "このウィキで、あなたの決定待ちの申し立てが多すぎます",
+        "この Wiki で、あなたの決定待ちの申し立てが多すぎます",
     ),
     msg(
         "quota.reset_appeal_decided",
-        "このウィキで決定待ちの申し立てのどれかが決定されると、リセットされます。",
+        "この Wiki で決定待ちの申し立てのどれかが決定されると、リセットされます。",
     ),
     msg(
         "quota.reset_appeal_yours_decided",
@@ -4202,7 +4202,7 @@ pub const CATALOG: &[Entry] = &[
     msg("title.appeals_mine", "自分の申し立て · {wiki} · {product}"),
     msg(
         "mine.intro",
-        "このウィキでのあなたの申し立てと、いま申し立てができる決定です。書いた内容を読めるのは、あなたと、申し立てを決定する人だけです。",
+        "この Wiki でのあなたの申し立てと、いま申し立てができる決定です。書いた内容を読めるのは、あなたと、申し立てを決定する人だけです。",
     ),
     msg("mine.contest_heading", "申し立てができる決定"),
     msg(
@@ -4212,7 +4212,7 @@ pub const CATALOG: &[Entry] = &[
     msg("mine.appeals_heading", "あなたの申し立て"),
     msg(
         "mine.appeals_none",
-        "このウィキで申し立てをしたことはありません。",
+        "この Wiki で申し立てをしたことはありません。",
     ),
     msg(
         "mine.filed_on",
@@ -4223,7 +4223,7 @@ pub const CATALOG: &[Entry] = &[
     msg("appeals.heading", "申し立て"),
     msg(
         "appeals.intro",
-        "このウィキで行われた申し立てです。決定する人のためのページです。申し立てを読めるのは、申し立てた本人と、申し立てを決定する人だけです。モデレーションのログには、非表示に申し立てがあったことと、その結果だけが示されます。",
+        "この Wiki で行われた申し立てです。決定する人のためのページです。申し立てを読めるのは、申し立てた本人と、申し立てを決定する人だけです。モデレーションのログには、非表示に申し立てがあったことと、その結果だけが示されます。",
     ),
     msg("appeals.open_heading", "決定待ち"),
     msg("appeals.open_none", "決定待ちの申し立てはありません。"),
@@ -4344,14 +4344,14 @@ pub const CATALOG: &[Entry] = &[
         "申し立ての決定により、元に戻しました。",
     ),
     msg("title.policy", "ルール · {wiki} · {product}"),
-    msg("policy.heading", "このウィキのルール"),
+    msg("policy.heading", "この Wiki のルール"),
     msg(
         "policy.intro",
-        "ここに書かれているのは、このウィキのルールです。ここで誰が何をできるか、そしてルール自体をどう変えるかを定めています。ルールはウィキ自身のファイルとして保管され、ここにあるほかのものと同じく、提案を通してのみ変わります。",
+        "ここに書かれているのは、この Wiki のルールです。ここで誰が何をできるか、そしてルール自体をどう変えるかを定めています。ルールは Wiki 自身のファイルとして保管され、ここにあるほかのものと同じく、提案を通してのみ変わります。",
     ),
     msg(
         "policy.defaults_note",
-        "このウィキには独自のルールがまだないため、既定のルールに従っています。次に一覧します。",
+        "この Wiki には独自のルールがまだないため、既定のルールに従っています。次に一覧します。",
     ),
     msg(
         "policy.as_of",
@@ -4368,7 +4368,10 @@ pub const CATALOG: &[Entry] = &[
     msg("policy.label_review", "提案をレビューできる人"),
     msg("policy.label_create_view", "ビューを作成できる人"),
     msg("policy.label_accept", "提案を受け入れられる人"),
-    msg("policy.label_moderate", "モデレーションできる人"),
+    msg(
+        "policy.label_moderate",
+        "モデレーションできる人（内容の非表示、アカウントの一時的な制限、ページの保護）",
+    ),
     msg("policy.label_decide_appeal", "申し立てを決定する人"),
     msg("policy.label_grant", "メンテナーが付与できる最も高い役割"),
     msg("policy.label_entry", "サインインした全員が持つ役割"),
@@ -4385,7 +4388,7 @@ pub const CATALOG: &[Entry] = &[
     msg("policy.value_grant_up_to", "{role} まで"),
     msg(
         "policy.entry_no_effect",
-        "このウィキでは、これは効力がありません。このウィキの役割を付与された人だけが、読んだり参加したりできます。",
+        "この Wiki では、これは効力がありません。この Wiki の役割を付与された人だけが、読んだり参加したりできます。",
     ),
     msg("policy.accept_heading", "提案が受け入れられる条件"),
     msg(
@@ -4401,7 +4404,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "policy.value_self_small",
-        "このウィキのメンテナーが {limit} 人より少ない間は、メンテナーに限り可能",
+        "この Wiki のメンテナーが {limit} 人より少ない間は、メンテナーに限り可能",
     ),
     msg(
         "policy.label_review_after",
@@ -4414,7 +4417,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "policy.promotion_heading",
-        "役割を付与する前にこのウィキが見ること",
+        "役割を付与する前にこの Wiki が見ること",
     ),
     msg(
         "policy.promotion_note",
@@ -4422,7 +4425,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "policy.label_promotion",
-        "このウィキが {role} を付与する前に見ること",
+        "この Wiki が {role} を付与する前に見ること",
     ),
     msg(
         "policy.promotion_none",
@@ -4447,22 +4450,22 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "policy.hatch_note",
-        "このウィキの管理者は、ルールの内容にかかわらず、承認なしでいつでもこのルールを変更できます。受け入れの記録には、その旨が残ります。",
+        "この Wiki の管理者は、ルールの内容にかかわらず、承認なしでいつでもこのルールを変更できます。受け入れの記録には、その旨が残ります。",
     ),
     msg("policy.protections_heading", "有効な保護"),
     msg(
         "policy.protections_intro",
-        "受け入れる前により多くのことが必要なページとページ群です。このウィキのルールによるものと、モデレーターが期間を定めて設けたものがあります。",
+        "受け入れる前により多くのことが必要なページとページ群です。この Wiki のルールによるものと、モデレーターが期間を定めて設けたものがあります。",
     ),
     msg("policy.protections_none", "有効な保護はありません。"),
     msg(
         "policy.protections_self_note",
-        "保護が承認を求めている場合、提案者本人が受け入れても条件を満たしません。ウィキが小さい間でも、メンテナーが一人だけなら、保護されたページの変更を自分で提案して自分で受け入れることはできません。",
+        "保護が承認を求めている場合、提案者本人が受け入れても条件を満たしません。Wiki が小さい間でも、メンテナーが一人だけなら、保護されたページの変更を自分で提案して自分で受け入れることはできません。",
     ),
     msg("policy.limits_heading", "このサーバーの制限"),
     msg(
         "policy.limits_intro",
-        "このサーバーの管理者は、どのウィキのルールも超えられない制限を定めています。",
+        "このサーバーの管理者は、どの Wiki のルールも超えられない制限を定めています。",
     ),
     msg(
         "policy.limit_entry",
@@ -4498,7 +4501,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "policy.history_window",
-        "ウィキの新しい変更 {blocks} 件だけを調べたため、それより古いルールの変更は載せていません。",
+        "Wiki の新しい変更 {blocks} 件だけを調べたため、それより古いルールの変更は載せていません。",
     ),
     msg(
         "policy.history_unavailable",
@@ -4510,7 +4513,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg("policy.link_log", "モデレーションの記録"),
     msg("policy.link_change", "このルールの変更を提案する"),
-    msg("about.policy_link", "このウィキのルール"),
+    msg("about.policy_link", "この Wiki のルール"),
     msg("policy.change_line", "{label}: {before} → {after}"),
     msg("policy.change_promotion_none", "文章なし"),
     msg("policy.change_protection_added", "保護を追加: {protection}"),
@@ -4554,7 +4557,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "governance.hatch_you",
-        "あなたはこのウィキの管理者なので、この変更は承認なしで受け入れられます。受け入れの記録には、その旨が残ります。",
+        "あなたはこの Wiki の管理者なので、この変更は承認なしで受け入れられます。受け入れの記録には、その旨が残ります。",
     ),
     msg(
         "title.policy_edit",
@@ -4575,11 +4578,11 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "policy_edit.repair_note",
-        "ルールを読み取れないため、このフォームは既定のルールから始まります。修復を送れるのはこのウィキの管理者だけで、受け入れられるまで、ウィキのほかのものは変更できません。",
+        "ルールを読み取れないため、このフォームは既定のルールから始まります。修復を送れるのはこの Wiki の管理者だけで、受け入れられるまで、Wiki のほかのものは変更できません。",
     ),
     msg(
         "policy_edit.repair_not_admin",
-        "ルールを読み取れません。修復を提案できるのは、このウィキの管理者だけです。",
+        "ルールを読み取れません。修復を提案できるのは、この Wiki の管理者だけです。",
     ),
     msg(
         "policy_edit.entry_hint",
@@ -4618,11 +4621,11 @@ pub const CATALOG: &[Entry] = &[
     msg("policy_edit.protect_add", "保護を追加"),
     msg(
         "policy_edit.summary_default",
-        "このウィキのルールを変更する",
+        "この Wiki のルールを変更する",
     ),
     msg(
         "policy_edit.summary_defaults",
-        "このウィキのルールを既定に戻す",
+        "この Wiki のルールを既定に戻す",
     ),
     msg("policy_edit.send", "提案として送る"),
     msg(
@@ -4635,7 +4638,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "policy_edit.defaults_unchanged",
-        "このウィキはすでに既定のルールに従っているため、戻すものがありません。",
+        "この Wiki はすでに既定のルールに従っているため、戻すものがありません。",
     ),
     msg("policy_edit.problem_number", "整数で入力してください。"),
     msg(
@@ -4696,7 +4699,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "authority.accepted_hatch",
-        "{person}（{role}）がこのウィキの管理者として、承認を求めずに受け入れました。適用されたルール: {authority}。",
+        "{person}（{role}）がこの Wiki の管理者として、承認を求めずに受け入れました。適用されたルール: {authority}。",
     ),
     msg(
         "authority.reviewed",

@@ -142,6 +142,36 @@ fn a_placeholder_next_to_japanese_text_is_spaced_except_inside_brackets() {
     assert!(!tight_placeholders("{count}件").is_empty());
 }
 
+// ---------------------------------------------------------------- Wiki, in Latin letters
+
+/// `Wiki` touching Japanese text (kana, kanji): in Latin letters it is spaced like `Cookie`, a half-width space on each side,
+/// and touches only Japanese punctuation or brackets (the owner's ruling of 2026-11-24).
+fn tight_wiki(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = Vec::new();
+    for (at, _) in text.match_indices("Wiki") {
+        let start = text.get(..at).map_or(0, |t| t.chars().count());
+        let before = start.checked_sub(1).and_then(|b| chars.get(b));
+        let after = chars.get(start + 4);
+        if before.is_some_and(|b| is_japanese_letter(*b))
+            || after.is_some_and(|a| is_japanese_letter(*a))
+        {
+            out.push(format!("Wiki touches Japanese text: {text}"));
+        }
+    }
+    out
+}
+
+#[test]
+fn wiki_is_spaced_from_japanese_text_like_cookie() {
+    assert_eq!(found(tight_wiki), Vec::<String>::new());
+    // Shown able to fail: either side; the exceptions stay exceptions.
+    assert!(!tight_wiki("このWiki のページ").is_empty());
+    assert!(!tight_wiki("この Wikiのページ").is_empty());
+    assert!(tight_wiki("この Wiki のページ").is_empty());
+    assert!(tight_wiki("「Wiki」と Wiki、").is_empty());
+}
+
 // ---------------------------------------------------------------- counted messages
 
 #[test]
@@ -209,11 +239,11 @@ const RETIRED: &[Retired] = &[
     r("へ戻る", "に戻る"),
     r(
         "運用している人",
-        "このサーバーの管理者 / このウィキを運営している人",
+        "このサーバーの管理者 / この Wiki を運営している人",
     ),
     r(
         "運用して",
-        "このサーバーの管理者 / このウィキを運営している人",
+        "このサーバーの管理者 / この Wiki を運営している人",
     ),
     r("知らせてください", "お知らせください"),
     r("伝えてください", "お知らせください"),
@@ -232,6 +262,7 @@ const RETIRED: &[Retired] = &[
     r("輪になって", "循環"),
     r("1 度", "1 回"),
     r("さん", "(a person is named without it)"),
+    r("ウィキ", "Wiki (Latin letters, spaced as Cookie is)"),
     Retired {
         term: "ブラウザ",
         not_after: &[],

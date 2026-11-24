@@ -748,7 +748,7 @@ async fn the_pages_are_in_the_readers_language() {
     assert!(c.body.contains("署名して履歴に記録済み"));
     assert!(
         c.body
-            .contains("ウィキサービスが Mika Tanaka に代わって署名し、Ren Sato が受け入れました。")
+            .contains("Wiki サービスが Mika Tanaka に代わって署名し、Ren Sato が受け入れました。")
     );
     let d = send(
         &w,

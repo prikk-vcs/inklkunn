@@ -70,7 +70,7 @@ async fn a_restricted_person_is_told_the_reason_and_the_end_by_the_form_that_wou
     let ja = as_ja(&e, &e.contributor, new).await;
     let main = main_of(&ja);
     for want in [
-        "このウィキでは制限を受けています。読むことはできますが、制限が終わるまで、コメント、提案、レビューはできません。",
+        "この Wiki では制限を受けています。読むことはできますが、制限が終わるまで、コメント、提案、レビューはできません。",
         &format!("示された理由: {REASON}"),
         &format!("制限は {UNTIL} に終わります。"),
         "何も変更していません。",

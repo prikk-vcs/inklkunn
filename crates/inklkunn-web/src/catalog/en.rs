@@ -3768,7 +3768,7 @@ pub const CATALOG: &[Entry] = &[
     msg("moderate.heading", "Hide or restore"),
     msg(
         "moderate.intro",
-        "Hiding keeps the item's place and says why. It does not erase: it can be restored, and no one but the people who moderate sees what is hidden through this site.",
+        "Hiding keeps the item's place and says why. It does not erase: it can be restored, and no one but the people who moderate sees what is hidden through this site. Moderation here means hiding content, restricting an account for a time, and protecting a page.",
     ),
     msg(
         "moderate.still_held",
@@ -3902,7 +3902,7 @@ pub const CATALOG: &[Entry] = &[
     msg("log.heading", "Moderation log"),
     msg(
         "log.intro",
-        "What was hidden and restored in this wiki: the item, why, which role and when. The hidden content is never shown here, and no one is named.",
+        "What was hidden and restored in this wiki: the item, why, which role and when. The hidden content is never shown here, and no one is named. Moderation here means hiding content, restricting an account for a time, and protecting a page.",
     ),
     msg("log.none", "Nothing has been hidden here."),
     msg("log.hidden", "Hidden: {item}"),
@@ -4311,7 +4311,10 @@ pub const CATALOG: &[Entry] = &[
     msg("policy.label_review", "Who may review a proposal"),
     msg("policy.label_create_view", "Who may create a view"),
     msg("policy.label_accept", "Who may accept a proposal"),
-    msg("policy.label_moderate", "Who may moderate"),
+    msg(
+        "policy.label_moderate",
+        "Who may moderate (hide content, restrict an account for a time, protect a page)",
+    ),
     msg("policy.label_decide_appeal", "Who decides an appeal"),
     msg(
         "policy.label_grant",

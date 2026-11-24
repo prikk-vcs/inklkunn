@@ -77,7 +77,7 @@ async fn the_page_is_in_japanese_with_the_japanese_names_of_the_roles() {
         "レビュアー",
         "メンテナー",
         "管理者",
-        "このウィキがこの役割を付与する前に見ること: A season of careful reading.",
+        "この Wiki がこの役割を付与する前に見ること: A season of careful reading.",
         "あなたの役割",
     ] {
         assert!(main.contains(want), "{want}: {main}");
@@ -151,25 +151,25 @@ async fn what_entry_gives_everyone_is_said_in_a_sentence_for_each_visibility_and
             Visibility::Public,
             "contributor",
             "Every person who signs in holds the role contributor in this wiki without being granted it.",
-            "サインインしたすべての人は、付与されなくても、このウィキで コントリビューター の役割を持ちます。",
+            "サインインしたすべての人は、付与されなくても、この Wiki で コントリビューター の役割を持ちます。",
         ),
         (
             Visibility::Internal,
             "questioner",
             "Every person who signs in holds the role questioner in this wiki without being granted it.",
-            "サインインしたすべての人は、付与されなくても、このウィキで 質問者 の役割を持ちます。",
+            "サインインしたすべての人は、付与されなくても、この Wiki で 質問者 の役割を持ちます。",
         ),
         (
             Visibility::Restricted,
             "contributor",
             "but that has no effect here: only people who were granted a role in this wiki can read it or take part.",
-            "このウィキでは効力がありません。",
+            "この Wiki では効力がありません。",
         ),
         (
             Visibility::Restricted,
             "none",
             "Only people who were granted a role in this wiki can read it or take part.",
-            "このウィキの役割を付与された人だけが、読んだり参加したりできます。",
+            "この Wiki の役割を付与された人だけが、読んだり参加したりできます。",
         ),
     ] {
         let e = cast(under(&base(visibility), &format!("entry: {entry}\n")));
@@ -215,7 +215,7 @@ async fn the_page_tells_a_person_which_role_they_hold_and_why_without_raw_rules(
     let ja = main_of(&as_ja(&plain, &plain.reviewer, PEOPLE).await);
     assert!(
         ja.contains(
-            "あなたはこのウィキで レビュアー の役割を持っています。この役割は付与されたものです。"
+            "あなたはこの Wiki で レビュアー の役割を持っています。この役割は付与されたものです。"
         ),
         "{ja}"
     );
