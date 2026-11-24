@@ -9,7 +9,7 @@ use inklkunn_core::appeal::{
 use inklkunn_store::AppealedKind;
 
 use super::paths;
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T};
 use crate::people::sentences::role_label;
 use crate::proposals::render::LinkView;
 use crate::time::utc_minutes;
@@ -162,18 +162,19 @@ pub(crate) fn decision_line(t: T, decision: &DecisionRow) -> String {
 
 /// **The rung the decider held and the rules it was held under**, said beside the decision (criterion 12): *Decided as
 /// maintainer, under the rules as of ...*, or that they were *not recorded* for a decision that was written without them. The
-/// change that set the rules is named by its first characters, as the restriction's notice names it.
-pub(crate) fn decision_authority(t: T, decision: &DecisionRow) -> String {
+/// change that set the rules is named by its first characters **and linked to the change** (RFC 006 D-5: *with that block's own
+/// link*), as the proposal page and the change view do.
+pub(crate) fn decision_authority(t: T, slug: &str, decision: &DecisionRow) -> Rich {
     match decision.rung {
         Some(role) => t
             .msg(Key::AuthorityReviewed)
             .with("role", crate::people::sentences::role_label(t, role))
-            .with(
+            .rich(
                 "authority",
-                crate::authority::under_text(t, decision.policy_block.as_deref()),
+                crate::authority::under(t, slug, decision.policy_block.as_deref()),
             )
-            .text(),
-        None => t.get(Key::AuthorityUnrecorded),
+            .html(),
+        None => crate::catalog::plain(&t.get(Key::AuthorityUnrecorded)),
     }
 }
 

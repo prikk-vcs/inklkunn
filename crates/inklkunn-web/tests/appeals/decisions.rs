@@ -379,7 +379,8 @@ const DECISION_PAGES: [&str; 2] = ["/handbook/-/appeals", "/handbook/-/appeals/m
 
 #[tokio::test]
 async fn a_decision_says_the_rung_of_the_decider_and_the_rules_it_was_made_under_on_both_pages() {
-    // Under the rules of a block (a policy file): the decider is the admin, and the block is named by its first characters.
+    // Under the rules of a block (a policy file): the decider is the admin, and the block is named by its first characters and
+    // **linked to the change** (D-5: with that block's own link; correction L-12), as the proposal page and the change view do.
     let e = env_under(MAINTAINERS_DECIDE);
     restrict(&e, &e.contributor, "3").await;
     let r = restriction_of(&e, &e.contributor);
@@ -388,13 +389,19 @@ async fn a_decision_says_the_rung_of_the_decider_and_the_rules_it_was_made_under
     let a = decide(&e, &e.admin, &appeal, "upheld").await;
     assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
     let block = &common::POLICY_BLOCK[..12];
+    let linked = format!(
+        "<a href=\"/handbook/-/change/{}\">{block}</a>",
+        common::POLICY_BLOCK
+    );
     for (who, uri) in [
         (&e.admin, DECISION_PAGES[0]),
         (&e.contributor, DECISION_PAGES[1]),
     ] {
         let main = main_of(&as_(&e, who, uri).await);
         assert!(
-            main.contains(&format!("Decided as admin, under the rules as of {block}.")),
+            main.contains(&format!(
+                "Decided as admin, under the rules as of {linked}."
+            )),
             "{uri}: {main}"
         );
         assert!(!main.contains("were not recorded"), "{uri}: {main}");
@@ -402,7 +409,7 @@ async fn a_decision_says_the_rung_of_the_decider_and_the_rules_it_was_made_under
         let ja = main_of(&as_ja(&e, who, uri).await);
         assert!(
             ja.contains(&format!(
-                "管理者 として決定しました。適用されたルール: 変更 {block} の時点。"
+                "管理者 として決定しました。適用されたルール: 変更 {linked} の時点。"
             )),
             "{uri}: {ja}"
         );

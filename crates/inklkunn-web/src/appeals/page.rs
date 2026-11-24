@@ -15,7 +15,7 @@ use inklkunn_store::AppealId;
 
 use super::paths::{self, fields};
 use super::words;
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T};
 use crate::csrf::Decided;
 use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
@@ -53,8 +53,8 @@ struct RowView {
     said: Vec<String>,
     proposal: Option<LinkView>,
     decision: Option<String>,
-    /// The rung and the rules the decision was made under.
-    decision_authority: Option<String>,
+    /// The rung and the rules the decision was made under, the rules' change linked.
+    decision_authority: Option<Rich>,
     blocked: Option<String>,
     form: Option<DecideForm>,
 }
@@ -136,7 +136,7 @@ fn row_view(t: T, slug: &str, row: &AppealRow, queued: Option<&Queued>) -> RowVi
         decision_authority: row
             .decision
             .as_ref()
-            .map(|d| words::decision_authority(t, d)),
+            .map(|d| words::decision_authority(t, slug, d)),
         blocked,
         form,
     }

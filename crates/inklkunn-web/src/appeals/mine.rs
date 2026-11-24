@@ -13,7 +13,7 @@ use inklkunn_core::appeal::{AppealRow, Contestable};
 
 use super::paths::{self, fields};
 use super::words;
-use crate::catalog::{Key, T};
+use crate::catalog::{Key, Rich, T};
 use crate::discover::Subject;
 use crate::pages::{Page, PageState, answer};
 use crate::proposals::render::LinkView;
@@ -36,7 +36,7 @@ pub(crate) struct ContestView {
 /// One of the person's appeals.
 struct AppealView {
     head: String,
-    facts: Vec<String>,
+    facts: Vec<Rich>,
     said: Vec<String>,
 }
 
@@ -71,19 +71,19 @@ pub(crate) fn contest_view(t: T, slug: &str, c: &Contestable) -> ContestView {
     }
 }
 
-fn appeal_view(t: T, row: &AppealRow) -> AppealView {
-    let mut facts = vec![
-        t.msg(Key::MineFiledOn)
+fn appeal_view(t: T, slug: &str, row: &AppealRow) -> AppealView {
+    let mut facts = vec![crate::catalog::plain(
+        &t.msg(Key::MineFiledOn)
             .with("kind", words::kind_label(t, row.action.kind))
             .with("date", utc_minutes(row.at))
             .text(),
-    ];
+    )];
     match &row.decision {
         Some(decision) => {
-            facts.push(words::decision_line(t, decision));
-            facts.push(words::decision_authority(t, decision));
+            facts.push(crate::catalog::plain(&words::decision_line(t, decision)));
+            facts.push(words::decision_authority(t, slug, decision));
         }
-        None => facts.push(t.get(Key::MineOpen)),
+        None => facts.push(crate::catalog::plain(&t.get(Key::MineOpen))),
     }
     AppealView {
         head: words::kind_label(t, row.action.kind),
@@ -137,7 +137,11 @@ pub(crate) async fn mine_page(
                 .collect(),
             appeals_heading: t.get(Key::MineAppealsHeading),
             appeals_none: t.get(Key::MineAppealsNone),
-            appeals: view.appeals.iter().map(|row| appeal_view(t, row)).collect(),
+            appeals: view
+                .appeals
+                .iter()
+                .map(|row| appeal_view(t, slug, row))
+                .collect(),
             decide: services
                 .appeals
                 .may_decide(&ctx.principal, &ctx.wiki)
