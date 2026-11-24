@@ -17,6 +17,7 @@ mod guards;
 mod later;
 mod reader;
 mod removed;
+mod reveal;
 mod surfaces;
 mod texts;
 mod tip;
