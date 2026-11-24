@@ -3184,6 +3184,10 @@ pub const CATALOG: &[Entry] = &[
         "api.drop_unused",
         "`drops` に {path} のマーカー ^{block} の段落が指定されていますが、この変更ではその段落は {path} から削除されないか、その段落に書かれた主張がありません。この変更で削除する段落だけを指定してください。",
     ),
+    msg(
+        "api.base_hidden",
+        "この提案の元になっている本文はモデレーションにより非表示のため、それを土台に書くことはできません。ウィキの現在の版を元にして提案してください。",
+    ),
     msg("claim_thread.in_reply_to_link", "{comment} への返信です。"),
     msg("claim_thread.comment_label", "コメント {number}"),
     msg("curate.label_remove", "この主張はこの出典を引用しなくなる"),

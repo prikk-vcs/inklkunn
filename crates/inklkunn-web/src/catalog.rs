@@ -1657,6 +1657,7 @@ keys! {
     ClaimThreadBack => "claim_thread.back",
     ApiClaimLost => "api.claim_lost",
     ApiDropUnused => "api.drop_unused",
+    ApiBaseHidden => "api.base_hidden",
     ClaimThreadInReplyToLink => "claim_thread.in_reply_to_link",
     ClaimThreadCommentLabel => "claim_thread.comment_label",
     CurateLabelRemove => "curate.label_remove",

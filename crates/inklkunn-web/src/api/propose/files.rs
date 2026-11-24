@@ -385,10 +385,15 @@ fn drop_changes(
         .collect())
 }
 
-/// A read of the base that failed: the repository could not be asked, or the path cannot be read.
+/// A read of the base that failed: the repository could not be asked, or the path cannot be read. **A base whose text moderation
+/// hides is `base-hidden`**, with a sentence of its own (the web's pages refuse it as hidden too), and not a *bad base*, which is
+/// a base that is not a base at all.
 fn read_failure(req: &Request, error: inklkunn_core::read::ReadError) -> Problem {
-    use inklkunn_core::read::ReadError;
+    use inklkunn_core::read::{PageProblem, ReadError};
     match error {
+        ReadError::PageUnreadable(PageProblem::Hidden) => {
+            req.unacceptable_with("base-hidden", req.t.get(Key::ApiBaseHidden))
+        }
         ReadError::InvalidTitle(_) | ReadError::PageUnreadable(_) | ReadError::NoSuchView(_) => {
             req.unacceptable(Invalid::BadBase)
         }

@@ -606,4 +606,19 @@ fn every_reason_a_write_is_refused_with_is_described_by_the_operations_that_can_
             }
         }
     }
+    // The reasons the API says of a proposal's base that are no `Invalid` of the service: a hidden base (K-3) is told apart from a
+    // *bad base*, and every operation that reads a base describes both.
+    for word in ["bad-base", "base-hidden"] {
+        for op in [
+            "createProposal",
+            "saveDraft",
+            "submitDraft",
+            "reviseProposal",
+        ] {
+            assert!(
+                described(&document, op).contains(&format!("`{word}`")),
+                "{op} does not describe `{word}`"
+            );
+        }
+    }
 }

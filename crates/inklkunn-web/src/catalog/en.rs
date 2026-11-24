@@ -3122,6 +3122,10 @@ pub const CATALOG: &[Entry] = &[
         "api.drop_unused",
         "`drops` names the paragraph marked ^{block} on {path}, but this change does not leave it out of that page, or no claim is said in it. Name only the paragraphs this change removes.",
     ),
+    msg(
+        "api.base_hidden",
+        "The text this proposal is based on is hidden by moderation, so nothing can be written against it. Base the proposal on the wiki's current version.",
+    ),
     msg("claim_thread.in_reply_to_link", "In reply to {comment}."),
     msg("claim_thread.comment_label", "comment {number}"),
     msg(

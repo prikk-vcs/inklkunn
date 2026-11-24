@@ -35,7 +35,7 @@ pub(crate) const EMPTY_BODY_LIMIT: usize = 1024;
 /// word the server can say is described by the operations that can say it).
 macro_rules! proposing_reasons {
     () => {
-        " The `reason` of an `unacceptable` it answers is one of: `summary-missing`, `summary-too-long`, `summary-not-one-line`, `too-many-sources`, `bad-source`, `nothing-proposed`, `too-large`, `page-too-large`, `bad-path`, `duplicate-path`, `rename-to-self`, `path-outside-pages`, `path-not-canonical`, `path-collides`, `front-unreadable`, `bad-base`, `knowledge-curated`, `knowledge-not-shown`, `knowledge-unjudged`, `knowledge-status-unjudged`, `knowledge-retired-unexplained`, `knowledge-check-unstated`, `governance-path`, `governance-mixed`."
+        " The `reason` of an `unacceptable` it answers is one of: `summary-missing`, `summary-too-long`, `summary-not-one-line`, `too-many-sources`, `bad-source`, `nothing-proposed`, `too-large`, `page-too-large`, `bad-path`, `duplicate-path`, `rename-to-self`, `path-outside-pages`, `path-not-canonical`, `path-collides`, `front-unreadable`, `bad-base`, `base-hidden`, `knowledge-curated`, `knowledge-not-shown`, `knowledge-unjudged`, `knowledge-status-unjudged`, `knowledge-retired-unexplained`, `knowledge-check-unstated`, `governance-path`, `governance-mixed`."
     };
 }
 

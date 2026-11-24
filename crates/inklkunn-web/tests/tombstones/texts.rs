@@ -155,10 +155,23 @@ impl Story {
 
 /// A write of the API, as `who` (a session), naming `tag` in `If-Match`.
 async fn api_post(w: &World, who: &AccountId, uri: &str, tag: &str, body: String) -> Answer {
+    api_post_in(w, who, uri, tag, body, "en").await
+}
+
+/// The same, asking for the answer in `lang`.
+async fn api_post_in(
+    w: &World,
+    who: &AccountId,
+    uri: &str,
+    tag: &str,
+    body: String,
+    lang: &str,
+) -> Answer {
     use tower::ServiceExt as _;
     let req = axum::http::Request::builder()
         .method("POST")
         .uri(uri)
+        .header("accept-language", lang)
         .header(axum::http::header::HOST, crate::common::APP)
         .header("content-type", "application/json")
         .header("x-test-account", who.as_str())
@@ -351,13 +364,39 @@ async fn the_apis_revise_refuses_to_copy_the_hidden_text_into_a_new_revision() {
         body.clone(),
     )
     .await;
-    assert!(
-        a.status.is_client_error(),
-        "refused: {} {}",
+    // The refusal has a reason of its own, and a sentence in each language: not a *bad base*, which is no base at all.
+    assert_eq!(
         a.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "refused: {}",
         a.body()
     );
+    let problem: serde_json::Value = serde_json::from_slice(&a.bytes).expect("a problem");
+    assert_eq!(problem["reason"], "base-hidden", "{problem}");
+    assert!(
+        problem["detail"]
+            .as_str()
+            .is_some_and(|e| e.contains("hidden by moderation")),
+        "{problem}"
+    );
     nothing_hidden_in(&a, "the API's revise");
+    let ja = api_post_in(
+        &s.w,
+        &s.author,
+        &format!("/handbook/-/api/v1/proposals/{id}/revisions"),
+        &tag,
+        body.clone(),
+        "ja",
+    )
+    .await;
+    let problem: serde_json::Value = serde_json::from_slice(&ja.bytes).expect("a problem");
+    assert_eq!(problem["reason"], "base-hidden", "{problem}");
+    assert!(
+        problem["detail"]
+            .as_str()
+            .is_some_and(|e| e.contains("モデレーションにより非表示")),
+        "{problem}"
+    );
     assert_eq!(before, revisions(&s), "no revision was made");
     // Once the text is no longer hidden, the same request is made.
     s.unhide_all().await;
