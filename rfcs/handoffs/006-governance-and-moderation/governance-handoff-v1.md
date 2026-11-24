@@ -259,3 +259,39 @@ Hand back as `006-governance-g-t4-g-t6-corrections-review-request.md` (H-1 and H
 **G-T7 is assignable now, beside the round** (`006-governance-g-t7-review-request.md`). It should read page text only
 through H-1's reader once that lands. Readiness (R-5) gets its section here when G-T7 is approved.
 
+## The corrections and G-T7 reviewed: the J round (2026-11-24; binding, before readiness)
+
+- **Approved:** H-2 – H-7, N-1, A-1 – A-6, S-1 – S-3
+  (`.git-exclude/reviewed/006-governance-g-t4-g-t6-corrections-review-result.md`).
+- **G-T7: Conditionally Approved** (`.git-exclude/reviewed/006-governance-g-t7-review-result.md`).
+- **H-1: Changes Requested again.**
+- **Nothing is pushed** until the J round is approved.
+
+The details and tests are in the results. In short:
+- **J-1, the rule.** The text of P at X is hidden exactly when the change that last wrote P at or before X (following
+  pure renames back) has its content hidden. A case that cannot be settled hides, and no bound answers *not hidden*.
+  The hash comparison, the 20-file cap and the 1,000-id cap go.
+- **J-2, the cost.** A lookup that does not grow with the history or the hidden changes. The recommended mechanism is a
+  derived index of each block's writes and renames, built as tips advance and rebuilt after `clear_derived`. Counting
+  tests run with 0, 10 and 1,000 hidden changes, and with 3 and 3,000 revisions.
+- **J-3, no way around the reader.**
+  - `Tip` is made only by `tip()`.
+  - One point type for any other block, through which text, transclusions, extract and materialize, the knowledge and
+    title indexes at a base, and diff hunks all pass the reader.
+  - The scan covers `read(`, `materialize`, `with_tree`, `with_block_tree`, `diff(` and `Tip {`.
+- **J-4.** The moderation form lists the later revisions that still hold most of the added lines.
+- **J-5.** One source of truth for hidden content.
+- **K-1 – K-3.**
+  - K-1: the export masks old *Undo:* quotes.
+  - K-2: `BeyondHistory` dropped.
+  - K-3: `base-hidden` on revise, and `prepare()` applying an unreadable file's replacement when the bytes are unchanged.
+- **G-1 – G-3.**
+  - G-1: the rung and the block on appeal decisions (V19) and on the change view's *accepted by*.
+  - G-2: the policy page fails closed, and one hidden governance change marks only itself.
+  - G-3: G-T7's reads move to J-3's point type.
+
+Hand back as `006-governance-h1-review-request.md`, with G-1 – G-3. **Readiness (R-5)** is assigned when it is
+approved: the end-to-end proof on a real prikk, the upgrade from 0.3.0, the CHANGELOG lead, the report, the longer
+kill-matrix soak with every failing log kept, and the list of Japanese messages changed after
+`.git-exclude/ja-review/0.4.0-messages-since-sign-off.md`.
+
