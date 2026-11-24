@@ -173,7 +173,7 @@ fn summary_of(info: &ChangeInfo) -> String {
 
 /// Is `summary` what a rollback made before H-7 wrote for a change whose summary was `hidden`: *Undo: * and those words, cut to the
 /// line the message allows?
-pub(super) fn quoted_summary(summary: &str, hidden: &str) -> bool {
+pub(crate) fn quoted_summary(summary: &str, hidden: &str) -> bool {
     !hidden.trim().is_empty() && summary == fit(&format!("Undo: {hidden}"))
 }
 

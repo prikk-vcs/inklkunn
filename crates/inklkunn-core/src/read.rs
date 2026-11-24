@@ -96,6 +96,7 @@ use inklkunn_store::{
 };
 
 use links::PageLinks;
+pub(crate) use rollback::quoted_summary;
 use scratch::Extract;
 
 use crate::knowledge::index::{self as knowledge_index, KnowledgeIndex};

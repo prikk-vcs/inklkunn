@@ -1024,6 +1024,84 @@ fn the_summary_and_the_people_of_a_change_are_hidden_on_every_page_it_touched_an
     }
 }
 
+/// The extended history and two rollbacks made before H-7, which quoted the summary of the change they undid: one of Zed's
+/// change (B4), one of Yuki's first (B5).
+fn stand_with_old_undos() -> (Stand, String, String) {
+    let quoting = |of: &str, proposal: &str, base_block: &str| {
+        Message::proposal(
+            summary(&format!("Undo: {of}")),
+            ProposalId::parse(proposal).expect("a proposal id"),
+            account(ANN, "Ann"),
+            account(BEN, "Ben"),
+            base(base_block),
+        )
+        .expect("a message")
+    };
+    let mut blocks = history_extended();
+    let undo_zed = "b10c000000000000000000000000000000000000000000000000000000000007";
+    let undo_yuki = "b10c000000000000000000000000000000000000000000000000000000000008";
+    blocks.push(block(
+        undo_zed,
+        8,
+        "a7",
+        &quoting(SUMMARY_B4, "019a0000-0000-7000-8000-000000000e07", B6),
+        &[("modify", "pages/One.md")],
+    ));
+    blocks.push(block(
+        undo_yuki,
+        9,
+        "a8",
+        &quoting(SUMMARY_B5, "019a0000-0000-7000-8000-000000000e08", undo_zed),
+        &[("modify", "pages/Two.md")],
+    ));
+    (
+        Stand {
+            files: files(),
+            blocks,
+        },
+        undo_zed.to_owned(),
+        undo_yuki.to_owned(),
+    )
+}
+
+#[test]
+fn an_old_undo_that_quotes_a_hidden_summary_is_masked_in_the_bundle_as_that_summary_is() {
+    let (stand, undo_zed, undo_yuki) = stand_with_old_undos();
+
+    // Nothing hidden: the lines are as they were written, the quoted words and all.
+    let r = extended("undo-open");
+    let files = export_as(&r, &stand, "bundle");
+    assert_eq!(
+        *at(&line_of(&files, "p1", &undo_zed), "/summary"),
+        format!("Undo: {SUMMARY_B4}")
+    );
+
+    // The summary of Zed's change is hidden: the rollback that quoted it loses its summary, with the reason of that hide, and
+    // the words are in no file of the bundle. The rollback of a summary that is not hidden is untouched.
+    let r = extended("undo-hidden");
+    page_hide(&r, B4, &["summary"]);
+    let files = export_as(&r, &stand, "bundle");
+    let line = line_of(&files, "p1", &undo_zed);
+    assert_eq!(*at(&line, "/suppressed"), serde_json::json!(["summary"]));
+    assert_eq!(*at(&line, "/reasons/summary"), "personal-data");
+    assert!(!has_member(&line, "summary"), "{line}");
+    assert!(!everything(&files).contains(SUMMARY_B4));
+    let other = line_of(&files, "p2", &undo_yuki);
+    assert!(!has_member(&other, "suppressed"), "{other}");
+    assert_eq!(*at(&other, "/summary"), format!("Undo: {SUMMARY_B5}"));
+    the_bundle_is_whole(&files);
+
+    // An unhide gives the words back.
+    let r = extended("undo-unhidden");
+    let hide = page_hide(&r, B4, &["summary"]);
+    unhide(&r, &hide);
+    let files = export_as(&r, &stand, "bundle");
+    assert_eq!(
+        *at(&line_of(&files, "p1", &undo_zed), "/summary"),
+        format!("Undo: {SUMMARY_B4}")
+    );
+}
+
 #[test]
 fn the_revision_of_an_accepted_proposal_is_the_revision_of_the_block_it_sealed() {
     let r = extended("proposal");

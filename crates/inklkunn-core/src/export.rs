@@ -46,12 +46,13 @@ use inklkunn_prikk::{ExtractBounds, Materialized, Point, Storage, StorageError};
 use inklkunn_signer::message::{Actor, Message};
 use inklkunn_store::{
     AcceptanceStore, AccountStore, ActStore, ClaimCommentRow, ClaimThreadStore, GovernanceStore,
-    RootLayout, ViewActOutcome, WikiId, WikiRecord,
+    ReasonCategory, RootLayout, ViewActOutcome, WikiId, WikiRecord,
 };
 use sha2::{Digest, Sha256};
 
 use crate::bundle::{self, ExportFacts, ManifestFacts, markdown_text, yaml_quote};
 use crate::knowledge::ClaimId;
+use crate::read::quoted_summary;
 use crate::read::scratch::{Extract, Partial, partial_name_too_long_by};
 
 mod suppression;
@@ -513,6 +514,9 @@ fn histories(
         accounts: BTreeMap::new(),
         suppressed: BTreeMap::new(),
     };
+    // The summaries now hidden of the changes already seen, with their reasons: what a rollback made before H-7 quoted (*Undo:
+    // {summary}*) is read against them (a rollback is newer than the change it undoes, so the oldest-first walk has it by then).
+    let mut hidden_summaries: Vec<(String, ReasonCategory)> = Vec::new();
     for block in history.blocks.iter().skip(from).rev() {
         let change = storage
             .change(repo, &block.block_id)
@@ -528,6 +532,9 @@ fn histories(
                 .and_then(|m| Message::parse(&m.message).ok());
             let (kind, summary, authors, source) = match &message {
                 Some(m) => {
+                    if let Some(reason) = of_change.summary {
+                        hidden_summaries.push((m.summary().as_str().to_owned(), reason));
+                    }
                     // A hidden person is not a person of the bundle for this change (`users.yaml`).
                     let named = if of_change.author.is_none() {
                         vec![m.proposed_by(), m.accepted_by()]
@@ -561,7 +568,14 @@ fn histories(
                         out.unattributed += 1;
                         continue;
                     };
-                    let hidden = suppressions.of_revision(&block.block_id, path);
+                    let mut hidden = suppressions.of_revision(&block.block_id, path);
+                    // A summary that quotes a hidden one is hidden as it is (H-7): the old words are in the message for good.
+                    if hidden.summary.is_none() && summary.starts_with("Undo: ") {
+                        hidden.summary = hidden_summaries
+                            .iter()
+                            .find(|(words, _)| quoted_summary(&summary, words))
+                            .map(|(_, reason)| *reason);
+                    }
                     let mut line = serde_json::json!({
                         "block": block.block_id,
                         "seq": block.update_seq,
