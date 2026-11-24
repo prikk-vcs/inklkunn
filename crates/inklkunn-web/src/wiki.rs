@@ -450,6 +450,10 @@ pub(crate) enum Shown {
     Unavailable {
         wiki: Box<WikiRecord>,
     },
+    /// The text of a block cannot be checked yet (RFC 006 D-8, correction L-11): no text, and **no tombstone**.
+    NotChecked {
+        wiki: Box<WikiRecord>,
+    },
 }
 
 fn read_page(services: &Services, headers: &HeaderMap, t: T, slug: &str, raw_rest: &str) -> Shown {
@@ -530,6 +534,7 @@ fn read_page(services: &Services, headers: &HeaderMap, t: T, slug: &str, raw_res
             view: view.strip_prefix("heads/").unwrap_or(&view).to_owned(),
         },
         Err(ReadError::PageUnreadable(problem)) => Shown::Unreadable { wiki, problem },
+        Err(ReadError::NotCheckedYet) => Shown::NotChecked { wiki },
         Err(ReadError::CouldNotBeReadNow(cause)) => {
             (services.log)(&format!(
                 "a page of wiki `{}` could not be read now: {cause}",
@@ -719,6 +724,15 @@ pub(crate) fn present(page: &Page, shown: Shown) -> Response {
             StatusCode::SERVICE_UNAVAILABLE,
             Key::UnavailableHeading,
             vec![page.get(Key::UnavailableBody)],
+            Vec::new(),
+            None,
+        )),
+        Shown::NotChecked { wiki } => with_retry_after(notice(
+            page,
+            &wiki,
+            StatusCode::SERVICE_UNAVAILABLE,
+            Key::UncheckedHeading,
+            vec![page.get(Key::UncheckedBody)],
             Vec::new(),
             None,
         )),

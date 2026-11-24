@@ -77,6 +77,8 @@ enum Found {
     Never,
     /// The history could not be asked now.
     Unavailable,
+    /// The text of the page before its removal cannot be checked yet (correction L-11): no way back is offered, and no hide is said.
+    NotChecked,
 }
 
 fn find(ctx: &Ctx, t: T, title: &str, view: Option<&str>) -> Result<Found, Box<Response>> {
@@ -121,6 +123,7 @@ fn find(ctx: &Ctx, t: T, title: &str, view: Option<&str>) -> Result<Found, Box<R
             ctx.log(&format!("a history could not be read now: {cause}"));
             Ok(Found::Unavailable)
         }
+        Err(ReadError::NotCheckedYet) => Ok(Found::NotChecked),
         Err(_) => Ok(Found::Never),
     }
 }
@@ -130,6 +133,15 @@ fn other(page: &Page, ctx: &Ctx, title: &str, found: Found) -> Response {
     match found {
         Found::Page(href) => see(&href),
         Found::Never => missing_page(page, &ctx.wiki, title),
+        Found::NotChecked => with_retry_after(notice(
+            page,
+            &ctx.wiki,
+            StatusCode::SERVICE_UNAVAILABLE,
+            Key::UncheckedHeading,
+            vec![page.get(Key::UncheckedBody)],
+            Vec::new(),
+            None,
+        )),
         Found::Unavailable => with_retry_after(notice(
             page,
             &ctx.wiki,
@@ -420,6 +432,7 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_, summary: &str) -> Response {
                 }
                 // The plan went away between the offer and the click: the offer is not what it was.
                 Ok(RollbackOutcome::No(_)) => return changed(page, ctx, subject),
+                Err(ReadError::NotCheckedYet) => return unchecked(page, ctx),
                 Err(e) => return unavailable(e.to_string()),
             }
         }
@@ -427,6 +440,7 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_, summary: &str) -> Response {
             let text = match services.read.source_at(&ctx.wiki, from, &removed.path) {
                 Ok(Some(text)) => text,
                 Ok(None) => return changed(page, ctx, subject),
+                Err(ReadError::NotCheckedYet) => return unchecked(page, ctx),
                 Err(e) => return unavailable(e.to_string()),
             };
             let summary = if summary.is_empty() {
@@ -452,6 +466,19 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_, summary: &str) -> Response {
         )),
         Err(error) => refused(page, ctx, &error, Vec::new()),
     }
+}
+
+/// The text of the page cannot be checked yet: no draft is made, no hide is named, and waiting helps.
+fn unchecked(page: &Page, ctx: &Ctx) -> Response {
+    with_retry_after(notice(
+        page,
+        &ctx.wiki,
+        StatusCode::SERVICE_UNAVAILABLE,
+        Key::UncheckedHeading,
+        vec![page.get(Key::UncheckedBody)],
+        Vec::new(),
+        None,
+    ))
 }
 
 fn changed(page: &Page, ctx: &Ctx, subject: &Subject_) -> Response {

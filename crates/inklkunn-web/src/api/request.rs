@@ -240,6 +240,7 @@ pub(crate) fn from_read(services: &Services, wiki: &WikiRecord, error: ReadError
             view.strip_prefix("heads/").unwrap_or(&view).to_owned(),
         ),
         ReadError::PageUnreadable(_) => Problem::new(Code::PageUnreadable),
+        ReadError::NotCheckedYet => super::problem::not_checked_yet(),
         ReadError::CouldNotBeReadNow(cause) => {
             (services.log)(&format!(
                 "the API could not read wiki `{}` now: {cause}",

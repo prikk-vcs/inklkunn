@@ -292,6 +292,13 @@ impl Tips {
         )
     }
 
+    /// The names of the open views, from the held answer, if it is younger than the hold (correction L-1).
+    pub(super) fn fresh_names(&self, wiki: &WikiId) -> Option<Vec<String>> {
+        let held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        let h = held.get(wiki).filter(|h| h.at.elapsed() < self.ttl)?;
+        Some(h.views.iter().map(|(name, _)| name.clone()).collect())
+    }
+
     /// The state id `view` had the last time prikk was asked, however long ago, even if the hold was forgotten
     /// since. `None` when this process has never seen the view.
     pub(super) fn last_known(&self, wiki: &WikiId, view: &str) -> Option<String> {

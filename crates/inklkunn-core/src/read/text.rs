@@ -73,6 +73,29 @@ pub(super) enum FileAt {
     Hidden(Box<Mark>),
 }
 
+/// **Is this the refusal that says the file is not there?** (correction L-3) prikk says so in its own words, which are not the same in
+/// every version it admits: `path P does not exist at REF` (0.54.0 – 0.58.0), the refusal `path-not-found` where it reports one (0.57.0
+/// and later, under `--format json`), and the test double's `path P not found`. A refusal that is none of them (an unknown block, a
+/// bound, a damaged store) says nothing of the file.
+fn is_no_such_path(e: &StorageError, path: &str) -> bool {
+    let StorageError::Refused {
+        kind,
+        reason: None,
+        message,
+        ..
+    } = e
+    else {
+        return false;
+    };
+    match kind.as_deref() {
+        Some(kind) => kind == "path-not-found",
+        None => {
+            message.contains(&format!("path {path} does not exist"))
+                || *message == format!("path {path} not found")
+        }
+    }
+}
+
 /// What the tip check and the audited reveal read: the bytes, unchecked.
 pub(super) enum Unchecked {
     /// The bytes.
@@ -119,36 +142,32 @@ impl ReadService {
     ) -> Result<FileAt, ReadError> {
         // What is there and whose it is are two questions; the second is asked first, so that a hidden text is never read.
         let unattributed = match self.authorship(wiki, view, block_id, path)? {
-            Authorship::Hidden(mark) | Authorship::Unattributed(mark) => {
-                return Ok(FileAt::Hidden(mark));
-            }
-            Authorship::NothingHidden | Authorship::Shown { written: true, .. } => None,
-            // Nobody is recorded as having written the path: a text there cannot be attributed.
-            Authorship::Shown {
-                written: false,
-                unattributed,
-            } => Some(unattributed),
+            Authorship::Hidden(mark) => return Ok(FileAt::Hidden(mark)),
+            Authorship::NothingHidden | Authorship::Shown { written: true } => false,
+            // Nobody is recorded as having written the path: a text there cannot be attributed (and is not given).
+            Authorship::Shown { written: false } => true,
         };
         let point = Point::Block(block_id.to_owned());
         match self
             .storage
             .read(&self.layout.repo_dir(&wiki.id), &point, path, max)
         {
-            Ok(bytes) => Ok(match unattributed {
-                Some(mark) => FileAt::Hidden(mark),
-                None => FileAt::Held(bytes),
-            }),
+            Ok(_) if unattributed => Err(ReadError::NotCheckedYet),
+            Ok(bytes) => Ok(FileAt::Held(bytes)),
             Err(refused @ StorageError::Refused { .. }) => {
                 // Either there was no such file then, or it is over the size read: `stat` tells.
                 match self
                     .storage
                     .stat(&self.layout.repo_dir(&wiki.id), &point, path)
                 {
+                    Ok(_) if unattributed => Err(ReadError::NotCheckedYet),
+                    Ok(_) => Ok(FileAt::TooLarge(refused)),
+                    // Where nobody is recorded as having written the path, only *not found* says there is no text: any other
+                    // refusal says nothing, and a text that may be there is unattributed (correction L-3).
+                    Err(e) if unattributed && !is_no_such_path(&e, path) => {
+                        Err(ReadError::NotCheckedYet)
+                    }
                     Err(StorageError::Refused { .. }) => Ok(FileAt::Missing),
-                    Ok(_) => Ok(match unattributed {
-                        Some(mark) => FileAt::Hidden(mark),
-                        None => FileAt::TooLarge(refused),
-                    }),
                     Err(e) => Err(self.storage_error(wiki, e)),
                 }
             }
@@ -258,9 +277,10 @@ impl ReadService {
 
     // ------------------------------------------------------------------------------------ what is hidden
 
-    /// Is the text of the file at `path` at the block hidden, and by which hiding? `Ok(None)` when it is not (and when the
-    /// service has no tombstones). **A store that cannot be read is an error**, never *nothing hidden*; a text that cannot be
-    /// attributed is hidden (see the account in `read/writes.rs`).
+    /// Is the text of the file at `path` at the block hidden, and by which hiding? `Ok(None)` when it is not. **A store that cannot
+    /// be read is an error**, never *nothing hidden*, and so is a service that has no record of what moderation hides (correction
+    /// L-8); a text that cannot be attributed is [`ReadError::NotCheckedYet`], never *not hidden* (see the account in
+    /// `read/writes.rs`).
     pub fn hidden_text(
         &self,
         wiki: &WikiRecord,
@@ -269,20 +289,19 @@ impl ReadService {
         path: &str,
     ) -> Result<Option<Mark>, ReadError> {
         Ok(match self.authorship(wiki, view, block_id, path)? {
-            Authorship::NothingHidden | Authorship::Shown { written: true, .. } => None,
-            Authorship::Hidden(mark) | Authorship::Unattributed(mark) => Some(*mark),
+            Authorship::NothingHidden | Authorship::Shown { written: true } => None,
+            Authorship::Hidden(mark) => Some(*mark),
             // Nobody is recorded as having written the path: nothing is hidden if nothing is there, and a text that is there
-            // cannot be attributed. One `stat` tells which.
-            Authorship::Shown {
-                written: false,
-                unattributed,
-            } => match self.storage.stat(
+            // cannot be attributed. One `stat` tells which, and only the refusal that says *not found* says there is no file
+            // (correction L-3): any other refusal says nothing, and is no more a file's absence than the file is.
+            Authorship::Shown { written: false } => match self.storage.stat(
                 &self.layout.repo_dir(&wiki.id),
                 &Point::Block(block_id.to_owned()),
                 path,
             ) {
-                Ok(_) => Some(*unattributed),
-                Err(StorageError::Refused { .. }) => None,
+                Ok(_) => return Err(ReadError::NotCheckedYet),
+                Err(e) if is_no_such_path(&e, path) => None,
+                Err(StorageError::Refused { .. }) => return Err(ReadError::NotCheckedYet),
                 Err(e) => return Err(self.storage_error(wiki, e)),
             },
         })

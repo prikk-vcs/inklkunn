@@ -96,3 +96,46 @@ fn a_removed_page_and_the_offer_to_restore_it_are_surfaces_and_not_routes_that_s
     // The form for an unreadable knowledge file reads the tip only, for its stated reason.
     assert_eq!(classify("/{slug}/-/knowledge/replace"), Class::ShowsNone);
 }
+
+/// **Every surface says what it does when the text it needs of a block cannot be checked yet** (correction L-11): the row has an
+/// answer, the test that shows it is named and its own, a reason is a sentence, and **a surface that shows the text of a page or a
+/// file at a block never says it reads none**.
+#[test]
+fn every_surface_says_what_it_does_for_a_text_that_cannot_be_checked_yet() {
+    let mut tests = HashSet::new();
+    for s in SURFACES {
+        match s.unchecked {
+            Unchecked::TryAgain(test) | Unchecked::LeavesOut(test) => {
+                assert!(
+                    test.starts_with("unchecked_"),
+                    "{}: tests of this outcome are named `unchecked_…`",
+                    s.id
+                );
+                assert!(tests.insert(test), "{test} is the test of two surfaces");
+            }
+            Unchecked::NoBlockText(reason) => {
+                assert!(
+                    reason.chars().count() >= 16,
+                    "{}: a reason is a sentence, not a word",
+                    s.id
+                );
+            }
+        }
+    }
+    // The surfaces that read a text at a block answer *try again*, or leave out what needs it.
+    for id in [
+        "page-as-of",
+        "diff",
+        "change-view",
+        "proposal-page",
+        "restore-offer",
+    ] {
+        assert!(
+            matches!(
+                surface(id).map(|s| s.unchecked),
+                Some(Unchecked::TryAgain(_))
+            ),
+            "{id}"
+        );
+    }
+}

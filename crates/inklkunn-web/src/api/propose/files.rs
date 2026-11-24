@@ -397,6 +397,7 @@ fn read_failure(req: &Request, error: inklkunn_core::read::ReadError) -> Problem
         ReadError::InvalidTitle(_) | ReadError::PageUnreadable(_) | ReadError::NoSuchView(_) => {
             req.unacceptable(Invalid::BadBase)
         }
+        ReadError::NotCheckedYet => crate::api::problem::not_checked_yet(),
         ReadError::CouldNotBeReadNow(cause) => {
             req.log(&format!("a proposal's base could not be read now: {cause}"));
             Problem::new(crate::api::problem::Code::Unavailable)

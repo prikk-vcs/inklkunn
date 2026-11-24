@@ -12,6 +12,15 @@ use inklkunn_core::read::{DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE};
 
 use super::problem::Code;
 
+/// What every operation that reads the text of a page or a file at a change says of a text that cannot be checked yet (handoff G-T4,
+/// correction L-11): `unavailable`, `503`, `Retry-After`, and the `reason` `not-checked-yet`, which says nothing of a hide. A test
+/// holds that each operation that can say it describes it.
+macro_rules! unchecked_text {
+    () => {
+        " **A text that cannot be checked yet** (whose it is has not been settled: no one is recorded as having written it, or the index of who wrote each text has not reached its change) is not given, and no hide is said of it: the answer is `unavailable` (`503`, with `Retry-After`) with the `reason` `not-checked-yet`; asking again after a little while settles it."
+    };
+}
+
 /// What a parameter may hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
@@ -393,7 +402,10 @@ pub(crate) const REVISION: Doc = Doc {
     operation_id: "getRevision",
     tag: "history",
     summary: "Get one recorded change",
-    description: "One change of the view's history, by the `id` a history or a list of changes gave: what it did (`did`, at most 200 things, `omitted` counts the rest), what its message says about the people, and, when `title` is given, the page as it stood after the change (the permalink of the page's version; a title that had no page then is `page-not-found`). A change whose operations are too large to list says so (`too_large`). An id that is not a change of this view is `change-not-found`, whatever the reason.",
+    description: concat!(
+        "One change of the view's history, by the `id` a history or a list of changes gave: what it did (`did`, at most 200 things, `omitted` counts the rest), what its message says about the people, and, when `title` is given, the page as it stood after the change (the permalink of the page's version; a title that had no page then is `page-not-found`). A change whose operations are too large to list says so (`too_large`). An id that is not a change of this view is `change-not-found`, whatever the reason.",
+        unchecked_text!()
+    ),
     query: REVISION_PARAMS,
     answer: Answer::Schema("Revision"),
     write: None,
@@ -413,7 +425,10 @@ pub(crate) const DIFF: Doc = Doc {
     operation_id: "getDiff",
     tag: "history",
     summary: "Compare one page between two points of the history",
-    description: "`path` is required and is the page's title: a diff is always for one page, and the API has no diff of a whole tree. The lines are the version control's own; `marked` segments are the wiki's word-level refinement of a removed line followed by an added one, and never change a character of a line. At most 4000 lines are returned (`truncated`). A page that is the same at both points is `unchanged`, one that exists at `to` only is `added`, at `from` only is `removed`.",
+    description: concat!(
+        "`path` is required and is the page's title: a diff is always for one page, and the API has no diff of a whole tree. The lines are the version control's own; `marked` segments are the wiki's word-level refinement of a removed line followed by an added one, and never change a character of a line. At most 4000 lines are returned (`truncated`). A page that is the same at both points is `unchanged`, one that exists at `to` only is `added`, at `from` only is `removed`.",
+        unchecked_text!()
+    ),
     query: DIFF_PARAMS,
     answer: Answer::Schema("Diff"),
     write: None,

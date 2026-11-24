@@ -14,15 +14,15 @@ use crate::common::{
     shown, state_id, with_accounts,
 };
 
-const FOO: &str = "pages/Foo.md";
-const BAR: &str = "pages/Bar.md";
+pub(crate) const FOO: &str = "pages/Foo.md";
+pub(crate) const BAR: &str = "pages/Bar.md";
 const BAZ: &str = "pages/Baz.md";
 
-fn foo(body: &str) -> String {
+pub(crate) fn foo(body: &str) -> String {
     format!("---\ntitle: Foo\n---\n\n{body}\n")
 }
 
-fn bar(body: &str) -> String {
+pub(crate) fn bar(body: &str) -> String {
     format!("---\ntitle: Bar\n---\n\n{body}\n")
 }
 
@@ -33,15 +33,15 @@ const EARLIER: &str = "The text of the earlier change is hidden, so no differenc
 
 /// The wiki: 1 creates `Foo` and `Bar`; 2 (B) writes the data to `Foo`; 3 (C) edits `Bar` only; 4 (D) takes the data out of `Foo`
 /// and is the tip.
-struct Story {
-    w: World,
-    maintainer: AccountId,
-    author: AccountId,
-    reader: AccountId,
+pub(crate) struct Story {
+    pub(crate) w: World,
+    pub(crate) maintainer: AccountId,
+    pub(crate) author: AccountId,
+    pub(crate) reader: AccountId,
 }
 
 /// `Foo`'s history by the shape: the same story, or the data moved before D.
-fn story() -> Story {
+pub(crate) fn story() -> Story {
     let w = with_accounts(World::new(
         "handbook",
         "The Handbook",
@@ -87,7 +87,7 @@ fn story() -> Story {
 }
 
 impl Story {
-    fn viewers(&self) -> Vec<Option<AccountId>> {
+    pub(crate) fn viewers(&self) -> Vec<Option<AccountId>> {
         vec![
             None,
             Some(self.reader.clone()),
@@ -96,12 +96,12 @@ impl Story {
         ]
     }
 
-    async fn get(&self, uri: &str, who: Option<&AccountId>) -> Answer {
+    pub(crate) async fn get(&self, uri: &str, who: Option<&AccountId>) -> Answer {
         get_as(&self.w, uri, who).await
     }
 
     /// Hide the content of change `n`, as the moderator.
-    async fn hide(&self, n: u64) -> Answer {
+    pub(crate) async fn hide(&self, n: u64) -> Answer {
         post_form(
             &self.w,
             "/handbook/-/moderate",
@@ -279,7 +279,7 @@ async fn a_diff_from_a_block_before_the_hidden_change_says_which_side_is_hidden(
 }
 
 /// A proposal of the author's whose base is C: it replaces `Foo`, which C held as B wrote it. Its address.
-async fn proposal_on_c(s: &Story) -> String {
+pub(crate) async fn proposal_on_c(s: &Story) -> String {
     let fields = [
         ("op", "submit".to_owned()),
         ("pages", "1".to_owned()),

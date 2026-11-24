@@ -222,14 +222,20 @@ fn open_services(paths: &Paths, holder: &str, create: bool) -> Services {
         .expect("prikk at the floor"),
     );
     let leases = WikiLeases::new(write_leases, store.clone(), holder, LeaseConfig::default());
-    let reads = Arc::new(ReadService::new(
-        storage.clone(),
-        store.clone(),
-        store.clone(),
-        layout.clone(),
-        ReadConfig::default(),
-        None,
-    ));
+    let reads = Arc::new(
+        ReadService::new(
+            storage.clone(),
+            store.clone(),
+            store.clone(),
+            layout.clone(),
+            ReadConfig::default(),
+            None,
+        )
+        .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+            store.clone(),
+            store.clone(),
+        ))),
+    );
     let authorizer = Authorizer::new(
         Arc::new(StoreAuthz::new(store.clone(), store.clone())),
         store.clone(),

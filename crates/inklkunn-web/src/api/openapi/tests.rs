@@ -500,6 +500,65 @@ fn a_restricted_account_refusal_is_described_with_every_member_the_server_emits(
     }
 }
 
+/// **The reason of a text that cannot be checked yet is described by every operation that can say it** (the reasons-tie of correction
+/// L-11): the word is taken from the problem the server builds, which is `unavailable` with `Retry-After`, and each operation that reads
+/// the text of a page or a file at a change names it.
+#[test]
+fn the_reason_of_a_text_that_cannot_be_checked_yet_is_described_by_the_operations_that_can_say_it()
+{
+    use crate::api::problem::not_checked_yet;
+    let document = document(&real_table(), &docs()).unwrap();
+    let problem = not_checked_yet();
+    assert_eq!(problem.code, crate::api::problem::Code::Unavailable);
+    assert_eq!(
+        problem.code.status(),
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
+    let body = problem.body(crate::catalog::T::new(crate::catalog::EN));
+    let word = body
+        .pointer("/reason")
+        .and_then(Value::as_str)
+        .unwrap()
+        .to_owned();
+    assert_eq!(word, "not-checked-yet");
+    // Its detail is its own sentence, in both languages, and not the one that says the server could not read the wiki.
+    let ja = problem.body(crate::catalog::T::new(
+        crate::catalog::Lang::from_tag("ja").unwrap(),
+    ));
+    assert_ne!(body.pointer("/detail"), ja.pointer("/detail"));
+    assert!(
+        body.pointer("/detail")
+            .and_then(Value::as_str)
+            .unwrap()
+            .contains("cannot be checked yet")
+    );
+    let in_any_method = |id: &str| -> String {
+        for item in document.at("/paths").as_object().unwrap().values() {
+            for method in ["get", "post", "put", "patch", "delete"] {
+                if let Some(op) = item.get(method)
+                    && op.at("/operationId") == id
+                {
+                    return op.at("/description").as_str().unwrap().to_owned();
+                }
+            }
+        }
+        panic!("no operation {id}");
+    };
+    for op in [
+        "getRevision",
+        "getDiff",
+        "createProposal",
+        "saveDraft",
+        "submitDraft",
+        "reviseProposal",
+    ] {
+        assert!(
+            in_any_method(op).contains(&format!("`{word}`")),
+            "{op} does not describe `{word}`"
+        );
+    }
+}
+
 /// **Every reason a proposal can be refused with is described** (the reasons-tie of handoff G-T1 correction C-7, widened by G-T7
 /// to the older `Invalid` reasons, `bad-path` among them): each word the server can say for an `unacceptable` write is named by
 /// the description of each operation that can say it. A new `Invalid` has to be classified here to compile.

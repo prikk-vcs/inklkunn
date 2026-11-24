@@ -156,6 +156,10 @@ impl World {
                 ReadConfig::default(),
                 None,
             )
+            .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+                store.clone(),
+                store.clone(),
+            )))
             .with_governance_snapshots(store.clone())
             .with_platform_limits(limits),
         );

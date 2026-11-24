@@ -439,6 +439,8 @@ pub(crate) struct Problem {
     said: Vec<(&'static str, String)>,
     /// How long waiting is advised, in seconds: the `Retry-After` header.
     retry_after: Option<u64>,
+    /// A sentence that stands in for the code's own `detail`.
+    detail: Option<Key>,
 }
 
 impl Problem {
@@ -449,7 +451,16 @@ impl Problem {
             members: Vec::new(),
             said: Vec::new(),
             retry_after: None,
+            detail: None,
         }
+    }
+
+    /// This sentence for the `detail`, in place of the code's own: a code that says one thing in general and a more exact one for
+    /// a case that has its own `reason`.
+    #[must_use]
+    pub(crate) fn detailed(mut self, detail: Key) -> Problem {
+        self.detail = Some(detail);
+        self
     }
 
     /// A value the sentences name (`{name}`), also given as the member `name`.
@@ -488,6 +499,7 @@ impl Problem {
     /// The body, in the language of `t`: `type`, `title`, `status`, `detail`, `hint`, then the members.
     pub(crate) fn body(&self, t: T) -> Value {
         let (title, detail, hint) = self.code.keys();
+        let detail = self.detail.unwrap_or(detail);
         let say = |key: Key| {
             let mut msg = t.msg(key);
             for (name, value) in self.named.iter().chain(&self.said) {
@@ -510,6 +522,17 @@ impl Problem {
         body.insert("hint".to_owned(), json!(say(hint)));
         Value::Object(body)
     }
+}
+
+/// The `reason` of an `unavailable` answer that is **not a failure of the server's**: the text of a block cannot be checked yet.
+pub(crate) const NOT_CHECKED_YET: &str = "not-checked-yet";
+
+/// **The text of a block cannot be checked yet** (RFC 006 D-8, correction L-11): `unavailable` (`503`, with `Retry-After`) and the
+/// `reason` [`NOT_CHECKED_YET`]. It says no hide: whose the text is has not been settled, so none of it is given, and waiting helps.
+pub(crate) fn not_checked_yet() -> Problem {
+    Problem::new(Code::Unavailable)
+        .named("reason", NOT_CHECKED_YET)
+        .detailed(Key::ProblemUnavailableUncheckedDetail)
 }
 
 #[cfg(test)]

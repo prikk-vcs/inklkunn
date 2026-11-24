@@ -197,14 +197,20 @@ impl World {
                 audit.clone(),
             )
         };
-        let reads = Arc::new(ReadService::new(
-            storage.clone(),
-            store.clone(),
-            store.clone(),
-            layout.clone(),
-            ReadConfig::default(),
-            None,
-        ));
+        let reads = Arc::new(
+            ReadService::new(
+                storage.clone(),
+                store.clone(),
+                store.clone(),
+                layout.clone(),
+                ReadConfig::default(),
+                None,
+            )
+            .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+                store.clone(),
+                store.clone(),
+            ))),
+        );
         let proposals = Arc::new(ProposalService::new(
             store.clone(),
             store.clone(),

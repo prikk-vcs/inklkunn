@@ -121,6 +121,8 @@ pub const CATALOG: &[Entry] = &[
         "unavailable.body",
         "Try again in a little while. If it keeps happening, tell the person who runs this server.",
     ),
+    msg("unchecked.heading", "This text cannot be checked yet"),
+    msg("unchecked.body", "Try again in a little while."),
     msg("no_view.heading", "There is no such view"),
     msg("no_view.body", "This wiki has no view called {view}."),
     msg("invalid_title.heading", "That title cannot name a page"),
@@ -361,6 +363,10 @@ pub const CATALOG: &[Entry] = &[
         "The server could not read the wiki just now.",
     ),
     msg("problem.unavailable.hint", "Try again in a little while."),
+    msg(
+        "problem.unavailable.unchecked_detail",
+        "The text cannot be checked yet: whose it is has not been settled, so none of it is given.",
+    ),
     msg("problem.failed.title", "The request failed"),
     msg(
         "problem.failed.detail",

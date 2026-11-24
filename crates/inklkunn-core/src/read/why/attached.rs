@@ -66,7 +66,17 @@ impl ReadService {
             ..Attached::default()
         };
         for path in wanted.into_iter().take(limit) {
-            let bytes = match self.file_at(wiki, None, block_id, path, MAX_FILE_BYTES as u64)? {
+            let found = match self.file_at(wiki, None, block_id, path, MAX_FILE_BYTES as u64) {
+                Ok(found) => found,
+                // Whose the file is cannot be checked yet: it is not read, and it is counted among the files that could not be
+                // listed (a hide is not the reason, so no tombstone is said; correction L-11).
+                Err(ReadError::NotCheckedYet) => {
+                    out.unreadable += 1;
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+            let bytes = match found {
                 FileAt::Held(bytes) => bytes,
                 // No such file at the block, or one over the size a knowledge file may have.
                 FileAt::Missing | FileAt::TooLarge(_) => {

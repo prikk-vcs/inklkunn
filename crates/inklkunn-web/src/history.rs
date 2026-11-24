@@ -114,6 +114,7 @@ pub(crate) fn shown_for(
             view: view.strip_prefix("heads/").unwrap_or(&view).to_owned(),
         },
         ReadError::PageUnreadable(problem) => Shown::Unreadable { wiki, problem },
+        ReadError::NotCheckedYet => Shown::NotChecked { wiki },
         ReadError::CouldNotBeReadNow(cause) => {
             (services.log)(&format!(
                 "{what} of wiki `{}` could not be read now: {cause}",

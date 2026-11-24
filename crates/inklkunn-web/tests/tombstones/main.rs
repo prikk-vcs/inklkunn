@@ -20,6 +20,7 @@ mod removed;
 mod surfaces;
 mod texts;
 mod tip;
+mod unchecked;
 
 use axum::http::StatusCode;
 use common::{

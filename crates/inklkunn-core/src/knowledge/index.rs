@@ -171,10 +171,12 @@ impl KnowledgeIndex {
     }
 
     /// This index **without** the files `hidden` names: their rows, the relations, links and places that are theirs, and the places
-    /// of a hidden claim. What a block that is not a tip has once the one reader has been asked of each file (handoff G-T4,
-    /// correction J-3). A link of a claim that is shown to a hidden source stays: the claim's own file says it.
+    /// of a hidden claim, **and the places on the pages `hidden_pages` names by their frontmatter `id`** (correction L-5: a page
+    /// whose text is hidden gives no digest and no state of its paragraphs). What a block that is not a tip has once the one reader
+    /// has been asked of each file (handoff G-T4, correction J-3). A link of a claim that is shown to a hidden source stays: the
+    /// claim's own file says it.
     #[must_use]
-    pub fn without(&self, hidden: Vec<HiddenFile>) -> KnowledgeIndex {
+    pub fn without(&self, hidden: Vec<HiddenFile>, hidden_pages: &[String]) -> KnowledgeIndex {
         let gone = |kind: HiddenKind, id: &str| hidden.iter().any(|h| h.kind == kind && h.id == id);
         let mut rows = self.rows().clone();
         rows.claims.retain(|c| !gone(HiddenKind::Claim, &c.id));
@@ -183,6 +185,9 @@ impl KnowledgeIndex {
             .retain(|r| !gone(HiddenKind::Claim, &r.claim));
         rows.links.retain(|l| !gone(HiddenKind::Claim, &l.claim));
         rows.anchors.retain(|a| !gone(HiddenKind::Claim, &a.claim));
+        // A place on a page whose text is hidden says whether the paragraph is there and what its digest is, which is read from
+        // the text; the page was found by the frontmatter `id` the text carries.
+        rows.anchors.retain(|a| !hidden_pages.contains(&a.page_id));
         let mut index = KnowledgeIndex::new(self.tip.clone(), rows);
         index.hidden = hidden;
         index

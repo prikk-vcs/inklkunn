@@ -38,6 +38,8 @@ struct State {
     /// How many times `materialize` was asked, whether it answered or not.
     materialized: u64,
     fail_read: Option<StorageError>,
+    /// What `stat` answers instead of the file's size, when set.
+    fail_stat: Option<StorageError>,
     delay: Duration,
     /// The message sealed with each version's block (T5): `history` lists one block per version.
     messages: BTreeMap<u64, String>,
@@ -167,6 +169,10 @@ impl Fake {
     /// How many extracts were asked of this double so far.
     pub(crate) fn materialized(&self) -> u64 {
         self.state().materialized
+    }
+
+    pub(crate) fn fail_stat(&self, e: Option<StorageError>) {
+        self.state().fail_stat = e;
     }
 
     pub(crate) fn fail_read(&self, e: Option<StorageError>) {
@@ -335,6 +341,9 @@ impl Storage for Fake {
     }
 
     fn stat(&self, _: &Path, point: &Point, path: &str) -> Result<FileMeta> {
+        if let Some(e) = &self.state().fail_stat {
+            return Err(e.clone());
+        }
         // Only a block's files are described (a permalink asks); a view's are not needed by any read.
         if matches!(point, Point::View(_)) {
             return Err(unsupported("cat"));
@@ -736,6 +745,12 @@ impl World {
             config,
             None,
         )
+        // The record of what moderation hides is the store's, empty until a test records a hide: a service that has none does not
+        // serve the text of a block (correction L-8).
+        .with_tombstones(Arc::new(crate::tombstone::Tombstones::new(
+            store.clone(),
+            store.clone(),
+        )))
     }
 
     /// A world of pages given as `(title, extra frontmatter lines, body)`: `pages/<title>.md` with

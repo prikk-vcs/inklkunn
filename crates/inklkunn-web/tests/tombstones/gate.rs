@@ -78,6 +78,51 @@ fn the_lists_name_only_routes_that_exist() {
     );
 }
 
+/// **Every surface says what it does for a text that cannot be checked yet, and shows it** (correction L-11): a row that answers
+/// *try again* or leaves out what needs the text has its test, by its name, in the unchecked file; and a surface that shows the text
+/// of a page or a file at a block never says that it reads none.
+#[test]
+fn every_surface_has_its_unchecked_test_in_the_unchecked_file() {
+    use inklkunn_core::tombstone::surfaces::Unchecked;
+    let file = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/tombstones/unchecked.rs"),
+    )
+    .unwrap();
+    let mut tests = 0;
+    for s in SURFACES {
+        match s.unchecked {
+            Unchecked::TryAgain(test) | Unchecked::LeavesOut(test) => {
+                tests += 1;
+                assert!(
+                    file.contains(&format!("async fn {test}()")),
+                    "the surface `{}` has no test `{test}` of a text that cannot be checked yet",
+                    s.id
+                );
+            }
+            Unchecked::NoBlockText(_) => {}
+        }
+    }
+    assert!(tests >= 6, "only {tests} surfaces answer the outcome");
+    // The surfaces that show a page's or a file's text at a block do not say that they read none.
+    for id in [
+        "page-as-of",
+        "diff",
+        "change-view",
+        "proposal-page",
+        "restore-offer",
+        "why-is-this-here",
+        "rules-history",
+    ] {
+        assert!(
+            !matches!(
+                inklkunn_core::tombstone::surfaces::surface(id).map(|s| s.unchecked),
+                Some(Unchecked::NoBlockText(_)) | None
+            ),
+            "{id}"
+        );
+    }
+}
+
 #[test]
 fn every_surface_has_its_test_in_the_surfaces_file() {
     let file = std::fs::read_to_string(

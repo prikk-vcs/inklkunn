@@ -147,6 +147,11 @@ pub const CATALOG: &[Entry] = &[
         "unavailable.body",
         "しばらくしてから、もう一度お試しください。それでも解決しない場合は、このサーバーの管理者にお知らせください。",
     ),
+    msg("unchecked.heading", "この本文はまだ確認できません"),
+    msg(
+        "unchecked.body",
+        "しばらくしてから、もう一度お試しください。",
+    ),
     msg("no_view.heading", "そのビューはありません"),
     msg(
         "no_view.body",
@@ -410,6 +415,10 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "problem.unavailable.hint",
         "しばらくしてから、もう一度お試しください。",
+    ),
+    msg(
+        "problem.unavailable.unchecked_detail",
+        "この本文はまだ確認できません。誰の書いたものか確かめられていないため、本文は何も表示しません。",
     ),
     msg("problem.failed.title", "リクエストに失敗しました"),
     msg(

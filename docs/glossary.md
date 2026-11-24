@@ -193,6 +193,8 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `unreadable.advice` | its last sentence | "The people who write this wiki can fix it." | "この Wiki を書いている人が直すことができます。" |
 | `unavailable.heading` | the heading of the page shown when the page could not be read just now | "This page could not be read now" | "今はこのページを読み込めません" |
 | `unavailable.body` | its sentence | "Try again in a little while. If it keeps happening, tell the person who runs this server." | "しばらくしてから、もう一度お試しください。それでも解決しない場合は、このサーバーの管理者にお知らせください。" |
+| `unchecked.heading` | the heading of the page shown when the text of a page or of a file at a change cannot be checked yet (no hide is the reason: whose the text is has not been settled, so none of it is given and no tombstone is shown) | "This text cannot be checked yet" | "この本文はまだ確認できません" |
+| `unchecked.body` | its sentence | "Try again in a little while." | "しばらくしてから、もう一度お試しください。" |
 | `no_view.heading` | the heading of the page shown for a view the wiki does not have | "There is no such view" | "そのビューはありません" |
 | `no_view.body` | its sentence; `{view}` is the name asked for | "This wiki has no view called {view}." | "この Wiki に「{view}」というビューはありません。" |
 | `invalid_title.heading` | the heading of the page shown for a title that cannot name a page | "That title cannot name a page" | "そのタイトルはページの名前にできません" |
@@ -278,6 +280,7 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `problem.unavailable.title` | the API's problem detail `unavailable`: the title | "Cannot be read now" | "現在は読み取れません" |
 | `problem.unavailable.detail` | the API's problem detail `unavailable`: the detail | "The server could not read the wiki just now." | "サーバーが今、Wiki を読み取れませんでした。" |
 | `problem.unavailable.hint` | the API's problem detail `unavailable`: the hint | "Try again in a little while." | "しばらくしてから、もう一度お試しください。" |
+| `problem.unavailable.unchecked_detail` | the API's problem detail `unavailable` with the `reason` `not-checked-yet`: the detail, in place of the one above | "The text cannot be checked yet: whose it is has not been settled, so none of it is given." | "この本文はまだ確認できません。誰の書いたものか確かめられていないため、本文は何も表示しません。" |
 | `problem.failed.title` | the API's problem detail `failed`: the title | "The request failed" | "リクエストに失敗しました" |
 | `problem.failed.detail` | the API's problem detail `failed`: the detail | "Something went wrong on the server, so the request was not served." | "サーバー側で問題が起きたため、リクエストを処理できませんでした。" |
 | `problem.failed.hint` | the API's problem detail `failed`: the hint | "Try again in a little while, and tell the person who runs this server if it keeps happening." | "しばらくしてからもう一度お試しになり、続く場合はこのサーバーの管理者にお知らせください。" |

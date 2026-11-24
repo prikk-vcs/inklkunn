@@ -404,7 +404,7 @@ fn two_paragraphs(first: &str, second: &str) -> String {
 
 /// A wiki whose change 2 reworded `Home` and attached a source whose reference carries `ZEBRA`, and whose change 3 reworded `Home`
 /// again and edited that source (so neither file of change 2 is the tip's, and change 2's content may be hidden).
-fn attaching() -> (World, AccountId) {
+pub(crate) fn attaching() -> (World, AccountId) {
     use inklkunn_core::knowledge::{Reference, ReferenceForm, SourceKind, source_path};
     let w = with_accounts(World::new(
         "handbook",

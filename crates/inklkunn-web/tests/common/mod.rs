@@ -429,7 +429,8 @@ impl Storage for Fake {
             })
             .ok_or_else(|| StorageError::Refused {
                 verb: "cat",
-                message: format!("no {path}"),
+                // The words of prikk's own refusal for a path that is not there (the reader tells it from any other refusal).
+                message: format!("precondition not met: path {path} does not exist at {id}"),
                 kind: None,
                 reason: None,
             })

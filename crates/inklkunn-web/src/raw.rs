@@ -104,7 +104,7 @@ pub(crate) async fn raw_content(
         | None => {
             return nothing(&headers);
         }
-        Some((_, Err(ReadError::CouldNotBeReadNow(_)), _)) => {
+        Some((_, Err(ReadError::CouldNotBeReadNow(_) | ReadError::NotCheckedYet), _)) => {
             return with_retry_after(pages::plain(
                 StatusCode::SERVICE_UNAVAILABLE,
                 language,

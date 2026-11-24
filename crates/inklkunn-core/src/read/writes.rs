@@ -8,20 +8,21 @@
 //! covers the change it was made on. A change that **moved** P here without touching its bytes (a *pure rename*) wrote nothing: the
 //! text is that of the change that last wrote the path it came from, which is followed back, as far as the renames go.
 //!
-//! **Any case that cannot be settled hides.** No bound, no cap and no failure to read ever answers *not hidden*:
+//! **Any case that cannot be settled gives nothing.** No bound, no cap and no failure to read ever answers *not hidden*:
 //!
 //! - a change that **may have written** P, and that the index cannot say did not (an operation whose path prikk could not resolve,
 //!   an operation of a kind this reading does not know, a change too large to list), is counted among the writers of P and of
 //!   every path after it: the text is hidden when it **or** the change before it that certainly wrote P is. That is exact, not
 //!   merely safe: if neither is hidden, whichever wrote the text is not;
 //! - a block whose effect on the files its operations do not list (a merge, a repair or an import block, or prikk's own rollback)
-//!   is **opaque**: a text that passes through one cannot be attributed, and is hidden while any change of the wiki is;
+//!   is **opaque**: a text that passes through one cannot be attributed, and is not given while any change of the wiki is hidden;
 //! - a text that is there while the index knows nobody who wrote it (a block the index does not hold, a path the index has no row
-//!   for, a rename chain longer than [`MAX_RENAME_HOPS`], a log too long to be indexed, an index that is not built that far yet)
-//!   is **unattributed**, and hidden in the same way.
+//!   for, a rename chain longer than [`MAX_RENAME_HOPS`], a log too long to be indexed, an index that is not built that far yet, a
+//!   block that only a view the request did not ask holds) is **unattributed**.
 //!
-//! Such a text is answered with the mark of the newest hiding of a content in force in the wiki (a hide that is in force
-//! is what makes the question worth asking), because a tombstone must say something, and nothing else of the text is given.
+//! **An unattributed text is not hidden, and it is not served** (correction L-11). It is answered with
+//! [`ReadError::NotCheckedYet`] (*this text cannot be checked yet; try again in a little while*), which shows **no tombstone**: a
+//! tombstone says that a moderator hid something, and this is not that. A hide is the one reason a tombstone is shown for.
 //!
 //! # What *wrote* means in prikk's block model
 //!
@@ -57,13 +58,34 @@
 //! a read, and builds nothing), kept as the view's log grows (a new block costs one `show`), and built again after
 //! [`ReadService::clear_derived`]. **A build is bounded per call**: at most [`MAX_INDEXED_SHOWS`] blocks that cost a process
 //! (blocks the service already holds cost none), so a first request on a long history does not wait for all of it: it indexes what
-//! it may and answers *hidden* for what it could not reach (**never an error, and never the text**); the requests after it go on
+//! it may and answers *not checked yet* for what it could not reach (**never the text**); the requests after it go on
 //! from where it stopped, and each makes the next one cheaper. Reading a view's log further back than [`MAX_WINDOW`] blocks is
-//! not done: the oldest blocks of a longer history are unindexed, and a text written there is unattributed (hidden while any
-//! change is hidden).
+//! not done: the oldest blocks of a longer history are unindexed, and a text written there is unattributed.
 //!
 //! **Every view is read under the same rule.** The index is per view (a view's log orders its blocks), built when a read names the
 //! view, and a read of a block that is not in the view's log is unattributed.
+//!
+//! # Which view holds a block (correction L-1)
+//!
+//! A block that the **default** view's log does not hold at all (a proposal's base in another view) is looked for in the wiki's other
+//! views, because the changes before a block are the block's own whichever view's log it is read in. **Only then**: a block that the
+//! default view's log holds and the index has not reached yet is *not yet checked*, and is never looked for elsewhere. What it costs
+//! is bounded and paid once:
+//!
+//! - that **a view does not hold a block** is kept in the derived store with the view's tip ([`inklkunn_store::DerivedStore::note_block_absent`]), so
+//!   the question is asked once for the view's tip and never again for a request;
+//! - the list of the open views is the one a `branch list` gave and the tip holds ([`ReadConfig::tip_ttl`](super::ReadConfig::tip_ttl)),
+//!   not a call of its own;
+//! - **at most [`MAX_VIEWS_ASKED`] views that were not known not to hold the block are asked in one request**; the rest are answered
+//!   *not checked yet*, and the next request asks the ones after them (each answer kept), so that a block of a wiki of a hundred
+//!   views is found in a few requests and none of them pays for all.
+//!
+//! # A read of an index that is dropped under it (correction L-9)
+//!
+//! The index has a **generation** ([`inklkunn_store::DerivedStore::writes_generation`]) that dropping it moves forward. A reader reads it **before** the
+//! index's state and again **after** the rows it asked for, and a reader whose two numbers differ gives no answer: the rows it read
+//! may be those of an index that was being dropped (no row for a path, with a state that still says the index began at the view's first
+//! block, is *nobody wrote this*, which is not true of an index that is gone).
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -92,31 +114,53 @@ pub const MAX_RENAME_HOPS: usize = 32;
 /// the paths it was moved to are candidates too. A file moved more often than this is followed that far, and the answer says so
 /// ([`LaterWriters::moves_unfollowed`]).
 pub const MAX_FOLLOWED_MOVES: usize = 8;
+/// The most views a request that looks for a block outside the default view asks, **counting only the views that were not known
+/// not to hold it** (what a view is found not to hold is kept). The rest are answered *not checked yet*.
+pub const MAX_VIEWS_ASKED: usize = 16;
 
 /// What the index says of the text of a path at a block, for the reader.
+///
+/// **A text that cannot be attributed is no outcome of this type**: it is the error [`ReadError::NotCheckedYet`], so that no
+/// consumer can serve it, or show a tombstone for it, by forgetting a case.
 #[derive(Debug, Clone)]
 pub(super) enum Authorship {
     /// No change of the wiki has its content hidden: nothing is asked of the index.
     NothingHidden,
     /// The text is hidden by this hiding: the change that wrote it has its content hidden.
     Hidden(Box<Mark>),
-    /// The text cannot be attributed (see the module's account) and is hidden, with the mark of the newest hiding in force.
-    Unattributed(Box<Mark>),
     /// The text is no hidden change's.
     Shown {
-        /// The index names a change that wrote the text (it is not a path nobody is recorded as having written, or one removed).
+        /// The index names a change that wrote the text. When it is `false` (a path nobody is recorded as having written, or one
+        /// removed) a text that is **there** is unattributed, and the reader that finds one answers [`ReadError::NotCheckedYet`].
         written: bool,
-        /// What a text that turns out to have no writer is hidden with.
-        unattributed: Box<Mark>,
     },
 }
 
-/// What a reader of paths at one block is given by [`ReadService::reading`].
+/// What asking one view's index for a block found (correction L-1).
+enum Located {
+    /// The block's place in the view's index.
+    At(IndexedBlock),
+    /// The view's log, as far as it is read, does not hold the block: nothing about it can be learned from this view.
+    NotInLog,
+    /// The view's log holds the block and the index has not reached it (the bound of a call), or the request has no more views to
+    /// ask: *not checked yet*.
+    NotYet,
+}
+
+/// What [`ReadService::advance_writes`] found of the block it was asked to build toward.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Reach {
+    /// The block is in the view's log (or none was asked for): the index was built as far as the bound of a call allowed.
+    InLog,
+    /// The block is not in the part of the view's log that is read: building the index does not reach it.
+    NotInLog,
+}
+
+/// What a reader of paths at one block is given by [`ReadService::reading`]. **A block the index cannot place is no value of it**:
+/// that is [`ReadError::NotCheckedYet`].
 pub(super) enum Reading {
     /// No change of the wiki has its content hidden.
     NothingHidden,
-    /// The block is not in the view's index, so no path can be attributed at it: every text there is hidden with this mark.
-    Unattributed(Box<Mark>),
     /// The block's place in the view's index.
     Ready(Ready),
 }
@@ -126,7 +170,8 @@ pub(super) struct Ready {
     view: String,
     at: IndexedBlock,
     state: WritesState,
-    unattributed: Box<Mark>,
+    /// The index's generation when the reader began: the reader gives no answer if it is not this at the end.
+    generation: u64,
     /// What each change asked about is hidden by, by number, kept for the paths of one read.
     hidden: RefCell<HashMap<u64, Option<Mark>>>,
 }
@@ -269,13 +314,14 @@ impl ReadService {
         ReadError::CouldNotBeReadNow(Cause::Store(e))
     }
 
-    fn tombstone_failed(&self, e: crate::tombstone::Unreadable) -> ReadError {
+    pub(super) fn tombstone_failed(&self, e: crate::tombstone::Unreadable) -> ReadError {
         self.store_failures.fetch_add(1, Ordering::Relaxed);
         ReadError::CouldNotBeReadNow(Cause::Store(StoreError::Backend(e.0)))
     }
 
     /// **Whose text is the text of `path` at the block `block_id` of `view`** (the default view for `None`), as the module's account
-    /// says. The one function [`ReadService::hidden_text`] and the reads of a file are decided by.
+    /// says. The one function [`ReadService::hidden_text`] and the reads of a file are decided by. A text that cannot be attributed is
+    /// [`ReadError::NotCheckedYet`].
     pub(super) fn authorship(
         &self,
         wiki: &WikiRecord,
@@ -285,14 +331,14 @@ impl ReadService {
     ) -> Result<Authorship, ReadError> {
         Ok(match self.reading(wiki, view, block_id)? {
             Reading::NothingHidden => Authorship::NothingHidden,
-            Reading::Unattributed(mark) => Authorship::Unattributed(mark),
             Reading::Ready(ready) => self.authorship_in(wiki, &ready, path)?,
         })
     }
 
     /// **What a reader of many paths at one block asks once**: whether any change of the wiki has its content hidden (one query), and
     /// the block's place in the view's index (built toward it within the bound of a call). [`ReadService::authorship_in`] then answers
-    /// for each path.
+    /// for each path. **A service without the record of what moderation hides is an error** (correction L-8), and so is a block the
+    /// index cannot place ([`ReadError::NotCheckedYet`]).
     pub(super) fn reading(
         &self,
         wiki: &WikiRecord,
@@ -300,71 +346,112 @@ impl ReadService {
         block_id: &str,
     ) -> Result<Reading, ReadError> {
         let Some(tombstones) = &self.tombstones else {
-            return Ok(Reading::NothingHidden);
+            return Err(ReadError::CouldNotBeReadNow(Cause::ModerationNotConfigured));
         };
-        let Some(unattributed) = tombstones
+        if tombstones
             .content_hide_in_force(&wiki.id)
             .map_err(|e| self.tombstone_failed(e))?
-            .map(Box::new)
-        else {
+            .is_none()
+        {
             return Ok(Reading::NothingHidden);
-        };
-        // The view whose log orders the blocks: the one named, or the default view's. A block that is not in the default view's log
-        // (a proposal's base in another view) is looked for in the wiki's other views: **the changes before a block are the
-        // block's own, whichever view's log it is read in**, so the answer is the same, and a block that no view has is unattributed.
-        let view = view.unwrap_or(&wiki.default_view);
-        let mut found = self
-            .indexed_through(wiki, view, block_id)?
-            .map(|at| (view.to_owned(), at));
-        if found.is_none() && view == wiki.default_view {
-            for other in self.open_views(wiki)? {
-                if other == wiki.default_view {
-                    continue;
-                }
-                if let Some(at) = self.indexed_through(wiki, &other, block_id)? {
-                    found = Some((other, at));
-                    break;
-                }
-            }
         }
-        let Some((view, at)) = found else {
-            return Ok(Reading::Unattributed(unattributed));
-        };
+        let (view, at) = self.view_holding(wiki, view.unwrap_or(&wiki.default_view), block_id)?;
+        // The generation is read **before** the state, and again after the rows (see the module's account).
+        let generation = self
+            .derived
+            .writes_generation(&wiki.id, &view)
+            .map_err(|e| self.writes_failed(e))?;
         let Some(state) = self
             .derived
             .writes_state(&wiki.id, &view)
             .map_err(|e| self.writes_failed(e))?
         else {
-            return Ok(Reading::Unattributed(unattributed));
+            return Err(ReadError::NotCheckedYet);
         };
         Ok(Reading::Ready(Ready {
             view,
             at,
             state,
-            unattributed,
+            generation,
             hidden: RefCell::new(HashMap::new()),
         }))
     }
 
-    /// [`ReadService::authorship`] of one path of the block [`ReadService::reading`] settled.
+    /// **The view whose index places the block, and the block's place in it.** The view named is asked first. A block that is not in
+    /// the **default** view's log (a proposal's base in another view) is looked for in the wiki's other views, within the bounds of
+    /// the module's account ([`MAX_VIEWS_ASKED`]): **the changes before a block are the block's own, whichever view's log it is read
+    /// in**, so the answer is the same. A block the default view's log holds and the index has not reached, a block no view asked
+    /// holds, and a request that had to leave views unasked are [`ReadError::NotCheckedYet`].
+    fn view_holding(
+        &self,
+        wiki: &WikiRecord,
+        view: &str,
+        block_id: &str,
+    ) -> Result<(String, IndexedBlock), ReadError> {
+        // The view named is always asked: the bound is of the views looked through after it.
+        let mut unbounded = usize::MAX;
+        match self.locate(wiki, view, block_id, &mut unbounded)? {
+            Located::At(at) => return Ok((view.to_owned(), at)),
+            Located::NotYet => return Err(ReadError::NotCheckedYet),
+            Located::NotInLog if view != wiki.default_view => return Err(ReadError::NotCheckedYet),
+            Located::NotInLog => {}
+        }
+        let mut allowed = MAX_VIEWS_ASKED;
+        for other in self.open_views_held(wiki)? {
+            if other == wiki.default_view {
+                continue;
+            }
+            match self.locate(wiki, &other, block_id, &mut allowed) {
+                Ok(Located::At(at)) => return Ok((other, at)),
+                Ok(Located::NotInLog) => {}
+                // The block is in that view's log, and the index has not reached it; or no more views may be asked now.
+                Ok(Located::NotYet) => return Err(ReadError::NotCheckedYet),
+                // A view that closed since the list was read has nothing to ask.
+                Err(ReadError::NoSuchView(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        // No view holds it.
+        Err(ReadError::NotCheckedYet)
+    }
+
+    /// [`ReadService::authorship`] of one path of the block [`ReadService::reading`] settled. **Checked at its end** that the index
+    /// it read is the one `ready` began with (the generation, see the module's account): an index dropped meanwhile is
+    /// [`ReadError::NotCheckedYet`], whatever the rows said.
     pub(super) fn authorship_in(
         &self,
         wiki: &WikiRecord,
         ready: &Ready,
         path: &str,
     ) -> Result<Authorship, ReadError> {
+        let outcome = self.authorship_of(wiki, ready, path)?;
+        let now = self
+            .derived
+            .writes_generation(&wiki.id, &ready.view)
+            .map_err(|e| self.writes_failed(e))?;
+        if now != ready.generation {
+            return Err(ReadError::NotCheckedYet);
+        }
+        Ok(outcome)
+    }
+
+    fn authorship_of(
+        &self,
+        wiki: &WikiRecord,
+        ready: &Ready,
+        path: &str,
+    ) -> Result<Authorship, ReadError> {
         let Some(tombstones) = &self.tombstones else {
-            return Ok(Authorship::NothingHidden);
+            return Err(ReadError::CouldNotBeReadNow(Cause::ModerationNotConfigured));
         };
         let Ready {
             view,
             at,
             state,
-            unattributed,
             hidden,
+            ..
         } = ready;
         let view = view.as_str();
-        let unattributed = unattributed.clone();
         let mut candidates: Vec<u64> = Vec::new();
         let (mut path, mut number) = (path.to_owned(), at.number);
         let mut written = false;
@@ -375,7 +462,7 @@ impl ReadService {
                 .last_writes(&wiki.id, view, &path, number)
                 .map_err(|e| self.writes_failed(e))?;
             if writers.more || writers.maybes.iter().any(|m| m.opaque) {
-                return Ok(Authorship::Unattributed(unattributed));
+                return Err(ReadError::NotCheckedYet);
             }
             candidates.extend(writers.maybes.iter().map(|m| m.number));
             match writers.last {
@@ -402,7 +489,7 @@ impl ReadService {
                     kind: WriteKind::Carried { from },
                 }) => {
                     let Some(before) = carried.checked_sub(1) else {
-                        return Ok(Authorship::Unattributed(unattributed));
+                        return Err(ReadError::NotCheckedYet);
                     };
                     path = from;
                     number = before;
@@ -414,15 +501,15 @@ impl ReadService {
                         settled = true;
                         break;
                     }
-                    return Ok(Authorship::Unattributed(unattributed));
+                    return Err(ReadError::NotCheckedYet);
                 }
                 // A row that is no certain one is never `last`.
-                Some(LastWrite { .. }) => return Ok(Authorship::Unattributed(unattributed)),
+                Some(LastWrite { .. }) => return Err(ReadError::NotCheckedYet),
             }
         }
         if !settled {
             // A rename chain longer than the bound.
-            return Ok(Authorship::Unattributed(unattributed));
+            return Err(ReadError::NotCheckedYet);
         }
         candidates.sort_unstable();
         candidates.dedup();
@@ -437,7 +524,7 @@ impl ReadService {
                         .indexed_block_at(&wiki.id, view, number)
                         .map_err(|e| self.writes_failed(e))?
                     else {
-                        return Ok(Authorship::Unattributed(unattributed));
+                        return Err(ReadError::NotCheckedYet);
                     };
                     let verdict = tombstones
                         .content_hidden(&wiki.id, &block.block, block.proposal.as_deref())
@@ -450,33 +537,74 @@ impl ReadService {
                 return Ok(Authorship::Hidden(Box::new(mark)));
             }
         }
-        Ok(Authorship::Shown {
-            written,
-            unattributed,
-        })
+        Ok(Authorship::Shown { written })
     }
 
-    /// The block of `view`'s index that is `block_id`, building the index toward it (within the bound of a call) when it is not
-    /// there yet. `None` when the index does not reach it: not built that far, or not a block of the view. **A store that cannot
-    /// answer is `None` too**: what cannot be attributed is not shown.
+    /// The block of `view`'s index that is `block_id`, built toward when it is not there yet (within the bound of a call): `None`
+    /// when the view's index does not hold it (it is not a block of the view's log, or the index has not reached it). A caller that
+    /// must tell the two apart asks [`ReadService::locate`].
     fn indexed_through(
         &self,
         wiki: &WikiRecord,
         view: &str,
         block_id: &str,
     ) -> Result<Option<IndexedBlock>, ReadError> {
-        let held = |this: &Self| match this.derived.indexed_block(&wiki.id, view, block_id) {
-            Ok(found) => found,
-            Err(_) => {
-                this.store_failures.fetch_add(1, Ordering::Relaxed);
-                None
-            }
-        };
-        if let Some(found) = held(self) {
-            return Ok(Some(found));
+        let mut unbounded = usize::MAX;
+        Ok(match self.locate(wiki, view, block_id, &mut unbounded)? {
+            Located::At(at) => Some(at),
+            Located::NotInLog | Located::NotYet => None,
+        })
+    }
+
+    /// **Where `block_id` is in `view`'s index**, and why not when it is not (correction L-1). What is already known costs a query
+    /// or two and no process: the block held by the index, or the view found not to hold it **at the tip it has now**
+    /// ([`inklkunn_store::DerivedStore::block_absent`]). What is not is **paid for out of `allowed`**, one for each view that has to be
+    /// asked (built toward the block, within the bound of a call), and a view that cannot be paid for is [`Located::NotYet`]: the
+    /// request is not the one to ask it. A view found not to hold the block is **kept** as one, with its tip.
+    fn locate(
+        &self,
+        wiki: &WikiRecord,
+        view: &str,
+        block_id: &str,
+        allowed: &mut usize,
+    ) -> Result<Located, ReadError> {
+        let failed = |e| self.writes_failed(e);
+        if let Some(at) = self
+            .derived
+            .indexed_block(&wiki.id, view, block_id)
+            .map_err(failed)?
+        {
+            return Ok(Located::At(at));
         }
-        self.advance_writes(wiki, view, Some(block_id))?;
-        Ok(held(self))
+        let tip = self.tip(wiki, Some(view))?;
+        if self
+            .derived
+            .block_absent(&wiki.id, view, block_id, tip.block_id())
+            .map_err(failed)?
+        {
+            return Ok(Located::NotInLog);
+        }
+        let Some(left) = allowed.checked_sub(1) else {
+            return Ok(Located::NotYet);
+        };
+        *allowed = left;
+        let held = self.advance_writes(wiki, view, Some(block_id))?;
+        if let Some(at) = self
+            .derived
+            .indexed_block(&wiki.id, view, block_id)
+            .map_err(failed)?
+        {
+            return Ok(Located::At(at));
+        }
+        Ok(match held {
+            Reach::InLog => Located::NotYet,
+            Reach::NotInLog => {
+                self.derived
+                    .note_block_absent(&wiki.id, view, block_id, tip.block_id())
+                    .map_err(failed)?;
+                Located::NotInLog
+            }
+        })
     }
 
     fn writes_lock(&self, wiki: &WikiId, view: &str) -> Arc<Mutex<()>> {
@@ -490,13 +618,14 @@ impl ReadService {
     /// **Index the blocks of `view`'s log that the index does not hold, oldest first**, until the block `until` is in it (when one
     /// is named) or the bound of a call is reached: [`MAX_INDEXED_SHOWS`] blocks that cost a `show`. One reader builds at a time;
     /// the next finds what it built. An index that is not of the log read now (its newest block is not the log's block of that
-    /// number) is dropped and built again. **An error is prikk's or the store's**, never the index being unfinished.
+    /// number) is dropped and built again. **An error is prikk's or the store's**, never the index being unfinished. [`Reach::NotInLog`]
+    /// says that the block asked for is not in the part of the view's log that is read.
     pub(super) fn advance_writes(
         &self,
         wiki: &WikiRecord,
         view: &str,
         until: Option<&str>,
-    ) -> Result<(), ReadError> {
+    ) -> Result<Reach, ReadError> {
         let lock = self.writes_lock(&wiki.id, view);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
         let failed = |e| self.writes_failed(e);
@@ -507,7 +636,7 @@ impl ReadService {
                 .map_err(failed)?
                 .is_some()
         {
-            return Ok(());
+            return Ok(Reach::InLog);
         }
         let tip = self.tip(wiki, Some(view))?;
         let mut state = self.derived.writes_state(&wiki.id, view).map_err(failed)?;
@@ -543,7 +672,7 @@ impl ReadService {
         if let Some(block) = until
             && !infos.iter().any(|b| b.block_id == block)
         {
-            return Ok(());
+            return Ok(Reach::NotInLog);
         }
         let head = state.as_ref().map(|s| s.head_number);
         let mut batch: Vec<BlockWrites> = Vec::new();
@@ -576,7 +705,7 @@ impl ReadService {
             }
         }
         let Some(newest) = batch.last() else {
-            return Ok(());
+            return Ok(Reach::InLog);
         };
         let next = WritesState {
             head_number: newest.number,
@@ -590,13 +719,14 @@ impl ReadService {
         };
         self.derived
             .append_writes(&wiki.id, view, &batch, &next)
-            .map_err(failed)
+            .map_err(failed)?;
+        Ok(Reach::InLog)
     }
 
     /// **Build the default view's index toward its tip now**, in at most [`MAX_WARM_ROUNDS`] calls of the bound of a call each (so at
     /// most `MAX_WARM_ROUNDS * MAX_INDEXED_SHOWS` blocks that cost a process): what a moderator's hide does after it is recorded,
     /// so that the first reads after it find the index built, in a wiki of any size a hide is likely to be made in. Nothing depends
-    /// on it: a read that finds the index short of what it needs builds on, and answers *hidden* for what it could not reach. `true`
+    /// on it: a read that finds the index short of what it needs builds on, and answers *not checked yet* for what it could not reach. `true`
     /// when the index reaches the view's tip.
     pub fn warm_writes(&self, wiki: &WikiRecord) -> Result<bool, ReadError> {
         self.warm_writes_of(wiki, wiki.default_view.as_str())

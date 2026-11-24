@@ -595,6 +595,7 @@ pub(super) fn read_failure(page: &Page, ctx: &Ctx, error: ReadError) -> Response
             view: view.strip_prefix("heads/").unwrap_or(&view).to_owned(),
         },
         ReadError::PageUnreadable(problem) => Shown::Unreadable { wiki, problem },
+        ReadError::NotCheckedYet => Shown::NotChecked { wiki },
         ReadError::CouldNotBeReadNow(cause) => {
             ctx.log(&format!("a page could not be read for a proposal: {cause}"));
             Shown::Unavailable { wiki }

@@ -176,14 +176,20 @@ impl World {
                 store.clone(),
             )
         };
-        let reads = Arc::new(ReadService::new(
-            storage.clone(),
-            store.clone(),
-            store.clone(),
-            layout.clone(),
-            ReadConfig::default(),
-            None,
-        ));
+        let reads = Arc::new(
+            ReadService::new(
+                storage.clone(),
+                store.clone(),
+                store.clone(),
+                layout.clone(),
+                ReadConfig::default(),
+                None,
+            )
+            .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+                store.clone(),
+                store.clone(),
+            ))),
+        );
         let proposals = Arc::new(ProposalService::new(
             store.clone(),
             store.clone(),
@@ -2774,14 +2780,20 @@ fn a_reconfirm_reads_the_pages_of_the_tip_the_acceptance_prepared_on() {
         judged_on: Some(now.clone()),
     };
     every.sources.first_mut().unwrap().judged_on = now;
-    let fresh_reads = Arc::new(ReadService::new(
-        w.storage.clone(),
-        w.store.clone(),
-        w.store.clone(),
-        w.layout.clone(),
-        ReadConfig::default(),
-        None,
-    ));
+    let fresh_reads = Arc::new(
+        ReadService::new(
+            w.storage.clone(),
+            w.store.clone(),
+            w.store.clone(),
+            w.layout.clone(),
+            ReadConfig::default(),
+            None,
+        )
+        .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+            w.store.clone(),
+            w.store.clone(),
+        ))),
+    );
     let sees = ProposalService::new(
         w.store.clone(),
         w.store.clone(),

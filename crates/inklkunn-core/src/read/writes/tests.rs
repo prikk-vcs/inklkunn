@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use inklkunn_prikk::storage::PathRef;
-use inklkunn_prikk::{Change, Operation, Patch};
+use inklkunn_prikk::{Change, Operation, Patch, StorageError};
 use inklkunn_store::{
     Account, AccountId, AccountStore, Actor, DerivedStore, DisplayName, GovernanceStore,
     HiddenItem, HiddenItemKind, HiddenParts, ReasonCategory, Role, TombstoneAct, TombstoneActId,
@@ -119,7 +119,7 @@ impl Rig {
     }
 
     /// The moderator restored what the hide `hide` hid.
-    fn unhide(&self, hide: &TombstoneEventId, n: u64) {
+    pub(in crate::read) fn unhide(&self, hide: &TombstoneEventId, n: u64) {
         self.w
             .store
             .record_tombstone_event(&TombstoneEvent {
@@ -150,6 +150,14 @@ impl Rig {
         self.service
             .text_at(&self.w.wiki, None, &block_id(n), path)
             .expect("a read")
+    }
+
+    /// The text of `path` at the change numbered `n` cannot be checked yet (and no tombstone is said for it).
+    fn is_unchecked(&self, n: u64, path: &str) -> bool {
+        matches!(
+            self.service.text_at(&self.w.wiki, None, &block_id(n), path),
+            Err(ReadError::NotCheckedYet)
+        )
     }
 
     fn is_hidden(&self, n: u64, path: &str) -> bool {
@@ -546,7 +554,7 @@ fn a_change_that_may_have_written_a_path_counts_with_the_one_before_it() {
 }
 
 #[test]
-fn a_text_nobody_is_recorded_as_having_written_is_hidden_while_anything_is() {
+fn a_text_nobody_is_recorded_as_having_written_cannot_be_checked_while_anything_is_hidden() {
     let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
     // The first block's operations name only `Bar`: nobody wrote `Foo` as far as the record goes.
     r.w.fake()
@@ -557,22 +565,23 @@ fn a_text_nobody_is_recorded_as_having_written_is_hidden_while_anything_is() {
         "nothing is hidden: nothing is asked"
     );
     r.hide(2);
-    assert!(r.is_hidden(1, "pages/Foo.md"), "a text with no writer");
-    assert!(r.is_hidden(2, "pages/Foo.md"));
+    // A text with no writer is not given, and no hide is said of it: it cannot be checked (L-11).
+    assert!(r.is_unchecked(1, "pages/Foo.md"), "a text with no writer");
+    assert!(r.is_unchecked(2, "pages/Foo.md"));
     assert!(r.shows(1, "pages/Bar.md"));
     // `hidden_text` agrees (it asks the repository whether anything is there).
-    assert!(
+    assert!(matches!(
         r.service
-            .hidden_text(&r.w.wiki, None, &block_id(2), "pages/Foo.md")
-            .unwrap()
-            .is_some()
-    );
+            .hidden_text(&r.w.wiki, None, &block_id(2), "pages/Foo.md"),
+        Err(ReadError::NotCheckedYet)
+    ));
     // A path nothing is at is not hidden.
     assert!(matches!(r.text(2, "pages/Nothing.md"), BlockText::Missing));
 }
 
 #[test]
-fn a_block_whose_effect_is_not_listed_cannot_be_passed_by_a_text_while_anything_is_hidden() {
+fn a_block_whose_effect_is_not_listed_cannot_be_passed_by_a_text_while_anything_is_hidden_and_the_text_cannot_be_checked()
+ {
     use inklkunn_store::{BlockWrites, PathWrite, WritesState};
     let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
     r.w.fake().set("pages/Bar.md", &bar("z")); // 2: the log says it is a merge (the index is made by hand)
@@ -615,14 +624,14 @@ fn a_block_whose_effect_is_not_listed_cannot_be_passed_by_a_text_while_anything_
     r.hide(3);
     // The text of Foo is block 1's, which is not hidden, but block 2 cannot be passed: nobody can say it did not write Foo.
     assert!(r.shows(1, "pages/Foo.md"));
-    assert!(r.is_hidden(2, "pages/Foo.md"));
-    assert!(r.is_hidden(3, "pages/Foo.md"));
+    assert!(r.is_unchecked(2, "pages/Foo.md"));
+    assert!(r.is_unchecked(3, "pages/Foo.md"));
     // Bar at 3 is block 3's own, which is the hidden one.
     assert!(r.is_hidden(3, "pages/Bar.md"), "block 3 is the hidden one");
 }
 
 #[test]
-fn a_block_that_is_in_no_view_is_unattributed_and_so_hidden_while_anything_is() {
+fn a_block_that_is_in_no_view_cannot_be_checked_while_anything_is_hidden() {
     let r = story();
     assert!(matches!(
         r.service
@@ -633,9 +642,8 @@ fn a_block_that_is_in_no_view_is_unattributed_and_so_hidden_while_anything_is() 
     r.hide(2);
     let got = r
         .service
-        .text_at(&r.w.wiki, None, &"c".repeat(64), "pages/Foo.md")
-        .unwrap();
-    assert!(matches!(got, BlockText::Hidden(_)), "{got:?}");
+        .text_at(&r.w.wiki, None, &"c".repeat(64), "pages/Foo.md");
+    assert!(matches!(got, Err(ReadError::NotCheckedYet)), "{got:?}");
 }
 
 // ------------------------------------------------------------------------------------ the index
@@ -669,7 +677,7 @@ fn the_index_is_built_again_after_the_derived_store_is_cleared() {
 }
 
 #[test]
-fn a_first_read_of_a_long_history_builds_what_it_may_says_hidden_for_what_it_could_not_reach_and_never_fails()
+fn a_first_read_of_a_long_history_builds_what_it_may_says_not_checked_yet_for_what_it_could_not_reach_and_never_gives_the_text()
  {
     let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
     for i in 0..150 {
@@ -678,9 +686,12 @@ fn a_first_read_of_a_long_history_builds_what_it_may_says_hidden_for_what_it_cou
     }
     r.w.fake().set("pages/Foo.md", SECRET); // 152
     r.hide(152);
-    // Block 100 is further than one call builds to: its text is not attributed yet, and hidden, not an error.
-    let (first, calls) = r.w.counted(|| r.text(100, "pages/Bar.md"));
-    assert!(matches!(first, BlockText::Hidden(_)), "{first:?}");
+    // Block 100 is further than one call builds to: its text is not attributed yet, and not given (and no tombstone is said).
+    let (first, calls) = r.w.counted(|| {
+        r.service
+            .text_at(&r.w.wiki, None, &block_id(100), "pages/Bar.md")
+    });
+    assert!(matches!(first, Err(ReadError::NotCheckedYet)), "{first:?}");
     assert!(
         calls.change <= u64::try_from(MAX_INDEXED_SHOWS).unwrap(),
         "one call builds at most {MAX_INDEXED_SHOWS} blocks: {calls:?}"
@@ -689,7 +700,8 @@ fn a_first_read_of_a_long_history_builds_what_it_may_says_hidden_for_what_it_cou
     let mut calls_needed = 1;
     loop {
         calls_needed += 1;
-        if r.shows(100, "pages/Bar.md") {
+        if !r.is_unchecked(100, "pages/Bar.md") {
+            assert!(r.shows(100, "pages/Bar.md"));
             break;
         }
         assert!(calls_needed <= 4, "the build does not go on");
@@ -797,4 +809,263 @@ fn the_later_changes_that_wrote_a_path_are_one_lookup_away() {
         .later_writers(&r.w.wiki, None, &"d".repeat(64), "pages/Foo.md", 10)
         .unwrap();
     assert!(!none.settled);
+}
+
+// ------------------------------------------------------------------------------------ which view holds a block (L-1)
+
+/// A wiki of the default view and twenty others, each a view of one block of its own that wrote `pages/Foo.md`: what a request that
+/// looks for a block outside the default view looks through. Returns the views' tip blocks, in the order the views are asked.
+fn twenty_views() -> (Rig, Vec<String>) {
+    views_of(20)
+}
+
+/// [`twenty_views`] for any number of views.
+fn views_of(count: u64) -> (Rig, Vec<String>) {
+    let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
+    r.w.fake().set("pages/Foo.md", SECRET); // 2
+    r.w.fake().set("pages/Bar.md", &bar("z")); // 3
+    let mut blocks = Vec::new();
+    for i in 0..count {
+        r.w.fake().add_view_with(
+            &format!("heads/v{i:03}"),
+            &[("pages/Foo.md".to_owned(), foo(&format!("view {i}")))],
+        );
+        let n = 1_000_100 + i;
+        r.w.fake()
+            .show(n, shows(vec![op("create-file", &["pages/Foo.md"])]));
+        blocks.push(block_id(n));
+    }
+    r.hide(2);
+    (r, blocks)
+}
+
+impl Rig {
+    fn text_of(&self, block: &str, path: &str) -> Result<BlockText, ReadError> {
+        self.service.text_at(&self.w.wiki, None, block, path)
+    }
+}
+
+#[test]
+fn a_block_another_view_holds_is_found_once_and_a_second_request_costs_no_show_and_no_branch_list()
+{
+    let (r, blocks) = twenty_views();
+    let held = blocks.get(11).expect("the twelfth view's block");
+    // The first request looks through the views that come before the one that holds the block, and builds that view's index.
+    let first = r.text_of(held, "pages/Foo.md");
+    assert!(matches!(first, Ok(BlockText::Text(_))), "{first:?}");
+    // The second asks nothing of prikk but the file: what is known is the store's.
+    let (second, calls) = r.w.counted(|| r.text_of(held, "pages/Foo.md"));
+    assert!(matches!(second, Ok(BlockText::Text(_))), "{second:?}");
+    assert_eq!(calls.change, 0, "no `show`: {calls:?}");
+    assert_eq!(calls.views, 0, "no `branch list`: {calls:?}");
+    assert_eq!(calls.history, 0, "no `log`: {calls:?}");
+    assert_eq!(calls.read, 1, "only the file: {calls:?}");
+    // A block of a view asked after the first is found by its own first request, and costs nothing after it.
+    let later = blocks.get(15).expect("the sixteenth view's block");
+    assert!(matches!(
+        r.text_of(later, "pages/Foo.md"),
+        Ok(BlockText::Text(_))
+    ));
+    let (_, calls) = r.w.counted(|| r.text_of(later, "pages/Foo.md"));
+    assert_eq!((calls.change, calls.views, calls.history), (0, 0, 0));
+}
+
+#[test]
+fn a_block_no_view_holds_is_asked_of_the_views_a_request_may_ask_then_of_the_rest_and_never_again()
+{
+    // Three times as many views as a request may ask.
+    let (r, _) = views_of(u64::try_from(3 * MAX_VIEWS_ASKED).unwrap());
+    let nobody = "e".repeat(64);
+    // 1: the default view's log has not got it; the first views are asked, at most `MAX_VIEWS_ASKED`, and what is left is for the next.
+    let (first, first_calls) = r.w.counted(|| r.text_of(&nobody, "pages/Foo.md"));
+    assert!(matches!(first, Err(ReadError::NotCheckedYet)), "{first:?}");
+    // Each view asked is a `log` for its tip and a `log` for its window, and the default view's own are a few.
+    let bound = u64::try_from(2 * MAX_VIEWS_ASKED + 4).unwrap();
+    assert!(
+        first_calls.history <= bound,
+        "at most {MAX_VIEWS_ASKED} views are asked in one request: {first_calls:?}"
+    );
+    assert_eq!(first_calls.change, 0, "no block of the views was built");
+    // 2 and 3: the views that are left are asked, a request at a time, and the answer is the same; the views found not to hold the
+    // block are not asked again.
+    for _ in 0..2 {
+        let (again, calls) = r.w.counted(|| r.text_of(&nobody, "pages/Foo.md"));
+        assert!(matches!(again, Err(ReadError::NotCheckedYet)), "{again:?}");
+        assert!(calls.history <= bound, "{calls:?}");
+    }
+    // 4: every view has been asked, and a request costs nothing.
+    let (last, calls) = r.w.counted(|| r.text_of(&nobody, "pages/Foo.md"));
+    assert!(matches!(last, Err(ReadError::NotCheckedYet)), "{last:?}");
+    assert_eq!(calls.total(), 0, "{calls:?}");
+}
+
+#[test]
+fn a_block_the_default_views_log_holds_and_the_index_has_not_reached_is_not_looked_for_elsewhere() {
+    let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
+    for i in 0..150 {
+        r.w.fake()
+            .set("pages/Bar.md", &bar(&format!("revision {i}")));
+    }
+    for i in 0..20_u64 {
+        r.w.fake().add_view_with(
+            &format!("heads/v{i:02}"),
+            &[("pages/Foo.md".to_owned(), foo("a view"))],
+        );
+    }
+    r.hide(2);
+    // Block 100 is in the default view's log and further than a call builds to: it is *not checked yet*, and no other view is asked
+    // for it. The one request reads the default view's log, and none of the twenty.
+    let (first, calls) = r.w.counted(|| r.text_of(&block_id(100), "pages/Bar.md"));
+    assert!(matches!(first, Err(ReadError::NotCheckedYet)), "{first:?}");
+    assert!(
+        calls.history <= 2,
+        "only the default view's log is read: {calls:?}"
+    );
+    assert!(calls.views <= 1, "{calls:?}");
+    let (second, calls) = r.w.counted(|| r.text_of(&block_id(100), "pages/Bar.md"));
+    assert!(
+        matches!(second, Ok(BlockText::Text(_))),
+        "the second call reaches it: {second:?}"
+    );
+    assert_eq!(calls.views, 0, "{calls:?}");
+}
+
+// ------------------------------------------------------------------------------------ a dropped index (L-9)
+
+/// Reading the index (`reading`) and then having it dropped, as a second reader's `clear_derived` or a reset does, is no answer: with
+/// the rows gone and the state of the dropped index read before, a path with no row would be *nobody wrote it*, which is not so.
+fn ready_of(r: &Rig, n: u64) -> Ready {
+    match r
+        .service
+        .reading(&r.w.wiki, None, &block_id(n))
+        .expect("a reading")
+    {
+        Reading::Ready(ready) => ready,
+        Reading::NothingHidden => panic!("something is hidden"),
+    }
+}
+
+#[test]
+fn an_index_that_is_cleared_between_the_reading_and_the_answer_gives_no_answer() {
+    let r = story();
+    r.hide(2);
+    r.warm();
+    let ready = ready_of(&r, 3);
+    // Whatever is asked while the index stands is answered.
+    assert!(
+        r.service
+            .authorship_in(&r.w.wiki, &ready, "pages/Foo.md")
+            .is_ok()
+    );
+    // Another reader drops it (the derived store is cleared) before this one has asked for the rows.
+    r.service.clear_derived(&r.w.wiki).unwrap();
+    let got = r.service.authorship_in(&r.w.wiki, &ready, "pages/Foo.md");
+    assert!(matches!(got, Err(ReadError::NotCheckedYet)), "{got:?}");
+}
+
+#[test]
+fn an_index_that_is_reset_between_the_reading_and_the_answer_gives_no_answer() {
+    let r = story();
+    r.hide(2);
+    r.warm();
+    let ready = ready_of(&r, 3);
+    r.w.store
+        .reset_writes(&r.w.wiki.id, &r.w.wiki.default_view)
+        .unwrap();
+    let got = r.service.authorship_in(&r.w.wiki, &ready, "pages/Foo.md");
+    assert!(matches!(got, Err(ReadError::NotCheckedYet)), "{got:?}");
+    // A reading made after it is built again is answered.
+    r.warm();
+    let again = ready_of(&r, 3);
+    assert!(
+        r.service
+            .authorship_in(&r.w.wiki, &again, "pages/Foo.md")
+            .is_ok()
+    );
+}
+
+// ------------------------------------------------------------------------------------ the record of moderation (L-8)
+
+#[test]
+fn a_service_without_the_record_of_what_moderation_hides_does_not_serve_the_text_of_a_block() {
+    let r = rig(&[("pages/Foo.md", &foo("x"))]);
+    // The same repository and store, and no `with_tombstones`.
+    let bare = ReadService::new(
+        r.w.counting.clone(),
+        r.w.store.clone(),
+        r.w.store.clone(),
+        r.w.layout.clone(),
+        config(),
+        None,
+    );
+    for got in [
+        bare.text_at(&r.w.wiki, None, &block_id(1), "pages/Foo.md")
+            .map(|_| ()),
+        bare.hidden_text(&r.w.wiki, None, &block_id(1), "pages/Foo.md")
+            .map(|_| ()),
+    ] {
+        assert!(
+            matches!(
+                got,
+                Err(ReadError::CouldNotBeReadNow(Cause::ModerationNotConfigured))
+            ),
+            "{got:?}"
+        );
+    }
+    // The service that has it reads the same text.
+    assert!(r.shows(1, "pages/Foo.md"));
+}
+
+// ------------------------------------------------------------------------------------ only *not found* is no file (L-3)
+
+#[test]
+fn a_refusal_that_is_not_not_found_is_not_the_absence_of_a_file() {
+    use inklkunn_store::{BlockWrites, PathWrite, WritesState};
+    let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
+    r.w.fake().set("pages/Bar.md", &bar("z")); // 2
+    // The index says nobody wrote `Foo` (it was made by hand), so whether a file is there is one `stat` away.
+    let wrote_bar = |n: u64| BlockWrites {
+        number: n,
+        block: block_id(n),
+        proposal: None,
+        writes: vec![PathWrite {
+            path: "pages/Bar.md".to_owned(),
+            kind: WriteKind::Wrote,
+        }],
+    };
+    r.w.store
+        .append_writes(
+            &r.w.wiki.id,
+            &r.w.wiki.default_view,
+            &[wrote_bar(1), wrote_bar(2)],
+            &WritesState {
+                head_number: 2,
+                head_block: block_id(2),
+                floor_number: 1,
+                genesis: true,
+            },
+        )
+        .unwrap();
+    r.hide(2);
+    let hidden = |path: &str| r.service.hidden_text(&r.w.wiki, None, &block_id(2), path);
+    // There is no such file: nothing is hidden there.
+    assert!(matches!(hidden("pages/Nothing.md"), Ok(None)));
+    // A file nobody wrote is not given, and no hide is said.
+    assert!(matches!(
+        hidden("pages/Foo.md"),
+        Err(ReadError::NotCheckedYet)
+    ));
+    // A refusal that is not *not found* (a bound, a damaged store) says nothing of a file: the absence is not assumed.
+    r.w.fake().fail_stat(Some(StorageError::Refused {
+        verb: "cat",
+        message: "the store is damaged".to_owned(),
+        kind: None,
+        reason: None,
+    }));
+    assert!(matches!(
+        hidden("pages/Nothing.md"),
+        Err(ReadError::NotCheckedYet)
+    ));
+    // The same for the read of a file.
+    assert!(r.is_unchecked(2, "pages/Nothing.md"));
 }

@@ -185,8 +185,17 @@ impl ReadService {
             out.untraced_at_least |= later.untraced_at_least;
             out.moves_unfollowed |= later.moves_unfollowed;
             for writer in later.writers.iter().take(MAX_HOLDER_CHECKS) {
+                let text = match self.text_at(wiki, view, &writer.block, &writer.path) {
+                    Ok(text) => text,
+                    // A text that cannot be checked yet is one that was not looked at (and no hide is said of it).
+                    Err(ReadError::NotCheckedYet) => {
+                        out.unchecked += 1;
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
                 // A revision of the path the file was moved to is read at that path (the lines the change added are its own).
-                match self.text_at(wiki, view, &writer.block, &writer.path)? {
+                match text {
                     BlockText::Text(text) => {
                         if holds(&added, &text) {
                             found.push((writer.block.clone(), writer.path.clone()));

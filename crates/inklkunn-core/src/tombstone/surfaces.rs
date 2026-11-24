@@ -8,6 +8,12 @@
 //!
 //! The list is data: a surface's own code does not consult it. What keeps the code honest is the tests (they hide each part of
 //! each item and look for the hidden text in every byte of every answer), and the gate that makes sure none is missing.
+//!
+//! **A row also says what the surface does when the text it needs of a block cannot be checked yet** (correction L-11: no change
+//! that wrote it is known, so none of it is given and **no tombstone is shown**, because no hide is the reason). That is
+//! [`Unchecked`], one of three things, and a surface that can show a text is never the third: it answers *try again*
+//! (`503` and `Retry-After`; the API's `unavailable` with `reason` `not-checked-yet`), or leaves out what needs the text and serves
+//! the rest, or reads no text of a block that is not a tip.
 
 /// Which parts of a hidden item a surface can show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +41,21 @@ impl Shows {
     }
 }
 
+/// What a surface does when the text it needs of a block **cannot be checked yet** (correction L-11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unchecked {
+    /// The whole answer is *this text cannot be checked yet; try again in a little while*: `503` with `Retry-After`, and in the API
+    /// `unavailable` with the `reason` `not-checked-yet`. No text and no tombstone. The test, by function name, in
+    /// `crates/inklkunn-web/tests/tombstones/unchecked.rs`.
+    TryAgain(&'static str),
+    /// What needs the text is left out, and the rest of the answer is served (nothing of the text, no tombstone, and the page says
+    /// that something was left out where it counts). The test, as above.
+    LeavesOut(&'static str),
+    /// The surface reads **no text of a block that is not a tip** (the reason), so the outcome cannot reach it. Never for a surface
+    /// that shows the text of a page or a file at a block (a comment's body is not one).
+    NoBlockText(&'static str),
+}
+
 /// One surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Surface {
@@ -49,6 +70,8 @@ pub struct Surface {
     /// The test that shows the tombstone on this surface in place of what is hidden, by function name, in
     /// `crates/inklkunn-web/tests/tombstones/surfaces.rs`.
     pub test: &'static str,
+    /// What it does when the text it needs of a block cannot be checked yet.
+    pub unchecked: Unchecked,
 }
 
 /// Every surface that shows a revision's content, summary or author, or a comment's body or author.
@@ -59,6 +82,9 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/history/{*title}"],
         api: &["/{slug}/-/api/v1/history/{*title}"],
         test: "surface_history_row",
+        unchecked: Unchecked::NoBlockText(
+            "a row of the log names a change by its summary and its author; no text of any block is read",
+        ),
     },
     Surface {
         id: "change-view",
@@ -66,6 +92,7 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/change/{block}"],
         api: &["/{slug}/-/api/v1/revisions/{id}"],
         test: "surface_change_view",
+        unchecked: Unchecked::TryAgain("unchecked_change_view"),
     },
     Surface {
         id: "diff",
@@ -73,6 +100,7 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/diff/{from}/{to}/{*title}"],
         api: &["/{slug}/-/api/v1/diff"],
         test: "surface_diff",
+        unchecked: Unchecked::TryAgain("unchecked_diff"),
     },
     Surface {
         // The page as of the revision, its permalink: one address. Its raw source is the tip's, which cannot be hidden, and
@@ -82,6 +110,7 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/at/{block}/{*title}"],
         api: &[],
         test: "surface_page_as_of",
+        unchecked: Unchecked::TryAgain("unchecked_page_as_of"),
     },
     Surface {
         id: "why-is-this-here",
@@ -89,6 +118,7 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/why/{*title}"],
         api: &["/{slug}/-/api/v1/provenance/{*title}"],
         test: "surface_why_is_this_here",
+        unchecked: Unchecked::LeavesOut("unchecked_why_is_this_here"),
     },
     Surface {
         // Two views' tips against each other. A tip's content cannot be hidden, in any view, so what it can show of a hidden
@@ -102,6 +132,9 @@ pub const SURFACES: &[Surface] = &[
         ],
         api: &["/{slug}/-/api/v1/views/compare"],
         test: "surface_compare_views",
+        unchecked: Unchecked::NoBlockText(
+            "the difference of two views' tips, whose content cannot be hidden and is read as a tip",
+        ),
     },
     Surface {
         id: "recent-changes",
@@ -109,6 +142,9 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/changes", "/{slug}/-/changes.atom"],
         api: &["/{slug}/-/api/v1/changes"],
         test: "surface_recent_changes",
+        unchecked: Unchecked::NoBlockText(
+            "a list of changes by summary and author; no text of any block is read",
+        ),
     },
     Surface {
         id: "proposal-page",
@@ -137,6 +173,7 @@ pub const SURFACES: &[Surface] = &[
             "/{slug}/-/api/v1/proposals/{id}/withdrawals",
         ],
         test: "surface_proposal_page",
+        unchecked: Unchecked::TryAgain("unchecked_proposal_page"),
     },
     Surface {
         id: "proposal-comments",
@@ -144,6 +181,9 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/proposals/{id}"],
         api: &[],
         test: "surface_proposal_comments",
+        unchecked: Unchecked::NoBlockText(
+            "a comment's body and author; no text of a block is read",
+        ),
     },
     Surface {
         id: "proposal-list",
@@ -151,6 +191,9 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/proposals", "/{slug}/-/discussion/{*title}"],
         api: &[],
         test: "surface_proposal_list",
+        unchecked: Unchecked::NoBlockText(
+            "a list of proposals by summary and author; no text of a block is read",
+        ),
     },
     Surface {
         id: "claim-thread",
@@ -159,6 +202,9 @@ pub const SURFACES: &[Surface] = &[
         // The API gives a claim's file and its links, not its thread: the thread has no API member.
         api: &[],
         test: "surface_claim_thread",
+        unchecked: Unchecked::NoBlockText(
+            "a claim's thread: comments only; no text of a block is read",
+        ),
     },
     Surface {
         // A title that leads to no page may be a page that was removed: the answer is `410 Gone` and says by which change and
@@ -174,6 +220,9 @@ pub const SURFACES: &[Surface] = &[
             "/{slug}/-/api/v1/fragment/{*title}",
         ],
         test: "surface_removed_page",
+        unchecked: Unchecked::NoBlockText(
+            "the removing change's summary from the log; the text before the removal is the restore offer's",
+        ),
     },
     Surface {
         // The offer to restore a removed page: a rollback of the removing change or a draft with the page's last text. It copies
@@ -184,6 +233,7 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/restore/{*title}"],
         api: &[],
         test: "surface_restore_offer",
+        unchecked: Unchecked::TryAgain("unchecked_restore_offer"),
     },
     Surface {
         id: "inbox",
@@ -191,6 +241,9 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/-/inbox"],
         api: &[],
         test: "surface_inbox",
+        unchecked: Unchecked::NoBlockText(
+            "a list of items by summary and author; no text of a block is read",
+        ),
     },
     Surface {
         // The page of the rules names, for each change of them, the proposal that made it by its summary (RFC 006 D-11, G-T7):
@@ -201,6 +254,7 @@ pub const SURFACES: &[Surface] = &[
         routes: &["/{slug}/-/policy"],
         api: &[],
         test: "surface_rules_history",
+        unchecked: Unchecked::LeavesOut("unchecked_rules_history"),
     },
 ];
 

@@ -208,6 +208,12 @@ pub enum ReadError {
     /// It could not be read now: show *could not be read now* and nothing of the cause; the operator gets
     /// the cause.
     CouldNotBeReadNow(Cause),
+    /// **The text cannot be checked yet** (RFC 006 D-8; handoff G-T4, correction L-11): the text of a block is not served, because
+    /// whose it is has not been settled (the index of who wrote each path has not reached the block, no one is recorded as having
+    /// written the text, the block is newer than the tip this service holds, or the views that may hold it were too many to ask
+    /// in one request). **Nothing is hidden by it and no tombstone is shown**: a hide is the reason for a tombstone and this is not
+    /// one. Waiting helps, so a surface answers *try again in a little while* (`503` and `Retry-After`).
+    NotCheckedYet,
 }
 
 impl std::fmt::Display for ReadError {
@@ -217,6 +223,9 @@ impl std::fmt::Display for ReadError {
             ReadError::NoSuchView(v) => write!(f, "the wiki has no open view `{v}`"),
             ReadError::PageUnreadable(p) => write!(f, "the page cannot be shown: {p}"),
             ReadError::CouldNotBeReadNow(c) => write!(f, "could not be read now: {c}"),
+            ReadError::NotCheckedYet => f.write_str(
+                "the text cannot be checked yet: whose it is has not been settled, so none of it is given",
+            ),
         }
     }
 }
@@ -277,6 +286,9 @@ pub enum Cause {
     Scratch(String),
     /// The service store failed where the read could not go on without it.
     Store(StoreError),
+    /// The read service was built without the record of what moderation hides ([`ReadService::with_tombstones`]), so that it
+    /// cannot tell what it may serve of the text of a block (correction L-8): an error and never *nothing is hidden*.
+    ModerationNotConfigured,
 }
 
 impl std::fmt::Display for Cause {
@@ -303,6 +315,9 @@ impl std::fmt::Display for Cause {
             }
             Cause::Scratch(e) => write!(f, "the scratch directory could not be used: {e}"),
             Cause::Store(e) => write!(f, "{e}"),
+            Cause::ModerationNotConfigured => f.write_str(
+                "the read service has no record of what moderation hides, so it cannot serve the text of a block",
+            ),
         }
     }
 }
@@ -428,10 +443,16 @@ pub struct ReadService {
     history: history::State,
     /// One lock per `(wiki, view)` for the writes index, which the one reader of a page's text at a block builds, one reader at a time.
     writes_locks: writes::Locks,
+    /// The title indexes at a base with what a hidden change wrote taken out, each held with the moderation log's newest event it was
+    /// made under (correction L-10).
+    titles_filtered: past::FilteredTitles,
+    /// How many times a title index at a base was filtered, not served from [`ReadService::titles_filtered`] (test builds only).
+    #[cfg(test)]
+    titles_filter_runs: AtomicU64,
     /// The derived governance snapshot (RFC 006 D-5), when the store keeps one.
     governance: Option<Arc<dyn inklkunn_store::GovernanceSnapshotStore>>,
     /// What moderation hides (RFC 006 D-8), asked of every change a surface is given; `None` until
-    /// [`ReadService::with_tombstones`] gives it (nothing is then hidden).
+    /// [`ReadService::with_tombstones`] gives it. **Without it the text of a block is not served** ([`Cause::ModerationNotConfigured`]).
     tombstones: Option<Arc<crate::tombstone::Tombstones>>,
     /// What the operator allows any wiki (RFC 006 D-3): a policy above a limit is read as if it were at it.
     limits: crate::governance::PlatformLimits,
@@ -474,6 +495,9 @@ impl ReadService {
             flags: None,
             history: history::State::default(),
             writes_locks: Mutex::new(HashMap::new()),
+            titles_filtered: past::FilteredTitles::default(),
+            #[cfg(test)]
+            titles_filter_runs: AtomicU64::new(0),
             governance: None,
             tombstones: None,
             limits: crate::governance::PlatformLimits::default(),
@@ -558,7 +582,8 @@ impl ReadService {
     }
 
     /// The same, hiding what moderation hides (RFC 006 D-8; INV-13): the summary and the author of a change, the page's text
-    /// at it, and the difference to or from it. **A server that serves wikis gives this**; without it nothing is hidden.
+    /// at it, and the difference to or from it. **A server that serves wikis gives this**; without it the text of a block is not served
+    /// at all ([`Cause::ModerationNotConfigured`]).
     #[must_use]
     pub fn with_tombstones(mut self, tombstones: Arc<crate::tombstone::Tombstones>) -> Self {
         self.tombstones = Some(tombstones);
@@ -715,7 +740,8 @@ impl ReadService {
     ) -> Result<Arc<KnowledgeIndex>, ReadError> {
         let at = BlockPoint::new(view.unwrap_or(&wiki.default_view), state_id, block_id);
         let whole = self.knowledge_of(wiki, &at)?;
-        self.knowledge_without_hidden(wiki, &at, whole)
+        let titles = self.index_at(wiki, &at)?;
+        self.knowledge_without_hidden(wiki, &at, whole, titles)
     }
 
     /// The title index of exactly the state a proposal's base names, whatever the view has moved to since: where every

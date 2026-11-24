@@ -166,14 +166,27 @@ impl Tombstones {
     }
 
     /// **The newest hiding of a content in force in the wiki**, if there is one: `None` means nothing is hidden and no reader needs
-    /// to ask more (one query, whatever the history), `Some` is the hiding a reader that cannot tell whose text a text is answers
-    /// with, so that it says *hidden* and gives nothing. Not the answer for any one change ([`Tombstones::content_hidden`] is).
+    /// to ask more (one query, whatever the history). Not the answer for any one change ([`Tombstones::content_hidden`] is). **A hide
+    /// that records no category is a hide** (correction L-8): its mark is the generic one ([`Mark::of`]), never *nothing hidden*.
     pub fn content_hide_in_force(&self, wiki: &WikiId) -> Result<Option<Mark>, Unreadable> {
         Ok(self
             .governance
             .content_hide_in_force(wiki)?
             .as_ref()
             .and_then(Mark::of))
+    }
+
+    /// **The newest event of the wiki's moderation log**, of any kind (a hide, an unhide, a decision of an appeal): a token that
+    /// changes whenever what is hidden can, and only then, because the log is append-only and what is hidden is a function of it.
+    /// What a reader that holds an answer about what is hidden keys it by, so that it is never served after a hide or an unhide
+    /// (correction L-10). One indexed query.
+    pub fn newest_event(&self, wiki: &WikiId) -> Result<Option<String>, Unreadable> {
+        Ok(self
+            .governance
+            .tombstone_log(wiki, None, 1)?
+            .into_iter()
+            .next()
+            .map(|event| event.id.to_string()))
     }
 
     /// **What is hidden of the change `block`, as the surfaces of a page change read it**: [`Tombstones::of_change`], and the hides of

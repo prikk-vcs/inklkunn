@@ -22,7 +22,9 @@ pub struct Mark {
 }
 
 impl Mark {
-    /// The mark of a hide event; `None` for an unhide, or for a hide that lacks its category (the store refuses one).
+    /// The mark of a hide event; `None` for an unhide. **A hide that lacks its category** (the store refuses one, so a record that
+    /// does not read as one is a damaged record) **is a hide all the same**, with the generic category
+    /// ([`ReasonCategory::Other`]): what is hidden is never made visible by a field that is missing (correction L-8).
     pub fn of(event: &TombstoneEvent) -> Option<Mark> {
         if event.act != TombstoneAct::Hide {
             return None;
@@ -30,7 +32,7 @@ impl Mark {
         Some(Mark {
             event: event.id.clone(),
             parts: event.parts,
-            category: event.category?,
+            category: event.category.unwrap_or(ReasonCategory::Other),
             rung: event.by.rung,
             at: event.at,
         })

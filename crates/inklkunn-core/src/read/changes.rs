@@ -285,6 +285,16 @@ fn in_namespace(title: &str, namespace: &str) -> bool {
         .is_some_and(|rest| rest.starts_with('/'))
 }
 
+/// The views' names sorted, the default view first.
+fn default_first(wiki: &WikiRecord, mut names: Vec<String>) -> Vec<String> {
+    names.sort();
+    if let Some(at) = names.iter().position(|n| *n == wiki.default_view) {
+        let default = names.remove(at);
+        names.insert(0, default);
+    }
+    names
+}
+
 impl ReadService {
     /// The flags of the accepted revisions of these proposals, in one step. Without records to ask, none.
     /// When the records fail, the answer is none and the failure is counted, unless the caller's filter is
@@ -327,18 +337,25 @@ impl ReadService {
             .views(&repo)
             .map_err(|e| self.storage_error(wiki, e))?;
         self.tips.hold(&wiki.id, &repo, &views);
-        let mut names: Vec<String> = views
-            .views
-            .iter()
-            .filter(|v| !v.closed)
-            .map(|v| v.name.clone())
-            .collect();
-        names.sort();
-        if let Some(at) = names.iter().position(|n| *n == wiki.default_view) {
-            let default = names.remove(at);
-            names.insert(0, default);
+        Ok(default_first(
+            wiki,
+            views
+                .views
+                .iter()
+                .filter(|v| !v.closed)
+                .map(|v| v.name.clone())
+                .collect(),
+        ))
+    }
+
+    /// [`ReadService::open_views`] **from the list the tip holds** ([`ReadConfig::tip_ttl`](super::ReadConfig::tip_ttl)) when there is
+    /// a fresh one, and a call to prikk only when there is not (correction L-1): what a request that may look through every view of the
+    /// wiki asks, so that it is not a `branch list` of its own.
+    pub(super) fn open_views_held(&self, wiki: &WikiRecord) -> Result<Vec<String>, ReadError> {
+        match self.tips.fresh_names(&wiki.id) {
+            Some(names) => Ok(default_first(wiki, names)),
+            None => self.open_views(wiki),
         }
-        Ok(names)
     }
 
     /// The paths a block touched, from `show`, remembered (a block never changes).
