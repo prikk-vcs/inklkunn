@@ -1398,6 +1398,7 @@ mod people;
 mod policy;
 
 mod knowledge;
+mod measure;
 mod readiness;
 mod upgrade;
 mod upgrade_0_3_0;
