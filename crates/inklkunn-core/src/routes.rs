@@ -43,6 +43,11 @@ pub struct RouteEntry {
     pub methods: &'static [&'static str],
     /// What guards it.
     pub guard: Guard,
+    /// **Web-only**: the entry is served to a signed-in session (with its CSRF token) and to nobody who presents a bearer
+    /// token, whatever the token's scope (RFC 006 D-12; threat model C-14f). It is for an act that is never scripted
+    /// (moderation, restrictions, protections, grants, the decision of an appeal). The web crate holds every such entry to
+    /// the refusal in front of its handler, and a test walks the table so that a new web-only form cannot be left out.
+    pub web_only: bool,
 }
 
 /// Why an entry was refused.
@@ -112,6 +117,26 @@ impl RouteTable {
         methods: &'static [&'static str],
         guard: Guard,
     ) -> Result<(), RouteError> {
+        self.register_as(path, methods, guard, false)
+    }
+
+    /// Declare one **web-only** entry point (see [`RouteEntry::web_only`]). Nothing is added unless the whole entry is valid.
+    pub fn register_web_only(
+        &mut self,
+        path: &'static str,
+        methods: &'static [&'static str],
+        guard: Guard,
+    ) -> Result<(), RouteError> {
+        self.register_as(path, methods, guard, true)
+    }
+
+    fn register_as(
+        &mut self,
+        path: &'static str,
+        methods: &'static [&'static str],
+        guard: Guard,
+        web_only: bool,
+    ) -> Result<(), RouteError> {
         if !is_path(path) {
             return Err(RouteError::BadPath);
         }
@@ -137,6 +162,7 @@ impl RouteTable {
             path,
             methods,
             guard,
+            web_only,
         });
         Ok(())
     }

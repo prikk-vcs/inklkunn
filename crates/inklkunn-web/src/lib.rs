@@ -59,6 +59,7 @@ mod tombstone;
 mod url;
 pub mod views;
 mod watch;
+mod web_only;
 mod wiki;
 
 /// The assembled application: both origins behind one listener (see [`routes::site`]).

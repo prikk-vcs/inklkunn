@@ -22,7 +22,7 @@ use crate::services::Services;
 use crate::{
     account, api, appeals, changes, csrf, discover, health, history, inbox, knowledge, people,
     policy, probe, proposals, protections, raw, restore, search, signin, style, tombstone, views,
-    watch, wiki,
+    watch, web_only, wiki,
 };
 
 /// One declared entry point and the handler that serves it.
@@ -30,6 +30,8 @@ struct Spec {
     path: &'static str,
     methods: &'static [&'static str],
     guard: Guard,
+    /// Served to a signed-in session and never to a bearer token (see [`inklkunn_core::RouteEntry::web_only`]).
+    web_only: bool,
     handler: fn() -> MethodRouter<PageState>,
 }
 
@@ -41,6 +43,8 @@ fn application_specs() -> Vec<Spec> {
         path: endpoint.path,
         methods: endpoint.methods,
         guard: endpoint.guard,
+        // The API is for tokens: nothing of it is web-only.
+        web_only: false,
         handler: endpoint.handler,
     }));
     specs
@@ -81,12 +85,14 @@ fn proposal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/proposals",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(proposals::list::list),
         },
         Spec {
             path: "/{slug}/-/proposals/new",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Propose),
             handler: form_route!(
                 proposals::new::new_form,
@@ -97,6 +103,7 @@ fn proposal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/proposals/curate",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Propose),
             handler: form_route!(
                 proposals::curate::curate_form,
@@ -107,12 +114,14 @@ fn proposal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/proposals/{id}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(proposals::show::proposal),
         },
         Spec {
             path: "/{slug}/-/proposals/{id}/edit",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Propose),
             handler: form_route!(
                 proposals::submit::edit_form,
@@ -123,30 +132,35 @@ fn proposal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/proposals/{id}/comment",
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Action(Action::Comment),
             handler: post_route!(proposals::review::comment, proposals::SMALL_FORM_LIMIT),
         },
         Spec {
             path: "/{slug}/-/proposals/{id}/decide",
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Action(Action::Review),
             handler: post_route!(proposals::review::decide, proposals::SMALL_FORM_LIMIT),
         },
         Spec {
             path: "/{slug}/-/proposals/{id}/accept",
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Action(Action::Accept),
             handler: post_route!(proposals::accept::accept, pages::FORM_LIMIT),
         },
         Spec {
             path: "/{slug}/-/proposals/{id}/reconfirm",
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Action(Action::Propose),
             handler: post_route!(proposals::touched::reconfirm, proposals::SMALL_FORM_LIMIT),
         },
         Spec {
             path: "/{slug}/-/proposals/{id}/decline",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Accept),
             handler: form_route!(
                 proposals::review::decline_form,
@@ -157,6 +171,7 @@ fn proposal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/proposals/{id}/ask",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Accept),
             handler: form_route!(
                 proposals::review::ask_form,
@@ -167,6 +182,7 @@ fn proposal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/proposals/{id}/withdraw",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Propose),
             handler: form_route!(
                 proposals::review::withdraw_form,
@@ -177,6 +193,7 @@ fn proposal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/discussion/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(proposals::list::discussion),
         },
@@ -184,6 +201,7 @@ fn proposal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/restore/{*title}",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Propose),
             handler: form_route!(
                 restore::restore_form,
@@ -202,12 +220,14 @@ fn view_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/views",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(views::list::list),
         },
         Spec {
             path: "/{slug}/-/views/new",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::CreateView),
             handler: form_route!(
                 views::new::new_form,
@@ -218,12 +238,14 @@ fn view_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/views/compare",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(views::compare::compare),
         },
         Spec {
             path: "/{slug}/-/views/compare/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(views::compare::compare_page),
         },
@@ -237,6 +259,7 @@ fn moderation_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/protect",
             methods: &["GET", "HEAD", "POST"],
+            web_only: true,
             guard: Guard::Action(Action::Moderate),
             handler: form_route!(
                 protections::form::protect_form,
@@ -249,12 +272,14 @@ fn moderation_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/moderation",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(tombstone::log::moderation_log),
         },
         Spec {
             path: "/{slug}/-/moderate",
             methods: &["GET", "HEAD", "POST"],
+            web_only: true,
             guard: Guard::Action(Action::Moderate),
             handler: form_route!(
                 tombstone::form::moderate_form,
@@ -265,12 +290,14 @@ fn moderation_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/moderate/unhide",
             methods: &["POST"],
+            web_only: true,
             guard: Guard::Action(Action::Moderate),
             handler: post_route!(tombstone::form::unhide_post, tombstone::form::FORM_LIMIT),
         },
         Spec {
             path: "/{slug}/-/moderate/show",
             methods: &["POST"],
+            web_only: true,
             guard: Guard::Action(Action::Moderate),
             handler: post_route!(tombstone::form::show_post, tombstone::form::FORM_LIMIT),
         },
@@ -292,12 +319,14 @@ fn people_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/people",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(people::roster::people),
         },
         Spec {
             path: "/{slug}/-/people/grant",
             methods: &["GET", "HEAD", "POST"],
+            web_only: true,
             guard: Guard::Action(Action::Read),
             handler: form_route!(
                 people::acts::grant_form,
@@ -308,6 +337,7 @@ fn people_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/people/restrict",
             methods: &["GET", "HEAD", "POST"],
+            web_only: true,
             guard: Guard::Action(Action::Moderate),
             handler: form_route!(
                 people::acts::restrict_form,
@@ -318,6 +348,7 @@ fn people_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/people/renew",
             methods: &["GET", "HEAD", "POST"],
+            web_only: true,
             guard: Guard::Action(Action::Moderate),
             handler: form_route!(
                 people::acts::renew_form,
@@ -328,6 +359,7 @@ fn people_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/people/lift",
             methods: &["GET", "HEAD", "POST"],
+            web_only: true,
             guard: Guard::Action(Action::Moderate),
             handler: form_route!(
                 people::acts::lift_form,
@@ -347,12 +379,14 @@ fn policy_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/policy",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(policy::rules_page::policy_page),
         },
         Spec {
             path: "/{slug}/-/policy/edit",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Propose),
             handler: form_route!(
                 policy::rules_form::edit_form,
@@ -375,18 +409,21 @@ fn appeal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/appeals",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(appeals::page::appeals_page),
         },
         Spec {
             path: "/{slug}/-/appeals/mine",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(appeals::mine::mine_page),
         },
         Spec {
             path: "/{slug}/-/appeals/new",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: form_route!(
                 appeals::contest::contest_form,
@@ -397,6 +434,7 @@ fn appeal_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/appeals/decide",
             methods: &["POST"],
+            web_only: true,
             guard: Guard::Action(Action::Read),
             handler: post_route!(appeals::page::decide_post, appeals::FORM_LIMIT),
         },
@@ -411,6 +449,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: signin::SIGN_IN_PATH,
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "sign-in: it asks for a name and a password and serves no wiki data; what it answers never says whether an account exists",
             },
@@ -423,6 +462,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: signin::SIGN_OUT_PATH,
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "sign-out: it ends this browser's own session and serves no wiki data; its form carries the session's token like every write",
             },
@@ -435,6 +475,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: signin::JOIN_PATH,
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "joining: where the operator opened it to anyone a person makes an account; it serves no wiki data, and says joining is not open otherwise",
             },
@@ -447,6 +488,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: signin::INVITE_ROUTE,
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "an invitation: the one-time link an operator made, opened to make an account; it serves no wiki data and answers the same for a link that was used, one that ended and one that never was",
             },
@@ -459,6 +501,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: signin::OIDC_PATH,
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "starts a sign-in with the configured provider: it sends the browser to the provider and serves no wiki data; where no provider is configured it is the generic not-found page",
             },
@@ -467,6 +510,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: signin::OIDC_CALLBACK_PATH,
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "where the provider sends the browser back: it finishes the sign-in only for the browser that started it (the login-state cookie and the state must agree, once) and serves no wiki data",
             },
@@ -475,6 +519,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: signin::INVITE_OIDC_ROUTE,
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "starts an invitation with the configured provider instead of a password: it sends the browser to the provider and serves no wiki data, and answers the same for a link that was used, one that ended and one that never was",
             },
@@ -483,6 +528,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: account::PATH,
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "the signed-in person's own account (name, sessions, tokens); it serves no wiki data, and a visitor with no session is sent to sign in",
             },
@@ -491,6 +537,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: account::NAME_PATH,
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "saves the signed-in person's own display name; it serves no wiki data and needs a session and its token",
             },
@@ -499,6 +546,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: account::SESSIONS_END_PATH,
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "ends one of the signed-in person's own sessions; it serves no wiki data and needs a session and its token",
             },
@@ -507,6 +555,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: account::TOKENS_PATH,
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "makes an API token for the signed-in person's own account and shows it once; it serves no wiki data and needs a session and its token",
             },
@@ -515,6 +564,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: account::TOKENS_REVOKE_PATH,
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "revokes one of the signed-in person's own API tokens; it serves no wiki data and needs a session and its token",
             },
@@ -523,6 +573,7 @@ fn account_specs() -> Vec<Spec> {
         Spec {
             path: account::PASSWORD_PATH,
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "changes the signed-in person's own password after the current one is checked (throttled and constant-work like sign-in) and ends their other sessions and tokens; it serves no wiki data and needs a session and its token",
             },
@@ -546,6 +597,7 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/-/health",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "liveness for the proxy: a fixed word, no wiki data, the same for everyone",
             },
@@ -554,6 +606,7 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: LANGUAGE_PATH,
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "the language switcher: it lists the languages and sets the visitor's own language cookie; it names no wiki and serves no wiki data",
             },
@@ -566,6 +619,7 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: style::ROUTE,
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "the one stylesheet: static, the same for everyone, embedded in the binary; it serves no wiki data",
             },
@@ -574,6 +628,7 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/-/wikis",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(wiki::wikis),
         },
@@ -581,6 +636,7 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/-/inbox",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || {
                 get(inbox::inbox_page)
@@ -591,24 +647,28 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/watch/{*title}",
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || post(watch::watch).layer(DefaultBodyLimit::max(pages::FORM_LIMIT)),
         },
         Spec {
             path: "/{slug}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(wiki::front),
         },
         Spec {
             path: "/{slug}/-/about",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(wiki::about),
         },
         Spec {
             path: "/{slug}/-/verification",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || {
                 get(wiki::verification)
@@ -620,30 +680,35 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/history/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(history::history),
         },
         Spec {
             path: "/{slug}/-/change/{block}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(history::change),
         },
         Spec {
             path: "/{slug}/-/diff/{from}/{to}/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(history::diff),
         },
         Spec {
             path: "/{slug}/-/at/{block}/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(history::at),
         },
         Spec {
             path: "/robots.txt",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "robots.txt for crawlers: fixed rules and the sitemap addresses of the wikis anyone may read; it names no wiki that is not public",
             },
@@ -652,36 +717,42 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/changes",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(changes::changes_page),
         },
         Spec {
             path: "/{slug}/-/changes.atom",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(changes::changes_atom),
         },
         Spec {
             path: "/{slug}/-/search",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(search::search_page),
         },
         Spec {
             path: "/{slug}/-/opensearch.xml",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(discover::opensearch),
         },
         Spec {
             path: "/{slug}/-/health",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(health::health_index),
         },
         Spec {
             path: "/{slug}/-/health/{list}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(health::health_list),
         },
@@ -690,6 +761,7 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/knowledge/replace",
             methods: &["GET", "HEAD", "POST"],
+            web_only: false,
             guard: Guard::Action(Action::Moderate),
             handler: form_route!(
                 knowledge::replace::replace_form,
@@ -700,6 +772,7 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/claim/{id}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(knowledge::show::claim_page),
         },
@@ -708,42 +781,49 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/-/claim/{id}/discuss",
             methods: &["POST"],
+            web_only: false,
             guard: Guard::Action(Action::Comment),
             handler: post_route!(knowledge::thread::comment_post, proposals::SMALL_FORM_LIMIT),
         },
         Spec {
             path: "/{slug}/-/why/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(knowledge::why::why_page),
         },
         Spec {
             path: "/{slug}/-/links/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(health::links_page),
         },
         Spec {
             path: "/{slug}/-/site.json",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(discover::site_description),
         },
         Spec {
             path: "/{slug}/-/describe/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(discover::describe_page),
         },
         Spec {
             path: "/{slug}/-/sitemap.xml",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(discover::sitemap),
         },
         Spec {
             path: "/{slug}/-/raw/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Public {
                 reason: "refuses: a page's source is served only on the content origin, so this origin answers every request for it with the generic not-found page and reads nothing",
             },
@@ -752,6 +832,7 @@ fn wiki_specs() -> Vec<Spec> {
         Spec {
             path: "/{slug}/{*title}",
             methods: &["GET", "HEAD"],
+            web_only: false,
             guard: Guard::Action(Action::Read),
             handler: || get(wiki::view_page),
         },
@@ -763,6 +844,7 @@ fn content_specs() -> Vec<Spec> {
     vec![Spec {
         path: "/{slug}/-/raw/{*title}",
         methods: &["GET", "HEAD"],
+        web_only: false,
         guard: Guard::Action(Action::Read),
         handler: || get(raw::raw_content),
     }]
@@ -781,7 +863,11 @@ pub fn content_table() -> Result<RouteTable, RouteError> {
 pub fn application_table() -> Result<RouteTable, RouteError> {
     let mut table = RouteTable::new();
     for spec in application_specs() {
-        table.register(spec.path, spec.methods, spec.guard)?;
+        if spec.web_only {
+            table.register_web_only(spec.path, spec.methods, spec.guard)?;
+        } else {
+            table.register(spec.path, spec.methods, spec.guard)?;
+        }
     }
     Ok(table)
 }
@@ -802,7 +888,15 @@ pub(crate) fn application_with(
     };
     let mut router = Router::new();
     for spec in application_specs() {
-        router = router.route(spec.path, (spec.handler)());
+        let route = (spec.handler)();
+        // A web-only entry is refused to a bearer token before its handler, before the wiki is looked at: one
+        // place, declared in the table, and not a check each handler remembers.
+        let route = if spec.web_only {
+            route.layer(from_fn(web_only::refuse_a_token))
+        } else {
+            route
+        };
+        router = router.route(spec.path, route);
     }
     Ok(router
         .fallback(api::fallback_not_found)

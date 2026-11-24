@@ -903,6 +903,9 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `title.form_expired` | the title of the page that says a form did not match the sign-in it was sent from | "Form expired · {product}" | "フォームの有効期限が切れました · {product}" |
 | `form_expired.heading` | its heading | "The form has expired" | "フォームの有効期限が切れました" |
 | `form_expired.body` | its sentence | "This form could not be matched to your sign-in, so nothing was changed. It may be old, or you may have signed in or out since you opened it. Go back, reload the page and try again." | "このフォームをあなたのサインインと照合できなかったため、何も変更していません。フォームが古いか、開いたあとにサインインまたはサインアウトした可能性があります。前のページに戻り、再読み込みしてからもう一度お試しください。" |
+| `title.web_only` | the title of the page that says an act is done at the site by a person who is signed in, shown to a request that presents an API token | "Done at the site only · {product}" | "サイト上でのみ行えます · {product}" |
+| `web_only.heading` | its heading | "This is done at the site, not with a token" | "この操作はサイト上で行うもので、トークンでは行えません" |
+| `web_only.body` | its sentence; the acts are moderation, restrictions, protections, grants and the decision of an appeal | "This can only be done by a person who is signed in, on the site's own page. An API token cannot do it, so nothing was changed." | "この操作は、サインインした人が、サイトのページから行うものです。API トークンでは行えないため、何も変更していません。" |
 | `problem.unavailable` | under a form of the sign-in pages when the server could not do what was asked; nothing was changed | "That did not work this time, and nothing was changed. Try again in a while; if it keeps happening, tell the person who runs this server." | "今回は処理できず、何も変更していません。しばらくしてからもう一度お試しください。何度も起きる場合は、このサーバーの管理者にお知らせください。" |
 | `title.sign_in` | the title of the sign-in page | "Sign in · {product}" | "サインイン · {product}" |
 | `sign_in.heading` | the heading of the sign-in page | "Sign in" | "サインイン" |

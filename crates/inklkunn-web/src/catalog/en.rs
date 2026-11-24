@@ -1864,6 +1864,15 @@ pub const CATALOG: &[Entry] = &[
         "form_expired.body",
         "This form could not be matched to your sign-in, so nothing was changed. It may be old, or you may have signed in or out since you opened it. Go back, reload the page and try again.",
     ),
+    msg("title.web_only", "Done at the site only · {product}"),
+    msg(
+        "web_only.heading",
+        "This is done at the site, not with a token",
+    ),
+    msg(
+        "web_only.body",
+        "This can only be done by a person who is signed in, on the site's own page. An API token cannot do it, so nothing was changed.",
+    ),
     msg(
         "problem.unavailable",
         "That did not work this time, and nothing was changed. Try again in a while; if it keeps happening, tell the person who runs this server.",

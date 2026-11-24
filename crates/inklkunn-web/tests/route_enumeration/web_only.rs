@@ -529,7 +529,6 @@ async fn a_token_that_does_not_carry_the_scope_of_the_act_reaches_no_web_only_ac
 }
 
 #[tokio::test]
-#[ignore = "defect: a bearer token of an admin's account with scope accept or admin does moderation, restrictions, protections, appeal decisions and the rules form through the web forms (see the report of R-5 item 3)"]
 async fn a_token_of_the_strongest_scope_reaches_no_web_only_act_and_nothing_is_changed() {
     // C-14f and RFC 006 D-12: these acts are never scripted through the API. A token judges a write alone and carries no CSRF
     // token, so the form routes, which take their principal from the layer, are reached by whoever holds one.
@@ -545,4 +544,176 @@ async fn a_token_of_the_strongest_scope_reaches_no_web_only_act_and_nothing_is_c
         reached.is_empty(),
         "a token reached web-only acts: {reached:#?}"
     );
+}
+
+#[test]
+fn the_route_table_marks_exactly_the_web_only_acts() {
+    // The refusal of a token is put in front of the entries the table marks, so a web-only form that is not marked is open to a
+    // token however well the tests above hold it: the marks and the list are the same set (and only a form is marked).
+    let table = inklkunn_web::routes::application_table().unwrap();
+    let marked: BTreeSet<String> = table
+        .entries()
+        .iter()
+        .filter(|e| e.web_only)
+        .map(|e| e.path.to_owned())
+        .collect();
+    let listed: BTreeSet<String> = WEB_ONLY.iter().map(|p| (*p).to_owned()).collect();
+    assert_eq!(marked, listed, "the table's marks and WEB_ONLY differ");
+    assert!(
+        table
+            .entries()
+            .iter()
+            .filter(|e| e.web_only)
+            .all(|e| e.methods.contains(&"POST")),
+        "a marked entry takes no POST: it is not a write"
+    );
+    assert!(
+        table
+            .entries()
+            .iter()
+            .filter(|e| e.path.contains("/-/api/v1/"))
+            .all(|e| !e.web_only),
+        "an entry of the API is marked web-only"
+    );
+}
+
+/// The words of the refusal, in the language the request asked for.
+const REFUSED_EN: &str = "An API token cannot do it, so nothing was changed.";
+const REFUSED_JA: &str = "API トークンでは行えないため、何も変更していません。";
+
+#[tokio::test]
+async fn the_refusal_of_a_token_is_one_page_that_names_the_reason_in_both_languages() {
+    let s = stand();
+    for (language, words) in [("en", REFUSED_EN), ("ja", REFUSED_JA)] {
+        let a = send_body(
+            &s.w,
+            "POST",
+            "/handbook/-/protect",
+            None,
+            &[
+                ("sec-fetch-site", "same-origin"),
+                ("authorization", &bearer(Scope::Admin, &s.admin)),
+                ("accept-language", language),
+            ],
+            String::new(),
+        )
+        .await;
+        assert_eq!(a.status, StatusCode::FORBIDDEN, "{language}");
+        assert!(a.body().contains(words), "{language}: {}", a.body());
+    }
+}
+
+#[tokio::test]
+async fn the_refusal_tells_a_token_holder_nothing_of_the_token_or_the_wiki() {
+    // A good token of the strongest scope, a token that does not authenticate, a credential that cannot be a token, a wiki that is
+    // there and one that is not: one answer, byte for byte (the refusal asks the header and nothing else).
+    let s = stand();
+    let good = bearer(Scope::Admin, &s.admin);
+    let mut seen = BTreeSet::new();
+    for (path, authorization) in [
+        ("/handbook/-/moderate/unhide", good.as_str()),
+        ("/handbook/-/moderate/unhide", "Bearer nonsense"),
+        ("/handbook/-/moderate/unhide", "Bearer two words"),
+        ("/handbook/-/moderate/unhide", "bearer admin.nobody"),
+        ("/absent/-/moderate/unhide", good.as_str()),
+        ("/absent/-/moderate/unhide", "Bearer nonsense"),
+    ] {
+        let a = send_body(
+            &s.w,
+            "POST",
+            path,
+            None,
+            &[
+                ("sec-fetch-site", "same-origin"),
+                ("authorization", authorization),
+            ],
+            "hide=x".to_owned(),
+        )
+        .await;
+        assert_eq!(a.status, StatusCode::FORBIDDEN, "{path} {authorization}");
+        seen.insert(a.body());
+    }
+    assert_eq!(seen.len(), 1, "the refusal differs: {seen:#?}");
+}
+
+#[tokio::test]
+async fn a_request_with_a_token_and_the_admin_session_is_a_token_request_and_is_refused() {
+    // The identity layer judges a request that presents a token by the token alone, and so does this: the session the same
+    // request carries does not make the act, and the CSRF token it presents does not either.
+    for route in WEB_ONLY {
+        let s = stand();
+        let body = prepare(route, &s).await;
+        let before = records(&s);
+        let a = send_body(
+            &s.w,
+            "POST",
+            &address(route),
+            Some(&s.admin),
+            &[
+                ("sec-fetch-site", "same-origin"),
+                ("authorization", &bearer(Scope::Read, &s.admin)),
+            ],
+            encode(&body),
+        )
+        .await;
+        assert_eq!(a.status, StatusCode::FORBIDDEN, "{route}: {}", a.body());
+        assert!(a.body().contains(REFUSED_EN), "{route}: {}", a.body());
+        assert_eq!(records(&s), before, "{route} changed records");
+    }
+}
+
+#[tokio::test]
+async fn the_forms_of_a_web_only_act_are_not_shown_to_a_token_either() {
+    // The page of a form is the act's own address: a token is refused there as well, and a session is shown the form.
+    let s = stand();
+    for route in WEB_ONLY {
+        let table = inklkunn_web::routes::application_table().unwrap();
+        let entry = table.find(route).expect("registered");
+        if !entry.methods.contains(&"GET") {
+            continue;
+        }
+        let token = send_body(
+            &s.w,
+            "GET",
+            &address(route),
+            None,
+            &[("authorization", &bearer(Scope::Admin, &s.admin))],
+            String::new(),
+        )
+        .await;
+        assert_eq!(token.status, StatusCode::FORBIDDEN, "{route}");
+        assert!(token.body().contains(REFUSED_EN), "{route}");
+        let session = send_body(
+            &s.w,
+            "GET",
+            &address(route),
+            Some(&s.admin),
+            &[],
+            String::new(),
+        )
+        .await;
+        assert_ne!(session.status, StatusCode::FORBIDDEN, "{route}");
+    }
+}
+
+#[tokio::test]
+async fn another_scheme_in_authorization_is_not_the_refusal_of_a_token() {
+    // An operator's proxy may add Basic: it is not a token of ours, so this layer does not answer it (the test identity judges any
+    // `Authorization` header as a token, so the act itself is not made here; the real identity's reading of Basic is held by its
+    // own tests). What is held here is that the answer is not the sentence about tokens.
+    let s = stand();
+    let body = prepare("/{slug}/-/protect", &s).await;
+    let a = send_body(
+        &s.w,
+        "POST",
+        "/handbook/-/protect",
+        Some(&s.admin),
+        &[
+            ("sec-fetch-site", "same-origin"),
+            ("authorization", "Basic dXNlcjpwYXNz"),
+        ],
+        encode(&body),
+    )
+    .await;
+    assert!(!a.body().contains(REFUSED_EN), "{}", a.body());
 }
