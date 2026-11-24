@@ -34,7 +34,7 @@ use inklkunn_store::WikiRecord;
 
 use super::history::{ChangeInfo, PageEvent};
 use super::rollback::Planned;
-use super::{BlockText, Lookup, ReadError, ReadService, Tip};
+use super::{BlockText, Cause, Lookup, ReadError, ReadService, Tip};
 use crate::tombstone::Mark;
 
 /// The most steps of a page's history read to find out that a title is a removed page. A step inspects at most
@@ -60,10 +60,6 @@ pub enum Restore {
     /// **The last text cannot be read as text** (it is not UTF-8, or it is larger than a page may be): no way back is
     /// offered, and the person starts the page anew.
     NotText,
-    /// **The revision that wrote the text is beyond what the page reads** (it is not found within [`MAX_REMOVAL_STEPS`]
-    /// steps of the page's history, or the history this wiki reads ends before it): nothing is guessed at, no way back is
-    /// offered, and the person starts the page anew. This is not [`Restore::NotText`]: the text may well be text.
-    BeyondHistory,
     /// **The text that would come back was hidden by moderation** (RFC 006 D-8; INV-13): no way back is offered, and a request
     /// for one is refused. The person starts the page anew. For a rollback of a change that wrote several pages, any one hidden
     /// refuses the whole.
@@ -196,8 +192,13 @@ impl ReadService {
             }
             Planned::No(_) => {}
         }
+        // A removal is never the first block of a history (it removes what an earlier block wrote), so one without a parent is
+        // not a history this reads: it is a read that failed, not a sentence for a reader.
         let Some(parent) = removal.parent.as_deref() else {
-            return Ok(Restore::BeyondHistory);
+            return Err(ReadError::CouldNotBeReadNow(Cause::Scratch(format!(
+                "the change {} removed a page and has no parent block",
+                removal.block_id
+            ))));
         };
         Ok(match self.text_at(wiki, view, parent, path)? {
             BlockText::Text(_) => Restore::LastText {

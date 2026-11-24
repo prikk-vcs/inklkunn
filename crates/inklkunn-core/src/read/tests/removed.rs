@@ -101,3 +101,25 @@ fn a_visit_to_a_removed_page_makes_the_same_calls_for_one_page_and_for_two_hundr
     );
     assert!(matches!(way, Restore::Rollback { .. }), "{way:?}");
 }
+
+/// A removal that is the first change of a history has no parent block to read the page's last text at. No history can show it
+/// (a removal removes what an earlier change wrote), so it is a read that fails for the operator, never a sentence for a reader.
+#[test]
+fn a_removal_with_no_parent_block_is_a_read_that_fails_and_not_a_sentence() {
+    let w = World::pages_with(&[("Home", &[][..], "Hi.\n")], ttl_zero());
+    w.fake().say(1, "Remove the guide");
+    w.fake()
+        .show(1, shows(vec![op("delete-node", "pages/Guide.md")]));
+    w.service.forget_wiki(&w.wiki);
+    let removed = w
+        .service
+        .removed_page(&w.wiki, None, "Guide")
+        .expect("a read")
+        .expect("a removed page");
+    assert_eq!(removed.removal.parent, None);
+    let failed = w.service.way_back(&w.wiki, None, &removed);
+    assert!(
+        matches!(failed, Err(ReadError::CouldNotBeReadNow(Cause::Scratch(_)))),
+        "{failed:?}"
+    );
+}

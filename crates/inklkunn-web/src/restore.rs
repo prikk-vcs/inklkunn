@@ -8,7 +8,7 @@
 //! **The way back is worked out here and nowhere else** ([`inklkunn_core::read::ReadService::way_back`], G-T6 correction S-1):
 //! it costs a process for each page the removing change wrote, so the page of the removal, the raw 410 and the API's
 //! `page-gone` offer only the link, by the `propose` rung, and this form (behind that rung) says which way there is and why
-//! there is none (the text is not text, the revision that wrote it is beyond the history this wiki reads, or it was hidden).
+//! there is none (the text is not text, or it was hidden).
 //!
 //! * **A rollback** of the change that removed the page (RFC 004 D-8), when it merges cleanly over the tip.
 //! * **The page again, with the text it had last**, a proposal like any new page, when later changes block that.
@@ -164,7 +164,7 @@ fn mode_of(restore: &Restore) -> Option<&'static str> {
     match restore {
         Restore::Rollback { .. } => Some(MODE_ROLLBACK),
         Restore::LastText { .. } => Some(MODE_LAST_TEXT),
-        Restore::NotText | Restore::BeyondHistory | Restore::TextHidden { .. } => None,
+        Restore::NotText | Restore::TextHidden { .. } => None,
     }
 }
 
@@ -176,15 +176,13 @@ pub(crate) fn text_hidden_words(t: T, titles: &[String]) -> String {
         .text()
 }
 
-/// The answer when no mode can be offered: the page that says why (`status`): the text was hidden, is not text, or was written
-/// beyond the history this wiki reads; and the way on is the empty new page.
+/// The answer when no mode can be offered: the page that says why (`status`): the text was hidden or is not text; and the way on is the empty new page.
 fn no_mode(page: &Page, ctx: &Ctx, subject: &Subject_, status: StatusCode) -> Response {
     let t = page.t();
     let removed = &subject.removed;
     let words = match &subject.restore {
         Restore::TextHidden { titles } => text_hidden_words(t, titles),
         Restore::NotText => t.get(Key::RemovedRestoreNotText),
-        Restore::BeyondHistory => t.get(Key::RemovedRestoreBeyondHistory),
         // An offer is a form, not a notice: the caller asks this only when there is no way.
         Restore::Rollback { .. } | Restore::LastText { .. } => {
             return see(&crate::proposals::paths::new_page(
@@ -443,7 +441,7 @@ fn make(page: &Page, ctx: &Ctx, subject: &Subject_, summary: &str) -> Response {
                 .proposals
                 .create(&ctx.principal, &ctx.wiki, view, edit)
         }
-        Restore::NotText | Restore::BeyondHistory | Restore::TextHidden { .. } => {
+        Restore::NotText | Restore::TextHidden { .. } => {
             return changed(page, ctx, subject);
         }
     };

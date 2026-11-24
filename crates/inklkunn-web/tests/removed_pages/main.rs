@@ -645,7 +645,7 @@ async fn the_restore_drafts_summary_is_a_catalog_message_in_the_persons_language
 }
 
 /// A wiki whose page `Guide` was removed and cannot be restored by a proposal, in `way` (the last text is not text, or the change
-/// that wrote it is further back than the history this wiki reads), and the person who may propose.
+/// that wrote it is far back, which is no obstacle), and the person who may propose.
 fn unrestorable(way: &str) -> World {
     let w = World::new("handbook", "The Handbook", &[(HOME, &home("Welcome.\n"))]);
     w.fake.say(1, "Create the handbook");
@@ -681,25 +681,20 @@ fn unrestorable(way: &str) -> World {
 async fn a_page_that_cannot_be_restored_says_why_in_its_own_sentence_for_each_cause_in_both_languages()
  {
     let not_text = ["cannot be read as text", "テキストとして読めない"];
-    let beyond = [
-        "further back than the history this wiki reads",
-        "履歴よりも前にある",
-    ];
     // The text that comes back is read where the removal's parent holds it, through the one reader of a text at a block (G-T4
     // correction H-1), so a page whose last text is far behind the history this wiki reads is **not** a page that cannot be
-    // restored: the text is there, readable and not hidden. The sentence for *further back than the history* is for a removal
-    // that has no parent to read it at, which no history this service reads can show; it stays the form's answer to that.
+    // restored: the text is there, readable and not hidden. (There is no sentence for *further back than the history*: a removal
+    // with no parent to read the text at is shown by no history, and is a failed read, not an answer.)
     {
         let who = person(1);
         let w = unrestorable("beyond");
         let form = restore_form_in(&w, &who, "en").await;
         assert_eq!(form.status, 200, "{}", form.body());
         assert!(form.body().contains("name=\"mode\""), "{}", form.body());
-        assert!(!form.body().contains(beyond[0]), "{}", form.body());
     }
-    for (way, mine, other) in [("not text", not_text, beyond)] {
+    for (way, mine) in [("not text", not_text)] {
         let who = person(1);
-        for ((lang, mine_here), other_here) in ["en", "ja"].into_iter().zip(mine).zip(other) {
+        for (lang, mine_here) in ["en", "ja"].into_iter().zip(mine) {
             // A world of its own for each request: how far back a request reads is bounded for it, and the blocks it has read are
             // held by id, so that a second request of the same wiki reads further than the first (RFC 003 D-2).
             let w = unrestorable(way);
@@ -708,7 +703,6 @@ async fn a_page_that_cannot_be_restored_says_why_in_its_own_sentence_for_each_ca
             let body = form.body();
             assert!(!body.contains("name=\"mode\""), "{way} {lang}: {body}");
             assert!(body.contains(mine_here), "{way} {lang}: {body}");
-            assert!(!body.contains(other_here), "{way} {lang}: {body}");
             // The way on is the empty new page; a request for a restoring draft is refused and makes none.
             assert!(
                 body.contains("/handbook/-/proposals/new?"),

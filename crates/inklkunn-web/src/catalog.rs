@@ -1955,7 +1955,6 @@ keys! {
     RemovedLinkProposal => "removed.link_proposal",
     RemovedRestoreLink => "removed.restore_link",
     RemovedRestoreNotText => "removed.restore_not_text",
-    RemovedRestoreBeyondHistory => "removed.restore_beyond_history",
     RemovedCannotPropose => "removed.cannot_propose",
     RemovedRaw => "removed.raw",
     RestoreHeading => "restore.heading",

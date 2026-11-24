@@ -3906,10 +3906,6 @@ pub const CATALOG: &[Entry] = &[
         "This page cannot be restored by a proposal, because its last text cannot be read as text. You can propose a new page with this title.",
     ),
     msg(
-        "removed.restore_beyond_history",
-        "This page cannot be restored by a proposal, because the change that wrote its last text is further back than the history this wiki reads. You can propose a new page with this title.",
-    ),
-    msg(
         "removed.cannot_propose",
         "Restoring a page is proposed like any change, and you cannot propose changes in this wiki.",
     ),
