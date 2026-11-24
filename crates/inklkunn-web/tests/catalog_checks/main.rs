@@ -14,6 +14,7 @@
 
 mod allow;
 mod japanese;
+mod refusals;
 mod rust_scan;
 mod template_scan;
 

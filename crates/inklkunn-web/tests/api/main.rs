@@ -5,6 +5,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 mod across;
+#[path = "../common/causes.rs"]
+mod causes;
 #[path = "../common/mod.rs"]
 mod common;
 mod description;

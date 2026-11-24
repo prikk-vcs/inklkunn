@@ -5,6 +5,8 @@
 
 mod accept;
 mod bodies;
+#[path = "../common/causes.rs"]
+mod causes;
 mod claims;
 #[path = "../common/mod.rs"]
 mod common;

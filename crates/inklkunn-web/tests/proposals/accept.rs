@@ -352,6 +352,13 @@ fn cases() -> Vec<Case> {
             japanese: &["<h1>許可されていません</h1>"],
         },
         Case {
+            name: "no such proposal (the page is the one of a visitor who may not accept)",
+            answer: || Err(AcceptFailure::NotFound),
+            status: StatusCode::FORBIDDEN,
+            english: &["<h1>Not allowed</h1>"],
+            japanese: &["<h1>許可されていません</h1>"],
+        },
+        Case {
             name: "busy with a depth",
             answer: || {
                 Err(AcceptFailure::Busy(Busy {
@@ -709,6 +716,75 @@ fn cases() -> Vec<Case> {
             japanese: &["<h1>結果は不明です</h1>"],
         },
         Case {
+            name: "the person is restricted",
+            answer: || Err(AcceptFailure::Restricted(crate::causes::restriction())),
+            status: StatusCode::FORBIDDEN,
+            english: &[
+                "<h1>Not allowed</h1>",
+                "You are restricted in this wiki: you can read it, and you cannot comment, propose or review until the restriction ends.",
+                "The reason given: Too many edits in a day.",
+                "The restriction ends on 2023-11-15 22:13 UTC.",
+                "Set by a person holding maintainer, under the default rules.",
+            ],
+            japanese: &[
+                "<h1>許可されていません</h1>",
+                "この Wiki では制限を受けています。",
+                "示された理由: Too many edits in a day.",
+                "制限は 2023-11-15 22:13 UTC に終わります。",
+                "メンテナー の人が設定しました。適用されたルール: 既定のルール。",
+            ],
+        },
+        Case {
+            name: "the author of a proposal that replaces a file nobody can read is restricted",
+            answer: || Err(AcceptFailure::AuthorNotAllowed { restricted: true }),
+            status: StatusCode::FORBIDDEN,
+            english: &[
+                "<h1>Not allowed</h1>",
+                "which only someone who may moderate this wiki can propose, and its author is restricted for now. Nothing was changed, and the proposal is still held for review.",
+            ],
+            japanese: &[
+                "<h1>許可されていません</h1>",
+                "提案者はいま制限を受けています。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+            ],
+        },
+        Case {
+            name: "the author of a proposal that replaces a file nobody can read may not",
+            answer: || Err(AcceptFailure::AuthorNotAllowed { restricted: false }),
+            status: StatusCode::FORBIDDEN,
+            english: &[
+                "<h1>Not allowed</h1>",
+                "which only someone who may moderate this wiki can propose, and its author no longer may. Nothing was changed, and the proposal is still held for review.",
+            ],
+            japanese: &[
+                "<h1>許可されていません</h1>",
+                "提案者はもうその役割を持っていません。何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+            ],
+        },
+        Case {
+            name: "a knowledge file the change writes is not sound",
+            answer: || {
+                Err(AcceptFailure::KnowledgeInvalid(vec![
+                    inklkunn_core::knowledge::check::Refusal::of(
+                        "knowledge/stray.txt",
+                        inklkunn_core::knowledge::Fault::whole(
+                            inklkunn_core::knowledge::Rule::Path,
+                        ),
+                    ),
+                ]))
+            },
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            english: &[
+                "<h1>Not signed: a claim or source file is not acceptable</h1>",
+                "The file is not in knowledge/claims or knowledge/sources, or its name is not a well formed id followed by .yaml.",
+                "Nothing was changed, and the proposal is still held for review. Correct the file and accept again.",
+            ],
+            japanese: &[
+                "<h1>署名されませんでした: 主張または出典のファイルを受け付けられません</h1>",
+                "ファイルが knowledge/claims にも knowledge/sources にもないか、ファイル名が「正しい形式の id + .yaml」になっていません。",
+                "もう一度受け入れてください。",
+            ],
+        },
+        Case {
             name: "the proposal's state does not allow it",
             answer: || {
                 Err(AcceptFailure::Proposal(ProposalError::NotInThisState {
@@ -718,7 +794,7 @@ fn cases() -> Vec<Case> {
             },
             status: StatusCode::CONFLICT,
             english: &["This proposal is Declined, so this cannot be done now."],
-            japanese: &["<h1>"],
+            japanese: &["この提案は「見送り済み」の状態なので、今はこの操作はできません。"],
         },
     ]
 }
@@ -763,6 +839,45 @@ async fn every_answer_of_the_acceptance_is_a_page_in_the_words_of_the_glossary_i
                 );
             }
         }
+    }
+}
+
+#[test]
+fn every_cause_of_a_refusal_has_a_case_that_names_it_on_the_page_in_both_languages() {
+    // C-3g: each refusal names its cause. The causes are the closed list of `causes.rs` (it does not compile when a variant is
+    // added to `AcceptFailure` and is not placed there), and each is held here by a case of `cases()` that says it in words, in
+    // each language, as many times as the cause says more than one thing.
+    use crate::causes::{ALL, Cause, cause_of, samples};
+    let mut have: std::collections::BTreeMap<Cause, usize> = std::collections::BTreeMap::new();
+    for case in cases() {
+        assert!(
+            !case.english.is_empty() && !case.japanese.is_empty(),
+            "{}: a case with no words in a language holds nothing",
+            case.name
+        );
+        // The Japanese is Japanese: some word of the case is written in it, and none is the English heading again.
+        assert!(
+            case.japanese.iter().any(|w| !w.is_ascii()),
+            "{}: no Japanese word is asked of the page",
+            case.name
+        );
+        if let Err(failure) = (case.answer)() {
+            *have.entry(cause_of(&failure)).or_default() += 1;
+        }
+    }
+    let mut wanted: std::collections::BTreeMap<Cause, usize> = std::collections::BTreeMap::new();
+    for failure in samples() {
+        *wanted.entry(cause_of(&failure)).or_default() += 1;
+    }
+    for cause in ALL {
+        let (cases, samples) = (
+            have.get(&cause).copied().unwrap_or(0),
+            wanted.get(&cause).copied().unwrap_or(0),
+        );
+        assert!(
+            cases >= samples && cases > 0,
+            "{cause:?}: {cases} case(s) of the page for {samples} way(s) of ending in it"
+        );
     }
 }
 

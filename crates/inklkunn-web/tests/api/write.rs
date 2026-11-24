@@ -17,6 +17,7 @@ use super::common::{self, World, add_person, block_id, page, person, state_id, w
 use super::{Answer, At, get, router};
 
 mod knowledge;
+mod refusals;
 mod restricted;
 mod shapes;
 
