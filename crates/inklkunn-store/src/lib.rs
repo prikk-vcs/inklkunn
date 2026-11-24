@@ -62,10 +62,11 @@ pub use audit::{
 };
 pub use claim_thread::{ClaimCommentRecord, ClaimCommentRow, ClaimThreadPage, ClaimThreadStore};
 pub use derived::{
-    DerivedHeading, DerivedLinks, DerivedMeta, DerivedPage, DerivedStore, IndexEntry,
-    KnowledgeAnchorRow, KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow,
-    KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow, PageKey, SearchDoc, SearchHit,
-    SearchKind,
+    BlockWrites, DerivedHeading, DerivedLinks, DerivedMeta, DerivedPage, DerivedStore, IndexEntry,
+    IndexedBlock, KnowledgeAnchorRow, KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow,
+    KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow, LastWrite, LaterWrite,
+    MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter, PageKey, PathWrite, SearchDoc, SearchHit,
+    SearchKind, WriteKind, Writers, WritesState,
 };
 pub use governance::{
     Actor, AppealDecision, AppealOutcome, AppealRecord, AppealState, AppealedAction, AppealedKind,

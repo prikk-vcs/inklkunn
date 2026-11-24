@@ -5,12 +5,34 @@ use std::sync::PoisonError;
 
 use crate::Result;
 use crate::derived::{
-    DerivedPage, DerivedStore, IndexEntry, KnowledgeRows, PageKey, SearchDoc, SearchHit,
+    BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeRows, LastWrite,
+    LaterWrite, MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter, PageKey, SearchDoc, SearchHit,
+    WriteKind, Writers, WritesState,
 };
 use crate::governance::{GovernanceSnapshot, GovernanceSnapshotStore};
 use crate::record::WikiId;
 
 use super::MemoryStore;
+
+/// One view's writes index in memory: the reference the SQLite tables must agree with.
+#[derive(Debug, Default)]
+pub(super) struct ViewWrites {
+    state: Option<WritesState>,
+    /// number → the block.
+    blocks: BTreeMap<u64, IndexedBlock>,
+    /// block id → number.
+    by_id: HashMap<String, u64>,
+    /// `(path, number)` → what the block did (a block has one row per path).
+    rows: BTreeMap<(String, u64), WriteKind>,
+}
+
+/// Does the row settle who wrote the path (it is not a *may have*)?
+fn is_certain(kind: &WriteKind) -> bool {
+    matches!(
+        kind,
+        WriteKind::Wrote | WriteKind::Deleted | WriteKind::Carried { .. }
+    )
+}
 
 /// `(wiki, tip, path, lang, presentation)`.
 type PageId = (WikiId, String, String, String, String);
@@ -31,6 +53,8 @@ pub(super) struct Derived {
     governance_stored: u64,
     /// `(wiki, block)` → when the block was first seen. Kept when the cache is cleared.
     seen: HashMap<(WikiId, String), i64>,
+    /// `(wiki, view)` → the writes index of the view's log.
+    writes: HashMap<(WikiId, String), ViewWrites>,
 }
 
 fn id_of(key: &PageKey<'_>) -> PageId {
@@ -112,6 +136,7 @@ impl DerivedStore for MemoryStore {
                 + d.searches.len()
                 + d.knowledge.len()
                 + d.governance.len()
+                + d.writes.len()
         };
         let before = count(&d);
         d.pages.retain(|(w, ..), _| w != wiki);
@@ -119,6 +144,7 @@ impl DerivedStore for MemoryStore {
         d.searches.retain(|(w, _), _| w != wiki);
         d.knowledge.retain(|(w, _), _| w != wiki);
         d.governance.retain(|(w, _), _| w != wiki);
+        d.writes.retain(|(w, _), _| w != wiki);
         let removed = before - count(&d);
         Ok(u64::try_from(removed).unwrap_or(u64::MAX))
     }
@@ -186,6 +212,154 @@ impl DerivedStore for MemoryStore {
         Ok(blocks
             .iter()
             .map(|b| *d.seen.entry((wiki.clone(), b.clone())).or_insert(now))
+            .collect())
+    }
+
+    fn writes_state(&self, wiki: &WikiId, view: &str) -> Result<Option<WritesState>> {
+        Ok(self
+            .derived()
+            .writes
+            .get(&(wiki.clone(), view.to_owned()))
+            .and_then(|v| v.state.clone()))
+    }
+
+    fn append_writes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        blocks: &[BlockWrites],
+        state: &WritesState,
+    ) -> Result<()> {
+        blocks.iter().try_for_each(BlockWrites::validate)?;
+        let mut d = self.derived();
+        let index = d.writes.entry((wiki.clone(), view.to_owned())).or_default();
+        for block in blocks {
+            if index.blocks.contains_key(&block.number) {
+                continue;
+            }
+            index.blocks.insert(
+                block.number,
+                IndexedBlock {
+                    number: block.number,
+                    block: block.block.clone(),
+                    proposal: block.proposal.clone(),
+                },
+            );
+            index.by_id.insert(block.block.clone(), block.number);
+            for write in &block.writes {
+                index
+                    .rows
+                    .insert((write.path.clone(), block.number), write.kind.clone());
+            }
+        }
+        // The state only moves forward: a second reader that built the same blocks leaves it where the first put it.
+        if index
+            .state
+            .as_ref()
+            .is_none_or(|held| held.head_number <= state.head_number)
+        {
+            index.state = Some(state.clone());
+        }
+        Ok(())
+    }
+
+    fn reset_writes(&self, wiki: &WikiId, view: &str) -> Result<()> {
+        self.derived()
+            .writes
+            .remove(&(wiki.clone(), view.to_owned()));
+        Ok(())
+    }
+
+    fn indexed_block(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        block: &str,
+    ) -> Result<Option<IndexedBlock>> {
+        let d = self.derived();
+        Ok(d.writes
+            .get(&(wiki.clone(), view.to_owned()))
+            .and_then(|v| v.by_id.get(block).and_then(|n| v.blocks.get(n)))
+            .cloned())
+    }
+
+    fn indexed_block_at(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        number: u64,
+    ) -> Result<Option<IndexedBlock>> {
+        let d = self.derived();
+        Ok(d.writes
+            .get(&(wiki.clone(), view.to_owned()))
+            .and_then(|v| v.blocks.get(&number))
+            .cloned())
+    }
+
+    fn last_writes(&self, wiki: &WikiId, view: &str, path: &str, at: u64) -> Result<Writers> {
+        let d = self.derived();
+        let Some(index) = d.writes.get(&(wiki.clone(), view.to_owned())) else {
+            return Ok(Writers::default());
+        };
+        let of_path = |p: &str| {
+            index
+                .rows
+                .range((p.to_owned(), 0)..=(p.to_owned(), at))
+                .map(|((_, number), kind)| (*number, kind.clone()))
+                .collect::<Vec<_>>()
+        };
+        let own = of_path(path);
+        let last = own
+            .iter()
+            .rev()
+            .find(|(_, kind)| is_certain(kind))
+            .map(|(number, kind)| LastWrite {
+                number: *number,
+                kind: kind.clone(),
+            });
+        let after = last.as_ref().map_or(0, |l| l.number);
+        let mut maybes: Vec<MaybeWriter> = own
+            .iter()
+            .chain(of_path("").iter())
+            .filter(|(number, kind)| *number >= after && !is_certain(kind))
+            .map(|(number, kind)| MaybeWriter {
+                number: *number,
+                opaque: *kind == WriteKind::Opaque,
+            })
+            .collect();
+        // A block that is both (a path row and a block row) is listed once, opaque when either is.
+        maybes.sort_by(|a, b| a.number.cmp(&b.number).then(b.opaque.cmp(&a.opaque)));
+        maybes.dedup_by_key(|m| m.number);
+        let more = maybes.len() > MAX_MAYBE_WRITERS;
+        maybes.truncate(MAX_MAYBE_WRITERS);
+        Ok(Writers { last, maybes, more })
+    }
+
+    fn later_writes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<LaterWrite>> {
+        let d = self.derived();
+        let Some(index) = d.writes.get(&(wiki.clone(), view.to_owned())) else {
+            return Ok(Vec::new());
+        };
+        let limit = limit.clamp(1, MAX_LATER_WRITES).saturating_add(1);
+        Ok(index
+            .rows
+            .range((path.to_owned(), after.saturating_add(1))..=(path.to_owned(), u64::MAX))
+            .filter(|(_, kind)| matches!(kind, WriteKind::Wrote | WriteKind::Carried { .. }))
+            .filter_map(|((_, number), kind)| {
+                index.blocks.get(number).map(|b| LaterWrite {
+                    number: *number,
+                    block: b.block.clone(),
+                    kind: kind.clone(),
+                })
+            })
+            .take(limit)
             .collect())
     }
 }

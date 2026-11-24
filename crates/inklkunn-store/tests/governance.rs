@@ -1152,6 +1152,47 @@ fn the_items_whose_content_was_ever_hidden_are_listed_once_each_in_the_order_the
     assert_eq!(ids(10), vec![block(7), block(5)]);
 }
 
+fn the_newest_content_hide_in_force_is_one_query_and_an_unhide_takes_it_out<S>(r: &Rig<S>)
+where
+    S: GovernanceStore,
+{
+    let (s, w) = (&r.store, &r.wiki);
+    let by = (&r.maintainer, Role::Maintainer);
+    let revision = |n: u64| HiddenItem {
+        kind: HiddenItemKind::PageRevision,
+        id: block(n),
+        reference: None,
+    };
+    let in_force = || s.content_hide_in_force(w).unwrap().map(|e| e.id);
+    assert_eq!(in_force(), None, "nothing is hidden");
+    // The summary or the author alone is no hide of a content, and a comment's body is not a revision's.
+    let summary_only = HiddenParts {
+        content: false,
+        summary: true,
+        author: false,
+    };
+    s.record_tombstone_event(&hide(w, &revision(3), summary_only, by, T0))
+        .unwrap();
+    s.record_tombstone_event(&hide(w, &comment_item(), CONTENT, by, T0 + 1))
+        .unwrap();
+    assert_eq!(in_force(), None);
+    // The newest hide of a content of a page revision is the one.
+    let first = hide(w, &revision(5), CONTENT, by, T0 + 2);
+    let second = hide(w, &revision(7), CONTENT_AND_AUTHOR, by, T0 + 3);
+    s.record_tombstone_event(&first).unwrap();
+    assert_eq!(in_force(), Some(first.id.clone()));
+    s.record_tombstone_event(&second).unwrap();
+    assert_eq!(in_force(), Some(second.id.clone()));
+    // An unhide of the newest leaves the one before; of the last, nothing. Another wiki's hides are not this wiki's.
+    s.record_tombstone_event(&unhide(&second, by, T0 + 4))
+        .unwrap();
+    assert_eq!(in_force(), Some(first.id.clone()));
+    assert_eq!(s.content_hide_in_force(&WikiId::new()).unwrap(), None);
+    s.record_tombstone_event(&unhide(&first, by, T0 + 5))
+        .unwrap();
+    assert_eq!(in_force(), None, "restored: nothing is hidden again");
+}
+
 fn a_tombstone_names_its_item_the_way_its_kind_does<S>(r: &Rig<S>)
 where
     S: GovernanceStore + ProposalStore,
@@ -2610,6 +2651,7 @@ both_stores!(
     the_events_of_one_act_share_one_time_one_person_and_one_kind,
     the_moderation_log_is_newest_first_and_pages_by_event,
     the_items_whose_content_was_ever_hidden_are_listed_once_each_in_the_order_they_were_first_hidden,
+    the_newest_content_hide_in_force_is_one_query_and_an_unhide_takes_it_out,
     a_tombstone_names_its_item_the_way_its_kind_does,
     a_hide_that_declined_a_proposal_names_the_decline,
     an_appeal_is_filed_once_per_action_per_person_and_counted,

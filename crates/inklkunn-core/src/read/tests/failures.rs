@@ -311,6 +311,60 @@ impl DerivedStore for BrokenStore {
     fn first_seen(&self, _: &WikiId, _: &[String], _: i64) -> inklkunn_store::Result<Vec<i64>> {
         Err(StoreError::Backend("down".into()))
     }
+    fn writes_state(
+        &self,
+        _: &WikiId,
+        _: &str,
+    ) -> inklkunn_store::Result<Option<inklkunn_store::WritesState>> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn append_writes(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &[inklkunn_store::BlockWrites],
+        _: &inklkunn_store::WritesState,
+    ) -> inklkunn_store::Result<()> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn reset_writes(&self, _: &WikiId, _: &str) -> inklkunn_store::Result<()> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn indexed_block(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &str,
+    ) -> inklkunn_store::Result<Option<inklkunn_store::IndexedBlock>> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn indexed_block_at(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: u64,
+    ) -> inklkunn_store::Result<Option<inklkunn_store::IndexedBlock>> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn last_writes(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &str,
+        _: u64,
+    ) -> inklkunn_store::Result<inklkunn_store::Writers> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn later_writes(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &str,
+        _: u64,
+        _: usize,
+    ) -> inklkunn_store::Result<Vec<inklkunn_store::LaterWrite>> {
+        Err(StoreError::Backend("down".into()))
+    }
 }
 
 #[test]
@@ -345,7 +399,6 @@ fn a_derived_store_that_is_down_costs_speed_and_never_a_page() {
         Err(ReadError::CouldNotBeReadNow(Cause::Store(_)))
     ));
 }
-
 // ------------------------------------------------------------------------------------ the store size
 
 #[test]

@@ -963,6 +963,10 @@ BEGIN SELECT RAISE(ABORT, 'a reply is in the thread of the comment it answers');
 /// (normalized, bounded) and the fault that makes a wiki refuse writes (file, line, rule). **Show hidden content** has no
 /// table: it is an event of the audit trail (version 3), which already is append-only, one line, never content, and
 /// names the principal, the action and the tombstone it opened.
+///
+/// Three more tables are **derived** the same way (handoff G-T4, corrections J-1, J-2): `write_state`, `write_blocks` and
+/// `path_writes`, the index of **who wrote each path** in each view's log, which the one reader of a page's text at a block asks
+/// to know whose text it is. They are of blocks, not of tips, and hold no text: paths, block ids and what each block did to them.
 const V19: &str = "
 -- The two records of a decision that name **the rung it was made at and the rules it was made under** (RFC 006 D-5;
 -- acceptance criterion 12). Added here, in the one migration of this release, so that no later version has to: a column of a
@@ -1183,6 +1187,9 @@ CREATE TABLE IF NOT EXISTS tombstones (
 CREATE INDEX IF NOT EXISTS tombstones_wiki ON tombstones(wiki_id, seq);
 CREATE INDEX IF NOT EXISTS tombstones_item ON tombstones(wiki_id, item_kind, item_id);
 CREATE INDEX IF NOT EXISTS tombstones_act ON tombstones(wiki_id, act_id);
+-- The hides that cover a change's text, newest first: what a reader of a page's text at a block asks first (one row, or none).
+CREATE INDEX IF NOT EXISTS tombstones_content_hides ON tombstones(wiki_id, seq)
+    WHERE event = 'hide' AND hides_content = 1 AND item_kind IN ('page-revision', 'proposal-revision');
 CREATE UNIQUE INDEX IF NOT EXISTS tombstones_one_unhide ON tombstones(of_event) WHERE of_event IS NOT NULL;
 CREATE TRIGGER IF NOT EXISTS tombstones_no_update BEFORE UPDATE ON tombstones
 BEGIN SELECT RAISE(ABORT, 'tombstones are append-only'); END;
@@ -1245,6 +1252,45 @@ DELETE FROM knowledge_relations;
 DELETE FROM knowledge_links;
 DELETE FROM knowledge_anchors;
 DELETE FROM knowledge_invalid;
+
+-- **Who wrote each path** (RFC 006 D-8; handoff G-T4, corrections J-1, J-2): the text of a path at a block is the text the change that
+-- last wrote it gave it, so the reader that must not serve hidden text asks *the last writer of this path at or before this block*,
+-- one indexed lookup. **Derived data only**, dropped by the derived store's `clear` and built again from the repository's own record
+-- of each block (`show`), oldest block first, as readers need it (INV-5); of blocks and not of tips, since a block's writes never
+-- change. Per view, because a view's log is what orders its blocks (a view forked from another shares its first blocks and
+-- numbers them its own way). `write_state` says how far a view's index goes and from where; `write_blocks` names its blocks;
+-- `path_writes` has one row per path a block wrote, removed or moved (and a row of the path '' for a block that may have written any
+-- path, or whose effect cannot be told).
+CREATE TABLE IF NOT EXISTS write_state (
+    wiki_id      TEXT NOT NULL,
+    view         TEXT NOT NULL,
+    head_number  INTEGER NOT NULL CHECK (head_number >= 0),
+    head_block   TEXT NOT NULL,
+    floor_number INTEGER NOT NULL CHECK (floor_number >= 0 AND floor_number <= head_number),
+    genesis      INTEGER NOT NULL CHECK (genesis IN (0, 1)),
+    PRIMARY KEY (wiki_id, view)
+);
+CREATE TABLE IF NOT EXISTS write_blocks (
+    wiki_id  TEXT NOT NULL,
+    view     TEXT NOT NULL,
+    number   INTEGER NOT NULL CHECK (number >= 0),
+    block_id TEXT NOT NULL,
+    proposal TEXT,
+    PRIMARY KEY (wiki_id, view, number)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS write_blocks_by_id ON write_blocks(wiki_id, view, block_id);
+CREATE TABLE IF NOT EXISTS path_writes (
+    wiki_id   TEXT NOT NULL,
+    view      TEXT NOT NULL,
+    path      TEXT NOT NULL,
+    number    INTEGER NOT NULL CHECK (number >= 0),
+    kind      TEXT NOT NULL CHECK (kind IN ('wrote', 'deleted', 'carried', 'maybe', 'opaque')),
+    from_path TEXT,
+    PRIMARY KEY (wiki_id, view, path, number),
+    CHECK ((kind = 'carried') = (from_path IS NOT NULL)),
+    CHECK (kind <> 'opaque' OR path = ''),
+    CHECK (path <> '' OR kind IN ('maybe', 'opaque'))
+);
 ";
 
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and

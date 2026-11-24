@@ -814,6 +814,22 @@ impl GovernanceStore for SqliteStore {
         )
     }
 
+    fn content_hide_in_force(&self, wiki: &WikiId) -> Result<Option<TombstoneEvent>> {
+        Ok(self
+            .governance_rows(
+                &format!(
+                    "SELECT {TOMBSTONE_COLUMNS} FROM tombstones WHERE wiki_id = ?1 AND event = 'hide' AND hides_content = 1 \
+                     AND item_kind IN ('page-revision', 'proposal-revision') \
+                     AND NOT EXISTS (SELECT 1 FROM tombstones u WHERE u.of_event = tombstones.id) \
+                     ORDER BY seq DESC LIMIT 1"
+                ),
+                params![wiki.as_str()],
+                tombstone_of,
+            )?
+            .into_iter()
+            .next())
+    }
+
     fn tombstone_log(
         &self,
         wiki: &WikiId,

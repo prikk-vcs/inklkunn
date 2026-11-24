@@ -1124,6 +1124,12 @@ pub trait GovernanceStore: Send + Sync {
         part: HiddenPart,
         limit: usize,
     ) -> Result<Vec<String>>;
+    /// **The newest hide that covers content and that no unhide has followed**, of a page revision or of a proposal's revision: what
+    /// a reader of a page's text at a block asks first. `None` means nothing of the wiki has its text hidden now, and nothing more
+    /// is asked (one query, whatever the history); `Some` is the hide whose mark a reader that cannot tell whose text it is
+    /// answers with (nothing hidden can be shown then). Whether a particular change is hidden is
+    /// [`GovernanceStore::tombstone_events_of_id`] read with [`hidden_parts`], never this.
+    fn content_hide_in_force(&self, wiki: &WikiId) -> Result<Option<TombstoneEvent>>;
     /// The wiki's moderation log: at most `limit` events (never more than [`MAX_PAGE`], at least one), newest first,
     /// older than the event `before` when one is named ([`StoreError::NotFound`] when that is not an event of the wiki).
     fn tombstone_log(

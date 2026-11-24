@@ -619,6 +619,28 @@ impl GovernanceStore for MemoryStore {
         Ok(out)
     }
 
+    fn content_hide_in_force(&self, wiki: &WikiId) -> Result<Option<TombstoneEvent>> {
+        let g = self.governance_lock();
+        Ok(g.tombstones
+            .iter()
+            .rev()
+            .find(|t| {
+                t.wiki == *wiki
+                    && t.act == crate::governance::TombstoneAct::Hide
+                    && t.parts.content
+                    && matches!(
+                        t.item.kind,
+                        crate::governance::HiddenItemKind::PageRevision
+                            | crate::governance::HiddenItemKind::ProposalRevision
+                    )
+                    && !g.tombstones.iter().any(|u| {
+                        u.act == crate::governance::TombstoneAct::Unhide
+                            && u.of_event.as_ref() == Some(&t.id)
+                    })
+            })
+            .cloned())
+    }
+
     fn tombstone_log(
         &self,
         wiki: &WikiId,

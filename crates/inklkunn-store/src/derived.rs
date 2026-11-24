@@ -318,6 +318,148 @@ impl KnowledgeRows {
     }
 }
 
+/// What one block of a view's log did to one path, as the writes index keeps it (RFC 006 D-8; handoff G-T4, corrections J-1, J-2).
+/// **The text of a path at a block is the text the change that last wrote the path gave it**; this is what says who that was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteKind {
+    /// The block created the path, or edited it (or replaced it, or moved it here **and** edited it): its bytes are this block's.
+    Wrote,
+    /// The block removed the path, or moved it away: nothing is there.
+    Deleted,
+    /// The block **moved the path here, with none of its bytes touched** (a pure rename): the text is that of the last writer of
+    /// `from` before this block, which is followed back when asked.
+    Carried {
+        /// The path the file had before the block.
+        from: String,
+    },
+    /// The block **may have written** the path, and the index cannot say (an operation it could not read, a block too large to
+    /// list). A row of the path `""` says it of **every** path. A reader counts the block among those that may have written the
+    /// text.
+    Maybe,
+    /// The block is of a kind whose effect on the files is not listed (a merge, a repair, an import, a rollback): a text that
+    /// passes through it **cannot be attributed**. Only a row of the path `""` is of this kind.
+    Opaque,
+}
+
+/// One path a block wrote, moved or removed, with what it did (see [`WriteKind`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathWrite {
+    /// The repository path; `""` for a row that is about every path ([`WriteKind::Maybe`], [`WriteKind::Opaque`]).
+    pub path: String,
+    /// What the block did.
+    pub kind: WriteKind,
+}
+
+/// One block of a view's log and what it did, in the order the view numbers it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockWrites {
+    /// The block's number in its view's log: what blocks are ordered by (prikk's `update_seq`).
+    pub number: u64,
+    /// The block's id.
+    pub block: String,
+    /// The proposal its message names, when it does (a text as the message gives it, never checked here).
+    pub proposal: Option<String>,
+    /// What it did, one row per path.
+    pub writes: Vec<PathWrite>,
+}
+
+impl BlockWrites {
+    /// Is the block well formed? A row of the path `""` is a *may have written* or an *opaque* one and no other; an opaque row is of
+    /// that path alone; a carried row names where it came from. (The SQLite schema's own checks say the same.)
+    pub fn validate(&self) -> crate::Result<()> {
+        let refused = |what: &str| Err(crate::StoreError::Backend(what.to_owned()));
+        if self.block.is_empty() {
+            return refused("a block of the writes index has an id");
+        }
+        for write in &self.writes {
+            let general = matches!(write.kind, WriteKind::Maybe | WriteKind::Opaque);
+            if write.path.is_empty() && !general {
+                return refused("a certain row of the writes index names a path");
+            }
+            if write.kind == WriteKind::Opaque && !write.path.is_empty() {
+                return refused("an opaque row of the writes index is of no one path");
+            }
+            if matches!(&write.kind, WriteKind::Carried { from } if from.is_empty()) {
+                return refused("a carried row of the writes index names where it came from");
+            }
+        }
+        Ok(())
+    }
+}
+
+/// How far a view's writes index goes, and from where.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WritesState {
+    /// The number of the newest block indexed: every block of the view from `floor_number` to here is.
+    pub head_number: u64,
+    /// That block's id, which a caller compares with the log to see that the index is of the log it reads.
+    pub head_block: String,
+    /// The number of the oldest block indexed.
+    pub floor_number: u64,
+    /// The oldest block indexed is the view's first block: nothing is written before it. When not, a path that has no row was
+    /// written, if at all, **before what the index knows**.
+    pub genesis: bool,
+}
+
+/// A block of a view's log, as the writes index names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexedBlock {
+    /// The block's number in the view.
+    pub number: u64,
+    /// Its id.
+    pub block: String,
+    /// The proposal its message names.
+    pub proposal: Option<String>,
+}
+
+/// The newest row of a path at or before a block that settles who wrote it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LastWrite {
+    /// The number of the block.
+    pub number: u64,
+    /// What it did to the path.
+    pub kind: WriteKind,
+}
+
+/// A block that may have written a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MaybeWriter {
+    /// The block's number.
+    pub number: u64,
+    /// Its effect cannot be told at all ([`WriteKind::Opaque`]), not only for this path.
+    pub opaque: bool,
+}
+
+/// What the writes index says of a path at or before a block: the newest block that **certainly** did something to it, and the
+/// blocks after that one (up to the block asked for) that **may have** written it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Writers {
+    /// The newest [`WriteKind::Wrote`], [`WriteKind::Deleted`] or [`WriteKind::Carried`] row, if the index has one.
+    pub last: Option<LastWrite>,
+    /// The blocks after `last` (every block when there is none) that [`WriteKind::Maybe`] or [`WriteKind::Opaque`] cover,
+    /// oldest first: at most [`MAX_MAYBE_WRITERS`].
+    pub maybes: Vec<MaybeWriter>,
+    /// There were more of them than are listed.
+    pub more: bool,
+}
+
+/// The most blocks a [`Writers`] lists that may have written a path.
+pub const MAX_MAYBE_WRITERS: usize = 64;
+
+/// A later block that wrote a path, as [`DerivedStore::later_writes`] lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaterWrite {
+    /// The block's number.
+    pub number: u64,
+    /// Its id.
+    pub block: String,
+    /// What it did to the path ([`WriteKind::Wrote`] or [`WriteKind::Carried`]).
+    pub kind: WriteKind,
+}
+
+/// The most blocks [`DerivedStore::later_writes`] lists.
+pub const MAX_LATER_WRITES: usize = 100;
+
 /// The derived cache. Every implementation passes the same invariant tests (`tests/derived.rs`).
 ///
 /// **A row that cannot be read back is a miss**, never an error and never a made-up value: the cache is
@@ -385,4 +527,48 @@ pub trait DerivedStore: Send + Sync {
     /// history carries no time, so this is the only time the pages can show (ledger: the log has no
     /// timestamps), and they say so. It is kept when the cache is cleared and dropped with nothing else.
     fn first_seen(&self, wiki: &WikiId, blocks: &[String], now: i64) -> Result<Vec<i64>>;
+
+    // ------------------------------------------------------------------------------------ the writes index
+
+    /// How far `view`'s writes index of `wiki` goes (RFC 006 D-8; handoff G-T4, correction J-2): `None` when it has none. **The
+    /// index is of blocks and not of tips**: a block's writes never change, so no tip moving drops it, and only
+    /// [`DerivedStore::clear`] and [`DerivedStore::reset_writes`] do.
+    fn writes_state(&self, wiki: &WikiId, view: &str) -> Result<Option<WritesState>>;
+    /// Add blocks to `view`'s index **and move its state to `state`, in one step** (a reader sees all of it or none). `blocks` are
+    /// in the order of their numbers and follow what the index has, or begin it; a block already there is kept as it is (two
+    /// readers that build the same blocks agree, and the second changes nothing).
+    fn append_writes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        blocks: &[BlockWrites],
+        state: &WritesState,
+    ) -> Result<()>;
+    /// Drop `view`'s index of `wiki`: the next reader builds it again.
+    fn reset_writes(&self, wiki: &WikiId, view: &str) -> Result<()>;
+    /// The block of `view`'s index with this id: `None` when the index does not hold it (not built that far, or not a block of the
+    /// view).
+    fn indexed_block(&self, wiki: &WikiId, view: &str, block: &str)
+    -> Result<Option<IndexedBlock>>;
+    /// The block of `view`'s index with this number.
+    fn indexed_block_at(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        number: u64,
+    ) -> Result<Option<IndexedBlock>>;
+    /// **Who wrote `path` at or before the block numbered `at`**: the newest certain row of the path, and the blocks after it that
+    /// may have written it. A few indexed lookups, whatever the length of the history and the number of changes hidden.
+    fn last_writes(&self, wiki: &WikiId, view: &str, path: &str, at: u64) -> Result<Writers>;
+    /// The blocks after the one numbered `after` that wrote `path` (a [`WriteKind::Wrote`] or a [`WriteKind::Carried`] row), oldest
+    /// first, at most `limit` (never more than [`MAX_LATER_WRITES`], at least one) **and one more** when there are more, so that a
+    /// caller can say *and more*.
+    fn later_writes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<LaterWrite>>;
 }

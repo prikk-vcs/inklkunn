@@ -6,9 +6,10 @@ use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 use super::{SqliteStore, backend};
 use crate::Result;
 use crate::derived::{
-    DerivedPage, DerivedStore, IndexEntry, KnowledgeAnchorRow, KnowledgeClaimRow,
-    KnowledgeInvalidRow, KnowledgeLinkRow, KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow,
-    PageKey, SearchDoc, SearchHit, SearchKind,
+    BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeAnchorRow,
+    KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow, KnowledgeRelationRow, KnowledgeRows,
+    KnowledgeSourceRow, LastWrite, LaterWrite, MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter,
+    PageKey, SearchDoc, SearchHit, SearchKind, WriteKind, Writers, WritesState,
 };
 use crate::record::WikiId;
 
@@ -288,9 +289,23 @@ impl DerivedStore for SqliteStore {
                     params![wiki.as_str()],
                 )
                 .map_err(backend)?;
+            // The writes index: one item for each view that had one.
+            for table in ["path_writes", "write_blocks"] {
+                tx.execute(
+                    &format!("DELETE FROM {table} WHERE wiki_id = ?1"),
+                    params![wiki.as_str()],
+                )
+                .map_err(backend)?;
+            }
+            let writes = tx
+                .execute(
+                    "DELETE FROM write_state WHERE wiki_id = ?1",
+                    params![wiki.as_str()],
+                )
+                .map_err(backend)?;
             tx.commit().map_err(backend)?;
             Ok(
-                u64::try_from(pages + indexes + searches + knowledge + governance)
+                u64::try_from(pages + indexes + searches + knowledge + governance + writes)
                     .unwrap_or(u64::MAX),
             )
         })
@@ -546,6 +561,324 @@ impl DerivedStore for SqliteStore {
             Ok(out)
         })
     }
+
+    fn writes_state(&self, wiki: &WikiId, view: &str) -> Result<Option<WritesState>> {
+        self.with(|conn| {
+            conn.query_row(
+                "SELECT head_number, head_block, floor_number, genesis FROM write_state \
+                 WHERE wiki_id = ?1 AND view = ?2",
+                params![wiki.as_str(), view],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, i64>(3)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(backend)
+            .map(|found| {
+                // A row that does not read back is a miss: the index is built again.
+                found.and_then(|(head, block, floor, genesis)| {
+                    Some(WritesState {
+                        head_number: u64::try_from(head).ok()?,
+                        head_block: block,
+                        floor_number: u64::try_from(floor).ok()?,
+                        genesis: genesis == 1,
+                    })
+                })
+            })
+        })
+    }
+
+    fn append_writes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        blocks: &[BlockWrites],
+        state: &WritesState,
+    ) -> Result<()> {
+        let as_i64 = |n: u64| i64::try_from(n).unwrap_or(i64::MAX);
+        blocks.iter().try_for_each(BlockWrites::validate)?;
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            {
+                let mut block = tx
+                    .prepare(
+                        "INSERT INTO write_blocks (wiki_id, view, number, block_id, proposal) \
+                         VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (wiki_id, view, number) DO NOTHING",
+                    )
+                    .map_err(backend)?;
+                let mut row = tx
+                    .prepare(
+                        "INSERT INTO path_writes (wiki_id, view, path, number, kind, from_path) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT (wiki_id, view, path, number) DO NOTHING",
+                    )
+                    .map_err(backend)?;
+                for b in blocks {
+                    // A block already there keeps what it has, rows and all (a second reader built the same).
+                    let added = block
+                        .execute(params![
+                            wiki.as_str(),
+                            view,
+                            as_i64(b.number),
+                            b.block,
+                            b.proposal
+                        ])
+                        .map_err(backend)?;
+                    if added == 0 {
+                        continue;
+                    }
+                    for w in &b.writes {
+                        let (code, from) = write_code(&w.kind);
+                        row.execute(params![
+                            wiki.as_str(),
+                            view,
+                            w.path,
+                            as_i64(b.number),
+                            code,
+                            from
+                        ])
+                        .map_err(backend)?;
+                    }
+                }
+            }
+            // The state only moves forward.
+            tx.execute(
+                "INSERT INTO write_state (wiki_id, view, head_number, head_block, floor_number, genesis) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                 ON CONFLICT (wiki_id, view) DO UPDATE SET head_number = excluded.head_number, \
+                 head_block = excluded.head_block WHERE excluded.head_number > write_state.head_number",
+                params![
+                    wiki.as_str(),
+                    view,
+                    as_i64(state.head_number),
+                    state.head_block,
+                    as_i64(state.floor_number),
+                    i64::from(state.genesis)
+                ],
+            )
+            .map_err(backend)?;
+            tx.commit().map_err(backend)
+        })
+    }
+
+    fn reset_writes(&self, wiki: &WikiId, view: &str) -> Result<()> {
+        self.with(|conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            for table in ["path_writes", "write_blocks", "write_state"] {
+                tx.execute(
+                    &format!("DELETE FROM {table} WHERE wiki_id = ?1 AND view = ?2"),
+                    params![wiki.as_str(), view],
+                )
+                .map_err(backend)?;
+            }
+            tx.commit().map_err(backend)
+        })
+    }
+
+    fn indexed_block(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        block: &str,
+    ) -> Result<Option<IndexedBlock>> {
+        self.with(|conn| {
+            indexed_block_where(conn, "block_id = ?3", params![wiki.as_str(), view, block])
+        })
+    }
+
+    fn indexed_block_at(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        number: u64,
+    ) -> Result<Option<IndexedBlock>> {
+        self.with(|conn| {
+            indexed_block_where(
+                conn,
+                "number = ?3",
+                params![
+                    wiki.as_str(),
+                    view,
+                    i64::try_from(number).unwrap_or(i64::MAX)
+                ],
+            )
+        })
+    }
+
+    fn last_writes(&self, wiki: &WikiId, view: &str, path: &str, at: u64) -> Result<Writers> {
+        let at = i64::try_from(at).unwrap_or(i64::MAX);
+        self.with(|conn| {
+            let last: Option<(i64, String, Option<String>)> = conn
+                .query_row(
+                    "SELECT number, kind, from_path FROM path_writes \
+                     WHERE wiki_id = ?1 AND view = ?2 AND path = ?3 AND number <= ?4 \
+                     AND kind IN ('wrote', 'deleted', 'carried') ORDER BY number DESC LIMIT 1",
+                    params![wiki.as_str(), view, path, at],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .optional()
+                .map_err(backend)?;
+            let last = last.and_then(|(number, code, from)| {
+                Some(LastWrite {
+                    number: u64::try_from(number).ok()?,
+                    kind: write_kind(&code, from)?,
+                })
+            });
+            let after = last
+                .as_ref()
+                .map_or(0, |l| i64::try_from(l.number).unwrap_or(0));
+            let mut maybes: Vec<MaybeWriter> = Vec::new();
+            // The blocks that may have written this path, and the blocks that may have written any: the two rows' paths.
+            for of in [path, ""] {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT number, kind FROM path_writes \
+                         WHERE wiki_id = ?1 AND view = ?2 AND path = ?3 AND number >= ?4 AND number <= ?5 \
+                         AND kind NOT IN ('wrote', 'deleted', 'carried') ORDER BY number LIMIT ?6",
+                    )
+                    .map_err(backend)?;
+                let rows = stmt
+                    .query_map(
+                        params![
+                            wiki.as_str(),
+                            view,
+                            of,
+                            after,
+                            at,
+                            i64::try_from(MAX_MAYBE_WRITERS + 1).unwrap_or(i64::MAX)
+                        ],
+                        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+                    )
+                    .map_err(backend)?;
+                for row in rows {
+                    let (number, kind) = row.map_err(backend)?;
+                    if let Ok(number) = u64::try_from(number) {
+                        maybes.push(MaybeWriter {
+                            number,
+                            opaque: kind != "maybe",
+                        });
+                    }
+                }
+                if path.is_empty() {
+                    break;
+                }
+            }
+            // A block that is both (a row of the path and a row of every path) is listed once, opaque when either is.
+            maybes.sort_by(|a, b| a.number.cmp(&b.number).then(b.opaque.cmp(&a.opaque)));
+            maybes.dedup_by_key(|m| m.number);
+            let more = maybes.len() > MAX_MAYBE_WRITERS;
+            maybes.truncate(MAX_MAYBE_WRITERS);
+            Ok(Writers { last, maybes, more })
+        })
+    }
+
+    fn later_writes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<LaterWrite>> {
+        let limit = limit.clamp(1, MAX_LATER_WRITES).saturating_add(1);
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT p.number, b.block_id, p.kind, p.from_path FROM path_writes p \
+                     JOIN write_blocks b ON b.wiki_id = p.wiki_id AND b.view = p.view AND b.number = p.number \
+                     WHERE p.wiki_id = ?1 AND p.view = ?2 AND p.path = ?3 AND p.number > ?4 \
+                     AND p.kind IN ('wrote', 'carried') ORDER BY p.number LIMIT ?5",
+                )
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(
+                    params![
+                        wiki.as_str(),
+                        view,
+                        path,
+                        i64::try_from(after).unwrap_or(i64::MAX),
+                        i64::try_from(limit).unwrap_or(i64::MAX)
+                    ],
+                    |r| {
+                        Ok((
+                            r.get::<_, i64>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                            r.get::<_, Option<String>>(3)?,
+                        ))
+                    },
+                )
+                .map_err(backend)?;
+            let mut out = Vec::new();
+            for row in rows {
+                let (number, block, code, from) = row.map_err(backend)?;
+                if let (Ok(number), Some(kind)) = (u64::try_from(number), write_kind(&code, from)) {
+                    out.push(LaterWrite {
+                        number,
+                        block,
+                        kind,
+                    });
+                }
+            }
+            Ok(out)
+        })
+    }
+}
+
+/// The code a kind is stored as, and the path a carried row came from.
+fn write_code(kind: &WriteKind) -> (&'static str, Option<&str>) {
+    match kind {
+        WriteKind::Wrote => ("wrote", None),
+        WriteKind::Deleted => ("deleted", None),
+        WriteKind::Carried { from } => ("carried", Some(from.as_str())),
+        WriteKind::Maybe => ("maybe", None),
+        WriteKind::Opaque => ("opaque", None),
+    }
+}
+
+/// The kind a stored code names. **A code this build does not know is [`WriteKind::Opaque`]**, so that what cannot be read is
+/// never read as a block that wrote nothing.
+fn write_kind(code: &str, from: Option<String>) -> Option<WriteKind> {
+    Some(match (code, from) {
+        ("wrote", None) => WriteKind::Wrote,
+        ("deleted", None) => WriteKind::Deleted,
+        ("carried", Some(from)) => WriteKind::Carried { from },
+        ("maybe", None) => WriteKind::Maybe,
+        _ => WriteKind::Opaque,
+    })
+}
+
+/// The block of a view's index chosen by `filter` (a condition on `?3`).
+fn indexed_block_where(
+    conn: &rusqlite::Connection,
+    filter: &str,
+    args: impl rusqlite::Params,
+) -> Result<Option<IndexedBlock>> {
+    let found: Option<(i64, String, Option<String>)> = conn
+        .query_row(
+            &format!(
+                "SELECT number, block_id, proposal FROM write_blocks WHERE wiki_id = ?1 AND view = ?2 AND {filter}"
+            ),
+            args,
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .map_err(backend)?;
+    Ok(found.and_then(|(number, block, proposal)| {
+        Some(IndexedBlock {
+            number: u64::try_from(number).ok()?,
+            block,
+            proposal,
+        })
+    }))
 }
 
 fn run_search(
