@@ -755,6 +755,10 @@
   - **R-5, readiness, is assigned** (handoff 006). From it on, V19 is frozen.
   - **The build is reviewed ten days before its target** (2026-12-04). The cut target stays 2026-12-10.
 
+- **2026-11-24 — the owner: the release title is the bare version** (*"Yes on both"*). The architect retitled the GitHub
+  releases 0.1.0, 0.2.0 and 0.3.0 to `0.1.0`, `0.2.0` and `0.3.0` the same day. `release.yml` changes at R-5 (handoff 006,
+  item 9), matching prikk and planeter. The signed tag's message is unchanged.
+
 ## Pending on the owner
 
 - **Nothing now.** Next: the 0.4.0 cut, when the architect proposes it (target 2026-12-10).

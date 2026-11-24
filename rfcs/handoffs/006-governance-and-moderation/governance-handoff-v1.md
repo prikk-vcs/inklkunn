@@ -347,4 +347,8 @@ says why it must be.
    `.git-exclude/ja-review/0.4.0-messages-since-2026-11-24.md`.
 8. **planeter 0.6.0 – 0.8.0** (RFC 010; last re-baselined at 0.5.0, PL-14): read their release notes for anything inklkunn
    relies on (the ledger's PL rows). Fold the result into the ledger, and list any letter item for the owner.
+9. **The GitHub release title is the bare version** (the owner, 2026-11-24, *"Yes"*). In `.github/workflows/release.yml`,
+   `gh release create … --title "${GITHUB_REF_NAME}"`, not `"inklkunn ${GITHUB_REF_NAME}"`. This matches prikk and
+   planeter. The signed tag's message stays `inklkunn X.Y.Z` (`docs/RELEASING.md`). The architect has already retitled
+   0.1.0 – 0.3.0 on GitHub. The rehearsal at R-8 shows the new title.
 
