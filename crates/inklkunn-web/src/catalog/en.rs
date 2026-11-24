@@ -3834,6 +3834,36 @@ pub const CATALOG: &[Entry] = &[
         "moderate.later_change",
         "A hiding covers this change. It does not cover text that a later change writes again.",
     ),
+    msg(
+        "moderate.later_intro",
+        "A hiding covers this change only. These later changes to the page still hold most of the lines it added, and hiding this change does not hide them. Whether to hide them too is for the people who moderate to decide.",
+    ),
+    msg("moderate.later_item", "{path}, first seen {when}"),
+    msg("moderate.later_more", "and {more} more"),
+    plural_msg(
+        "moderate.later_hidden",
+        "{count} later change has its own text hidden, so it was not checked and is not listed, whether or not it holds these lines.",
+        "{count} later changes have their own text hidden, so they were not checked and are not listed, whether or not they hold these lines.",
+    ),
+    plural_msg(
+        "moderate.later_unchecked",
+        "{count} more later change could not be checked: at most {limit} later changes of a page are read, and one too large to compare is skipped.",
+        "{count} more later changes could not be checked: at most {limit} later changes of a page are read, and one too large to compare is skipped.",
+    ),
+    plural_msg(
+        "moderate.later_unchecked_at_least",
+        "At least {count} more later change could not be checked: at most {limit} later changes of a page are read, and one too large to compare is skipped.",
+        "At least {count} more later changes could not be checked: at most {limit} later changes of a page are read, and one too large to compare is skipped.",
+    ),
+    plural_msg(
+        "moderate.later_pages_unchecked",
+        "{count} more page this change wrote could not be checked: at most {limit} pages are looked at, and a page too large to compare is skipped.",
+        "{count} more pages this change wrote could not be checked: at most {limit} pages are looked at, and a page too large to compare is skipped.",
+    ),
+    msg(
+        "moderate.later_unsettled",
+        "The later changes that hold lines of this change could not be listed now, because the record of who wrote what does not reach this change yet. Hiding this change does not hide a later change that holds the same lines. Look again in a moment.",
+    ),
     msg("moderate.back", "Back to the moderation log"),
     msg("moderate.problem_no_part", "Choose what to hide."),
     msg(

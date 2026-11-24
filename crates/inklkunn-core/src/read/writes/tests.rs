@@ -21,7 +21,7 @@ use crate::tombstone::Tombstones;
 
 const SECRET: &str = "---\ntitle: Foo\n---\n\nZEBRA personal data.\n";
 
-fn foo(body: &str) -> String {
+pub(in crate::read) fn foo(body: &str) -> String {
     format!("---\ntitle: Foo\n---\n\n{body}\n")
 }
 
@@ -29,7 +29,7 @@ fn bar(body: &str) -> String {
     format!("---\ntitle: Bar\n---\n\n{body}\n")
 }
 
-fn op(kind: &str, paths: &[&str]) -> Operation {
+pub(in crate::read) fn op(kind: &str, paths: &[&str]) -> Operation {
     Operation {
         kind: kind.to_owned(),
         paths: paths
@@ -43,7 +43,7 @@ fn op(kind: &str, paths: &[&str]) -> Operation {
     }
 }
 
-fn shows(ops: Vec<Operation>) -> inklkunn_prikk::Result<Change> {
+pub(in crate::read) fn shows(ops: Vec<Operation>) -> inklkunn_prikk::Result<Change> {
     Ok(Change {
         schema_version: "show-report-v1".to_owned(),
         patches: vec![Patch {
@@ -55,12 +55,12 @@ fn shows(ops: Vec<Operation>) -> inklkunn_prikk::Result<Change> {
 }
 
 /// A world whose blocks show what they changed, with a read service that asks the memory store what moderation hides.
-struct Rig {
-    w: World,
-    service: ReadService,
+pub(in crate::read) struct Rig {
+    pub(in crate::read) w: World,
+    pub(in crate::read) service: ReadService,
 }
 
-fn rig(files: &[(&str, &str)]) -> Rig {
+pub(in crate::read) fn rig(files: &[(&str, &str)]) -> Rig {
     let w = World::with(files, config());
     w.fake().derive_changes();
     w.store
@@ -90,7 +90,7 @@ fn service_of(w: &World) -> ReadService {
 
 impl Rig {
     /// The moderator hid the content of the change numbered `n`.
-    fn hide(&self, n: u64) -> TombstoneEventId {
+    pub(in crate::read) fn hide(&self, n: u64) -> TombstoneEventId {
         let id = TombstoneEventId::new();
         self.w
             .store
@@ -162,7 +162,7 @@ impl Rig {
     }
 
     /// Build the whole index (a long history takes a few calls, each within its bound).
-    fn warm(&self) {
+    pub(in crate::read) fn warm(&self) {
         for _ in 0..200 {
             if self.service.warm_writes(&self.w.wiki).expect("a build") {
                 return;

@@ -31,7 +31,13 @@
 {% endfor %}</ul>
 {% endif %}{% if let Some(text) = tip_notice %}<p class="note" role="note">{{ text }}{% if let Some(link) = tip_link %} <a href="{{ link.href }}">{{ link.label }}</a>{% endif %}</p>
 {% endif %}{% if let Some(text) = survives %}<p class="note" role="note">{{ text }}</p>
-{% endif %}{% if let Some(text) = declines %}<p class="note" role="note">{{ text }}</p>
+{% endif %}{% if let Some(later) = later %}{% if let Some(text) = later.intro %}<p class="note" role="note">{{ text }}</p>
+<ul class="moderation-later">
+{% for item in later.items %}<li><a href="{{ item.href }}">{{ item.label }}</a></li>
+{% endfor %}{% if let Some(more) = later.more %}<li>{{ more }}</li>
+{% endif %}</ul>
+{% endif %}{% for note in later.notes %}<p class="note" role="note">{{ note }}</p>
+{% endfor %}{% endif %}{% if let Some(text) = declines %}<p class="note" role="note">{{ text }}</p>
 {% endif %}<form method="post" action="{{ action }}" class="proposal-form">
 {% include "csrf.html" %}{% for (name, value) in item_fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">
 {% endfor %}<fieldset>

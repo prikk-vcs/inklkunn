@@ -37,7 +37,7 @@ use crate::appeal::AppealMark;
 use crate::authorize::{Action, Authorizer, Holding, Principal, Resource, RestrictionNotice};
 use crate::governance::{ReadFault, Rules, is_valid_reason};
 use crate::notify::Notifier;
-use crate::read::{ChangeInfo, ReadError, ReadService, TipCheck};
+use crate::read::{ChangeInfo, LaterHolders, ReadError, ReadService, TipCheck};
 
 /// The most characters of a moderator's note: a sentence or two, as a reason is.
 pub const MAX_NOTE_CHARS: usize = crate::governance::MAX_REASON_CHARS;
@@ -1232,10 +1232,26 @@ impl ModerationService {
         } else {
             (None, None)
         };
+        // The later revisions that hold the text of a change whose content may be hidden (J-4): a hide does not cover them.
+        let later = if found.canonical.kind == HiddenItemKind::PageRevision && tip.is_none() {
+            let view = match item {
+                Item::PageRevision { view, .. } => view.as_deref(),
+                _ => None,
+            };
+            // A list that could not be made is said so, and does not stop the form: nothing in it is needed to hide.
+            Some(
+                self.read
+                    .later_holders(wiki, view, &found.canonical.id)
+                    .unwrap_or_else(|_| LaterHolders::unsettled()),
+            )
+        } else {
+            None
+        };
         Ok(Preview {
             marks,
             tip,
             survives,
+            later,
             declines: found.open_latest.is_some(),
             summary: !found.comment
                 && !(matches!(item, Item::ProposalRevision { .. }) && !found.is_latest),
@@ -1261,6 +1277,10 @@ pub struct Preview {
     pub tip: Option<ModerationError>,
     /// Lines the change added that a tip's page still has, when its content may be hidden all the same: the hide does not hide them.
     pub survives: Option<Survives>,
+    /// The later revisions of its pages that hold most of the lines the change added, when its content may be hidden: **a hide does
+    /// not cover them**, and the moderator decides whether to hide them too (J-4; [`LaterHolders`] for what *holds* means and for
+    /// every bound). `None` for an item that is not a change, and for one whose content may not be hidden.
+    pub later: Option<LaterHolders>,
     /// Hiding its content also declines the proposal it is the latest revision of.
     pub declines: bool,
     /// It has a summary to hide.

@@ -57,6 +57,7 @@ mod compare;
 mod counting;
 mod graph;
 mod history;
+mod holders;
 mod index;
 mod linediff;
 mod links;
@@ -121,6 +122,9 @@ pub use history::{
     DiffOutcome, DiffStatus, HISTORY_PAGE_ROWS, HiddenDiff, HistoryOutcome, HistoryRow, MAX_DID,
     MAX_DIFF_LINES, MAX_INSPECTED_PER_REQUEST, MAX_SHOWS_PER_REQUEST, MAX_WINDOW, PageDiff,
     PageEvent, PageHistory, Provenance, Subject, Who,
+};
+pub use holders::{
+    LaterHolder, LaterHolders, MAX_HOLDER_CHECKS, MAX_HOLDER_PATHS, MAX_HOLDERS_LISTED,
 };
 pub use index::{
     FRONTMATTER_READ_BYTES, Found, Lookup, MAX_REDIRECT_HOPS, Problem, RedirectProblem,

@@ -138,6 +138,17 @@ pub struct LaterWriter {
     pub carried: bool,
 }
 
+/// The block before another in a view's log, as the writes index says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ParentBlock {
+    /// The block is the first of the view: nothing came before it.
+    First,
+    /// The block before it.
+    Block(String),
+    /// The index does not reach the block (or its parent): nothing can be said.
+    Unsettled,
+}
+
 /// The changes after a block that wrote a path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaterWriters {
@@ -572,7 +583,12 @@ impl ReadService {
     /// on it: a read that finds the index short of what it needs builds on, and answers *hidden* for what it could not reach. `true`
     /// when the index reaches the view's tip.
     pub fn warm_writes(&self, wiki: &WikiRecord) -> Result<bool, ReadError> {
-        let view = wiki.default_view.as_str();
+        self.warm_writes_of(wiki, wiki.default_view.as_str())
+    }
+
+    /// [`ReadService::warm_writes`] for any view: what a list of **later** writers needs, because it is an answer only when the index
+    /// reaches the view's tip (an index built until the block asked about knows nothing of the blocks after it).
+    pub(super) fn warm_writes_of(&self, wiki: &WikiRecord, view: &str) -> Result<bool, ReadError> {
         for _ in 0..MAX_WARM_ROUNDS {
             self.advance_writes(wiki, view, None)?;
             let tip = self.tip(wiki, Some(view))?;
@@ -587,10 +603,40 @@ impl ReadService {
         Ok(false)
     }
 
+    /// **The block before `block_id` in `view`'s log**, by the writes index: one indexed lookup, whatever the length of the history
+    /// (the moderation form's reading of a change's own diff does not walk the log to find a parent). [`ParentBlock::Unsettled`] when
+    /// the index does not reach the block (see the module's account).
+    pub(super) fn indexed_parent(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        block_id: &str,
+    ) -> Result<ParentBlock, ReadError> {
+        let view = view.unwrap_or(&wiki.default_view);
+        let Some(at) = self.indexed_through(wiki, view, block_id)? else {
+            return Ok(ParentBlock::Unsettled);
+        };
+        let Some(before) = at.number.checked_sub(1).filter(|n| *n > 0) else {
+            return Ok(ParentBlock::First);
+        };
+        Ok(
+            match self
+                .derived
+                .indexed_block_at(&wiki.id, view, before)
+                .map_err(|e| self.writes_failed(e))?
+            {
+                Some(parent) => ParentBlock::Block(parent.block),
+                None => ParentBlock::Unsettled,
+            },
+        )
+    }
+
     /// **The changes after the block `block_id` that wrote `path`** (a write or a pure rename into it), oldest first, at most `limit`
     /// (and at most [`MAX_LATER_WRITES`]), with whether there are more: what the moderation form lists beside its sentence about a
-    /// tip, because hiding a change hides the change and not the text a later one wrote. One indexed query. `settled` is false when
-    /// the index does not reach the block yet (see the module's account): the list is then no answer.
+    /// tip, because hiding a change hides the change and not the text a later one wrote. One indexed query, after the index has been
+    /// built on to the view's tip (within the bound of [`ReadService::warm_writes`]: a list of the changes *after* a block is an
+    /// answer only when the index holds them). `settled` is false when the index does not reach the block **or the tip** yet (see the
+    /// module's account): the list is then no answer.
     pub fn later_writers(
         &self,
         wiki: &WikiRecord,
@@ -600,12 +646,15 @@ impl ReadService {
         limit: usize,
     ) -> Result<LaterWriters, ReadError> {
         let view = view.unwrap_or(&wiki.default_view);
-        let Some(at) = self.indexed_through(wiki, view, block_id)? else {
-            return Ok(LaterWriters {
-                writers: Vec::new(),
-                more: false,
-                settled: false,
-            });
+        let at = match self.indexed_through(wiki, view, block_id)? {
+            Some(at) if self.warm_writes_of(wiki, view)? => at,
+            _ => {
+                return Ok(LaterWriters {
+                    writers: Vec::new(),
+                    more: false,
+                    settled: false,
+                });
+            }
         };
         let limit = limit.clamp(1, MAX_LATER_WRITES);
         let mut found = self
@@ -636,4 +685,4 @@ impl ReadService {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

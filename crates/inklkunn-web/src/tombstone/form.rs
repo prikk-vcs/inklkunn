@@ -16,7 +16,9 @@ use axum::extract::rejection::{PathRejection, QueryRejection};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
+use inklkunn_core::read::{LaterHolders, MAX_HOLDER_CHECKS, MAX_HOLDER_PATHS};
 use inklkunn_core::tombstone::{Item, MAX_NOTE_CHARS, ModerationError, Preview, Revealed};
+use inklkunn_markup::path::path_to_title;
 use inklkunn_store::{HiddenParts, ReasonCategory, TombstoneEventId};
 
 use super::paths::{self, fields};
@@ -27,7 +29,8 @@ use crate::discover::Subject;
 use crate::history::LinkView;
 use crate::pages::{Page, PageState, answer};
 use crate::proposals::{Ctx, SMALL_FORM_LIMIT, from_this_site, needs_account, see, serve};
-use crate::url::change_path;
+use crate::time::utc_minutes;
+use crate::url::{at_path, change_path};
 use crate::wiki::{Choice, Shell, generic_not_found, notice, services_of, with_retry_after};
 
 type Raw = crate::proposals::urlencoded::Raw;
@@ -98,6 +101,87 @@ struct Cat {
     checked: bool,
 }
 
+/// What the form says of the later changes that still hold the text of the change (J-4).
+struct Later {
+    /// The sentence over the list, when there is a list.
+    intro: Option<String>,
+    /// The listed changes: a link to the page as the change left it.
+    items: Vec<LinkView>,
+    /// *and N more*, when more hold the lines than are listed.
+    more: Option<String>,
+    /// What was skipped or could not be said, one sentence each.
+    notes: Vec<String>,
+}
+
+/// The later changes that hold the text, in words and links (never the text, never a name).
+fn later_of(t: T, slug: &str, view: Option<&str>, later: &LaterHolders) -> Option<Later> {
+    if later.is_silent() {
+        return None;
+    }
+    let items: Vec<LinkView> = later
+        .listed
+        .iter()
+        .map(|h| {
+            let title = path_to_title(&h.path);
+            LinkView {
+                href: match &title {
+                    Some(title) => at_path(slug, view, &h.block, title),
+                    None => change_path(slug, view, &h.block),
+                },
+                label: match h.first_seen {
+                    Some(at) => t
+                        .msg(Key::ModerateLaterItem)
+                        .with("path", &h.path)
+                        .with("when", utc_minutes(at))
+                        .text(),
+                    None => h.path.clone(),
+                },
+            }
+        })
+        .collect();
+    let mut notes = Vec::new();
+    if later.unsettled {
+        notes.push(t.get(Key::ModerateLaterUnsettled));
+    }
+    if later.hidden > 0 {
+        notes.push(
+            t.msg(Key::ModerateLaterHidden)
+                .n(later.hidden as u64)
+                .text(),
+        );
+    }
+    if later.unchecked > 0 {
+        notes.push(
+            t.msg(if later.unchecked_at_least {
+                Key::ModerateLaterUncheckedAtLeast
+            } else {
+                Key::ModerateLaterUnchecked
+            })
+            .n(later.unchecked as u64)
+            .with("limit", MAX_HOLDER_CHECKS)
+            .text(),
+        );
+    }
+    if later.paths_unchecked > 0 {
+        notes.push(
+            t.msg(Key::ModerateLaterPagesUnchecked)
+                .n(later.paths_unchecked as u64)
+                .with("limit", MAX_HOLDER_PATHS)
+                .text(),
+        );
+    }
+    Some(Later {
+        intro: (!items.is_empty()).then(|| t.get(Key::ModerateLaterIntro)),
+        items,
+        more: (later.more > 0).then(|| {
+            t.msg(Key::ModerateLaterMore)
+                .with("more", later.more)
+                .text()
+        }),
+        notes,
+    })
+}
+
 struct InForce {
     facts: Vec<String>,
     id: String,
@@ -126,6 +210,7 @@ struct FormTpl<'a> {
     tip_notice: Option<String>,
     tip_link: Option<LinkView>,
     survives: Option<String>,
+    later: Option<Later>,
     declines: Option<String>,
     action: String,
     item_fields: Vec<(&'static str, String)>,
@@ -286,6 +371,13 @@ fn form_page(
             })
             .n(s.lines as u64)
             .text()
+        }),
+        later: preview.later.as_ref().and_then(|later| {
+            let view = match item {
+                Item::PageRevision { view, .. } => view.as_deref(),
+                _ => None,
+            };
+            later_of(t, slug, view, later)
         }),
         declines: preview.declines.then(|| t.get(Key::ModerateDeclines)),
         action: paths::form(slug),

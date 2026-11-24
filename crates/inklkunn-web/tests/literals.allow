@@ -557,6 +557,9 @@ exact :: show.rs :: seq :: a placeholder name of a catalog message
 exact :: form.rs :: seq :: a placeholder name of a catalog message
 exact :: form.rs :: view :: a placeholder name of a catalog message
 exact :: form.rs :: note :: a placeholder name of a catalog message
+exact :: form.rs :: path :: a placeholder name of a catalog message
+exact :: form.rs :: when :: a placeholder name of a catalog message
+exact :: form.rs :: more :: a placeholder name of a catalog message
 exact :: log.rs :: seq :: a placeholder name of a catalog message
 exact :: log.rs :: item :: a placeholder name of a catalog message
 exact :: log.rs :: part :: a placeholder name of a catalog message
