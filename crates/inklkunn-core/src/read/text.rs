@@ -21,7 +21,10 @@
 //! path's own reads in `acceptance` and `knowledge::curation` are the two other places, listed in the gate below). The gate is a
 //! test over the crate's sources ([`tests`]): a call to the storage's `read` anywhere else fails it, and so does a call of
 //! `materialize`, `with_tree`, `with_block_tree`, `diff` or a `Tip {` literal outside the places that may make it, each with its
-//! reason (J-3). The entry points that do not check say in their names what they read and why it may be unchecked:
+//! reason (J-3). **The places are call sites, not files** (L-4): one function of one file and the number of its calls, so that a
+//! second call in an allowed function, or a call in another function of an allowed file, fails the gate. The entry points that do
+//! not check say in their names what they read and why it may be unchecked, and **each of their callers is listed one by one**, with
+//! its reason, in the same gate:
 //!
 //! - [`ReadService::bytes_at_tip`]: **a view's tip**, which only [`ReadService::tip`] makes. The content of a view's tip cannot be
 //!   hidden (D-8), and the tip check (RFC 006 D-8; `tipcheck`) is what keeps it so;

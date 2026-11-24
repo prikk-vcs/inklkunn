@@ -558,7 +558,6 @@ impl Storage for Fake {
                             path: Some(p),
                             unresolved_node_id: None,
                         }],
-                        content: Default::default(),
                     })
                     .collect(),
             }],

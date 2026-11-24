@@ -185,9 +185,8 @@ pub struct Operation {
     /// The paths the operation touches.
     #[serde(default)]
     pub paths: Vec<PathRef>,
-    /// The operation's content, whose shape depends on `kind`; kept as JSON for the presentation layer.
-    #[serde(default)]
-    pub content: serde_json::Value,
+    // The operation's own content (the text an edit wrote) is **not kept**: prikk's report carries it, nothing here reads it, and
+    // a type that held it would put a page's text past the one reader of a page's text at a block (RFC 006 D-8; correction L-4).
 }
 
 /// One patch of a change.

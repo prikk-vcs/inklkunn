@@ -60,7 +60,7 @@ use crate::notify::Notifier;
 use crate::proposal::{
     Invalid, ProposalError, ProposalService, QuotaLimit, QuotaRefusal, Reset, machine,
 };
-use crate::read::{BlockPoint, ReadService};
+use crate::read::{GovernancePoint, ReadService};
 use crate::reconcile::Finding;
 
 mod claims;
@@ -1039,7 +1039,7 @@ impl ProposalAcceptor {
             self.tip_block(wiki, &wiki.default_view)?
         };
         // A block the acceptance has just read from the repository: the rules (governance files) are not a revision's text.
-        let at = BlockPoint::new(wiki.default_view.clone(), state_id, block_id);
+        let at = GovernancePoint::just_read(wiki.default_view.clone(), state_id, block_id);
         self.parts
             .reads
             .rules_at(wiki, &at)

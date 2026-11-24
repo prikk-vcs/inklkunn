@@ -15,7 +15,6 @@ fn op(kind: &str, path: &str) -> Operation {
             path: Some(path.to_owned()),
             unresolved_node_id: None,
         }],
-        content: Default::default(),
     }
 }
 

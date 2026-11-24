@@ -1,4 +1,4 @@
-//! The gate of the one reader (RFC 006 D-8; INV-13; handoff G-T4, corrections H-1 and J-3): **no module but the reader reaches the
+//! The gate of the one reader (RFC 006 D-8; INV-13; handoff G-T4, corrections H-1, J-3 and L-4): **no module but the reader reaches the
 //! content of a block**. A text read from a block anywhere else would be a text read past the check of what moderation hides, so
 //! each way to reach content is found in the sources, and a call outside the places that may make it fails the gate, as the
 //! boundary gates fail a route registered outside `routes.rs`. The ways are six: the storage's `read` (a file's bytes), its
@@ -11,89 +11,275 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// The places that may make one kind of call, each with its reason.
-type May = &'static [(&'static str, &'static str)];
+/// The places that may make one kind of call, **each one function of one file** (a call site, not the file: a second call in a file
+/// that is allowed once, or in another function of it, fails the gate): the file, the function, how many such calls it makes
+/// there, and the reason. A planted second call in an allowed function fails because the count is exact.
+type May = &'static [(&'static str, &'static str, usize, &'static str)];
 
-/// The files that may call `Storage::read`. The reader is the first; the others read to **write** (what the acceptance and a
-/// curation proposal compare, and never serve) or hand the call on.
+/// The call sites of `Storage::read`. The reader's own functions come first (each one reads one way, and says which); the others read to
+/// **write** (what the acceptance and a curation proposal compare, and never serve) or hand the call on.
 const READ_MAY: May = &[
     (
         "inklkunn-core/src/read/text.rs",
-        "the one reader of a file's text at a block",
+        "file_at",
+        1,
+        "the one reader of a file's text at a block: what `text_at` gives after the check of what moderation hides",
+    ),
+    (
+        "inklkunn-core/src/read/text.rs",
+        "bytes_at_tip",
+        1,
+        "a view's tip, which only `ReadService::tip` makes and whose content cannot be hidden",
+    ),
+    (
+        "inklkunn-core/src/read/text.rs",
+        "rules_bytes_at",
+        1,
+        "a governance file, which is the rules and not a revision's text",
+    ),
+    (
+        "inklkunn-core/src/read/text.rs",
+        "file_for_trace",
+        1,
+        "the size-bound retry of the trace's alignment, which never leaves the comparison (the same reason as the helper's)",
+    ),
+    (
+        "inklkunn-core/src/read/text.rs",
+        "bytes_for_readability",
+        1,
+        "the verdict of whether the wiki can read a knowledge file, which is all that leaves it",
+    ),
+    (
+        "inklkunn-core/src/read/text.rs",
+        "bytes_unchecked_at",
+        1,
+        "the tip check's comparison and the one audited act that shows hidden content (its callers are listed below, one by one)",
     ),
     (
         "inklkunn-core/src/read/counting.rs",
+        "read",
+        1,
         "the counting storage hands each call on to the storage it counts",
     ),
     (
         "inklkunn-core/src/acceptance/prepare.rs",
-        "the write path: the pages at the base and at the tip, which the merge compares and the signer writes; nothing is served",
+        "pages_at",
+        1,
+        "the write path: the pages at the base, which the merge compares and the signer writes; nothing is served",
+    ),
+    (
+        "inklkunn-core/src/acceptance/prepare.rs",
+        "bytes_at",
+        1,
+        "the write path: a page at the tip, which the merge compares and the signer writes; nothing is served",
+    ),
+    (
+        "inklkunn-core/src/acceptance/prepare.rs",
+        "governance_change",
+        1,
+        "the write path: the governance file at the tip, which the change to it is judged against; nothing is served",
     ),
     (
         "inklkunn-core/src/knowledge/curation.rs",
+        "at_tip",
+        1,
         "the write path: the standing the tip holds, which a curation proposal is stamped against; nothing is served",
     ),
 ];
 
-/// The files that may call `Storage::materialize`, the extract of a block's whole tree.
+/// The call sites of `Storage::materialize`, the extract of a block's whole tree.
 const MATERIALIZE_MAY: May = &[
     (
         "inklkunn-core/src/read.rs",
-        "`with_tree`: the one extract an index is built from, of a tip, or of a base after the one reader has been asked of each file of it (`read/past.rs`)",
+        "with_tree",
+        1,
+        "the one extract an index is built from, of a tip, or of a base after the one reader has been asked of each file of it (`read/past.rs`)",
     ),
     (
         "inklkunn-core/src/read/counting.rs",
+        "materialize",
+        1,
         "the counting storage hands each call on to the storage it counts",
     ),
     (
         "inklkunn-core/src/export.rs",
+        "export_bundle_inner",
+        1,
         "the archive of a view's tip, whose content cannot be hidden (the tip check keeps it so); what is hidden of authors and summaries is masked by `export/suppression.rs`",
     ),
     (
         "inklkunn-core/src/import.rs",
+        "wiki_state",
+        1,
         "the tip of the wiki the import has just made, which it judges before it opens the wiki",
     ),
 ];
 
-/// The files that may call `with_tree`, the service's extract of a block under its build lock.
+/// The call sites of `with_tree`, the service's extract of a block under its build lock.
 const WITH_TREE_MAY: May = &[
     (
         "inklkunn-core/src/read.rs",
-        "the title and knowledge indexes, whose bases pass the one reader file by file afterwards (`titles_without_hidden`, `knowledge_without_hidden`), and `with_block_tree`",
+        "knowledge_of",
+        1,
+        "the knowledge index, whose base passes the one reader file by file afterwards (`knowledge_without_hidden`)",
+    ),
+    (
+        "inklkunn-core/src/read.rs",
+        "build_entries",
+        1,
+        "the title index, whose base passes the one reader file by file afterwards (`titles_without_hidden`)",
+    ),
+    (
+        "inklkunn-core/src/read.rs",
+        "with_block_tree",
+        1,
+        "the extract of any block, whose callers are listed below",
     ),
     (
         "inklkunn-core/src/read/graph.rs",
+        "link_graph",
+        1,
         "the link graph of a view's tip, whose content cannot be hidden",
     ),
 ];
 
-/// The files that may call `with_block_tree`, the extract of any block for a judgement of the write path.
+/// The call sites of `with_block_tree`, the extract of any block for a judgement of the write path.
 const WITH_BLOCK_TREE_MAY: May = &[(
     "inklkunn-core/src/knowledge/check.rs",
+    "check_change_report",
+    1,
     "the write path: the judgement of what an acceptance would write, of the tip block it has just read; it reports rules and paths, and serves no text",
 )];
 
-/// The files that may call `Storage::diff`, whose hunks are the text of both sides.
+/// The call sites of `Storage::diff`, whose hunks are the text of both sides.
 const DIFF_MAY: May = &[
     (
         "inklkunn-core/src/read/history.rs",
-        "`page_diff`: asked only after the one reader has said that neither side's text is hidden",
+        "page_diff",
+        1,
+        "asked only after the one reader has said that neither side's text is hidden",
     ),
     (
         "inklkunn-core/src/read/compare.rs",
+        "compare_views",
+        1,
         "*Compare views*: the difference of two views' **tips** (`Tip` values only), whose content cannot be hidden",
     ),
     (
+        "inklkunn-core/src/read/compare.rs",
+        "compare_page",
+        1,
+        "*Compare views*, one page: the difference of two views' **tips** (`Tip` values only), whose content cannot be hidden",
+    ),
+    (
         "inklkunn-core/src/read/counting.rs",
+        "diff",
+        1,
         "the counting storage hands each call on to the storage it counts",
     ),
 ];
 
-/// The files that may write a `Tip {` literal: the module that makes tips.
-const TIP_MAY: May = &[(
-    "inklkunn-core/src/read/tip.rs",
-    "the one place a tip is made, by `ReadService::tip` (and `Tip::unpinned`, which names no block)",
+/// The call sites that may write a `Tip {` literal: the module that makes tips.
+const TIP_MAY: May = &[
+    (
+        "inklkunn-core/src/read/tip.rs",
+        "tip",
+        2,
+        "the one place a tip is made, by `ReadService::tip`: the held pair and the pair the log gave",
+    ),
+    (
+        "inklkunn-core/src/read/tip.rs",
+        "unpinned",
+        1,
+        "a tip that names no block (the empty block id), for a page served stale",
+    ),
+    (
+        "inklkunn-core/src/read/tip.rs",
+        "for_tests",
+        1,
+        "the tests' constructor, which exists in test builds only",
+    ),
+];
+
+/// The callers of `bytes_unchecked_at`, **one by one** (L-4): a file at a block as the storage has it, hidden or not.
+const UNCHECKED_MAY: May = &[
+    (
+        "inklkunn-core/src/read/tipcheck.rs",
+        "tip_check",
+        2,
+        "the comparison of a change's files with the views' tips, which is a boolean; nothing read leaves the function",
+    ),
+    (
+        "inklkunn-core/src/read/tipcheck.rs",
+        "surviving_lines",
+        2,
+        "the count of the lines a change added that a tip's page still has, which is a number; no line leaves the function",
+    ),
+    (
+        "inklkunn-core/src/read/tipcheck.rs",
+        "reveal_change",
+        1,
+        "the one audited act that shows hidden content, called after its audit event is written and for the `moderate` rung",
+    ),
+    (
+        "inklkunn-core/src/read/holders.rs",
+        "added_lines",
+        2,
+        "the lines a change added, its own text at a path and its parent's: the change is the one a hide is judged for, and only a count of lines leaves the function",
+    ),
+    (
+        "inklkunn-core/src/read/text.rs",
+        "file_for_trace",
+        1,
+        "the trace's alignment of one version with the next, which says which change wrote a paragraph and never what it said",
+    ),
+    (
+        "inklkunn-core/src/read/text.rs",
+        "merge_text",
+        1,
+        "the verdict of whether a rollback would merge, which is a boolean",
+    ),
+];
+
+/// The callers of `file_for_trace`, one by one.
+const TRACE_MAY: May = &[(
+    "inklkunn-core/src/read/why.rs",
+    "past_text",
+    1,
+    "*Why is this here?* aligns one version of a page with the next and says which change wrote a paragraph, never what it said",
 )];
+
+/// The callers of `rules_bytes_at`, one by one.
+const RULES_BYTES_MAY: May = &[(
+    "inklkunn-core/src/read/rules.rs",
+    "read_governance_file",
+    1,
+    "a governance file at a block, which is the rules and not a revision's text (governance files are never hidden)",
+)];
+
+/// The callers of `bytes_for_readability`, one by one.
+const READABILITY_MAY: May = &[(
+    "inklkunn-core/src/read/preview.rs",
+    "knowledge_readability_at",
+    1,
+    "the verdict of whether the wiki can read a knowledge file at a view's tip, which is all that leaves it",
+)];
+
+/// The callers of `bytes_at_tip`, one by one: a view's tip, which only `ReadService::tip` makes.
+const TIP_BYTES_MAY: May = &[
+    (
+        "inklkunn-core/src/read.rs",
+        "read_text",
+        1,
+        "a page's source at a `Tip` value, which only `ReadService::tip` makes and whose content cannot be hidden",
+    ),
+    (
+        "inklkunn-core/src/read/raw.rs",
+        "raw",
+        1,
+        "the stored file of a page at a view's `Tip` value, whose content cannot be hidden",
+    ),
+];
 
 /// Replace comments and the contents of string and character literals with spaces, keeping every newline, so that what is left
 /// is code.
@@ -316,6 +502,81 @@ fn tip_literals(source: &str) -> Vec<usize> {
     found
 }
 
+/// The lines at which a helper that reads past the check is called: a method call or a call by path (`Self::name(`,
+/// `ReadService::name(`). A definition, a longer name, a comment and a string are not calls.
+fn helper_calls(source: &str, name: &str) -> Vec<usize> {
+    let mut found = calls(source, name, None);
+    let code = code_of(source);
+    let line_of = |at: usize| 1 + code.get(..at).map_or(0, |s| s.matches('\n').count());
+    for prefix in ["Self::", "ReadService::"] {
+        let needle = format!("{prefix}{name}");
+        let mut from = 0;
+        while let Some(at) = code.get(from..).and_then(|s| s.find(&needle)) {
+            let start = from + at;
+            from = start + needle.len();
+            let rest = code.get(from..).unwrap_or("");
+            let word_before = code
+                .get(..start)
+                .unwrap_or("")
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_');
+            if !word_before && rest.trim_start().starts_with('(') {
+                found.push(line_of(start));
+            }
+        }
+    }
+    found.sort_unstable();
+    found
+}
+
+/// The name of the function whose body holds `line` (1-based): the last `fn name` of the code at or before it. (A function written
+/// inside another one, before a call of the outer one, would name the inner one: the gate then fails and says which, never passes.)
+fn enclosing_fn(source: &str, line: usize) -> String {
+    let code = code_of(source);
+    let mut name = String::new();
+    for text in code.lines().take(line) {
+        let mut from = 0;
+        while let Some(at) = text.get(from..).and_then(|s| s.find("fn ")) {
+            let start = from + at;
+            from = start + 3;
+            let word_before = text
+                .get(..start)
+                .unwrap_or("")
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_');
+            if word_before {
+                continue;
+            }
+            let ident: String = text
+                .get(from..)
+                .unwrap_or("")
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !ident.is_empty() {
+                name = ident;
+            }
+        }
+    }
+    name
+}
+
+/// The calls a way finds in one source, by function: `(function, lines)`, in the order the functions are met.
+fn sites_of(way: &Way, source: &str) -> Vec<(String, Vec<usize>)> {
+    let mut sites: Vec<(String, Vec<usize>)> = Vec::new();
+    for line in (way.find)(source) {
+        let function = enclosing_fn(source, line);
+        match sites.iter_mut().find(|(name, _)| *name == function) {
+            Some((_, lines)) => lines.push(line),
+            None => sites.push((function, vec![line])),
+        }
+    }
+    sites
+}
+
 /// One way to reach a block's content: its name, how it is found in a source, and the places that may.
 struct Way {
     name: &'static str,
@@ -354,6 +615,31 @@ fn ways() -> Vec<Way> {
             name: "a `Tip {` literal (a block called a tip)",
             find: tip_literals,
             may: TIP_MAY,
+        },
+        Way {
+            name: "`bytes_unchecked_at` (a file at a block, past the check)",
+            find: |s| helper_calls(s, "bytes_unchecked_at"),
+            may: UNCHECKED_MAY,
+        },
+        Way {
+            name: "`file_for_trace` (a file at a block, for the trace to align)",
+            find: |s| helper_calls(s, "file_for_trace"),
+            may: TRACE_MAY,
+        },
+        Way {
+            name: "`bytes_at_tip` (a file at a view's tip)",
+            find: |s| helper_calls(s, "bytes_at_tip"),
+            may: TIP_BYTES_MAY,
+        },
+        Way {
+            name: "`rules_bytes_at` (a governance file)",
+            find: |s| helper_calls(s, "rules_bytes_at"),
+            may: RULES_BYTES_MAY,
+        },
+        Way {
+            name: "`bytes_for_readability` (a knowledge file, for a verdict)",
+            find: |s| helper_calls(s, "bytes_for_readability"),
+            may: READABILITY_MAY,
         },
     ]
 }
@@ -413,17 +699,26 @@ fn product_sources() -> Vec<(String, String)> {
     out
 }
 
-/// The places a source reaches content a way, not counting the places that may.
+/// The calls of a way that no site allows, **per call site** (L-4): a call in a function that is not listed for the file, and the
+/// calls of a listed function past the number it is listed for. Each is `path:line (function)`.
 fn violations_of(way: &Way, sources: &[(String, String)]) -> Vec<String> {
-    sources
-        .iter()
-        .filter(|(path, _)| !way.may.iter().any(|(allowed, _)| path == allowed))
-        .flat_map(|(path, source)| {
-            (way.find)(source)
-                .into_iter()
-                .map(move |line| format!("{path}:{line}"))
-        })
-        .collect()
+    let mut out = Vec::new();
+    for (path, source) in sources {
+        for (function, lines) in sites_of(way, source) {
+            let allowed = way
+                .may
+                .iter()
+                .find(|(place, name, _, _)| path == place && *name == function)
+                .map_or(0, |(_, _, calls, _)| *calls);
+            out.extend(
+                lines
+                    .into_iter()
+                    .skip(allowed)
+                    .map(|line| format!("{path}:{line} ({function})")),
+            );
+        }
+    }
+    out
 }
 
 /// The places a source calls the storage's `read`, not counting the places that may.
@@ -458,10 +753,11 @@ fn no_module_but_the_reader_reaches_the_content_of_a_block() {
 
 #[test]
 fn the_places_that_may_do_it_do_it() {
-    // A list of places that may names places that do: a stale entry would let a later call in unseen.
+    // A list of places that may names call sites that exist, with the number of calls each makes: a stale entry (a function that no
+    // longer makes the call, or makes fewer) would let a later call in unseen.
     let sources = product_sources();
     for way in ways() {
-        for (allowed, why) in way.may {
+        for (allowed, function, count, why) in way.may {
             let source = sources
                 .iter()
                 .find(|(path, _)| path == allowed)
@@ -469,9 +765,13 @@ fn the_places_that_may_do_it_do_it() {
             let Some(source) = source else {
                 panic!("`{allowed}` is not a source of the workspace ({why})");
             };
-            assert!(
-                !(way.find)(source).is_empty(),
-                "`{allowed}` does not reach content by {}: take it off the list ({why})",
+            let made = sites_of(&way, source)
+                .into_iter()
+                .find(|(name, _)| name == function)
+                .map_or(0, |(_, lines)| lines.len());
+            assert_eq!(
+                made, *count,
+                "`{function}` in `{allowed}` makes {made} call(s) by {} and the list says {count}: correct the list ({why})",
                 way.name
             );
         }
@@ -495,10 +795,10 @@ fn the_scan_finds_a_planted_call_and_not_what_is_not_one() {
     ] {
         assert_eq!(violations(&planted(call)).len(), 1, "{call}");
     }
-    // The same call in the reader's own module is the reader.
+    // The same call in the reader's own function is the reader.
     let reader = at(
         "inklkunn-core/src/read/text.rs",
-        "fn f() { let b = storage.read(repo, &point, path, max); }",
+        "fn file_at() { let b = storage.read(repo, &point, path, max); }",
     );
     assert!(violations(&reader).is_empty());
     // What is not the storage's call: a stream's, a builder's, a definition, a comment, a string, other arities.
@@ -536,22 +836,22 @@ fn a_planted_extract_of_a_whole_tree_is_found() {
     for (begins, call, allowed) in [
         (
             "the storage's `materialize`",
-            "fn f() { self.storage.materialize(&repo, &point, &scratch, name, bounds); }",
+            "fn export_bundle_inner() { self.storage.materialize(&repo, &point, &scratch, name, bounds); }",
             "inklkunn-core/src/export.rs",
         ),
         (
             "the storage's `materialize`",
-            "fn f() { Storage::materialize(&s, &repo, &point, &scratch, name, bounds); }",
+            "fn wiki_state() { Storage::materialize(&s, &repo, &point, &scratch, name, bounds); }",
             "inklkunn-core/src/import.rs",
         ),
         (
             "`with_tree`",
-            "fn f() { self.with_tree(wiki, &at, |root| Ok(1)); }",
+            "fn link_graph() { self.with_tree(wiki, &at, |root| Ok(1)); }",
             "inklkunn-core/src/read/graph.rs",
         ),
         (
             "`with_block_tree`",
-            "fn f() { reads.with_block_tree(wiki, &at, |root, c| 1); }",
+            "fn check_change_report() { reads.with_block_tree(wiki, &at, |root, c| 1); }",
             "inklkunn-core/src/knowledge/check.rs",
         ),
     ] {
@@ -591,8 +891,8 @@ fn a_planted_extract_of_a_whole_tree_is_found() {
 fn a_planted_diff_is_found() {
     let way = way("the storage's `diff`");
     for call in [
-        "fn f() { self.storage.diff(&repo, &from, &to, &[path]); }",
-        "fn f() { Storage::diff(&s, &repo, &from, &to, &[]); }",
+        "fn page_diff() { self.storage.diff(&repo, &from, &to, &[path]); }",
+        "fn page_diff() { Storage::diff(&s, &repo, &from, &to, &[]); }",
     ] {
         assert_eq!(
             violations_of(&way, &at("inklkunn-core/src/elsewhere.rs", call)).len(),
@@ -618,9 +918,9 @@ fn a_planted_diff_is_found() {
 fn a_planted_tip_literal_is_found_and_a_definition_is_not() {
     let way = way("a `Tip {` literal");
     for literal in [
-        "fn f() -> R { let tip = Tip { view: v, state_id: s, block_id: b }; tip }",
-        "fn f() -> R { Tip {\n        view: v,\n    } }",
-        "fn f(t: &Tip) { let Tip { block_id, .. } = t; }",
+        "fn tip() -> R { let tip = Tip { view: v, state_id: s, block_id: b }; tip }",
+        "fn tip() -> R { Tip {\n        view: v,\n    } }",
+        "fn tip(t: &Tip) { let Tip { block_id, .. } = t; }",
     ] {
         assert_eq!(
             violations_of(&way, &at("inklkunn-core/src/elsewhere.rs", literal)).len(),
@@ -648,21 +948,137 @@ fn a_planted_tip_literal_is_found_and_a_definition_is_not() {
 }
 
 #[test]
-fn every_place_that_may_has_a_reason_and_no_list_names_a_place_twice() {
+fn a_second_call_in_a_place_that_may_and_a_call_in_another_function_of_it_fail_the_gate() {
+    // L-4: the lists are of call sites, not of files. `page_diff` of `history.rs` may call `diff` once.
+    let diff = way("the storage's `diff`");
+    let history = "inklkunn-core/src/read/history.rs";
+    let one = "fn page_diff() { self.storage.diff(&repo, &from, &to, &[path]); }";
+    assert!(violations_of(&diff, &at(history, one)).is_empty());
+    // A second call in the same function.
+    let two = "fn page_diff() { self.storage.diff(&repo, &from, &to, &[path]);\n    self.storage.diff(&repo, &a, &b, &[path]); }";
+    assert_eq!(
+        violations_of(&diff, &at(history, two)),
+        vec![format!("{history}:2 (page_diff)")]
+    );
+    // A call in another function of the same file.
+    let other = format!("{one}\nfn sneaky() {{ self.storage.diff(&repo, &from, &to, &[path]); }}");
+    assert_eq!(
+        violations_of(&diff, &at(history, &other)),
+        vec![format!("{history}:2 (sneaky)")]
+    );
+    // The same for the helpers that read past the check: `added_lines` of `holders.rs` is listed for two calls.
+    let unchecked = way("`bytes_unchecked_at`");
+    let holders = "inklkunn-core/src/read/holders.rs";
+    let listed =
+        "fn added_lines() { self.bytes_unchecked_at(a, b, c); Self::bytes_unchecked_at(x, y, z); }";
+    assert!(violations_of(&unchecked, &at(holders, listed)).is_empty());
+    let third = "fn added_lines() { self.bytes_unchecked_at(a, b, c); Self::bytes_unchecked_at(x, y, z);\n    self\n        .bytes_unchecked_at(p, q, r); }";
+    assert_eq!(
+        violations_of(&unchecked, &at(holders, third)),
+        vec![format!("{holders}:3 (added_lines)")]
+    );
+    let elsewhere = "fn later_holders() { self.bytes_unchecked_at(a, b, c); }";
+    assert_eq!(violations_of(&unchecked, &at(holders, elsewhere)).len(), 1);
+    assert_eq!(
+        violations_of(&unchecked, &at("inklkunn-core/src/read/past.rs", listed)).len(),
+        2
+    );
+    // Not a call: the definition, a comment, a string, a longer name.
+    for fine in [
+        "fn bytes_unchecked_at(&self) -> R { todo() }",
+        "// self.bytes_unchecked_at(a, b, c)\nfn f() {}",
+        "fn f() { let s = \"self.bytes_unchecked_at(a, b, c)\"; }",
+        "fn f() { self.bytes_unchecked_at_tip(a, b, c); }",
+    ] {
+        assert!(
+            violations_of(&unchecked, &at("inklkunn-core/src/elsewhere.rs", fine)).is_empty(),
+            "{fine}"
+        );
+    }
+    // Each of the other helpers has its planted call.
+    for (begins, call) in [
+        (
+            "`file_for_trace`",
+            "fn f() { self.file_for_trace(w, b, p); }",
+        ),
+        (
+            "`rules_bytes_at`",
+            "fn f() { self.rules_bytes_at(w, p, f, m); }",
+        ),
+        (
+            "`bytes_for_readability`",
+            "fn f() { self.bytes_for_readability(r, p, f, b); }",
+        ),
+        ("`bytes_at_tip`", "fn f() { self.bytes_at_tip(w, t, p); }"),
+    ] {
+        assert_eq!(
+            violations_of(&way(begins), &at("inklkunn-core/src/elsewhere.rs", call)).len(),
+            1,
+            "{call}"
+        );
+    }
+}
+
+#[test]
+fn the_rules_are_read_at_a_governance_point_and_through_no_public_function() {
+    // L-4: `rules_at` read any block it was given, unchecked, and was public. It is not public, and it takes the governance reader's
+    // own point, which says what it is (no revision's text) and which a surface cannot name.
+    let sources = product_sources();
+    let Some(rules) = sources
+        .iter()
+        .find(|(path, _)| path == "inklkunn-core/src/read/rules.rs")
+        .map(|(_, source)| code_of(source))
+    else {
+        panic!("the rules' module is not a source of the workspace");
+    };
+    let Some(signature) = rules
+        .find("fn rules_at")
+        .and_then(|at| rules.get(..at).zip(rules.get(at..)))
+    else {
+        panic!("`rules_at` is not a function of the rules' module");
+    };
+    assert!(
+        signature.0.trim_end().ends_with("pub(crate)"),
+        "`rules_at` is `pub(crate)` and nothing wider"
+    );
+    let parameters: String = signature.1.chars().take_while(|c| *c != '{').collect();
+    assert!(
+        parameters.contains("&GovernancePoint") && !parameters.contains("BlockPoint"),
+        "`rules_at` takes a governance point: {parameters}"
+    );
+    // No other module of the workspace but the crate's own may name the function.
+    for (path, source) in sources
+        .iter()
+        .filter(|(path, _)| !path.starts_with("inklkunn-core/"))
+    {
+        assert!(
+            !code_of(source).contains("rules_at("),
+            "{path} calls `rules_at`, which the core keeps to itself"
+        );
+    }
+}
+
+#[test]
+fn every_call_site_that_may_has_a_reason_and_no_list_names_a_site_twice() {
     for way in ways() {
-        let mut seen: Vec<&str> = Vec::new();
-        for (place, why) in way.may {
+        let mut seen: Vec<(&str, &str)> = Vec::new();
+        for (place, function, count, why) in way.may {
             assert!(
                 why.split_whitespace().count() >= 4,
-                "`{place}` has no reason for {}",
+                "`{function}` in `{place}` has no reason for {}",
                 way.name
             );
             assert!(
-                !seen.contains(place),
-                "`{place}` is listed twice for {}",
+                *count >= 1,
+                "`{function}` in `{place}` is listed for no call by {}",
                 way.name
             );
-            seen.push(place);
+            assert!(
+                !seen.contains(&(place, function)),
+                "`{function}` in `{place}` is listed twice for {}",
+                way.name
+            );
+            seen.push((place, function));
         }
     }
 }

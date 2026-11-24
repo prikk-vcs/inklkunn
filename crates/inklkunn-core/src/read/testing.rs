@@ -499,7 +499,6 @@ impl Storage for Fake {
                     path: Some(p.clone()),
                     unresolved_node_id: None,
                 }],
-                content: serde_json::Value::Null,
             })
             .collect();
         Ok(Change {

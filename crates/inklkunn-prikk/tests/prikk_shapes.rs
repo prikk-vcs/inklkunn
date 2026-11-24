@@ -318,3 +318,23 @@ esac"#,
         }
     }
 }
+
+#[test]
+fn an_operations_own_content_is_not_kept_by_the_type_that_reads_a_show_report() {
+    // The report carries the text an operation wrote (`replacement_text`, a created file's `text`). Nothing reads it, and a type
+    // that held it would carry a page's text past the one reader of a page's text at a block (correction L-4): the type has no
+    // field for it, so none of it survives the parse.
+    let change: inklkunn_prikk::Change = serde_json::from_str(&show_0_56()).expect("a show report");
+    let kept = format!("{change:?}");
+    for text in ["replacement_text", "old_span_text", "\"b\\n\"", "33188"] {
+        assert!(!kept.contains(text), "{text} is kept: {kept}");
+    }
+    let paths: Vec<Option<&str>> = change
+        .patches
+        .iter()
+        .flat_map(|p| &p.operations)
+        .flat_map(|o| &o.paths)
+        .map(|p| p.path.as_deref())
+        .collect();
+    assert_eq!(paths, [Some("pages/b.md"), Some("pages/a.md"), None]);
+}

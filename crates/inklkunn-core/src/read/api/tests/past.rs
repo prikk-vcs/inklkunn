@@ -23,7 +23,6 @@ fn edit(path: &str) -> inklkunn_prikk::Result<Change> {
                     path: Some(path.to_owned()),
                     unresolved_node_id: None,
                 }],
-                content: Default::default(),
             }],
         }],
     })

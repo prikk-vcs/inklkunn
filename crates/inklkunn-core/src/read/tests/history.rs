@@ -24,7 +24,6 @@ pub(super) fn op(kind: &str, paths: &[&str]) -> Operation {
                 unresolved_node_id: None,
             })
             .collect(),
-        content: Default::default(),
     }
 }
 

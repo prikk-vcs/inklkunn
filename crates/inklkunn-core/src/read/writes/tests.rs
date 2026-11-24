@@ -39,7 +39,6 @@ pub(in crate::read) fn op(kind: &str, paths: &[&str]) -> Operation {
                 unresolved_node_id: None,
             })
             .collect(),
-        content: Default::default(),
     }
 }
 
@@ -529,7 +528,6 @@ fn a_change_that_may_have_written_a_path_counts_with_the_one_before_it() {
                     path: None,
                     unresolved_node_id: Some("node".to_owned()),
                 }],
-                content: Default::default(),
             },
         ]),
     );

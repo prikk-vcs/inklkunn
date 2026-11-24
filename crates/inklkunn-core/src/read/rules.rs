@@ -46,7 +46,7 @@ use inklkunn_store::{
     GovernanceFault, GovernanceSnapshot, GovernanceSnapshotStore, WikiId, WikiRecord,
 };
 
-use super::{BlockPoint, Cause, ReadError, ReadService};
+use super::{Cause, ReadError, ReadService, Tip};
 use crate::authorize::{RulesSource, SourceError};
 use crate::governance::{
     Constitution, GovernanceFile, PlatformLimits, Policy, ReadFault, Refusal, Rules,
@@ -58,6 +58,59 @@ pub const WALK_BLOCKS: u64 = 256;
 
 /// The most blocks whose answer *did this block change a governance file?* is remembered, over all wikis.
 const MAX_REMEMBERED_BLOCKS: usize = 20_000;
+
+/// **A state of the wiki's default view whose governance files are read** (correction L-4): the one place [`ReadService::rules_at`]
+/// reads from. It is made from a [`Tip`] ([`GovernancePoint::of_tip`]) or, by the write path that has just read the repository's
+/// tip itself, from the block and the state it read ([`GovernancePoint::just_read`]).
+///
+/// It is **not** a [`BlockPoint`](super::BlockPoint): a block point is a place whose every read of a page's text passes the one reader
+/// ([`ReadService::text_at`]), and nothing here does. The two governance files (`governance/constitution.toml`, `governance/policy.toml`)
+/// are the wiki's rules and not a revision's text; they are **never hidden** (moderation does not reach them, and their history is
+/// the policy page's own), so reading them at any block is not a read of text past the check. The type says so, and its constructors
+/// are not public: the product's rules are read for a decision, never given out of a block a surface names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GovernancePoint {
+    view: String,
+    state_id: String,
+    block_id: String,
+}
+
+impl GovernancePoint {
+    /// The state of a tip that was read (for an advisory decision: what the rules were a moment ago).
+    pub(crate) fn of_tip(tip: &Tip) -> Self {
+        GovernancePoint {
+            view: tip.view().to_owned(),
+            state_id: tip.state_id().to_owned(),
+            block_id: tip.block_id().to_owned(),
+        }
+    }
+
+    /// The state of the default view that a write path **has just read from the repository** under the write lease: its view, the
+    /// state id and the block that state is of.
+    pub(crate) fn just_read(
+        view: impl Into<String>,
+        state_id: impl Into<String>,
+        block_id: impl Into<String>,
+    ) -> Self {
+        GovernancePoint {
+            view: view.into(),
+            state_id: state_id.into(),
+            block_id: block_id.into(),
+        }
+    }
+
+    fn view(&self) -> &str {
+        &self.view
+    }
+
+    fn state_id(&self) -> &str {
+        &self.state_id
+    }
+
+    fn block_id(&self) -> &str {
+        &self.block_id
+    }
+}
 
 /// What the service remembers about the rules: the rules at each wiki's last-seen tip, the snapshot built or read last for
 /// each wiki (the row a new tip's rules are compared with), the lock of each wiki's build, and the blocks known not to have
@@ -172,10 +225,10 @@ impl ReadService {
     ///
     /// The tip is **held for a few seconds** ([`ReadConfig::tip_ttl`](super::ReadConfig)), so this answers what the rules were
     /// a moment ago. That is right for a decision that is advisory or that a later one repeats; what *decides* an act that is
-    /// about to be signed reads the rules of the tip it has just read from the repository ([`ReadService::rules_at`]).
+    /// about to be signed reads the rules of the tip it has just read from the repository (`rules_at`, which the write path calls).
     pub fn rules_of(&self, wiki: &WikiRecord) -> Result<Arc<Rules>, ReadError> {
         let tip = self.tip(wiki, None)?;
-        self.rules_at(wiki, &tip.point())
+        self.rules_at(wiki, &GovernancePoint::of_tip(&tip))
     }
 
     /// The rules in force at `tip`, **a block of the wiki's default view that the caller has just read from the repository**,
@@ -183,7 +236,11 @@ impl ReadService {
     /// derived store, else built from the repository. It is what a decision made under the write lease uses, so that the
     /// rules it judges by are the rules of the state the change is signed on, whatever the tip cache holds and whichever
     /// process sealed last.
-    pub fn rules_at(&self, wiki: &WikiRecord, tip: &BlockPoint) -> Result<Arc<Rules>, ReadError> {
+    pub(crate) fn rules_at(
+        &self,
+        wiki: &WikiRecord,
+        tip: &GovernancePoint,
+    ) -> Result<Arc<Rules>, ReadError> {
         if let Some(rules) = self.rules.held(&wiki.id, tip.state_id()) {
             return Ok(rules);
         }
@@ -224,7 +281,7 @@ impl ReadService {
 
     /// The rules the derived store has for the tip. A row that cannot be read back, or read as rules, is a miss: the right
     /// answer to a damaged derived row is to derive it again.
-    fn stored_rules(&self, wiki: &WikiRecord, tip: &BlockPoint) -> Option<Arc<Rules>> {
+    fn stored_rules(&self, wiki: &WikiRecord, tip: &GovernancePoint) -> Option<Arc<Rules>> {
         let store = self.governance.as_ref()?;
         match store.governance_snapshot(&wiki.id, tip.state_id()) {
             Ok(Some(snapshot)) => {
@@ -245,7 +302,7 @@ impl ReadService {
     fn build_snapshot(
         &self,
         wiki: &WikiRecord,
-        tip: &BlockPoint,
+        tip: &GovernancePoint,
     ) -> Result<GovernanceSnapshot, ReadError> {
         let repo = self.layout.repo_dir(&wiki.id);
         let point = Point::Block(tip.block_id().to_owned());
@@ -302,7 +359,7 @@ impl ReadService {
     fn previous_snapshot(
         &self,
         wiki: &WikiRecord,
-        tip: &BlockPoint,
+        tip: &GovernancePoint,
     ) -> Option<(String, GovernanceSnapshot)> {
         let found = match self.rules.previous(&wiki.id) {
             Some(held) => Some(held),
@@ -336,7 +393,7 @@ impl ReadService {
     fn governance_block(
         &self,
         wiki: &WikiRecord,
-        tip: &BlockPoint,
+        tip: &GovernancePoint,
         snapshot: &GovernanceSnapshot,
     ) -> Result<String, ReadError> {
         // A previous snapshot of a wiki with no governance names no block, and has nothing to inherit.
@@ -395,7 +452,7 @@ impl ReadService {
     fn walk_for_block(
         &self,
         wiki: &WikiRecord,
-        tip: &BlockPoint,
+        tip: &GovernancePoint,
         stop: Option<&str>,
     ) -> Result<Walked, ReadError> {
         let repo = self.layout.repo_dir(&wiki.id);

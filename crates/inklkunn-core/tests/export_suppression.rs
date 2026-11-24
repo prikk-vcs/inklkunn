@@ -227,7 +227,6 @@ fn block(
                             path: Some((*path).to_owned()),
                             unresolved_node_id: None,
                         }],
-                        content: serde_json::Value::Null,
                     })
                     .collect(),
             }],

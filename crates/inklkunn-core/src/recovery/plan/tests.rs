@@ -52,7 +52,6 @@ fn patch(message: &str) -> QueuedPatch {
                 path: Some("pages/Home.md".to_owned()),
                 unresolved_node_id: None,
             }],
-            content: serde_json::Value::Null,
         }],
     }
 }

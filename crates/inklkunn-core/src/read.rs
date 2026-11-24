@@ -139,6 +139,7 @@ pub use raw::RawPage;
 pub use removed::{MAX_REMOVAL_STEPS, Reason, RemovedPage, Restore};
 pub use rollback::{MAX_ROLLBACK_PAGES, NoRollback, RollbackOutcome, RollbackPlan};
 pub use rule_history::{MAX_RULE_CHANGES, RuleChange, RuleFileChange, RuleHidden, RuleHistory};
+pub(crate) use rules::GovernancePoint;
 pub use rules::WALK_BLOCKS;
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
