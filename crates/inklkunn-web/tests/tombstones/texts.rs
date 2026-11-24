@@ -372,10 +372,15 @@ async fn the_apis_revise_refuses_to_copy_the_hidden_text_into_a_new_revision() {
         a.body()
     );
     let problem: serde_json::Value = serde_json::from_slice(&a.bytes).expect("a problem");
-    assert_eq!(problem["reason"], "base-hidden", "{problem}");
+    assert_eq!(
+        problem.get("reason").and_then(serde_json::Value::as_str),
+        Some("base-hidden"),
+        "{problem}"
+    );
     assert!(
-        problem["detail"]
-            .as_str()
+        problem
+            .get("detail")
+            .and_then(serde_json::Value::as_str)
             .is_some_and(|e| e.contains("hidden by moderation")),
         "{problem}"
     );
@@ -390,10 +395,15 @@ async fn the_apis_revise_refuses_to_copy_the_hidden_text_into_a_new_revision() {
     )
     .await;
     let problem: serde_json::Value = serde_json::from_slice(&ja.bytes).expect("a problem");
-    assert_eq!(problem["reason"], "base-hidden", "{problem}");
+    assert_eq!(
+        problem.get("reason").and_then(serde_json::Value::as_str),
+        Some("base-hidden"),
+        "{problem}"
+    );
     assert!(
-        problem["detail"]
-            .as_str()
+        problem
+            .get("detail")
+            .and_then(serde_json::Value::as_str)
             .is_some_and(|e| e.contains("モデレーションにより非表示")),
         "{problem}"
     );
