@@ -179,7 +179,8 @@ pub struct PathRef {
 /// One operation of a patch. `show-report-v1`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Operation {
-    /// `edit-text`, `add-file`, `remove`, `rename`, …
+    /// What prikk's `show` names it: `create-file`, `create-symlink`, `edit-text`, `replace-binary`, `delete-node`,
+    /// `rename-path` (two paths: the old and the new) or `change-perm`.
     pub kind: String,
     /// The paths the operation touches.
     #[serde(default)]

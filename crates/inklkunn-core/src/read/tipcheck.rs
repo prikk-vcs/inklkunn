@@ -87,7 +87,7 @@ impl ReadService {
                 .storage
                 .tree(
                     &self.layout.repo_dir(&wiki.id),
-                    &Point::Block(tip.block_id.clone()),
+                    &Point::Block(tip.block_id().to_owned()),
                     None,
                 )
                 .map_err(|e| self.storage_error(wiki, e))?;
@@ -108,7 +108,7 @@ impl ReadService {
                 for candidate in candidates {
                     match self.bytes_unchecked_at(
                         wiki,
-                        &Point::Block(tip.block_id.clone()),
+                        &Point::Block(tip.block_id().to_owned()),
                         candidate,
                     )? {
                         Unchecked::Missing => {}
@@ -122,7 +122,7 @@ impl ReadService {
                     }
                 }
             }
-            tips.push(tip.block_id);
+            tips.push(tip.block_id().to_owned());
         }
         Ok(match self.surviving_lines(wiki, block_id, &ours, &tips)? {
             (0, _) => TipCheck::Clear,

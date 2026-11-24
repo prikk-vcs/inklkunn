@@ -802,7 +802,7 @@ fn found_marked(
         Subject::Page {
             title: &heading,
             view: view_name,
-            block: (!view.stale).then_some(view.tip.block_id.as_str()),
+            block: (!view.stale).then_some(view.at.block_id()),
         },
     );
     let on_permalink = variant.banner.is_some();

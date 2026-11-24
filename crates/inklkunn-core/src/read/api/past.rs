@@ -67,7 +67,7 @@ impl ReadService {
             .map_err(crate::read::ReadError::InvalidTitle)?;
         let to = match to {
             Some(to) => to.to_owned(),
-            None => self.tip(wiki, view)?.block_id,
+            None => self.tip(wiki, view)?.block_id().to_owned(),
         };
         let from = match from {
             Some(from) => from.to_owned(),

@@ -489,9 +489,10 @@ impl Storage for Fake {
             .filter(|p| files.get(*p) != before.get(*p))
             .map(|p| inklkunn_prikk::Operation {
                 kind: match (before.contains_key(p), files.contains_key(p)) {
-                    (false, _) => "add-file",
+                    // The kinds prikk's `show` names.
+                    (false, _) => "create-file",
                     (true, true) => "edit-text",
-                    (true, false) => "remove",
+                    (true, false) => "delete-node",
                 }
                 .to_owned(),
                 paths: vec![inklkunn_prikk::storage::PathRef {

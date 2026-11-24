@@ -40,7 +40,7 @@ fn a_page_this_server_had_is_served_stale_when_prikk_cannot_be_asked_and_says_so
     let stale = stale.expect("the page is in the cache");
     assert!(stale.stale && stale.cached);
     assert_eq!(stale.html, fresh.html);
-    assert_eq!(stale.tip.state_id, fresh.tip.state_id);
+    assert_eq!(stale.at.state_id(), fresh.at.state_id());
 }
 
 #[test]

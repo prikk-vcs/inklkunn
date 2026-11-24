@@ -12,6 +12,7 @@ mod curate;
 mod curate_check;
 mod curate_link;
 mod flows;
+mod hidden_base;
 mod protections;
 mod rendered;
 mod review;

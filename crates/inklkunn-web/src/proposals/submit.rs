@@ -429,7 +429,7 @@ fn page_base(
                 .tip(&ctx.wiki, view)
                 .map_err(|e| Box::new(read_failure(page, ctx, e)))?;
             let exists = read
-                .source_at(&ctx.wiki, &tip.block_id, &path)
+                .source_at(&ctx.wiki, tip.block_id(), &path)
                 .map_err(|e| Box::new(read_failure(page, ctx, e)))?
                 .is_some();
             if exists {

@@ -163,10 +163,10 @@ impl Pair {
     /// The pair of these tips; `None` when a tip's block is not known (a stale page is read from the cache, and a
     /// comparison of what is not pinned is not held).
     fn of(wiki: &WikiRecord, a: &Tip, b: &Tip) -> Option<Pair> {
-        (!a.block_id.is_empty() && !b.block_id.is_empty()).then(|| Pair {
+        (!a.block_id().is_empty() && !b.block_id().is_empty()).then(|| Pair {
             wiki: wiki.id.clone(),
-            a: a.block_id.clone(),
-            b: b.block_id.clone(),
+            a: a.block_id().to_owned(),
+            b: b.block_id().to_owned(),
         })
     }
 }
@@ -272,7 +272,7 @@ impl ReadService {
         b: Option<&str>,
     ) -> Result<ViewComparison, ReadError> {
         let (tip_a, tip_b) = (self.tip(wiki, a)?, self.tip(wiki, b)?);
-        if tip_a.block_id == tip_b.block_id {
+        if tip_a.block_id() == tip_b.block_id() {
             return Ok(ViewComparison {
                 a: tip_a,
                 b: tip_b,
@@ -299,8 +299,8 @@ impl ReadService {
             .storage
             .diff(
                 &self.layout.repo_dir(&wiki.id),
-                &Point::Block(tip_a.block_id.clone()),
-                &Point::Block(tip_b.block_id.clone()),
+                &Point::Block(tip_a.block_id().to_owned()),
+                &Point::Block(tip_b.block_id().to_owned()),
                 &[],
             )
             .map_err(|e| self.storage_error(wiki, e))?;
@@ -382,8 +382,8 @@ impl ReadService {
             .storage
             .diff(
                 &self.layout.repo_dir(&wiki.id),
-                &Point::Block(tip_a.block_id.clone()),
-                &Point::Block(tip_b.block_id.clone()),
+                &Point::Block(tip_a.block_id().to_owned()),
+                &Point::Block(tip_b.block_id().to_owned()),
                 &[path.as_str()],
             )
             .map_err(|e| self.storage_error(wiki, e))?;

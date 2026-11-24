@@ -298,7 +298,7 @@ fn a_real_wiki_is_read_through_the_whole_path_with_the_numbers_of_calls_the_desi
         // next view is at the new tip: a new index, the new text, and nothing left of the old tip.
         let before: Vec<_> = {
             let tip = w.service.tip(&w.record, None).expect("tip");
-            vec![tip.state_id]
+            vec![tip.state_id().to_owned()]
         };
         w.add(
             &[("Guide", &["aliases: [How-to]"], "The guide, revised.\n")],
@@ -309,8 +309,8 @@ fn a_real_wiki_is_read_through_the_whole_path_with_the_numbers_of_calls_the_desi
         assert!(revised.html.as_str().contains("revised"));
         assert_eq!(moved.materialize, 1, "a new tip is a new index: {moved:?}");
         assert_ne!(
-            revised.tip.state_id,
-            before.first().cloned().unwrap_or_default()
+            revised.at.state_id(),
+            before.first().map_or("", String::as_str)
         );
         let (_, other) = w.counted(|| w.page("Home"));
         assert_eq!(other.materialize, 0);
@@ -414,4 +414,185 @@ fn prikks_own_refusal_for_want_of_its_checkpoint_record_is_the_ordinary_path_and
         None,
         "answered"
     );
+}
+
+/// A hide of the content of a change, as the moderation service's record is (the acts that write it are its own tests).
+fn hide_content(w: &Real, block: &str) {
+    use inklkunn_store::{
+        Account, AccountId, AccountStore, Actor, GovernanceStore, HiddenItem, HiddenItemKind,
+        HiddenParts, ReasonCategory, Role, TombstoneAct, TombstoneActId, TombstoneEvent,
+        TombstoneEventId,
+    };
+    let moderator = AccountId::new();
+    w.store
+        .add_account(&Account {
+            id: moderator.clone(),
+            display_name: DisplayName::new("A moderator").expect("name"),
+            local: None,
+            created_at: 0,
+            disabled: false,
+        })
+        .expect("an account");
+    w.store
+        .record_tombstone_event(&TombstoneEvent {
+            id: TombstoneEventId::new(),
+            act_id: TombstoneActId::new(),
+            wiki: w.record.id.clone(),
+            at: 1_700_000_000,
+            act: TombstoneAct::Hide,
+            item: HiddenItem {
+                kind: HiddenItemKind::PageRevision,
+                id: block.to_owned(),
+                reference: None,
+            },
+            parts: HiddenParts {
+                content: true,
+                summary: false,
+                author: false,
+            },
+            category: Some(ReasonCategory::PersonalData),
+            note: None,
+            affected: None,
+            by: Actor {
+                account: moderator,
+                rung: Role::Admin,
+            },
+            policy_block: None,
+            of_event: None,
+            appeal: None,
+            declined_transition: None,
+        })
+        .expect("a hide");
+}
+
+#[test]
+fn a_real_historys_writers_are_what_prikks_show_says_and_a_hide_hides_exactly_what_its_change_wrote()
+ {
+    use inklkunn_core::read::BlockText;
+    use inklkunn_prikk::{Point, Storage};
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    for (n, sandbox) in policies().into_iter().enumerate() {
+        let w = Real::new(&format!("writers-{n}"), sandbox);
+        // B writes the personal data to `Foo`, C writes `Bar` (the same bytes as B did, independently), D takes the data out of
+        // `Foo`, E removes `Bar` and F writes `Foo` back with the same data.
+        w.add(
+            &[
+                ("Foo", &[], "Call ZEBRA on 555-0100.\n"),
+                ("Quiet", &[], "Nothing here.\n"),
+            ],
+            "Add the contact",
+        );
+        w.add(
+            &[("Bar", &[], "Call ZEBRA on 555-0100.\n")],
+            "Add another page",
+        );
+        w.add(&[("Foo", &[], "No contact.\n")], "Take the contact out");
+        std::fs::remove_file(w.repo.join("pages/Bar.md")).expect("remove");
+        w.signer
+            .commit_and_seal(&w.repo, &system_message("Remove the other page"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        w.add(&[("Foo", &[], "Call ZEBRA on 555-0100.\n")], "Put it back");
+        w.service.forget_wiki(&w.record);
+
+        // The blocks, oldest first: the wiki's creation, then B, C, D, E and F.
+        let log = w
+            .counting
+            .history(&w.repo, &Point::View(w.record.default_view.clone()), None)
+            .expect("the log");
+        let blocks: Vec<String> = log
+            .blocks
+            .iter()
+            .rev()
+            .map(|b| b.block_id.clone())
+            .collect();
+        assert_eq!(blocks.len(), 6, "{blocks:?}");
+        let at = |i: usize| blocks.get(i).expect("a block").clone();
+
+        let reading = ReadService::new(
+            w.counting.clone(),
+            w.store.clone(),
+            w.store.clone(),
+            w.layout.clone(),
+            ReadConfig {
+                tip_ttl: Duration::from_secs(3600),
+                ..ReadConfig::default()
+            },
+            None,
+        )
+        .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+            w.store.clone(),
+            w.store.clone(),
+        )));
+        let text = |i: usize, path: &str| {
+            reading
+                .text_at(&w.record, None, &at(i), path)
+                .unwrap_or_else(|e| panic!("{path} at {i}: {e}"))
+        };
+        // Nothing is hidden: everything reads, and nothing is indexed.
+        let (_, cold) =
+            w.counted(|| assert!(matches!(text(2, "pages/Foo.md"), BlockText::Text(_))));
+        assert_eq!(cold.change, 0, "{cold:?}");
+
+        // Hide B (the second block): the personal data in `Foo`.
+        hide_content(&w, &at(1));
+        assert!(
+            matches!(text(1, "pages/Foo.md"), BlockText::Hidden(_)),
+            "B's own text"
+        );
+        assert!(
+            matches!(text(2, "pages/Foo.md"), BlockText::Hidden(_)),
+            "C left it as B wrote it"
+        );
+        assert!(
+            matches!(text(2, "pages/Bar.md"), BlockText::Text(_)),
+            "C's own page, the same bytes"
+        );
+        assert!(matches!(text(3, "pages/Foo.md"), BlockText::Text(_)), "D's");
+        assert!(
+            matches!(text(1, "pages/Quiet.md"), BlockText::Hidden(_)),
+            "B wrote `Quiet` too: a hide is of the change"
+        );
+        assert!(
+            matches!(text(2, HELP_PAGE), BlockText::Text(_)),
+            "the page the wiki was created with is not B's"
+        );
+        assert!(
+            matches!(text(4, "pages/Bar.md"), BlockText::Missing),
+            "removed by E: no text, nothing hidden"
+        );
+        assert!(
+            matches!(text(5, "pages/Foo.md"), BlockText::Text(_)),
+            "F wrote the same bytes again: F's"
+        );
+        // Built, a read asks prikk for the file and nothing else.
+        let (_, hidden) = w.counted(|| text(2, "pages/Foo.md"));
+        assert_eq!(
+            hidden.total(),
+            0,
+            "a hidden text is not even read: {hidden:?}"
+        );
+        let (_, warm) = w.counted(|| text(3, "pages/Foo.md"));
+        assert_eq!(warm.read, 1, "{warm:?}");
+        assert_eq!(
+            warm.change + warm.history + warm.materialize + warm.views,
+            0,
+            "{warm:?}"
+        );
+        // What wrote `Foo` after B: D, then F.
+        let later = reading
+            .later_writers(&w.record, None, &at(1), "pages/Foo.md", 10)
+            .expect("later writers");
+        assert!(later.settled);
+        assert_eq!(
+            later
+                .writers
+                .iter()
+                .map(|l| l.block.clone())
+                .collect::<Vec<_>>(),
+            vec![at(3), at(5)]
+        );
+    }
 }

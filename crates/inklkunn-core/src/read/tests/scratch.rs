@@ -53,10 +53,14 @@ fn entries_at_block(
     wiki: &WikiRecord,
     block_id: &str,
 ) -> Result<Vec<IndexEntry>, ReadError> {
-    service.with_block_tree(wiki, block_id, |root, config| {
-        entries_from_tree(root, config.index_max_files)
-            .map_err(|e| ReadError::CouldNotBeReadNow(Cause::Scratch(format!("{e:?}"))))
-    })?
+    service.with_block_tree(
+        wiki,
+        &crate::read::BlockPoint::new("", "", block_id),
+        |root, config| {
+            entries_from_tree(root, config.index_max_files)
+                .map_err(|e| ReadError::CouldNotBeReadNow(Cause::Scratch(format!("{e:?}"))))
+        },
+    )?
 }
 
 /// A build of `w` that sweeps (any read does).
@@ -236,26 +240,34 @@ fn two_services_on_one_layout_never_judge_each_other_on_an_empty_tree() {
     // One service extracts while the other builds (and sweeps, and extracts) in the middle of its work.
     let seen = w
         .service
-        .with_block_tree(&w.wiki, &block, |root, config| {
-            let before = entries_from_tree(root, config.index_max_files).expect("mine, before");
-            let theirs =
-                entries_at_block(&other, &w.wiki, &block).expect("the other's extract is whole");
-            assert_eq!(titles(&theirs), want, "the other is not judged on nothing");
-            assert!(root.join("pages").is_dir(), "mine is still there");
-            let after = entries_from_tree(root, config.index_max_files).expect("mine, after");
-            (before, after)
-        })
+        .with_block_tree(
+            &w.wiki,
+            &crate::read::BlockPoint::new("", "", block.as_str()),
+            |root, config| {
+                let before = entries_from_tree(root, config.index_max_files).expect("mine, before");
+                let theirs = entries_at_block(&other, &w.wiki, &block)
+                    .expect("the other's extract is whole");
+                assert_eq!(titles(&theirs), want, "the other is not judged on nothing");
+                assert!(root.join("pages").is_dir(), "mine is still there");
+                let after = entries_from_tree(root, config.index_max_files).expect("mine, after");
+                (before, after)
+            },
+        )
         .expect("mine is whole");
     assert_eq!(titles(&seen.0), want);
     assert_eq!(titles(&seen.1), want);
     // And the other way about.
     let seen = other
-        .with_block_tree(&w.wiki, &block, |root, config| {
-            let mine = entries_at_block(&w.service, &w.wiki, &block)
-                .expect("the first's extract is whole");
-            assert_eq!(titles(&mine), want);
-            entries_from_tree(root, config.index_max_files).expect("the other's, after")
-        })
+        .with_block_tree(
+            &w.wiki,
+            &crate::read::BlockPoint::new("", "", block.as_str()),
+            |root, config| {
+                let mine = entries_at_block(&w.service, &w.wiki, &block)
+                    .expect("the first's extract is whole");
+                assert_eq!(titles(&mine), want);
+                entries_from_tree(root, config.index_max_files).expect("the other's, after")
+            },
+        )
         .expect("the other's is whole");
     assert_eq!(titles(&seen), want);
     let scratch = scratch_of(&w);
@@ -271,10 +283,14 @@ fn an_extract_that_vanished_while_it_was_read_is_could_not_be_read_now_and_never
     let w = World::pages(&[("Home", &[], "x\n")]);
     let block = w.fake().block_id();
     // The work reads the tree as another process's sweep might have left it: gone.
-    let outcome = w.service.with_block_tree(&w.wiki, &block, |root, config| {
-        std::fs::remove_dir_all(root).expect("remove the extract");
-        entries_from_tree(root, config.index_max_files)
-    });
+    let outcome = w.service.with_block_tree(
+        &w.wiki,
+        &crate::read::BlockPoint::new("", "", block.as_str()),
+        |root, config| {
+            std::fs::remove_dir_all(root).expect("remove the extract");
+            entries_from_tree(root, config.index_max_files)
+        },
+    );
     // What the work found (no `pages/`, which reads as no pages) is no answer: the call says the wiki could not be
     // read now.
     assert!(
@@ -298,11 +314,15 @@ fn an_imports_extract_is_beside_a_servers_and_neither_removes_the_other() {
     let crashed = plant(&scratch, &format!("index-{NO_SUCH_PID}-5-0"));
     let state = w
         .service
-        .with_block_tree(&w.wiki, &block, |root, _| {
-            let state = wiki_state(&*w.counting, &w.layout, &w.wiki, &config).expect("import");
-            assert!(root.join("pages").is_dir(), "the server's extract is whole");
-            state
-        })
+        .with_block_tree(
+            &w.wiki,
+            &crate::read::BlockPoint::new("", "", block.as_str()),
+            |root, _| {
+                let state = wiki_state(&*w.counting, &w.layout, &w.wiki, &config).expect("import");
+                assert!(root.join("pages").is_dir(), "the server's extract is whole");
+                state
+            },
+        )
         .expect("the server's read");
     assert_eq!(state.tip, block, "the plan is pinned to the tip");
     assert!(!crashed.exists(), "the import swept a crashed one");

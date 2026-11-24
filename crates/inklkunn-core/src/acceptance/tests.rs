@@ -872,7 +872,8 @@ fn the_caches_are_forgotten_and_the_follow_ups_asked_for_after_the_lease_is_rele
     );
     let after = rig.reads.tip(&rig.wiki, None).unwrap();
     assert_ne!(
-        before.state_id, after.state_id,
+        before.state_id(),
+        after.state_id(),
         "forget_wiki dropped the held tip"
     );
 }

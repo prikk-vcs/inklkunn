@@ -93,13 +93,17 @@ impl ReadService {
         let repo = self.layout.repo_dir(&wiki.id);
         let history = self
             .storage
-            .history(&repo, &Point::View(tip.view.clone()), Some(WALK_BLOCKS))
+            .history(
+                &repo,
+                &Point::View(tip.view().to_owned()),
+                Some(WALK_BLOCKS),
+            )
             .map_err(|e| self.storage_error(wiki, e))?;
         // The window starts at the tip the service held, as the loader's does.
         let Some(start) = history
             .blocks
             .iter()
-            .position(|b| b.block_id == tip.block_id)
+            .position(|b| b.block_id == tip.block_id())
         else {
             return Err(ReadError::CouldNotBeReadNow(super::Cause::Scratch(
                 "the view moved while its rules were listed".to_owned(),

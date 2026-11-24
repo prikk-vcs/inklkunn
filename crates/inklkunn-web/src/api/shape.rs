@@ -257,6 +257,6 @@ pub(super) fn page(wiki: &WikiRecord, page: &PageView) -> Value {
         })),
         "matched_by": page.via.as_str(),
         "stale": page.stale,
-        "tip": super::endpoints::tip_json(&page.tip),
+        "tip": super::endpoints::read_at_json(&page.at),
     })
 }

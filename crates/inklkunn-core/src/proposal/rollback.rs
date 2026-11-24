@@ -116,7 +116,7 @@ pub fn restore_edit(summary: &str, path: &str, text: String, tip: &Tip) -> Optio
         renames: Vec::new(),
         minor: false,
         automated: false,
-        base: Some(Base::new(&tip.state_id, &tip.block_id)?),
+        base: Some(Base::new(tip.state_id(), tip.block_id())?),
     })
 }
 

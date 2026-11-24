@@ -1267,17 +1267,21 @@ pub fn check_change_report(
         }
     }
     reads
-        .with_block_tree(wiki, tip_block, |root, config| {
-            judge_report(
-                root,
-                config.index_max_files,
-                config.page_max_bytes,
-                files,
-                renames,
-                curation,
-                by_service,
-            )
-        })
+        .with_block_tree(
+            wiki,
+            &crate::read::BlockPoint::new("", "", tip_block),
+            |root, config| {
+                judge_report(
+                    root,
+                    config.index_max_files,
+                    config.page_max_bytes,
+                    files,
+                    renames,
+                    curation,
+                    by_service,
+                )
+            },
+        )
         .map_err(CheckError::Read)?
 }
 

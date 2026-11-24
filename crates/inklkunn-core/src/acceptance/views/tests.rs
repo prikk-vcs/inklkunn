@@ -32,7 +32,12 @@ fn entries(rig: &Rig) -> Vec<inklkunn_store::ViewActEntry> {
 fn a_reviewer_creates_a_view_and_every_record_is_in_place() {
     let rig = Rig::new("v1");
     let (rae, who) = reviewer(&rig);
-    let tip = rig.reads.tip(&rig.wiki, None).unwrap().block_id;
+    let tip = rig
+        .reads
+        .tip(&rig.wiki, None)
+        .unwrap()
+        .block_id()
+        .to_owned();
     let created = rig
         .acceptor()
         .create_view(&who, &rig.wiki, "reading", None, ViewKind::Interpretation)

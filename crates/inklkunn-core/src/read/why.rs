@@ -185,7 +185,7 @@ impl ReadService {
         };
         // The page as it is, at the very block the history is read from.
         let current = self
-            .source_at(wiki, &tip.block_id, &entry.path)?
+            .source_at(wiki, tip.block_id(), &entry.path)?
             .ok_or(ReadError::PageUnreadable(PageProblem::NotUtf8))?;
         let history = self.history_step(
             wiki,
@@ -205,7 +205,7 @@ impl ReadService {
             }
             // The page after the newest change is the page as it is, unless the newest change is not the tip's
             // own block: then the two are compared, and a difference no listed change explains ends the reading.
-            if step == 0 && row.change.block_id != tip.block_id {
+            if step == 0 && row.change.block_id != tip.block_id() {
                 let after = self.past_text(wiki, &row.change.block_id, &row.path)?;
                 if !matches!(&after, Past::Text(text) if *text == current) {
                     unfollowed = true;

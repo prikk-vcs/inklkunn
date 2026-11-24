@@ -61,14 +61,14 @@ impl ReadService {
             .derived
             .first_seen(
                 &wiki.id,
-                std::slice::from_ref(&tip.block_id),
+                std::slice::from_ref(&tip.block_id().to_owned()),
                 inklkunn_store::record::now_secs(),
             )
             .ok()
             .and_then(|seen| seen.first().copied())
             .unwrap_or_else(inklkunn_store::record::now_secs);
         Ok(Some(RawPage {
-            etag: format!("\"{}-{:08x}\"", tip.block_id, path_tag(&entry.path)),
+            etag: format!("\"{}-{:08x}\"", tip.block_id(), path_tag(&entry.path)),
             title: entry.title,
             path: entry.path,
             bytes,

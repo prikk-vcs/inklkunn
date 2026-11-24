@@ -5,11 +5,7 @@
 use super::*;
 
 fn tip(view: &str, block: &str) -> Tip {
-    Tip {
-        view: view.to_owned(),
-        state_id: format!("state-{block}"),
-        block_id: block.to_owned(),
-    }
+    Tip::for_tests(view, &format!("state-{block}"), block)
 }
 
 fn pair(wiki: &WikiId, a: &str, b: &str) -> Pair {

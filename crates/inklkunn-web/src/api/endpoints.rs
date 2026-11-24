@@ -153,13 +153,22 @@ pub(super) fn short(view: &str) -> &str {
 }
 
 pub(super) fn tip_json(tip: &inklkunn_core::read::Tip) -> Value {
+    pin_json(tip.view(), tip.state_id(), tip.block_id())
+}
+
+/// Where a page was read: its tip, or the block of a permalink.
+pub(super) fn read_at_json(at: &inklkunn_core::read::ReadAt) -> Value {
+    pin_json(at.view(), at.state_id(), at.block_id())
+}
+
+fn pin_json(view: &str, state_id: &str, block_id: &str) -> Value {
     json!({
-        "view": short(&tip.view),
+        "view": short(view),
         // A page served from what the server last had is not pinned to a block.
-        "block_id": (!tip.block_id.is_empty()).then_some(&tip.block_id),
+        "block_id": (!block_id.is_empty()).then_some(block_id),
         // What a write that opens a proposal names in `If-Match` (RFC 004 D-13); like the block, it is not
         // known for an answer served from what the server last had.
-        "state_id": (!tip.block_id.is_empty()).then_some(&tip.state_id),
+        "state_id": (!block_id.is_empty()).then_some(state_id),
     })
 }
 

@@ -689,11 +689,18 @@ impl ModerationService {
             declines.as_ref(),
         );
         match done {
-            Ok(()) => Ok(HideMade {
-                id,
-                act,
-                declined: declines,
-            }),
+            Ok(()) => {
+                // The reads that follow a hide of a content ask who wrote each path: build that index toward the tip now, once
+                // (best effort: a read that finds it short builds on, and says *hidden* for what it could not reach).
+                if parts.content {
+                    let _ = self.read.warm_writes(wiki);
+                }
+                Ok(HideMade {
+                    id,
+                    act,
+                    declined: declines,
+                })
+            }
             Err(e) => {
                 // The act did not happen: the trail says so, and the person is told it did not.
                 let _ = self.audit_act(

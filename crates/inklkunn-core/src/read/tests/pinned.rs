@@ -21,14 +21,14 @@ fn a_view_that_moves_after_its_tip_was_held_is_still_read_at_the_held_block() {
     let home = read_page(&w, "Home");
     assert!(home.html.as_str().contains("Old text."), "{:?}", home.html);
     assert!(!home.html.as_str().contains("New text."));
-    assert_eq!(home.tip.block_id, first.tip.block_id);
-    assert_eq!(home.tip.state_id, first.tip.state_id);
+    assert_eq!(home.at.block_id(), first.at.block_id());
+    assert_eq!(home.at.state_id(), first.at.state_id());
     // Once the hold ends the reader sees the new tip, whole.
     w.service.forget_wiki(&w.wiki);
     let now = read_page(&w, "Home");
     assert!(now.html.as_str().contains("New text."));
-    assert_ne!(now.tip.state_id, first.tip.state_id);
-    assert_eq!(now.tip.block_id, w.fake().block_id());
+    assert_ne!(now.at.state_id(), first.at.state_id());
+    assert_eq!(now.at.block_id(), w.fake().block_id());
 }
 
 #[test]
@@ -39,9 +39,9 @@ fn a_view_that_moves_between_the_list_and_the_log_is_the_newer_tip_whole() {
     w.fake()
         .move_after_next_views("pages/Home.md", &page(&["title: Home"], "New text.\n"));
     let home = read_page(&w, "Home");
-    assert_ne!(home.tip.state_id, before, "the log named the newer state");
-    assert_eq!(home.tip.state_id, w.fake().state_id());
-    assert_eq!(home.tip.block_id, w.fake().block_id());
+    assert_ne!(home.at.state_id(), before, "the log named the newer state");
+    assert_eq!(home.at.state_id(), w.fake().state_id());
+    assert_eq!(home.at.block_id(), w.fake().block_id());
     assert!(home.html.as_str().contains("New text."), "{:?}", home.html);
     // And the cache of that tip is kept, not pruned as a past one: the next read is a hit, with no extract.
     let (again, calls) = w.counted(|| read_page(&w, "Home"));
@@ -61,7 +61,7 @@ fn the_title_index_is_extracted_at_the_block_not_at_the_view() {
         &page(&["title: Late"], "Written after the tip.\n"),
     );
     let index = w.service.title_index(&w.wiki, None).expect("index");
-    assert_eq!(index.tip(), tip.state_id);
+    assert_eq!(index.tip(), tip.state_id());
     assert!(
         matches!(index.lookup("Late"), Lookup::Missing),
         "a page written after the tip is not in the tip's index"

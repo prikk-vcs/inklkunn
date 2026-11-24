@@ -1,56 +1,46 @@
-//! **The one reader of a file's text at a block** (RFC 006 D-8; INV-13; handoff G-T4, correction H-1). Every read of a page's
-//! or a knowledge file's text at a block passes here, so that hidden text is hidden wherever it is read: the permalink, both
-//! sides of a diff, a proposal's base, a revise, a rollback, *Why is this here?* and the sources a change attached.
+//! **The one reader of a file's text at a block** (RFC 006 D-8; INV-13; handoff G-T4, corrections H-1 and J-1 – J-3). Every read of a
+//! page's or a knowledge file's text at a block passes here, so that hidden text is hidden wherever it is read: the permalink, the
+//! pages it includes, both sides of a diff, a proposal's base, a revise, a rollback, *Why is this here?* and the sources a change
+//! attached.
 //!
 //! ```text
-//! (block, path) ─▶ the changes of the wiki whose content is hidden now ─▶ none: read the file at the block
-//!                                                                    ─▶ some: is this file one of theirs?
-//!                  one of theirs: hidden (the tombstone of the change that wrote it)    not: read the file
+//! (view, block, path) ─▶ any change of the wiki with its content hidden? ─▶ none: read the file at the block
+//!                                                                          ─▶ some: who last wrote the path at or before the block?
+//!                        that change has its content hidden: hidden (its tombstone)      not: read the file
 //! ```
 //!
-//! **What is hidden.** The text of a path at a block is the text the change that *last wrote the path* gave it, which may be
-//! a block long before the one asked for: B writes personal data to a page, C edits another page, D removes the data. At C
-//! the page still reads as B wrote it, and hiding B hides it there. So the question is asked of the bytes: the file at the
-//! block is **the same bytes** a hidden change wrote (at the path, or at any path the change wrote, so that a page moved
-//! with its bytes is still the change's), and no change between the hidden one and the block wrote the path again. A change
-//! that wrote the same bytes again, after the hidden one, is its own writer: its text is shown (and a hide covers the change
-//! it was made on, not text a later change writes again). What cannot be settled within the bounds is **not** settled in the
-//! text's favour: a change too large to list, a file too large to compare, a history that cannot be walked far enough, a block
-//! that is not in the view's log: the text is hidden.
+//! **What is hidden is decided by who wrote the text, never by what it says** (J-1; the rule, what *wrote* means for a path in
+//! prikk's block model, and what is done with every case that cannot be settled, are the account of [`super::writes`]): the text of
+//! a path at a block is hidden exactly when the change that last wrote the path at or before the block has its content hidden,
+//! following a pure rename back to the change that wrote the text it moved. B writes personal data to a page, C edits another page,
+//! D removes the data: at C the page still reads as B wrote it, and hiding B hides it there. Bytes another change wrote
+//! independently are not hidden, and **no bound answers *not hidden***. The decision is a lookup in the index of who wrote each
+//! path (J-2), the same for every number of changes and of hidden changes.
 //!
 //! **Private on purpose.** This module is the only one that asks the storage for the bytes of a file at a block (the write
-//! path's own reads in `acceptance` and `knowledge::curation` are the two other places, listed in the gate below). The gate
-//! is a test over the crate's sources ([`tests`]): a call to the storage's `read` anywhere else fails it. The three entry
-//! points that do not check say in their names what they read and why it may be unchecked:
+//! path's own reads in `acceptance` and `knowledge::curation` are the two other places, listed in the gate below). The gate is a
+//! test over the crate's sources ([`tests`]): a call to the storage's `read` anywhere else fails it, and so does a call of
+//! `materialize`, `with_tree`, `with_block_tree`, `diff` or a `Tip {` literal outside the places that may make it, each with its
+//! reason (J-3). The entry points that do not check say in their names what they read and why it may be unchecked:
 //!
-//! - [`ReadService::bytes_at_tip`]: **a view's tip**. The content of a view's tip cannot be hidden (D-8), and the tip check
-//!   (RFC 006 D-8; `tipcheck`) is what keeps it so;
+//! - [`ReadService::bytes_at_tip`]: **a view's tip**, which only [`ReadService::tip`] makes. The content of a view's tip cannot be
+//!   hidden (D-8), and the tip check (RFC 006 D-8; `tipcheck`) is what keeps it so;
 //! - [`ReadService::rules_bytes_at`]: **a governance file**, which is the rules and not a revision's text;
 //! - [`ReadService::bytes_unchecked_at`]: the tip check's comparison and the one audited act that shows hidden content;
 //! - [`ReadService::file_for_trace`]: *Why is this here?* aligns one version of a page with the next and says which change wrote a
 //!   paragraph, never what it said (a hidden change is still a change of the page's history, with its tombstone);
 //! - the verdict of whether a rollback would merge, which is a boolean.
 //!
-//! **Cost.** A wiki in which nothing has had its content hidden pays one store query for a read, nothing else. A wiki in
-//! which some change has is asked a digest of the file at the block (one `cat`) and of each file the hidden changes wrote
-//! (held, a block's file never changes): the digests are of the bytes and are never served.
-
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Mutex, PoisonError};
+//! **Cost.** A wiki in which nothing has had its content hidden pays one store query for a read, nothing else. A wiki in which
+//! something has pays a few indexed queries and no call to prikk, **whatever the history and the number of changes hidden**.
 
 use inklkunn_prikk::{Point, StorageError};
-use inklkunn_store::{WikiId, WikiRecord};
-use sha2::{Digest as _, Sha256};
+use inklkunn_store::WikiRecord;
 
-use super::history::{MAX_INSPECTED_PER_REQUEST, MAX_SHOWS_PER_REQUEST, PageEvent, TouchesOf};
-use super::{Cause, ReadError, ReadService, Tip};
+use super::writes::Authorship;
+use super::{ReadError, ReadService, Tip};
 use crate::merge::{PageText, merge};
 use crate::tombstone::Mark;
-
-/// The most files of one hidden change that are compared with the file asked for.
-const MAX_COMPARED_FILES: usize = 20;
-/// The most digests held.
-const MAX_DIGESTS: usize = 2048;
 
 /// What the text of a file at a block is, as a reader may be given it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,14 +70,6 @@ pub(super) enum FileAt {
     Hidden(Box<Mark>),
 }
 
-/// What the file at a block is, for the comparison of two files: a digest of its bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Digest {
-    Of([u8; 32]),
-    Missing,
-    TooLarge,
-}
-
 /// What the tip check and the audited reveal read: the bytes, unchecked.
 pub(super) enum Unchecked {
     /// The bytes.
@@ -96,45 +78,6 @@ pub(super) enum Unchecked {
     Missing,
     /// The file is larger than a page may be.
     Large,
-}
-
-type DigestKey = (WikiId, String, String);
-
-#[derive(Debug, Default)]
-struct DigestCache {
-    map: HashMap<DigestKey, Digest>,
-    order: VecDeque<DigestKey>,
-}
-
-/// What the reader holds: the digests of files at blocks. A block's file never changes, so a digest is never stale; what is
-/// hidden is asked at every request and nothing here says it.
-#[derive(Debug, Default)]
-pub(super) struct State {
-    digests: Mutex<DigestCache>,
-}
-
-impl State {
-    fn get(&self, key: &DigestKey) -> Option<Digest> {
-        self.digests
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .map
-            .get(key)
-            .copied()
-    }
-
-    fn put(&self, key: DigestKey, digest: Digest) {
-        let mut held = self.digests.lock().unwrap_or_else(PoisonError::into_inner);
-        if held.map.insert(key.clone(), digest).is_none() {
-            held.order.push_back(key);
-        }
-        while held.map.len() > MAX_DIGESTS {
-            let Some(oldest) = held.order.pop_front() else {
-                break;
-            };
-            held.map.remove(&oldest);
-        }
-    }
 }
 
 impl ReadService {
@@ -171,15 +114,27 @@ impl ReadService {
         path: &str,
         max: u64,
     ) -> Result<FileAt, ReadError> {
-        if let Some(mark) = self.hidden_text(wiki, view, block_id, path)? {
-            return Ok(FileAt::Hidden(Box::new(mark)));
-        }
+        // What is there and whose it is are two questions; the second is asked first, so that a hidden text is never read.
+        let unattributed = match self.authorship(wiki, view, block_id, path)? {
+            Authorship::Hidden(mark) | Authorship::Unattributed(mark) => {
+                return Ok(FileAt::Hidden(mark));
+            }
+            Authorship::NothingHidden | Authorship::Shown { written: true, .. } => None,
+            // Nobody is recorded as having written the path: a text there cannot be attributed.
+            Authorship::Shown {
+                written: false,
+                unattributed,
+            } => Some(unattributed),
+        };
         let point = Point::Block(block_id.to_owned());
         match self
             .storage
             .read(&self.layout.repo_dir(&wiki.id), &point, path, max)
         {
-            Ok(bytes) => Ok(FileAt::Held(bytes)),
+            Ok(bytes) => Ok(match unattributed {
+                Some(mark) => FileAt::Hidden(mark),
+                None => FileAt::Held(bytes),
+            }),
             Err(refused @ StorageError::Refused { .. }) => {
                 // Either there was no such file then, or it is over the size read: `stat` tells.
                 match self
@@ -187,7 +142,10 @@ impl ReadService {
                     .stat(&self.layout.repo_dir(&wiki.id), &point, path)
                 {
                     Err(StorageError::Refused { .. }) => Ok(FileAt::Missing),
-                    Ok(_) => Ok(FileAt::TooLarge(refused)),
+                    Ok(_) => Ok(match unattributed {
+                        Some(mark) => FileAt::Hidden(mark),
+                        None => FileAt::TooLarge(refused),
+                    }),
                     Err(e) => Err(self.storage_error(wiki, e)),
                 }
             }
@@ -196,7 +154,8 @@ impl ReadService {
     }
 
     /// The text of `path` as a view's tip holds it, as the storage gave it. **Unchecked**: the content of a view's tip cannot
-    /// be hidden (RFC 006 D-8), and the check that keeps it so is [`ReadService::tip_check`].
+    /// be hidden (RFC 006 D-8), and the check that keeps it so is [`ReadService::tip_check`]. Only a [`Tip`] can be asked, and only
+    /// [`ReadService::tip`] makes one.
     pub(super) fn bytes_at_tip(
         &self,
         wiki: &WikiRecord,
@@ -206,7 +165,7 @@ impl ReadService {
         self.storage
             .read(
                 &self.layout.repo_dir(&wiki.id),
-                &Point::Block(tip.block_id.clone()),
+                &Point::Block(tip.block_id().to_owned()),
                 path,
                 self.config.page_max_bytes,
             )
@@ -297,7 +256,8 @@ impl ReadService {
     // ------------------------------------------------------------------------------------ what is hidden
 
     /// Is the text of the file at `path` at the block hidden, and by which hiding? `Ok(None)` when it is not (and when the
-    /// service has no tombstones). **A store that cannot be read is an error**, never *nothing hidden*.
+    /// service has no tombstones). **A store that cannot be read is an error**, never *nothing hidden*; a text that cannot be
+    /// attributed is hidden (see the account in `read/writes.rs`).
     pub fn hidden_text(
         &self,
         wiki: &WikiRecord,
@@ -305,102 +265,24 @@ impl ReadService {
         block_id: &str,
         path: &str,
     ) -> Result<Option<Mark>, ReadError> {
-        let Some(tombstones) = &self.tombstones else {
-            return Ok(None);
-        };
-        let hidden = tombstones.content_hidden_revisions(&wiki.id).map_err(|e| {
-            self.store_failures
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            ReadError::CouldNotBeReadNow(Cause::Store(inklkunn_store::StoreError::Backend(e.0)))
-        })?;
-        if hidden.is_empty() {
-            return Ok(None);
-        }
-        let ours = match self.digest_at(wiki, block_id, path)? {
-            Digest::Of(digest) => digest,
-            // No file at the block: nothing is read, so nothing is shown.
-            Digest::Missing => return Ok(None),
-            // A file too large to compare: it cannot be said to be none of a hidden change's, so it is theirs when a hidden
-            // change wrote the path.
-            Digest::TooLarge => {
-                for (hidden, mark) in &hidden {
-                    let wrote = match self.written_paths(wiki, hidden)? {
-                        TouchesOf::Paths(paths) => paths.iter().any(|p| p == path),
-                        TouchesOf::TooLarge => true,
-                    };
-                    if wrote {
-                        return Ok(Some(mark.clone()));
-                    }
-                }
-                return Ok(None);
-            }
-        };
-        for (hidden, mark) in &hidden {
-            // The files the hidden change wrote: a change too large to list is compared at the path asked for alone.
-            let wrote = match self.written_paths(wiki, hidden)? {
-                TouchesOf::Paths(paths) => paths,
-                TouchesOf::TooLarge => vec![path.to_owned()],
-            };
-            for file in wrote.iter().take(MAX_COMPARED_FILES) {
-                if self.digest_at(wiki, hidden, file)? != Digest::Of(ours) {
-                    continue;
-                }
-                // The same bytes: the hidden change wrote what the block holds, unless a change between them wrote the path
-                // again (or the hidden change is later than the block).
-                if file == path && self.is_not_the_writer(wiki, view, hidden, block_id, path)? {
-                    continue;
-                }
-                return Ok(Some(mark.clone()));
-            }
-        }
-        Ok(None)
-    }
-
-    /// Is it **certain** that the hidden change `hidden` is not the one whose text the file `path` has at `block`: the change is
-    /// later than the block, or a change after it and up to the block wrote the path (a created or an edited page; a page only
-    /// moved here carries its text with it)? What cannot be settled within the bounds is `false`: hidden.
-    fn is_not_the_writer(
-        &self,
-        wiki: &WikiRecord,
-        view: Option<&str>,
-        hidden: &str,
-        block: &str,
-        path: &str,
-    ) -> Result<bool, ReadError> {
-        let tip = self.tip(wiki, view)?;
-        let Some((window, at_block)) = self.find_block(wiki, &tip, block)? else {
-            return Ok(false);
-        };
-        let Some(at_hidden) = window.block_position(hidden) else {
-            return Ok(false);
-        };
-        // The log is newest first: a change at a lower place is a later one.
-        if at_hidden < at_block {
-            return Ok(true);
-        }
-        let mut tracked = path.to_owned();
-        let (mut inspected, mut shown) = (0_usize, 0_usize);
-        for at in at_block..at_hidden {
-            if inspected >= MAX_INSPECTED_PER_REQUEST || shown >= MAX_SHOWS_PER_REQUEST {
-                return Ok(false);
-            }
-            inspected += 1;
-            let Some(between) = window.block_id_at(at) else {
-                return Ok(false);
-            };
-            let (events, fetched) = match self.events_of(wiki, between, &mut tracked)? {
-                Some(read) => read,
-                None => return Ok(false),
-            };
-            shown += usize::from(fetched);
-            if events
-                .iter()
-                .any(|e| matches!(e, PageEvent::Created | PageEvent::Edited))
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        Ok(match self.authorship(wiki, view, block_id, path)? {
+            Authorship::NothingHidden | Authorship::Shown { written: true, .. } => None,
+            Authorship::Hidden(mark) | Authorship::Unattributed(mark) => Some(*mark),
+            // Nobody is recorded as having written the path: nothing is hidden if nothing is there, and a text that is there
+            // cannot be attributed. One `stat` tells which.
+            Authorship::Shown {
+                written: false,
+                unattributed,
+            } => match self.storage.stat(
+                &self.layout.repo_dir(&wiki.id),
+                &Point::Block(block_id.to_owned()),
+                path,
+            ) {
+                Ok(_) => Some(*unattributed),
+                Err(StorageError::Refused { .. }) => None,
+                Err(e) => return Err(self.storage_error(wiki, e)),
+            },
+        })
     }
 
     /// **Would undoing a change merge cleanly over the tip?** The pages `paths` as they were at `parent` (the change's parent), written
@@ -454,21 +336,6 @@ impl ReadService {
                 Unchecked::Large => None,
             },
         )
-    }
-
-    /// The digest of the file at the block, held.
-    fn digest_at(&self, wiki: &WikiRecord, block: &str, path: &str) -> Result<Digest, ReadError> {
-        let key = (wiki.id.clone(), block.to_owned(), path.to_owned());
-        if let Some(held) = self.texts.get(&key) {
-            return Ok(held);
-        }
-        let digest = match self.bytes_unchecked_at(wiki, &Point::Block(block.to_owned()), path)? {
-            Unchecked::Held(bytes) => Digest::Of(Sha256::digest(&bytes).into()),
-            Unchecked::Missing => Digest::Missing,
-            Unchecked::Large => Digest::TooLarge,
-        };
-        self.texts.put(key, digest);
-        Ok(digest)
     }
 }
 

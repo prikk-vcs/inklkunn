@@ -727,7 +727,7 @@ fn open_form(page: &Page, ctx: &Ctx, params: &HashMap<String, String>) -> Respon
             Vec::new(),
         );
     }
-    let Some(base) = Base::new(&raw.tip.state_id, &raw.tip.block_id) else {
+    let Some(base) = Base::new(raw.tip.state_id(), raw.tip.block_id()) else {
         return refused(
             page,
             ctx,

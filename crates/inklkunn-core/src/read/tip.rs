@@ -21,28 +21,200 @@ use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use inklkunn_prikk::{SizeHints, Views, cost};
-use inklkunn_store::WikiId;
+use inklkunn_prikk::{Point, SizeHints, Views, cost};
+use inklkunn_store::{WikiId, WikiRecord};
 
-/// One view and its tip.
+use super::{Cause, ReadError, ReadService};
+
+/// Only this module can say it: the field that keeps a [`Tip`] from being written as a literal anywhere else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Seal;
+
+/// **One view's tip, as [`ReadService::tip`] read it**, and nothing else is one. The content of a view's tip cannot be hidden
+/// (RFC 006 D-8), so a read *at a tip* is unchecked, and that is only true of a block the moderation rules (the tip check) keep so.
+/// A `Tip` therefore **can be made only here**: the one private constructor is `ReadService::tip`'s, and a block that is any other
+/// place of a view's history is a [`BlockPoint`], whose every read goes through the one reader of a page's text at a block
+/// ([`ReadService::text_at`]; handoff G-T4, correction J-3). A scan of the sources fails when a `Tip {` literal is written outside
+/// this module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tip {
-    /// The view's full ref name (`heads/main`).
-    pub view: String,
-    /// The view's RefState id at the time it was read: the key of everything derived from it.
-    pub state_id: String,
-    /// The block that state id belongs to (64 hex): what every read of this tip is pinned to.
-    pub block_id: String,
+    view: String,
+    state_id: String,
+    block_id: String,
+    seal: Seal,
 }
 
 impl Tip {
-    /// A tip whose block is not known: what a stale page is read at (it is read from the cache, not from prikk).
+    /// The view's full ref name (`heads/main`).
+    pub fn view(&self) -> &str {
+        &self.view
+    }
+
+    /// The view's RefState id at the time it was read: the key of everything derived from it.
+    pub fn state_id(&self) -> &str {
+        &self.state_id
+    }
+
+    /// The block that state id belongs to (64 hex): what every read of this tip is pinned to. **Empty** for the tip of a page served
+    /// stale, which names no block.
+    pub fn block_id(&self) -> &str {
+        &self.block_id
+    }
+
+    /// A tip whose block is not known: what a stale page is read at (it is read from the cache, not from prikk). **Its block id
+    /// is empty, so it names no block and no read can be made at it.**
     pub(super) fn unpinned(view: &str, state_id: &str) -> Tip {
         Tip {
             view: view.to_owned(),
             state_id: state_id.to_owned(),
             block_id: String::new(),
+            seal: Seal,
         }
+    }
+
+    /// A tip for a test of what is built from tips, which has no repository to read one from. **Test builds only**: the product has
+    /// no way to make a tip but [`ReadService::tip`].
+    #[cfg(test)]
+    pub(crate) fn for_tests(view: &str, state_id: &str, block_id: &str) -> Tip {
+        Tip {
+            view: view.to_owned(),
+            state_id: state_id.to_owned(),
+            block_id: block_id.to_owned(),
+            seal: Seal,
+        }
+    }
+
+    /// This tip as a place to read from: the plain form of a block, which a read that is not at a tip is made at.
+    pub fn point(&self) -> BlockPoint {
+        BlockPoint {
+            view: self.view.clone(),
+            state_id: self.state_id.clone(),
+            block_id: self.block_id.clone(),
+        }
+    }
+}
+
+/// **A block of a view's history that is not known to be its tip**: a proposal's base, a change's permalink, the block an
+/// acceptance has just read. Anyone can name one. **Every read of a page's or a file's text through it is checked** by the one
+/// reader ([`ReadService::text_at`]), which answers *hidden* when the change that last wrote the path has its content hidden (handoff
+/// G-T4, correction J-3): the text, the transclusions of a rendered page, the extract an index is built from, the knowledge and
+/// title indexes at a base, and the hunks of a diff.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockPoint {
+    view: String,
+    state_id: String,
+    block_id: String,
+}
+
+impl BlockPoint {
+    /// The block `block_id` of `view`'s history, as the state `state_id` of the view named it.
+    pub fn new(
+        view: impl Into<String>,
+        state_id: impl Into<String>,
+        block_id: impl Into<String>,
+    ) -> Self {
+        BlockPoint {
+            view: view.into(),
+            state_id: state_id.into(),
+            block_id: block_id.into(),
+        }
+    }
+
+    /// The view's full ref name.
+    pub fn view(&self) -> &str {
+        &self.view
+    }
+
+    /// The view's RefState id at this block: the key of what is derived from it.
+    pub fn state_id(&self) -> &str {
+        &self.state_id
+    }
+
+    /// The block's id.
+    pub fn block_id(&self) -> &str {
+        &self.block_id
+    }
+}
+
+/// A place a block's tree is extracted at and an index is built from: a tip, or any other block. **Not public**: what the service
+/// hands out of a place that is not a tip passes the one reader first.
+pub(super) trait Place {
+    /// The RefState id the derived rows are keyed by.
+    fn state_id(&self) -> &str;
+    /// The block.
+    fn block_id(&self) -> &str;
+}
+
+impl Place for Tip {
+    fn state_id(&self) -> &str {
+        &self.state_id
+    }
+    fn block_id(&self) -> &str {
+        &self.block_id
+    }
+}
+
+impl Place for BlockPoint {
+    fn state_id(&self) -> &str {
+        &self.state_id
+    }
+    fn block_id(&self) -> &str {
+        &self.block_id
+    }
+}
+
+/// Where a page was read: at a view's tip, or at another block of its history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReadAt {
+    /// The view's tip.
+    Tip(Tip),
+    /// A block of the view's history (a permalink).
+    Block(BlockPoint),
+}
+
+impl ReadAt {
+    /// The view's full ref name.
+    pub fn view(&self) -> &str {
+        match self {
+            ReadAt::Tip(tip) => &tip.view,
+            ReadAt::Block(point) => point.view(),
+        }
+    }
+
+    /// The RefState id.
+    pub fn state_id(&self) -> &str {
+        match self {
+            ReadAt::Tip(tip) => &tip.state_id,
+            ReadAt::Block(point) => point.state_id(),
+        }
+    }
+
+    /// The block's id (empty for the tip of a page served stale).
+    pub fn block_id(&self) -> &str {
+        match self {
+            ReadAt::Tip(tip) => &tip.block_id,
+            ReadAt::Block(point) => point.block_id(),
+        }
+    }
+
+    /// The tip, when this is one.
+    pub fn tip(&self) -> Option<&Tip> {
+        match self {
+            ReadAt::Tip(tip) => Some(tip),
+            ReadAt::Block(_) => None,
+        }
+    }
+}
+
+impl From<Tip> for ReadAt {
+    fn from(tip: Tip) -> Self {
+        ReadAt::Tip(tip)
+    }
+}
+
+impl From<BlockPoint> for ReadAt {
+    fn from(point: BlockPoint) -> Self {
+        ReadAt::Block(point)
     }
 }
 
@@ -259,6 +431,61 @@ impl Tips {
         if let Some(hints) = &self.hints {
             hints.forget(repo);
         }
+    }
+}
+
+impl ReadService {
+    /// The tip of `view` (the wiki's default view when `None`). Held for [`ReadConfig::tip_ttl`](super::ReadConfig::tip_ttl): a
+    /// held answer makes no prikk call. **The one place a [`Tip`] is made.**
+    pub fn tip(&self, wiki: &WikiRecord, view: Option<&str>) -> Result<Tip, ReadError> {
+        let view = view.unwrap_or(&wiki.default_view);
+        let repo = self.layout.repo_dir(&wiki.id);
+        let (name, state) = match self.tips.fresh(&wiki.id, view) {
+            Some(held) => held.ok_or_else(|| ReadError::NoSuchView(view.to_owned()))?,
+            None => {
+                let views = self
+                    .storage
+                    .views(&repo)
+                    .map_err(|e| self.storage_error(wiki, e))?;
+                self.tips.hold(&wiki.id, &repo, &views);
+                views
+                    .views
+                    .iter()
+                    .find(|v| v.name == view && !v.closed)
+                    .map(|v| (v.name.clone(), v.state_id.clone()))
+                    .ok_or_else(|| ReadError::NoSuchView(view.to_owned()))?
+            }
+        };
+        if let Some(block_id) = self.tips.block(&wiki.id, &name, &state) {
+            return Ok(Tip {
+                view: name,
+                state_id: state,
+                block_id,
+                seal: Seal,
+            });
+        }
+        // `branch list` names the state, not the block: ask once, here, for the pair. If the view moved
+        // since the list, the pair the log gives is the newer tip, whole.
+        let newest = self
+            .storage
+            .history(&repo, &Point::View(name.clone()), Some(1))
+            .map_err(|e| self.storage_error(wiki, e))?;
+        let block = newest.blocks.into_iter().next().ok_or_else(|| {
+            ReadError::CouldNotBeReadNow(Cause::Scratch(format!(
+                "the log of `{name}` lists no block"
+            )))
+        })?;
+        if block.ref_state_id != state {
+            self.tips.moved(&wiki.id, &name, &block.ref_state_id);
+        }
+        self.tips
+            .remember_block(&wiki.id, &name, &block.ref_state_id, &block.block_id);
+        Ok(Tip {
+            view: name,
+            state_id: block.ref_state_id,
+            block_id: block.block_id,
+            seal: Seal,
+        })
     }
 }
 

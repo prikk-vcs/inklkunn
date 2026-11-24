@@ -901,7 +901,7 @@ fn derived_row(w: &World) -> inklkunn_store::GovernanceSnapshot {
     use inklkunn_store::GovernanceSnapshotStore;
     let tip = w.reads.tip(&w.wiki, None).expect("tip");
     w.store
-        .governance_snapshot(&w.wiki.id, &tip.state_id)
+        .governance_snapshot(&w.wiki.id, tip.state_id())
         .expect("store")
         .expect("a row")
 }

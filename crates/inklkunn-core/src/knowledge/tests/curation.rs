@@ -690,7 +690,7 @@ fn a_reconfirm_acceptance_asks_the_title_index_of_the_prepared_state_and_does_no
     let tip = s.rig.reads.tip(&s.rig.wiki, None).expect("the tip");
     s.rig
         .reads
-        .title_index_at_base(&s.rig.wiki, None, &tip.state_id, &tip.block_id)
+        .title_index_at_base(&s.rig.wiki, None, tip.state_id(), tip.block_id())
         .expect("the index");
     let before = s.rig.fake.materialized();
     let outcome = s

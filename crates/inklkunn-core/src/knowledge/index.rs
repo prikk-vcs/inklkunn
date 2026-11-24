@@ -97,6 +97,29 @@ pub struct KnowledgeIndex {
     /// The list of sources to review, computed for one day and setting and kept with the index (K40); clones of
     /// the index share it, since they are of one tip.
     freshness: Arc<Mutex<Option<super::freshness::Memo>>>,
+    /// The claims and sources of a block that is not a tip whose files a change with its content hidden last wrote: not in the rows,
+    /// and named here with the mark of the hiding (RFC 006 D-8; handoff G-T4, correction J-3). Empty for a tip's.
+    hidden: Vec<HiddenFile>,
+}
+
+/// What kind of knowledge file a hidden one is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HiddenKind {
+    /// A claim's file.
+    Claim,
+    /// A source's file.
+    Source,
+}
+
+/// A claim or a source that is not in an index because the change that last wrote its file has its content hidden.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HiddenFile {
+    /// Which kind.
+    pub kind: HiddenKind,
+    /// Its id (the file's name: a name the history shows).
+    pub id: String,
+    /// The hiding of the change that wrote it.
+    pub mark: crate::tombstone::Mark,
 }
 
 impl KnowledgeIndex {
@@ -143,7 +166,47 @@ impl KnowledgeIndex {
             links_by_claim,
             anchors_by_claim,
             freshness: Arc::new(Mutex::new(None)),
+            hidden: Vec::new(),
         }
+    }
+
+    /// This index **without** the files `hidden` names: their rows, the relations, links and places that are theirs, and the places
+    /// of a hidden claim. What a block that is not a tip has once the one reader has been asked of each file (handoff G-T4,
+    /// correction J-3). A link of a claim that is shown to a hidden source stays: the claim's own file says it.
+    #[must_use]
+    pub fn without(&self, hidden: Vec<HiddenFile>) -> KnowledgeIndex {
+        let gone = |kind: HiddenKind, id: &str| hidden.iter().any(|h| h.kind == kind && h.id == id);
+        let mut rows = self.rows().clone();
+        rows.claims.retain(|c| !gone(HiddenKind::Claim, &c.id));
+        rows.sources.retain(|s| !gone(HiddenKind::Source, &s.id));
+        rows.relations
+            .retain(|r| !gone(HiddenKind::Claim, &r.claim));
+        rows.links.retain(|l| !gone(HiddenKind::Claim, &l.claim));
+        rows.anchors.retain(|a| !gone(HiddenKind::Claim, &a.claim));
+        let mut index = KnowledgeIndex::new(self.tip.clone(), rows);
+        index.hidden = hidden;
+        index
+    }
+
+    /// The claims and sources this index does not have because their files are hidden, each with the mark of the hiding.
+    pub fn hidden_files(&self) -> &[HiddenFile] {
+        &self.hidden
+    }
+
+    /// The hiding of the claim `id`'s file, when it is hidden.
+    pub fn hidden_claim(&self, id: &str) -> Option<&crate::tombstone::Mark> {
+        self.hidden
+            .iter()
+            .find(|h| h.kind == HiddenKind::Claim && h.id == id)
+            .map(|h| &h.mark)
+    }
+
+    /// The hiding of the source `id`'s file, when it is hidden.
+    pub fn hidden_source(&self, id: &str) -> Option<&crate::tombstone::Mark> {
+        self.hidden
+            .iter()
+            .find(|h| h.kind == HiddenKind::Source && h.id == id)
+            .map(|h| &h.mark)
     }
 
     /// `(links read, anchors read, whole reads)` so far (test builds only).

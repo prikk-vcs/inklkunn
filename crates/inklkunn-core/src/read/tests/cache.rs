@@ -127,8 +127,8 @@ fn a_view_carries_its_metadata_headings_links_and_where_it_came_from() {
     assert_eq!(home.path, "pages/Home.md");
     assert_eq!(home.via, Via::Exact);
     assert_eq!(home.redirected_from, None);
-    assert_eq!(home.tip.view, "heads/main");
-    assert_eq!(home.tip.state_id, w.fake().state_id());
+    assert_eq!(home.at.view(), "heads/main");
+    assert_eq!(home.at.state_id(), w.fake().state_id());
     assert_eq!(
         home.toc
             .iter()
@@ -263,10 +263,10 @@ fn another_view_has_its_own_tip_and_an_unknown_view_is_not_found() {
     let w = World::pages(&[("Home", &[], "x\n")]);
     w.fake().add_view("heads/draft");
     let main = w.service.tip(&w.wiki, None).expect("tip");
-    assert_eq!(main.view, "heads/main");
+    assert_eq!(main.view(), "heads/main");
     let draft = w.service.tip(&w.wiki, Some("heads/draft")).expect("tip");
-    assert_eq!(draft.view, "heads/draft");
-    assert_ne!(main.state_id, draft.state_id);
+    assert_eq!(draft.view(), "heads/draft");
+    assert_ne!(main.state_id(), draft.state_id());
     // One `branch list` answered both, and a view it did not list is known not to exist while held.
     assert_eq!(w.calls().views, 1);
     assert!(matches!(

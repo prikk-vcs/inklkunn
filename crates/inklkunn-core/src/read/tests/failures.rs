@@ -399,6 +399,84 @@ fn a_derived_store_that_is_down_costs_speed_and_never_a_page() {
         Err(ReadError::CouldNotBeReadNow(Cause::Store(_)))
     ));
 }
+
+#[test]
+fn a_derived_store_that_is_down_never_lets_a_text_through_while_anything_is_hidden() {
+    use inklkunn_store::{
+        Account, AccountId, AccountStore, Actor, DisplayName, GovernanceStore, HiddenItem,
+        HiddenItemKind, HiddenParts, ReasonCategory, Role, TombstoneAct, TombstoneActId,
+        TombstoneEvent, TombstoneEventId,
+    };
+    let w = World::pages(&[("Home", &[], "x\n")]);
+    w.fake().derive_changes();
+    let reading = ReadService::new(
+        w.counting.clone(),
+        Arc::new(BrokenStore),
+        w.store.clone(),
+        w.layout.clone(),
+        ReadConfig {
+            tip_ttl: Duration::from_secs(3600),
+            ..ReadConfig::default()
+        },
+        None,
+    )
+    .with_tombstones(Arc::new(crate::tombstone::Tombstones::new(
+        w.store.clone(),
+        w.store.clone(),
+    )));
+    let block = super::super::testing::block_id(1);
+    let text = || reading.text_at(&w.wiki, None, &block, "pages/Home.md");
+    // Nothing is hidden: nothing is asked of the index, and the text reads though the derived store is down.
+    assert!(matches!(text(), Ok(BlockText::Text(_))));
+    let moderator = AccountId::new();
+    w.store
+        .add_account(&Account {
+            id: moderator.clone(),
+            display_name: DisplayName::new("A moderator").expect("name"),
+            local: None,
+            created_at: 0,
+            disabled: false,
+        })
+        .expect("an account");
+    w.store
+        .record_tombstone_event(&TombstoneEvent {
+            id: TombstoneEventId::new(),
+            act_id: TombstoneActId::new(),
+            wiki: w.wiki.id.clone(),
+            at: 1_700_000_000,
+            act: TombstoneAct::Hide,
+            item: HiddenItem {
+                kind: HiddenItemKind::PageRevision,
+                id: "c".repeat(64),
+                reference: None,
+            },
+            parts: HiddenParts {
+                content: true,
+                summary: false,
+                author: false,
+            },
+            category: Some(ReasonCategory::PersonalData),
+            note: None,
+            affected: None,
+            by: Actor {
+                account: moderator,
+                rung: Role::Admin,
+            },
+            policy_block: None,
+            of_event: None,
+            appeal: None,
+            declined_transition: None,
+        })
+        .expect("a hide");
+    // Something is hidden and the index cannot be had: an error, never the text and never *not hidden*.
+    assert!(
+        matches!(text(), Err(ReadError::CouldNotBeReadNow(Cause::Store(_)))),
+        "{:?}",
+        text()
+    );
+    assert!(reading.store_failures() > 0);
+}
+
 // ------------------------------------------------------------------------------------ the store size
 
 #[test]

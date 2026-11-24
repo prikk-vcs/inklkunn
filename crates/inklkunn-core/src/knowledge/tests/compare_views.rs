@@ -154,10 +154,7 @@ fn two_views_that_differ_are_compared_in_claims_and_in_pages() {
         .compare_views(&w.wiki, None, Some("heads/alt"))
         .unwrap();
     assert!(!got.same);
-    assert_eq!(
-        (got.a.view.as_str(), got.b.view.as_str()),
-        ("heads/main", "heads/alt")
-    );
+    assert_eq!((got.a.view(), got.b.view()), ("heads/main", "heads/alt"));
     // The pages: the three, in path order (not the order prikk gave them), lines counted, nothing else.
     let pages: Vec<(&str, DiffStatus, u64, u64)> = got
         .pages
@@ -192,8 +189,8 @@ fn two_views_that_differ_are_compared_in_claims_and_in_pages() {
     let asked = w.counting.inner().diffs_asked();
     assert_eq!(asked.len(), 1);
     let (from, to, paths) = asked.first().unwrap();
-    assert_eq!(*from, Point::Block(got.a.block_id.clone()));
-    assert_eq!(*to, Point::Block(got.b.block_id.clone()));
+    assert_eq!(*from, Point::Block(got.a.block_id().to_owned()));
+    assert_eq!(*to, Point::Block(got.b.block_id().to_owned()));
     assert!(paths.is_empty());
 }
 
@@ -427,7 +424,7 @@ fn a_pair_of_tips_seen_again_is_answered_without_asking_prikk_for_the_diff_again
         .compare_views(&w.wiki, Some("heads/alt"), None)
         .unwrap();
     assert_eq!(w.counting.inner().diffs_asked().len(), 3);
-    assert_eq!(reversed.a.view, "heads/alt");
+    assert_eq!(reversed.a.view(), "heads/alt");
     w.service
         .compare_views(&w.wiki, Some("heads/alt"), None)
         .unwrap();
@@ -450,7 +447,7 @@ fn a_view_that_moved_is_another_block_and_another_comparison() {
         .service
         .compare_views(&w.wiki, None, Some("heads/alt"))
         .unwrap();
-    assert_ne!(before.a.block_id, after.a.block_id);
+    assert_ne!(before.a.block_id(), after.a.block_id());
     assert_eq!(
         w.counting.inner().diffs_asked().len(),
         2,
@@ -614,7 +611,7 @@ fn the_claims_a_tip_that_was_already_read_differs_in_are_those_of_that_tip_not_o
     w.counting.inner().set("pages/Home.md", HOME_ALT);
     w.service.forget_wiki(&w.wiki);
     let now = w.service.tip(&w.wiki, None).unwrap();
-    assert_ne!(read.block_id, now.block_id, "the view moved");
+    assert_ne!(read.block_id(), now.block_id(), "the view moved");
     let claim = claim_id(1).to_string();
     let wording = |list: &[crate::knowledge::compare::ClaimDifference]| {
         list.iter().find(|d| d.id == claim).map(|d| d.wording)

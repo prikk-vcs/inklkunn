@@ -46,7 +46,7 @@ use inklkunn_store::{
     GovernanceFault, GovernanceSnapshot, GovernanceSnapshotStore, WikiId, WikiRecord,
 };
 
-use super::{Cause, ReadError, ReadService, Tip};
+use super::{BlockPoint, Cause, ReadError, ReadService};
 use crate::authorize::{RulesSource, SourceError};
 use crate::governance::{
     Constitution, GovernanceFile, PlatformLimits, Policy, ReadFault, Refusal, Rules,
@@ -175,27 +175,27 @@ impl ReadService {
     /// about to be signed reads the rules of the tip it has just read from the repository ([`ReadService::rules_at`]).
     pub fn rules_of(&self, wiki: &WikiRecord) -> Result<Arc<Rules>, ReadError> {
         let tip = self.tip(wiki, None)?;
-        self.rules_at(wiki, &tip)
+        self.rules_at(wiki, &tip.point())
     }
 
-    /// The rules in force at `tip`, **a tip of the wiki's default view that the caller has just read from the repository**,
+    /// The rules in force at `tip`, **a block of the wiki's default view that the caller has just read from the repository**,
     /// never the held tip (handoff G-T1 correction C-2): from memory when the rules of this state are held, else from the
     /// derived store, else built from the repository. It is what a decision made under the write lease uses, so that the
     /// rules it judges by are the rules of the state the change is signed on, whatever the tip cache holds and whichever
     /// process sealed last.
-    pub fn rules_at(&self, wiki: &WikiRecord, tip: &Tip) -> Result<Arc<Rules>, ReadError> {
-        if let Some(rules) = self.rules.held(&wiki.id, &tip.state_id) {
+    pub fn rules_at(&self, wiki: &WikiRecord, tip: &BlockPoint) -> Result<Arc<Rules>, ReadError> {
+        if let Some(rules) = self.rules.held(&wiki.id, tip.state_id()) {
             return Ok(rules);
         }
         // One build per wiki at a time; whoever waited finds the rules already there. Not the index's lock: an index build
         // can take a long while, and a decision must not wait behind it.
         let lock = self.rules.lock_of(&wiki.id);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(rules) = self.rules.held(&wiki.id, &tip.state_id) {
+        if let Some(rules) = self.rules.held(&wiki.id, tip.state_id()) {
             return Ok(rules);
         }
         if let Some(rules) = self.stored_rules(wiki, tip) {
-            self.rules.hold(&wiki.id, &tip.state_id, &rules);
+            self.rules.hold(&wiki.id, tip.state_id(), &rules);
             return Ok(rules);
         }
         let snapshot = self.build_snapshot(wiki, tip)?;
@@ -203,7 +203,7 @@ impl ReadService {
             && store
                 .put_governance_snapshot(
                     &wiki.id,
-                    &tip.state_id,
+                    tip.state_id(),
                     &snapshot,
                     inklkunn_store::record::now_secs(),
                 )
@@ -217,19 +217,19 @@ impl ReadService {
                 "the governance files just read could not be read again".to_owned(),
             ))
         })?);
-        self.rules.remember(&wiki.id, &tip.state_id, &snapshot);
-        self.rules.hold(&wiki.id, &tip.state_id, &rules);
+        self.rules.remember(&wiki.id, tip.state_id(), &snapshot);
+        self.rules.hold(&wiki.id, tip.state_id(), &rules);
         Ok(rules)
     }
 
     /// The rules the derived store has for the tip. A row that cannot be read back, or read as rules, is a miss: the right
     /// answer to a damaged derived row is to derive it again.
-    fn stored_rules(&self, wiki: &WikiRecord, tip: &Tip) -> Option<Arc<Rules>> {
+    fn stored_rules(&self, wiki: &WikiRecord, tip: &BlockPoint) -> Option<Arc<Rules>> {
         let store = self.governance.as_ref()?;
-        match store.governance_snapshot(&wiki.id, &tip.state_id) {
+        match store.governance_snapshot(&wiki.id, tip.state_id()) {
             Ok(Some(snapshot)) => {
                 let rules = rules_from(&snapshot, &self.limits).map(Arc::new)?;
-                self.rules.remember(&wiki.id, &tip.state_id, &snapshot);
+                self.rules.remember(&wiki.id, tip.state_id(), &snapshot);
                 Some(rules)
             }
             Ok(None) => None,
@@ -245,10 +245,10 @@ impl ReadService {
     fn build_snapshot(
         &self,
         wiki: &WikiRecord,
-        tip: &Tip,
+        tip: &BlockPoint,
     ) -> Result<GovernanceSnapshot, ReadError> {
         let repo = self.layout.repo_dir(&wiki.id);
-        let point = Point::Block(tip.block_id.clone());
+        let point = Point::Block(tip.block_id().to_owned());
         let listing = self
             .storage
             .tree(&repo, &point, Some(crate::governance::GOVERNANCE_DIR))
@@ -302,7 +302,7 @@ impl ReadService {
     fn previous_snapshot(
         &self,
         wiki: &WikiRecord,
-        tip: &Tip,
+        tip: &BlockPoint,
     ) -> Option<(String, GovernanceSnapshot)> {
         let found = match self.rules.previous(&wiki.id) {
             Some(held) => Some(held),
@@ -319,7 +319,7 @@ impl ReadService {
                 }
             },
         };
-        found.filter(|(state, _)| *state != tip.state_id)
+        found.filter(|(state, _)| *state != tip.state_id())
     }
 
     /// The block that last changed a governance file, for the rules at `tip` that were just read as `snapshot`.
@@ -336,7 +336,7 @@ impl ReadService {
     fn governance_block(
         &self,
         wiki: &WikiRecord,
-        tip: &Tip,
+        tip: &BlockPoint,
         snapshot: &GovernanceSnapshot,
     ) -> Result<String, ReadError> {
         // A previous snapshot of a wiki with no governance names no block, and has nothing to inherit.
@@ -395,19 +395,23 @@ impl ReadService {
     fn walk_for_block(
         &self,
         wiki: &WikiRecord,
-        tip: &Tip,
+        tip: &BlockPoint,
         stop: Option<&str>,
     ) -> Result<Walked, ReadError> {
         let repo = self.layout.repo_dir(&wiki.id);
         let history = self
             .storage
-            .history(&repo, &Point::View(tip.view.clone()), Some(WALK_BLOCKS))
+            .history(
+                &repo,
+                &Point::View(tip.view().to_owned()),
+                Some(WALK_BLOCKS),
+            )
             .map_err(|e| self.storage_error(wiki, e))?;
         // The view may have moved on since the tip was read: the walk starts at the tip's own block.
         let Some(start) = history
             .blocks
             .iter()
-            .position(|b| b.block_id == tip.block_id)
+            .position(|b| b.block_id == tip.block_id())
         else {
             return Err(ReadError::CouldNotBeReadNow(Cause::Scratch(
                 "the view moved while its governance files were read".to_owned(),
@@ -416,7 +420,7 @@ impl ReadService {
         let mut walked = Walked {
             changed: None,
             met_previous: false,
-            oldest: tip.block_id.clone(),
+            oldest: tip.block_id().to_owned(),
         };
         for (n, block) in history.blocks.iter().enumerate().skip(start) {
             // The block the previous snapshot is of: what changed in it is what that snapshot already says. (Never the tip's

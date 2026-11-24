@@ -32,6 +32,7 @@
 //! **What a change says about who made it is what its message says**, read with the CT-03 parser: a message
 //! that does not parse is shown as a first line and *not recorded* as to people, never guessed.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -43,7 +44,9 @@ use inklkunn_store::{DerivedPage, IndexEntry, WikiId, WikiRecord};
 
 use super::linediff::HunkView;
 use super::text::FileAt;
-use super::{Lookup, PageView, Presentation, ReadError, ReadService, Tip, TitleIndex};
+use super::{
+    BlockPoint, Lookup, PageView, Presentation, ReadAt, ReadError, ReadService, Tip, TitleIndex,
+};
 use crate::message::{Actor, Kind as MessageKind, Message, SUMMARY_MAX_CHARS};
 use crate::tombstone::{Hidden, Mark};
 
@@ -54,7 +57,7 @@ pub const MAX_INSPECTED_PER_REQUEST: usize = 400;
 /// The most `show`s one request makes that were not already held (a bound on prikk calls).
 pub const MAX_SHOWS_PER_REQUEST: usize = 24;
 /// How many blocks the log is read for at first.
-const DEFAULT_WINDOW: usize = 200;
+pub(super) const DEFAULT_WINDOW: usize = 200;
 /// The most blocks of a view's log the service holds and reads: older changes are not listed.
 pub const MAX_WINDOW: usize = 10_000;
 /// The most log windows held, over all wikis and views.
@@ -416,37 +419,55 @@ pub(super) struct Window {
     /// The state id of the newest block read.
     head_state: String,
     blocks: Vec<ChangeInfo>,
+    /// For each block of `blocks`: its effect on the files is not what a patch's operations list says (a merge, a repair, an
+    /// import or a rollback block of prikk's own), so a text that passes through it cannot be attributed.
+    opaque: Vec<bool>,
     /// The whole log is here (the read came back short).
     complete: bool,
 }
 
 impl Window {
-    /// The place of the block in the log (newest first: a lower place is a later change), when the log holds it.
-    pub(super) fn block_position(&self, block_id: &str) -> Option<usize> {
-        self.blocks.iter().position(|b| b.block_id == block_id)
+    /// The blocks of the log, newest first.
+    pub(super) fn infos(&self) -> &[ChangeInfo] {
+        &self.blocks
     }
 
-    /// The id of the block at a place of the log.
-    pub(super) fn block_id_at(&self, at: usize) -> Option<&str> {
-        self.blocks.get(at).map(|b| b.block_id.as_str())
+    /// Does the block at this place of the log have an effect that its operations do not list?
+    pub(super) fn is_opaque(&self, at: usize) -> bool {
+        self.opaque.get(at).copied().unwrap_or(true)
+    }
+
+    /// The log is read to its first block.
+    pub(super) fn is_complete(&self) -> bool {
+        self.complete
     }
 }
 
 /// What one operation of a block did to one path.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum TouchKind {
+pub(super) enum TouchKind {
     Create,
     Edit,
     Delete,
-    Rename { from: String },
+    Rename {
+        from: String,
+    },
+    /// An operation that leaves the bytes of the file as they were (a change of mode).
     Other,
+    /// An operation whose path prikk could not resolve, or of a kind this reading does not know: it names no path (or names
+    /// one that may not be the only one), and it **may have written any**. The writes index counts the block among those that
+    /// may have written every path.
+    Unreadable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Touch {
-    kind: TouchKind,
-    /// The path touched (the new path of a rename).
-    path: String,
+pub(super) struct Touch {
+    pub(super) kind: TouchKind,
+    /// The path touched (the new path of a rename); empty for an operation whose path could not be resolved.
+    pub(super) path: String,
+    /// Which patch of the block the operation is in, from 0: an operation that is addressed by the node it works on (an edit)
+    /// names the path the node has **at the end of its patch**.
+    pub(super) patch: usize,
 }
 
 /// The paths a block wrote, or that it is too large to say.
@@ -459,7 +480,7 @@ pub(super) enum TouchesOf {
 
 /// What is known of a block's operations.
 #[derive(Debug, Clone)]
-enum Touches {
+pub(super) enum Touches {
     Known(Arc<Vec<Touch>>),
     /// Too large to list within the bounds.
     TooLarge,
@@ -622,22 +643,35 @@ fn infos_of(blocks: &[HistoryBlock]) -> Vec<ChangeInfo> {
 /// resolve names no path and is left out.
 fn classify(change: &PrikkChange) -> Vec<Touch> {
     let mut out = Vec::new();
-    for patch in &change.patches {
-        for op in &patch.operations {
+    for (patch, one) in change.patches.iter().enumerate() {
+        for op in &one.operations {
             let path = |i: usize| op.paths.get(i).and_then(|p| p.path.clone());
-            let touch = match op.kind.as_str() {
-                "create-file" | "create-symlink" => path(0).map(|p| (TouchKind::Create, p)),
-                "edit-text" | "replace-binary" => path(0).map(|p| (TouchKind::Edit, p)),
-                "delete-node" => path(0).map(|p| (TouchKind::Delete, p)),
+            // An operation whose path (or paths) could not be resolved, or of a kind not known, is **kept** as one that may
+            // have written anything, never dropped (handoff G-T4, correction J-1: what cannot be settled is not settled in the
+            // text's favour).
+            let unreadable = |p: Option<String>| (TouchKind::Unreadable, p.unwrap_or_default());
+            let (kind, path) = match op.kind.as_str() {
+                "create-file" | "create-symlink" => {
+                    path(0).map_or_else(|| unreadable(None), |p| (TouchKind::Create, p))
+                }
+                "edit-text" | "replace-binary" => {
+                    path(0).map_or_else(|| unreadable(None), |p| (TouchKind::Edit, p))
+                }
+                "delete-node" => {
+                    path(0).map_or_else(|| unreadable(None), |p| (TouchKind::Delete, p))
+                }
                 "rename-path" => match (path(0), path(1)) {
-                    (Some(from), Some(to)) => Some((TouchKind::Rename { from }, to)),
-                    _ => None,
+                    (Some(from), Some(to)) => (TouchKind::Rename { from }, to),
+                    (a, b) => unreadable(a.or(b)),
                 },
-                _ => path(0).map(|p| (TouchKind::Other, p)),
+                // A change of mode leaves the bytes as they were; an unresolved one has nothing to say of any path.
+                "change-perm" => match path(0) {
+                    Some(p) => (TouchKind::Other, p),
+                    None => continue,
+                },
+                _ => unreadable(path(0)),
             };
-            if let Some((kind, path)) = touch {
-                out.push(Touch { kind, path });
-            }
+            out.push(Touch { kind, path, patch });
         }
     }
     out
@@ -691,7 +725,7 @@ fn did_of(touches: &[Touch]) -> Vec<Did> {
                 from: subject(from),
                 to: subject(&touch.path),
             },
-            TouchKind::Other => continue,
+            TouchKind::Other | TouchKind::Unreadable => continue,
         };
         if !out.contains(&did) {
             out.push(did);
@@ -792,7 +826,7 @@ pub(super) fn shape_diff(diff: &inklkunn_prikk::Diff, path: &str) -> DiffShape {
 impl ReadService {
     /// The log of `tip`'s view, at least `need` blocks of it when it has them (and no more than
     /// [`MAX_WINDOW`]): the one held for this tip, else one `log` read and held.
-    fn window_for(
+    pub(super) fn window_for(
         &self,
         wiki: &WikiRecord,
         tip: &Tip,
@@ -807,8 +841,8 @@ impl ReadService {
                 .unwrap_or_else(PoisonError::into_inner);
             if let Some(w) = held.iter().find(|w| {
                 w.wiki == wiki.id
-                    && w.view == tip.view
-                    && w.head_state == tip.state_id
+                    && w.view == tip.view()
+                    && w.head_state == tip.state_id()
                     && (w.complete || w.blocks.len() >= need)
             }) {
                 return Ok(Arc::clone(w));
@@ -819,19 +853,24 @@ impl ReadService {
             .storage
             .history(
                 &self.layout.repo_dir(&wiki.id),
-                &Point::View(tip.view.clone()),
+                &Point::View(tip.view().to_owned()),
                 Some(limit as u64),
             )
             .map_err(|e| self.storage_error(wiki, e))?;
         let window = Arc::new(Window {
             wiki: wiki.id.clone(),
-            view: tip.view.clone(),
+            view: tip.view().to_owned(),
             head_state: log
                 .blocks
                 .first()
                 .map(|b| b.ref_state_id.clone())
                 .unwrap_or_default(),
             complete: log.blocks.len() < limit,
+            opaque: log
+                .blocks
+                .iter()
+                .map(|b| !matches!(b.kind.as_str(), "Root" | "Normal") || b.rollback_block)
+                .collect(),
             blocks: infos_of(&log.blocks),
         });
         let mut held = self
@@ -839,7 +878,7 @@ impl ReadService {
             .windows
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        held.retain(|w| !(w.wiki == wiki.id && w.view == tip.view));
+        held.retain(|w| !(w.wiki == wiki.id && w.view == tip.view()));
         held.push(Arc::clone(&window));
         let excess = held.len().saturating_sub(MAX_WINDOWS);
         held.drain(..excess);
@@ -868,7 +907,11 @@ impl ReadService {
     }
 
     /// What a block did, from the held record or one `show`. The flag says a `show` was made.
-    fn touches_of(&self, wiki: &WikiRecord, block_id: &str) -> Result<(Touches, bool), ReadError> {
+    pub(super) fn touches_of(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+    ) -> Result<(Touches, bool), ReadError> {
         if let Some(held) = self
             .history
             .touches
@@ -928,22 +971,6 @@ impl ReadService {
         })
     }
 
-    /// What the block did to the page now at `tracked`, oldest first, and whether a `show` was made to know it; `tracked` becomes
-    /// the path the page had before the block. `None` when the block is too large to list what it did. What the reader of a
-    /// page's text at a block walks the changes between two blocks by.
-    pub(super) fn events_of(
-        &self,
-        wiki: &WikiRecord,
-        block_id: &str,
-        tracked: &mut String,
-    ) -> Result<Option<(Vec<PageEvent>, bool)>, ReadError> {
-        let (touches, fetched) = self.touches_of(wiki, block_id)?;
-        Ok(match touches {
-            Touches::Known(list) => Some((events_for(&list, tracked), fetched)),
-            Touches::TooLarge => None,
-        })
-    }
-
     /// The change with what moderation hides of it taken out (RFC 006 D-8). **Every change a surface is given passes here**:
     /// the held log keeps the change as the history says it, and what is hidden is asked at each request, so a hide and an
     /// unhide are in force at once.
@@ -969,7 +996,10 @@ impl ReadService {
         Ok(match self.touches_of(wiki, block_id)?.0 {
             Touches::Known(list) => {
                 let mut paths: Vec<String> = Vec::new();
-                for touch in list.iter().filter(|t| t.kind != TouchKind::Delete) {
+                for touch in list
+                    .iter()
+                    .filter(|t| t.kind != TouchKind::Delete && !t.path.is_empty())
+                {
                     if !paths.contains(&touch.path) {
                         paths.push(touch.path.clone());
                     }
@@ -1272,11 +1302,8 @@ impl ReadService {
                 text: Box::new(text),
             });
         }
-        let at_tip = Tip {
-            view: tip.view.clone(),
-            state_id: change.state_id.clone(),
-            block_id: block_id.to_owned(),
-        };
+        // Not the tip: a block of the view's history, whose every read (the page, and each page it includes) is the reader's.
+        let at_point = BlockPoint::new(tip.view().to_owned(), change.state_id.clone(), block_id);
         let key = format!(
             "{}|{block_id}|{path}|{}|{}|{}",
             wiki.id,
@@ -1293,7 +1320,20 @@ impl ReadService {
             .find(|(k, _)| *k == key)
             .map(|(_, row)| row.clone());
         let (row, cached) = match held {
-            Some(row) => (row, true),
+            Some(row) => {
+                // A held render is of a page and of the pages it included then: what moderation hides is asked again of each of them
+                // (a hide, and an unhide, are in force at once), through the same reader.
+                for included in &row.links.transcluded {
+                    if let Some(text) = self.hidden_text(wiki, view, block_id, included)? {
+                        return Ok(AtOutcome::Hidden {
+                            title: page_title,
+                            change: Box::new(change),
+                            text: Box::new(text),
+                        });
+                    }
+                }
+                (row, true)
+            }
             None => {
                 let bytes =
                     match self.file_at(wiki, view, block_id, &path, self.config.page_max_bytes)? {
@@ -1326,7 +1366,20 @@ impl ReadService {
                     kind: "page".to_owned(),
                     problem: None,
                 };
-                let row = self.render_text(wiki, &at_tip, &index, &entry, presentation, &text)?;
+                // The pages the page includes are read at the same block, through the reader, each one checked: one whose text is
+                // hidden is not included, and the permalink says that it is hidden, with that tombstone.
+                let hidden_include: RefCell<Option<Box<Mark>>> = RefCell::new(None);
+                let included = |e: &IndexEntry| {
+                    self.included_at(wiki, view, block_id, &e.path, &hidden_include)
+                };
+                let row = self.render_text(&index, &entry, presentation, &text, &included)?;
+                if let Some(text) = hidden_include.into_inner() {
+                    return Ok(AtOutcome::Hidden {
+                        title: page_title,
+                        change: Box::new(change),
+                        text,
+                    });
+                }
                 let mut held = self
                     .history
                     .at_pages
@@ -1341,7 +1394,7 @@ impl ReadService {
         };
         Ok(AtOutcome::Found {
             view: Box::new(PageView {
-                tip: at_tip,
+                at: ReadAt::Block(at_point),
                 path,
                 html: self.sanitizer.clean(&row.html),
                 meta: row.meta,

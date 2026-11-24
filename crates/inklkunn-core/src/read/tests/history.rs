@@ -656,7 +656,7 @@ fn a_permalink_reads_the_page_at_the_block_and_keeps_the_render_for_the_next_rea
     };
     assert!(view.html.as_str().contains("v2."), "{}", view.html.as_str());
     assert!(!view.html.as_str().contains("v3."));
-    assert_eq!(view.tip.block_id, block_id(2));
+    assert_eq!(view.at.block_id(), block_id(2));
     assert_eq!(change.number, 2);
     assert!(!view.cached && !view.stale);
 

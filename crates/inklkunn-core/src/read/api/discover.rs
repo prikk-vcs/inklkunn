@@ -355,7 +355,7 @@ impl ReadService {
         };
         if list == HealthList::Stale {
             let stale = self.stale_pages_in(wiki, view)?;
-            let stamp = list_stamp(&tip.state_id, "health:stale");
+            let stamp = list_stamp(tip.state_id(), "health:stale");
             let (rows, next) = offset_page(&stale.pages, &stamp, after, limit)?;
             let scan = StaleScan {
                 looked_through: stale.looked_through,
@@ -378,7 +378,7 @@ impl ReadService {
                     rule: Rule::from_code(&row.rule).unwrap_or(Rule::Syntax),
                 })
                 .collect();
-            let stamp = list_stamp(&tip.state_id, "health:knowledge-files");
+            let stamp = list_stamp(tip.state_id(), "health:knowledge-files");
             let (rows, next) = offset_page(&all, &stamp, after, limit)?;
             return Ok(page(
                 HealthRows::KnowledgeFiles(rows),

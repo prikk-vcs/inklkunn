@@ -148,34 +148,32 @@ impl Tombstones {
         Ok(Hidden::of_events(&events))
     }
 
-    /// **The changes of the wiki whose content is hidden now**, each with the mark of the hiding that covers it (the newest):
-    /// what the one reader of a page's text at a block compares a file with ([`crate::read::ReadService::text_at`]). Asked at
-    /// every read: an unhide is in force at once. Empty when nothing has had its content hidden, which costs one query. A
-    /// wiki with more changes that ever had their content hidden than [`inklkunn_store::MAX_HIDDEN_IDS`] is an error,
-    /// never a list cut short: a reader that cannot tell what is hidden shows nothing.
-    pub fn content_hidden_revisions(
+    /// **Is the content of the change `block` hidden now, and by which hiding?** The one place that says it (handoff G-T4,
+    /// correction J-5): [`Tombstones::of_change_from`], which counts the hides of the page revision **and** a hide of the content
+    /// of the proposal revision that was sealed as it, so that every surface and the one reader of a page's text at a block
+    /// ([`crate::read::ReadService::text_at`]) agree. `proposal` is the one the change's message names. A lookup of one change:
+    /// its cost is the change's own records, whatever number of changes are hidden.
+    pub fn content_hidden(
         &self,
         wiki: &WikiId,
-    ) -> Result<Vec<(String, Mark)>, Unreadable> {
-        let limit = inklkunn_store::MAX_HIDDEN_IDS;
-        let ids = self.governance.hidden_ids(
-            wiki,
-            HiddenItemKind::PageRevision,
-            HiddenPart::Content,
-            limit.saturating_add(1),
-        )?;
-        if ids.len() > limit {
-            return Err(Unreadable(format!(
-                "more than {limit} changes have had their content hidden"
-            )));
-        }
-        let mut out = Vec::new();
-        for id in ids {
-            if let Some(mark) = self.of_change(wiki, &id)?.content().cloned() {
-                out.push((id, mark));
-            }
-        }
-        Ok(out)
+        block: &str,
+        proposal: Option<&str>,
+    ) -> Result<Option<Mark>, Unreadable> {
+        Ok(self
+            .of_change_from(wiki, block, proposal)?
+            .content()
+            .cloned())
+    }
+
+    /// **The newest hiding of a content in force in the wiki**, if there is one: `None` means nothing is hidden and no reader needs
+    /// to ask more (one query, whatever the history), `Some` is the hiding a reader that cannot tell whose text a text is answers
+    /// with, so that it says *hidden* and gives nothing. Not the answer for any one change ([`Tombstones::content_hidden`] is).
+    pub fn content_hide_in_force(&self, wiki: &WikiId) -> Result<Option<Mark>, Unreadable> {
+        Ok(self
+            .governance
+            .content_hide_in_force(wiki)?
+            .as_ref()
+            .and_then(Mark::of))
     }
 
     /// **What is hidden of the change `block`, as the surfaces of a page change read it**: [`Tombstones::of_change`], and the hides of

@@ -429,12 +429,12 @@ impl ReadService {
     ) -> Result<Arc<LinkGraph>, ReadError> {
         let tip = self.tip(wiki, view)?;
         let index = self.index_at(wiki, &tip)?;
-        if let Some(graph) = self.remembered_graph(wiki, &tip.state_id) {
+        if let Some(graph) = self.remembered_graph(wiki, tip.state_id()) {
             return Ok(graph);
         }
         let lock = self.build_lock(&wiki.id);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(graph) = self.remembered_graph(wiki, &tip.state_id) {
+        if let Some(graph) = self.remembered_graph(wiki, tip.state_id()) {
             return Ok(graph);
         }
         let max = self.config.page_max_bytes;

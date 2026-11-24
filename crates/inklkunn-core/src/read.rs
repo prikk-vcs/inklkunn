@@ -60,6 +60,7 @@ mod history;
 mod index;
 mod linediff;
 mod links;
+mod past;
 mod preview;
 mod raw;
 mod removed;
@@ -73,6 +74,7 @@ mod text;
 mod tip;
 mod tipcheck;
 mod why;
+mod writes;
 
 // The read API's reads (handoff 003 T8).
 mod api;
@@ -98,6 +100,7 @@ use inklkunn_store::{
 use links::PageLinks;
 pub(crate) use rollback::quoted_summary;
 use scratch::Extract;
+use tip::Place;
 
 use crate::knowledge::index::{self as knowledge_index, KnowledgeIndex};
 
@@ -136,7 +139,7 @@ pub use rules::WALK_BLOCKS;
 pub use sanitize::{HTML_SUBSET, SafeHtml, Sanitizer};
 pub use search::{SearchHit, SearchOutcome, Segment as SnippetSegment, fold, highlight};
 pub use text::BlockText;
-pub use tip::Tip;
+pub use tip::{BlockPoint, ReadAt, Tip};
 pub use tipcheck::{
     MAX_MOVE_CANDIDATES, MAX_REVEALED_FILES, MAX_SURVIVING_LINES, Revealed, TipCheck,
 };
@@ -144,6 +147,7 @@ pub use why::{
     Attached, AttachedSource, Basis, Chain, EXCERPT_CHARS, MAX_WHY_PARAGRAPHS, MAX_WHY_WORK,
     Paragraph, Reach, WhyOutcome, WhyPage, WhyParagraph,
 };
+pub use writes::{LaterWriter, LaterWriters, MAX_INDEXED_SHOWS, MAX_RENAME_HOPS, MAX_WARM_ROUNDS};
 
 // The read API's reads (handoff 003 T8).
 pub use api::{
@@ -298,8 +302,8 @@ impl std::fmt::Display for Cause {
 /// A page, ready to be shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageView {
-    /// The tip the page was read at.
-    pub tip: Tip,
+    /// Where the page was read: the view's tip, or the block of a permalink.
+    pub at: ReadAt,
     /// The page's path in the repository. A storage path: shown nowhere but labelled as one.
     pub path: String,
     /// The page's metadata. Its text fields are plain text: a surface escapes them.
@@ -414,8 +418,8 @@ pub struct ReadService {
     /// What history, change, diff and permalink pages hold (handoff 003 T5): log windows, the operations of
     /// blocks, a few permalink renders.
     history: history::State,
-    /// What the one reader of a file's text at a block holds (the digests of files at blocks).
-    texts: text::State,
+    /// One lock per `(wiki, view)` for the writes index, which the one reader of a page's text at a block builds, one reader at a time.
+    writes_locks: writes::Locks,
     /// The derived governance snapshot (RFC 006 D-5), when the store keeps one.
     governance: Option<Arc<dyn inklkunn_store::GovernanceSnapshotStore>>,
     /// What moderation hides (RFC 006 D-8), asked of every change a surface is given; `None` until
@@ -461,7 +465,7 @@ impl ReadService {
             store_failures: AtomicU64::new(0),
             flags: None,
             history: history::State::default(),
-            texts: text::State::default(),
+            writes_locks: Mutex::new(HashMap::new()),
             governance: None,
             tombstones: None,
             limits: crate::governance::PlatformLimits::default(),
@@ -665,57 +669,6 @@ impl ReadService {
             .map_err(|e| ReadError::CouldNotBeReadNow(Cause::Store(e)))
     }
 
-    /// The tip of `view` (the wiki's default view when `None`). Held for [`ReadConfig::tip_ttl`]: a held
-    /// answer makes no prikk call.
-    pub fn tip(&self, wiki: &WikiRecord, view: Option<&str>) -> Result<Tip, ReadError> {
-        let view = view.unwrap_or(&wiki.default_view);
-        let repo = self.layout.repo_dir(&wiki.id);
-        let (name, state) = match self.tips.fresh(&wiki.id, view) {
-            Some(held) => held.ok_or_else(|| ReadError::NoSuchView(view.to_owned()))?,
-            None => {
-                let views = self
-                    .storage
-                    .views(&repo)
-                    .map_err(|e| self.storage_error(wiki, e))?;
-                self.tips.hold(&wiki.id, &repo, &views);
-                views
-                    .views
-                    .iter()
-                    .find(|v| v.name == view && !v.closed)
-                    .map(|v| (v.name.clone(), v.state_id.clone()))
-                    .ok_or_else(|| ReadError::NoSuchView(view.to_owned()))?
-            }
-        };
-        if let Some(block_id) = self.tips.block(&wiki.id, &name, &state) {
-            return Ok(Tip {
-                view: name,
-                state_id: state,
-                block_id,
-            });
-        }
-        // `branch list` names the state, not the block: ask once, here, for the pair. If the view moved
-        // since the list, the pair the log gives is the newer tip, whole.
-        let newest = self
-            .storage
-            .history(&repo, &Point::View(name.clone()), Some(1))
-            .map_err(|e| self.storage_error(wiki, e))?;
-        let block = newest.blocks.into_iter().next().ok_or_else(|| {
-            ReadError::CouldNotBeReadNow(Cause::Scratch(format!(
-                "the log of `{name}` lists no block"
-            )))
-        })?;
-        if block.ref_state_id != state {
-            self.tips.moved(&wiki.id, &name, &block.ref_state_id);
-        }
-        self.tips
-            .remember_block(&wiki.id, &name, &block.ref_state_id, &block.block_id);
-        Ok(Tip {
-            view: name,
-            state_id: block.ref_state_id,
-            block_id: block.block_id,
-        })
-    }
-
     /// The title index of the view's tip: from memory, else from the derived store, else built from **one
     /// extract of the tip**, once, however many callers ask at the same time.
     pub fn title_index(
@@ -741,6 +694,10 @@ impl ReadService {
     /// The knowledge index of exactly the state a proposal's base names (`state_id`, with the `block_id` it belongs to),
     /// whatever the view has moved to since: where a page was, and what it said, when the proposal was written (handoff
     /// 005 K22). The same hold as the tip's: memory, then the derived store, else built from one extract of that block.
+    ///
+    /// **A base is not a tip, so the index passes the one reader** (RFC 006 D-8; handoff G-T4, correction J-3): a claim or a
+    /// source whose file was last written by a change that has its content hidden is not in the index, and
+    /// [`KnowledgeIndex::hidden_files`] names it with the mark of the hiding, so that a surface says *hidden* in its place.
     pub fn knowledge_index_at_base(
         &self,
         wiki: &WikiRecord,
@@ -748,17 +705,18 @@ impl ReadService {
         state_id: &str,
         block_id: &str,
     ) -> Result<Arc<KnowledgeIndex>, ReadError> {
-        let tip = Tip {
-            view: view.unwrap_or(&wiki.default_view).to_owned(),
-            state_id: state_id.to_owned(),
-            block_id: block_id.to_owned(),
-        };
-        self.knowledge_at(wiki, &tip)
+        let at = BlockPoint::new(view.unwrap_or(&wiki.default_view), state_id, block_id);
+        let whole = self.knowledge_of(wiki, &at)?;
+        self.knowledge_without_hidden(wiki, &at, whole)
     }
 
     /// The title index of exactly the state a proposal's base names, whatever the view has moved to since: where every
     /// page was (by its `id`) when the proposal was written, so a page renamed since is found at its base path (handoff
     /// 005 K22). The same hold as the tip's.
+    ///
+    /// **A base is not a tip, so the index passes the one reader** (handoff G-T4, correction J-3): the entry of a page whose text a
+    /// change with its content hidden last wrote keeps its path and has nothing read from the text (no aliases, no redirect, no
+    /// id, no title but the path's, and the problem `hidden`).
     pub fn title_index_at_base(
         &self,
         wiki: &WikiRecord,
@@ -766,24 +724,31 @@ impl ReadService {
         state_id: &str,
         block_id: &str,
     ) -> Result<Arc<TitleIndex>, ReadError> {
-        let tip = Tip {
-            view: view.unwrap_or(&wiki.default_view).to_owned(),
-            state_id: state_id.to_owned(),
-            block_id: block_id.to_owned(),
-        };
-        self.index_at(wiki, &tip)
+        let at = BlockPoint::new(view.unwrap_or(&wiki.default_view), state_id, block_id);
+        let whole = self.index_at(wiki, &at)?;
+        self.titles_without_hidden(wiki, &at, whole)
     }
 
     /// [`ReadService::knowledge_index`] of a tip that was already read: the index of exactly that state, whatever the
     /// view has moved to since (a comparison keys what it derives by the tips it read, and so reads their indexes; a
-    /// claim page reads its view's tip once and everything it shows is of that tip, handoff 005 K23).
+    /// claim page reads its view's tip once and everything it shows is of that tip, handoff 005 K23). **Only a tip**: the
+    /// content of a view's tip cannot be hidden. The index of any other block is [`ReadService::knowledge_index_at_base`].
     pub fn knowledge_at(
         &self,
         wiki: &WikiRecord,
         tip: &Tip,
     ) -> Result<Arc<KnowledgeIndex>, ReadError> {
+        self.knowledge_of(wiki, tip)
+    }
+
+    /// The knowledge index of the state `tip` names, **unchecked**: for a tip, or for a block the caller then passes the one reader.
+    fn knowledge_of(
+        &self,
+        wiki: &WikiRecord,
+        tip: &impl Place,
+    ) -> Result<Arc<KnowledgeIndex>, ReadError> {
         let titles = self.index_at(wiki, tip)?;
-        if let Some(k) = self.remembered_knowledge(&wiki.id, &tip.state_id) {
+        if let Some(k) = self.remembered_knowledge(&wiki.id, tip.state_id()) {
             return Ok(k);
         }
         if let Some(k) = self.stored_knowledge(wiki, tip) {
@@ -791,7 +756,7 @@ impl ReadService {
         }
         let lock = self.build_lock(&wiki.id);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(k) = self.remembered_knowledge(&wiki.id, &tip.state_id) {
+        if let Some(k) = self.remembered_knowledge(&wiki.id, tip.state_id()) {
             return Ok(k);
         }
         if let Some(k) = self.stored_knowledge(wiki, tip) {
@@ -818,14 +783,14 @@ impl ReadService {
     fn keep_knowledge(
         &self,
         wiki: &WikiRecord,
-        tip: &Tip,
+        tip: &impl Place,
         rows: KnowledgeRows,
     ) -> Arc<KnowledgeIndex> {
         if self
             .derived
             .put_knowledge_index(
                 &wiki.id,
-                &tip.state_id,
+                tip.state_id(),
                 &rows,
                 inklkunn_store::record::now_secs(),
             )
@@ -833,7 +798,10 @@ impl ReadService {
         {
             self.store_failures.fetch_add(1, Ordering::Relaxed);
         }
-        self.hold_knowledge(&wiki.id, KnowledgeIndex::new(tip.state_id.clone(), rows))
+        self.hold_knowledge(
+            &wiki.id,
+            KnowledgeIndex::new(tip.state_id().to_owned(), rows),
+        )
     }
 
     /// Hold a knowledge index in memory (the newest [`MAX_MEMORY_INDEXES`] over all wikis).
@@ -860,11 +828,12 @@ impl ReadService {
     }
 
     /// The knowledge index the derived store has for the tip, put in memory. A store that cannot answer is a miss.
-    fn stored_knowledge(&self, wiki: &WikiRecord, tip: &Tip) -> Option<Arc<KnowledgeIndex>> {
-        match self.derived.knowledge_index(&wiki.id, &tip.state_id) {
-            Ok(Some(rows)) => {
-                Some(self.hold_knowledge(&wiki.id, KnowledgeIndex::new(tip.state_id.clone(), rows)))
-            }
+    fn stored_knowledge(&self, wiki: &WikiRecord, tip: &impl Place) -> Option<Arc<KnowledgeIndex>> {
+        match self.derived.knowledge_index(&wiki.id, tip.state_id()) {
+            Ok(Some(rows)) => Some(self.hold_knowledge(
+                &wiki.id,
+                KnowledgeIndex::new(tip.state_id().to_owned(), rows),
+            )),
             Ok(None) => None,
             Err(_) => {
                 self.store_failures.fetch_add(1, Ordering::Relaxed);
@@ -919,7 +888,7 @@ impl ReadService {
         let presentation_key = cache_presentation(presentation);
         let key = PageKey {
             wiki: &wiki.id,
-            tip: &tip.state_id,
+            tip: tip.state_id(),
             path: &found.entry.path,
             lang: presentation.lang(),
             presentation: &presentation_key,
@@ -940,7 +909,7 @@ impl ReadService {
             }
         };
         Ok(PageOutcome::Found(Box::new(PageView {
-            tip,
+            at: ReadAt::Tip(tip),
             path: found.entry.path,
             // The text came out of a database or a renderer; it goes out through the sanitizer either way.
             html: self.sanitizer.clean(&row.html),
@@ -987,7 +956,7 @@ impl ReadService {
         };
         let row = self.derived.page(&key).ok().flatten()?;
         Some(PageView {
-            tip: Tip::unpinned(view, &state_id),
+            at: ReadAt::Tip(Tip::unpinned(view, &state_id)),
             path: found.entry.path,
             html: self.sanitizer.clean(&row.html),
             meta: row.meta,
@@ -1014,25 +983,25 @@ impl ReadService {
         let text = self
             .read_text(wiki, tip, &entry.path)?
             .ok_or(ReadError::PageUnreadable(PageProblem::NotUtf8))?;
-        self.render_text(wiki, tip, index, entry, presentation, &text)
+        // An included page of a tip is read at the tip: its content cannot be hidden.
+        let included = |e: &IndexEntry| self.read_text(wiki, tip, &e.path);
+        self.render_text(index, entry, presentation, &text, &included)
     }
 
-    /// Parse, resolve, render and sanitize the source `text` of the page `entry` (read at `tip`, which is also
-    /// where an included page is read).
+    /// Parse, resolve, render and sanitize the source `text` of the page `entry`; `included` reads the page an embed names, **at
+    /// the place the page is read at** (a tip: unchecked; any other block: through the one reader, handoff G-T4, correction J-3).
     fn render_text(
         &self,
-        wiki: &WikiRecord,
-        tip: &Tip,
         index: &TitleIndex,
         entry: &IndexEntry,
         presentation: &dyn Presentation,
         text: &str,
+        included: links::BodyReader<'_>,
     ) -> Result<DerivedPage, ReadError> {
         let page = Page::parse(text).map_err(|ParseError::Frontmatter(e)| {
             ReadError::PageUnreadable(PageProblem::Frontmatter(e.to_string()))
         })?;
-        let included = |e: &IndexEntry| self.read_text(wiki, tip, &e.path);
-        let links = PageLinks::new(index, presentation, &entry.path, &included);
+        let links = PageLinks::new(index, presentation, &entry.path, included);
         // The author's raw HTML is escaped to text while the profile declares no subset; with one, it goes on
         // to the sanitizer, whose allowlist is exactly that subset (RFC 003 D-3).
         let author_html = author_html_for(HTML_SUBSET);
@@ -1094,8 +1063,8 @@ impl ReadService {
 
     // ------------------------------------------------------------------------------------ the index
 
-    fn index_at(&self, wiki: &WikiRecord, tip: &Tip) -> Result<Arc<TitleIndex>, ReadError> {
-        if let Some(index) = self.remembered(&wiki.id, &tip.state_id) {
+    fn index_at(&self, wiki: &WikiRecord, tip: &impl Place) -> Result<Arc<TitleIndex>, ReadError> {
+        if let Some(index) = self.remembered(&wiki.id, tip.state_id()) {
             return Ok(index);
         }
         if let Some(index) = self.stored_index(wiki, tip) {
@@ -1104,19 +1073,19 @@ impl ReadService {
         // One build per wiki at a time. Whoever waited for the lock finds the index already there.
         let lock = self.build_lock(&wiki.id);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(index) = self.remembered(&wiki.id, &tip.state_id) {
+        if let Some(index) = self.remembered(&wiki.id, tip.state_id()) {
             return Ok(index);
         }
         if let Some(index) = self.stored_index(wiki, tip) {
             return Ok(index);
         }
-        if let Some(refusal) = self.recently_refused(&wiki.id, &tip.state_id) {
+        if let Some(refusal) = self.recently_refused(&wiki.id, tip.state_id()) {
             return Err(refusal);
         }
         let (entries, knowledge) = match self.build_entries(wiki, tip) {
             Ok(built) => built,
             Err(e) => {
-                self.note_refusal(&wiki.id, &tip.state_id, &e);
+                self.note_refusal(&wiki.id, tip.state_id(), &e);
                 return Err(e);
             }
         };
@@ -1129,7 +1098,7 @@ impl ReadService {
             .derived
             .put_title_index(
                 &wiki.id,
-                &tip.state_id,
+                tip.state_id(),
                 &entries,
                 inklkunn_store::record::now_secs(),
             )
@@ -1137,7 +1106,7 @@ impl ReadService {
         {
             self.store_failures.fetch_add(1, Ordering::Relaxed);
         }
-        let index = Arc::new(TitleIndex::new(tip.state_id.clone(), entries));
+        let index = Arc::new(TitleIndex::new(tip.state_id().to_owned(), entries));
         self.remember(&wiki.id, &index);
         self.forget_the_past(wiki);
         Ok(index)
@@ -1190,10 +1159,10 @@ impl ReadService {
     }
 
     /// The index the derived store has for the tip, put in memory. A store that cannot answer is a miss.
-    fn stored_index(&self, wiki: &WikiRecord, tip: &Tip) -> Option<Arc<TitleIndex>> {
-        match self.derived.title_index(&wiki.id, &tip.state_id) {
+    fn stored_index(&self, wiki: &WikiRecord, tip: &impl Place) -> Option<Arc<TitleIndex>> {
+        match self.derived.title_index(&wiki.id, tip.state_id()) {
             Ok(Some(entries)) => {
-                let index = Arc::new(TitleIndex::new(tip.state_id.clone(), entries));
+                let index = Arc::new(TitleIndex::new(tip.state_id().to_owned(), entries));
                 self.remember(&wiki.id, &index);
                 Some(index)
             }
@@ -1234,7 +1203,7 @@ impl ReadService {
     fn build_entries(
         &self,
         wiki: &WikiRecord,
-        tip: &Tip,
+        tip: &impl Place,
     ) -> Result<(Vec<IndexEntry>, Option<KnowledgeRows>), ReadError> {
         self.with_tree(wiki, tip, |root| {
             let entries =
@@ -1268,7 +1237,7 @@ impl ReadService {
     fn with_tree<R>(
         &self,
         wiki: &WikiRecord,
-        tip: &Tip,
+        tip: &impl Place,
         work: impl FnOnce(&Path) -> Result<R, ReadError>,
     ) -> Result<R, ReadError> {
         let scratch_error = |what: &str, e: std::io::Error| {
@@ -1290,7 +1259,7 @@ impl ReadService {
             .storage
             .materialize(
                 &repo,
-                &Point::Block(tip.block_id.clone()),
+                &Point::Block(tip.block_id().to_owned()),
                 &scratch,
                 extract.name(),
                 bounds,
@@ -1315,23 +1284,20 @@ impl ReadService {
         // its lock free, until another build sweeps it; what was read is good.
     }
 
-    /// Run `work` over one extract of the block `block_id` of the wiki (not necessarily the tip this service holds:
+    /// Run `work` over one extract of the block `at` of the wiki (not necessarily the tip this service holds:
     /// the acceptance judges the tip it has just read), under the wiki's build lock so that it never meets another
-    /// extract of the wiki in the scratch directory.
+    /// extract of the wiki in the scratch directory. **Unchecked: the whole tree of the block is `work`'s**, so only the write path
+    /// asks it (the judgement of what an acceptance would write, which reports rules and paths and serves no text); the scan
+    /// of the sources lists each caller with its reason (handoff G-T4, correction J-3).
     pub(crate) fn with_block_tree<R>(
         &self,
         wiki: &WikiRecord,
-        block_id: &str,
+        at: &BlockPoint,
         work: impl FnOnce(&Path, &ReadConfig) -> R,
     ) -> Result<R, ReadError> {
         let lock = self.build_lock(&wiki.id);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        let at = Tip {
-            view: String::new(),
-            state_id: String::new(),
-            block_id: block_id.to_owned(),
-        };
-        self.with_tree(wiki, &at, |root| Ok(work(root, &self.config)))
+        self.with_tree(wiki, at, |root| Ok(work(root, &self.config)))
     }
 
     // ------------------------------------------------------------------------------------ errors

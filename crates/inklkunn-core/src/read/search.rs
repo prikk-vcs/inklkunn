@@ -218,7 +218,7 @@ impl ReadService {
     ) -> Vec<inklkunn_store::SearchHit> {
         let ask = || {
             self.derived
-                .search(&wiki.id, &tip.state_id, folded, CANDIDATES)
+                .search(&wiki.id, tip.state_id(), folded, CANDIDATES)
         };
         let stored = match ask() {
             Ok(Some(hits)) => Some(hits),
@@ -228,7 +228,7 @@ impl ReadService {
                     .derived
                     .put_search_index(
                         &wiki.id,
-                        &tip.state_id,
+                        tip.state_id(),
                         &docs,
                         inklkunn_store::record::now_secs(),
                     )

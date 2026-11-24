@@ -840,7 +840,7 @@ fn a_failure_injected_after_commit_flags_the_wiki_and_reads_still_serve() {
         .expect("the page is served");
     assert_eq!(String::from_utf8(home.bytes).unwrap(), page_before);
     assert_eq!(
-        w.reads.tip(&w.wiki, None).unwrap().block_id,
+        w.reads.tip(&w.wiki, None).unwrap().block_id(),
         log_before.first().unwrap().block_id
     );
     // Writes are refused with the word, for this proposal and for any other, and nothing is committed again.
@@ -2726,7 +2726,7 @@ fn a_reconfirm_reads_the_pages_of_the_tip_the_acceptance_prepared_on() {
     let change = signed(w.accept(&p).unwrap());
 
     // The acceptor's read service holds the tip as it is now.
-    let held_tip = w.reads.tip(&w.wiki, None).unwrap().block_id;
+    let held_tip = w.reads.tip(&w.wiki, None).unwrap().block_id().to_owned();
     assert_eq!(held_tip, w.tip());
     // An operator's write that no part of this process saw: the paragraph is reworded once more.
     let once_more = w
@@ -2754,7 +2754,7 @@ fn a_reconfirm_reads_the_pages_of_the_tip_the_acceptance_prepared_on() {
     run_import(&unseen, &w.wiki, &plan).unwrap_or_else(|e| panic!("{e}"));
     assert_ne!(w.tip(), held_tip);
     assert_eq!(
-        w.reads.tip(&w.wiki, None).unwrap().block_id,
+        w.reads.tip(&w.wiki, None).unwrap().block_id(),
         held_tip,
         "the acceptor's read service still answers the older tip"
     );

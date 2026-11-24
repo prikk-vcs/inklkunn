@@ -30,6 +30,7 @@ use inklkunn_core::knowledge::{
 use inklkunn_core::proposal::BaseError;
 use inklkunn_core::proposal::files::ProposedPages;
 use inklkunn_core::read::{Cause, ReadError};
+use inklkunn_core::tombstone::Mark;
 use inklkunn_store::RevisionContent;
 
 use super::labels::{
@@ -64,6 +65,11 @@ pub(crate) trait Subjects {
     fn places(&self, claim: &ClaimId) -> Vec<Expression>;
     /// What a source calls itself: in the proposal's own file for it, else in the wiki.
     fn identity(&self, source: &SourceId) -> Option<Identity>;
+    /// The hiding of the source's file at the base, when the change that last wrote it has its content hidden (RFC 006 D-8; handoff
+    /// G-T4, correction J-3): what it calls itself is then not read, and a line says *hidden* with the tombstone in its place.
+    fn hidden_source(&self, _source: &SourceId) -> Option<Mark> {
+        None
+    }
     /// Is the link of `claim` to `source` that the proposal adds judged on a wording one of the claim's paragraphs has
     /// in the proposal's result (K25)? A proposal that is sent always is; a draft may not be, and then its line says so.
     fn judged_now(&self, claim: &ClaimId, source: &SourceId) -> bool;
@@ -224,7 +230,14 @@ fn source_subject(
             known.as_ref()
         }
     };
-    let name = source_name(t, identity);
+    // A source the base has, whose file a hidden change wrote, is not named: *hidden*, and why.
+    let name = match own.is_none().then(|| know.hidden_source(id)).flatten() {
+        Some(mark) => std::iter::once(crate::tombstone::author_word(t))
+            .chain(crate::tombstone::mark_facts(t, &mark))
+            .collect::<Vec<_>>()
+            .join(" "),
+        None => source_name(t, identity),
+    };
     let shown = match of.and_then(|claim| know.cited_href(claim, id)) {
         Some(href) => code_link(id.as_str(), &href),
         None => code(id.as_str()),
@@ -1025,6 +1038,13 @@ impl Subjects for Resolver<'_> {
             author: row.author.clone(),
             date: row.date.clone(),
         })
+    }
+
+    fn hidden_source(&self, source: &SourceId) -> Option<Mark> {
+        if self.sources.contains_key(source.as_str()) {
+            return None;
+        }
+        self.index()?.hidden_source(source.as_str()).cloned()
     }
 
     fn judged_now(&self, claim: &ClaimId, source: &SourceId) -> bool {

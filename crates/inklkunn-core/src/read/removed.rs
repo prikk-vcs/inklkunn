@@ -173,7 +173,7 @@ impl ReadService {
             Planned::Plan(plan) => {
                 let paths: Vec<String> = plan.files.iter().map(|f| f.path.clone()).collect();
                 if let Some(parent) = &removal.parent
-                    && self.rollback_merges(wiki, &plan.undoes, parent, &tip.block_id, &paths)?
+                    && self.rollback_merges(wiki, &plan.undoes, parent, tip.block_id(), &paths)?
                 {
                     return Ok(Restore::Rollback {
                         undoes: plan.undoes,
@@ -186,7 +186,7 @@ impl ReadService {
                 parent,
                 paths,
             } => {
-                if self.rollback_merges(wiki, &undoes, &parent, &tip.block_id, &paths)? {
+                if self.rollback_merges(wiki, &undoes, &parent, tip.block_id(), &paths)? {
                     return Ok(Restore::TextHidden { titles });
                 }
             }

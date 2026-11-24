@@ -147,7 +147,7 @@ pub enum BaseError {
 impl BaseSource for ReadService {
     fn base(&self, wiki: &WikiRecord, view: &str) -> std::result::Result<Base, BaseError> {
         match self.tip(wiki, Some(view)) {
-            Ok(tip) => Base::new(&tip.state_id, &tip.block_id).ok_or_else(|| {
+            Ok(tip) => Base::new(tip.state_id(), tip.block_id()).ok_or_else(|| {
                 BaseError::Unavailable("the tip's ids are not state and block ids".to_owned())
             }),
             Err(ReadError::NoSuchView(v)) => Err(BaseError::NoSuchView(v)),

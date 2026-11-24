@@ -112,7 +112,7 @@ fn the_rules_are_rebuilt_to_the_same_rules_after_the_derived_store_is_cleared() 
     // The row is in the derived store, keyed by the tip.
     let row = w
         .store
-        .governance_snapshot(&w.wiki.id, &tip.state_id)
+        .governance_snapshot(&w.wiki.id, tip.state_id())
         .expect("store")
         .expect("a row");
     assert_eq!(row.policy_block.as_deref(), Some(first.block().unwrap()));
@@ -128,7 +128,7 @@ fn the_rules_are_rebuilt_to_the_same_rules_after_the_derived_store_is_cleared() 
     assert!(cleared > 0, "the row was among the derived rows");
     assert!(
         w.store
-            .governance_snapshot(&w.wiki.id, &tip.state_id)
+            .governance_snapshot(&w.wiki.id, tip.state_id())
             .expect("store")
             .is_none()
     );
@@ -150,7 +150,11 @@ fn a_tip_that_has_moved_away_loses_its_row_with_the_rest_of_the_derived_rows() {
     write(&w, &[("governance/policy.yaml", POLICY)]);
     let service = World::service_over(&w.counting, &w.store, &w.layout, config())
         .with_governance_snapshots(w.store.clone());
-    let old_tip = service.tip(&w.wiki, None).expect("tip").state_id;
+    let old_tip = service
+        .tip(&w.wiki, None)
+        .expect("tip")
+        .state_id()
+        .to_owned();
     service.rules_of(&w.wiki).expect("built");
     assert!(
         w.store
@@ -451,7 +455,7 @@ fn only_the_default_views_tip_is_read() {
     assert_eq!(*rules, Rules::defaults());
     // And a view that is not the default is no place the rules are read from, whatever view is asked for.
     let tip = w.service.tip(&w.wiki, None).expect("tip");
-    assert_eq!(tip.view, w.wiki.default_view);
+    assert_eq!(tip.view(), w.wiki.default_view);
 }
 
 #[test]

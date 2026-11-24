@@ -163,7 +163,9 @@ impl ReadService {
             kind: "page".to_owned(),
             problem: None,
         };
-        let row = self.render_text(wiki, &tip, &index, &entry, presentation, text)?;
+        // The includes of a draft are read at the tip, which cannot be hidden.
+        let included = |e: &IndexEntry| self.read_text(wiki, &tip, &e.path);
+        let row = self.render_text(&index, &entry, presentation, text, &included)?;
         Ok(Preview {
             html: self.sanitizer.clean(&row.html),
             toc: row.toc,
