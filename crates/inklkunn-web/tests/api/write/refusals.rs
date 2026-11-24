@@ -233,7 +233,6 @@ async fn the_word_of_an_acceptance_that_failed_is_written_in_the_description_of_
 }
 
 #[tokio::test]
-#[ignore = "defect: the problem of an acceptance refused for a governance file, `governance-invalid`, has the detail `{explanation}` in both languages: the member the template names is never set (see the report of R-5 item 3)"]
 async fn the_detail_of_no_problem_is_a_template_that_was_not_filled() {
     for failure in samples() {
         for language in ["en", "ja"] {
@@ -248,4 +247,20 @@ async fn the_detail_of_no_problem_is_a_template_that_was_not_filled() {
             );
         }
     }
+}
+
+#[tokio::test]
+async fn the_detail_of_a_refused_rules_file_is_the_sentence_the_page_shows_in_the_language_asked() {
+    // The detail names the file, the rule and the line as the page of the same refusal does (never what the file said), then says
+    // that nothing was changed.
+    let governance = samples()
+        .into_iter()
+        .find(|f| matches!(f, AcceptFailure::GovernanceInvalid(_)))
+        .expect("a sample of the cause");
+    let en = sent(&governance, "en").await;
+    let ja = sent(&governance, "ja").await;
+    assert!(en.detail.contains("governance/policy.yaml"), "{en:?}");
+    assert!(en.detail.contains("Nothing was changed"), "{en:?}");
+    assert!(ja.detail.contains("governance/policy.yaml"), "{ja:?}");
+    assert!(ja.detail.contains("何も変更しておらず"), "{ja:?}");
 }

@@ -170,6 +170,17 @@ impl Request {
             AcceptFailure::Proposal(error) => self.refusal(error),
             AcceptFailure::Restricted(notice) => restricted_problem(self.t, &notice),
             AcceptFailure::Refused(q) => self.quota(&q),
+            // The detail is the sentence of the page that tells the same refusal (each fault once, then that nothing was
+            // changed), in the caller's language: `acceptance_problem` has no language, and the code's own detail is the
+            // template `{explanation}`, which every `unacceptable` problem must fill.
+            AcceptFailure::GovernanceInvalid(faults) => {
+                let explanation =
+                    crate::proposals::governance::invalid_paragraphs(self.t, &faults).join(" ");
+                acceptance_problem(AcceptFailure::GovernanceInvalid(faults), &|line| {
+                    self.log(line)
+                })
+                .said("explanation", explanation)
+            }
             other => acceptance_problem(other, &|line| self.log(line)),
         }
     }
