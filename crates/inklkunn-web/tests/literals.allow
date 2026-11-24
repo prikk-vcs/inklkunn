@@ -670,3 +670,8 @@ exact :: show.rs :: role :: a placeholder name of a catalog message
 exact :: show.rs :: authority :: a placeholder name of a catalog message
 exact :: protections.rs :: authority :: a placeholder name of a catalog message
 exact :: log.rs :: authority :: a placeholder name of a catalog message
+exact :: history.rs :: person :: a placeholder name of a catalog message
+exact :: history.rs :: role :: a placeholder name of a catalog message
+exact :: history.rs :: authority :: a placeholder name of a catalog message
+exact :: words.rs :: role :: a placeholder name of a catalog message
+exact :: words.rs :: authority :: a placeholder name of a catalog message

@@ -160,6 +160,23 @@ pub(crate) fn decision_line(t: T, decision: &DecisionRow) -> String {
     .text()
 }
 
+/// **The rung the decider held and the rules it was held under**, said beside the decision (criterion 12): *Decided as
+/// maintainer, under the rules as of ...*, or that they were *not recorded* for a decision that was written without them. The
+/// change that set the rules is named by its first characters, as the restriction's notice names it.
+pub(crate) fn decision_authority(t: T, decision: &DecisionRow) -> String {
+    match decision.rung {
+        Some(role) => t
+            .msg(Key::AuthorityReviewed)
+            .with("role", crate::people::sentences::role_label(t, role))
+            .with(
+                "authority",
+                crate::authority::under_text(t, decision.policy_block.as_deref()),
+            )
+            .text(),
+        None => t.get(Key::AuthorityUnrecorded),
+    }
+}
+
 /// What an appeal said, as the lines it was written in (a blank line is no paragraph).
 pub(crate) fn text_lines(text: &str) -> Vec<String> {
     text.lines()

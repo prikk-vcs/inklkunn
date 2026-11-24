@@ -374,16 +374,36 @@ const PEOPLE_LINK: &str = "<p><a href=\"/handbook/-/people\">People and roles of
 /// The second line this tree's *About* page adds: the way to the rules of the wiki (0.4.0's G-T7).
 const POLICY_LINK: &str = "<p><a href=\"/handbook/-/policy\">The rules of this wiki</a></p>";
 
+/// The line a change page adds when no record says what an acceptance was made under (0.4.0's G-1).
+const UNRECORDED_FACT: &str =
+    "<li>The role and the rules this was decided under were not recorded.</li>";
+
 /// This tree's page with the two ways 0.4.0 adds taken out, **exactly**: the way to the people page and the way to the rules, each
 /// one line, on the *About* page and nowhere else, so that a second one, or one on another page, is not taken out and is found as
-/// a difference.
+/// a difference. **And, on a change page, the acceptor's line is 0.3.0's again** (G-1: the role and the rules of the record).
 pub(super) fn undo_the_people_link(path: &str, html: &str) -> String {
     let mut out = String::new();
     let (mut people, mut rules) = (0, 0);
+    let on_a_change = path.starts_with("/handbook/-/change/");
     for line in html.split_inclusive('\n') {
         match line.trim_end() {
             PEOPLE_LINK => people += 1,
             POLICY_LINK => rules += 1,
+            // 0.4.0's G-1: the change page's *accepted by* line names the role and the rules of the acceptance record (an
+            // acceptance of 0.2.0 or 0.3.0 has the role and the default rules), and says so when there is no record. Taken out
+            // exactly, on a change page and nowhere else: the line is 0.3.0's again.
+            fact if on_a_change
+                && fact.starts_with("<li>Accepted by ")
+                && fact.ends_with("), under the default rules.</li>") =>
+            {
+                let name = fact
+                    .strip_prefix("<li>Accepted by ")
+                    .and_then(|rest| rest.rsplit_once(" ("))
+                    .map(|(name, _)| name)
+                    .unwrap();
+                out.push_str(&format!("<li>Accepted by {name}</li>\n"));
+            }
+            UNRECORDED_FACT if on_a_change => {}
             _ => out.push_str(line),
         }
     }

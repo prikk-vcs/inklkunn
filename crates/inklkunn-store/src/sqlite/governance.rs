@@ -472,7 +472,7 @@ fn insert_tombstone(tx: &Transaction<'_>, e: &TombstoneEvent) -> Result<()> {
 // ------------------------------------------------------------------------------------------------ appeals
 
 const APPEAL_COLUMNS: &str = "id, wiki_id, at, action_kind, action_id, action_actor, appellant, text, status, \
-                              decided_at, decided_by, decision_reason, overturn_id";
+                              decided_at, decided_by, decision_reason, overturn_id, decided_rung, decided_block";
 
 fn appeal_row(row: &Row<'_>) -> rusqlite::Result<AppealRecord> {
     let status: String = row.get(8)?;
@@ -489,6 +489,11 @@ fn appeal_row(row: &Row<'_>) -> rusqlite::Result<AppealRecord> {
             reason: row
                 .get::<_, Option<String>>(11)?
                 .ok_or_else(|| invalid("decision_reason"))?,
+            rung: row
+                .get::<_, Option<String>>(13)?
+                .map(|r| Role::parse(&r).ok_or_else(|| invalid("decided_rung")))
+                .transpose()?,
+            policy_block: row.get::<_, Option<String>>(14)?,
         })
     };
     let state = match status.as_str() {
@@ -974,7 +979,7 @@ impl GovernanceStore for SqliteStore {
             let changed = tx
                 .execute(
                     "UPDATE appeals SET status = ?2, decided_at = ?3, decided_by = ?4, decision_reason = ?5, \
-                     overturn_id = ?6 WHERE id = ?1 AND status = 'open'",
+                     overturn_id = ?6, decided_rung = ?7, decided_block = ?8 WHERE id = ?1 AND status = 'open'",
                     params![
                         id.as_str(),
                         if overturn.is_some() { "overturned" } else { "upheld" },
@@ -982,6 +987,8 @@ impl GovernanceStore for SqliteStore {
                         decision.by.as_str(),
                         decision.reason,
                         overturn,
+                        decision.rung.map(Role::as_str),
+                        decision.policy_block,
                     ],
                 )
                 .map_err(refusal)?;

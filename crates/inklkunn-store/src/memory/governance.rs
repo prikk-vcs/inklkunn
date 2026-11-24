@@ -739,6 +739,8 @@ impl GovernanceStore for MemoryStore {
             at: decision.at,
             by: decision.by.clone(),
             reason: decision.reason.clone(),
+            rung: decision.rung,
+            policy_block: decision.policy_block.clone(),
         };
         if decided.at < appeal.at {
             return broken(

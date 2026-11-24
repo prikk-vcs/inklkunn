@@ -22,6 +22,8 @@ use inklkunn_store::{
 use support::{account, mv, open_draft, step, submit, wiki};
 
 const T0: i64 = 1_000;
+/// A block of the rules, as a decision names it.
+const BLOCK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn block(n: u64) -> String {
     format!("{n:064x}")
@@ -210,6 +212,8 @@ fn decision(by: &AccountId, at: i64, outcome: AppealOutcome) -> AppealDecision {
         at,
         by: by.clone(),
         reason: "Looked at it again.".to_owned(),
+        rung: Some(Role::Maintainer),
+        policy_block: Some(BLOCK.to_owned()),
         outcome,
     }
 }
@@ -1485,6 +1489,8 @@ where
         at: T0,
         by: r.admin.clone(),
         reason: "x".to_owned(),
+        rung: None,
+        policy_block: None,
     });
     assert!(backend(s.file_appeal(&decided)).contains("filed open"));
     let mut bad_id = base();
@@ -1580,6 +1586,9 @@ where
             at: T0 + 3,
             by: r.admin.clone(),
             reason: "Looked at it again.".to_owned(),
+            // The rung the decider held and the block of the rules, written with the decision (G-1; criterion 12).
+            rung: Some(Role::Maintainer),
+            policy_block: Some(BLOCK.to_owned()),
         })
     );
     // Decided once, for good; and the restriction stands.
@@ -1592,6 +1601,92 @@ where
     );
     assert_eq!(s.active_restrictions(w, &r.person, T0 + 10).unwrap(), [set]);
     assert!(s.open_appeals(w, 10).unwrap().is_empty());
+}
+
+/// G-1 (criterion 12): a decision keeps the rung the decider held and the block of the rules, **or says it recorded none**; a
+/// block that is not one is refused, and so is a block with no rung.
+fn an_appeal_decision_keeps_the_rung_and_the_block_or_says_none_was_recorded<S>(r: &Rig<S>)
+where
+    S: GovernanceStore,
+{
+    let (s, w) = (&r.store, &r.wiki);
+    let file = |n: i64| {
+        let filed = appeal(
+            w,
+            AppealedKind::Grant,
+            &GrantDecisionId::new().to_string(),
+            Some(&r.admin),
+            &r.person,
+            T0 + n,
+        );
+        s.file_appeal(&filed).unwrap();
+        filed
+    };
+    let decided_by = |id: &AppealId| match s.appeal(id).unwrap().unwrap().state {
+        AppealState::Upheld(d) => d,
+        other => panic!("not upheld: {other:?}"),
+    };
+
+    // A rung under the rules of a block.
+    let named = file(1);
+    s.decide_appeal(
+        &named.id,
+        &decision(&r.maintainer, T0 + 5, AppealOutcome::Upheld),
+    )
+    .unwrap();
+    let d = decided_by(&named.id);
+    assert_eq!(
+        (d.rung, d.policy_block.as_deref()),
+        (Some(Role::Maintainer), Some(BLOCK))
+    );
+
+    // A rung under the default rules (no block).
+    let defaults = file(2);
+    s.decide_appeal(
+        &defaults.id,
+        &AppealDecision {
+            policy_block: None,
+            ..decision(&r.maintainer, T0 + 5, AppealOutcome::Upheld)
+        },
+    )
+    .unwrap();
+    let d = decided_by(&defaults.id);
+    assert_eq!((d.rung, d.policy_block), (Some(Role::Maintainer), None));
+
+    // A decision written without either says so: not a guess.
+    let none = file(3);
+    s.decide_appeal(
+        &none.id,
+        &AppealDecision {
+            rung: None,
+            policy_block: None,
+            ..decision(&r.maintainer, T0 + 5, AppealOutcome::Upheld)
+        },
+    )
+    .unwrap();
+    let d = decided_by(&none.id);
+    assert_eq!((d.rung, d.policy_block), (None, None));
+
+    // Refused whole: a block that is not one, and a block with no rung. The appeal stays open.
+    let bad = file(4);
+    for (rung, block) in [
+        (Some(Role::Maintainer), "NOT HEX"),
+        (Some(Role::Maintainer), ""),
+        (None, BLOCK),
+    ] {
+        let e = s
+            .decide_appeal(
+                &bad.id,
+                &AppealDecision {
+                    rung,
+                    policy_block: Some(block.to_owned()),
+                    ..decision(&r.maintainer, T0 + 5, AppealOutcome::Upheld)
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(e, StoreError::Backend(_)), "{block:?}: {e:?}");
+        assert_eq!(s.appeal(&bad.id).unwrap().unwrap().state, AppealState::Open);
+    }
 }
 
 fn an_overturned_restriction_is_reversed_in_the_same_step<S>(r: &Rig<S>)
@@ -2520,6 +2615,7 @@ both_stores!(
     an_appeal_is_filed_once_per_action_per_person_and_counted,
     a_malformed_appeal_is_refused,
     an_appeal_is_decided_once_by_someone_who_neither_appealed_nor_acted,
+    an_appeal_decision_keeps_the_rung_and_the_block_or_says_none_was_recorded,
     an_overturned_restriction_is_reversed_in_the_same_step,
     an_overturned_grant_restores_the_rung_and_a_stale_one_changes_nothing,
     an_overturned_tombstone_and_protection_are_undone_with_the_decision,

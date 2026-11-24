@@ -724,6 +724,12 @@ pub struct Decided {
     pub by: AccountId,
     /// Why (bounded).
     pub reason: String,
+    /// The rung the decider held **when they decided** (RFC 006 D-5; acceptance criterion 12), under the rules named by
+    /// [`Decided::policy_block`]. `None` for a decision recorded without it (nothing is guessed): shown as *not recorded*.
+    pub rung: Option<Role>,
+    /// The block that last changed a governance file when the decision was made: the rules the rung was held under. `None` is
+    /// the defaults (a wiki with no governance files) **when [`Decided::rung`] is set**, and *not recorded* when it is not.
+    pub policy_block: Option<String>,
 }
 
 /// How an appeal stands: **decided once**, and then for good.
@@ -849,6 +855,10 @@ pub struct AppealDecision {
     pub by: AccountId,
     /// Why (1 - [`MAX_REASON_BYTES`] bytes).
     pub reason: String,
+    /// The rung the decider holds, recorded with the decision (G-1; [`Decided::rung`]). The service always gives it.
+    pub rung: Option<Role>,
+    /// The block that set the rules the rung is held under; `None` is the defaults ([`Decided::policy_block`]).
+    pub policy_block: Option<String>,
     /// What it came to.
     pub outcome: AppealOutcome,
 }
@@ -857,6 +867,10 @@ impl AppealDecision {
     /// Is the decision well formed? A reversal is the decider's own, of its own kind, and the right event.
     pub fn validate(&self) -> Result<()> {
         check_text(&self.reason, MAX_REASON_BYTES, "a decision's reason")?;
+        check_block(self.policy_block.as_deref())?;
+        if self.rung.is_none() && self.policy_block.is_some() {
+            return refuse("a decision that names the rules it was made under names the rung too");
+        }
         let AppealOutcome::Overturned(reversal) = &self.outcome else {
             return Ok(());
         };

@@ -145,6 +145,8 @@ impl AppealService {
                 at: d.at,
                 by: self.name_of(&d.by),
                 reason: d.reason.clone(),
+                rung: d.rung,
+                policy_block: d.policy_block.clone(),
             }),
         };
         Ok(AppealRow {

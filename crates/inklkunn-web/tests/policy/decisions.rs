@@ -306,3 +306,86 @@ async fn a_restriction_names_the_role_that_set_it_and_the_rules_to_the_moderator
         "{own}"
     );
 }
+
+/// The change the acceptance sealed (block 2) as the history has it: the message names `id`, and it touched the page.
+fn sealed_change(e: &Env, id: &ProposalId) {
+    e.w.fake
+        .set("pages/Home.md", &home_with("The bridge opened in 1951."));
+    e.w.fake.say(
+        2,
+        &super::page::message(id, "Correct the year", &e.contributor, &e.maintainer),
+    );
+    e.w.fake.show(
+        2,
+        common::shown(vec![common::op("edit-text", &["pages/Home.md"])]),
+    );
+}
+
+#[tokio::test]
+async fn the_change_page_says_the_role_and_the_rules_its_acceptance_was_made_under_from_the_record()
+{
+    let e = env_under(RICH);
+    let id = page_proposal(&e).await;
+    accept_by_hand_under(
+        &e.w,
+        &id,
+        &e.maintainer,
+        &e.contributor,
+        Some(common::POLICY_BLOCK),
+        false,
+    );
+    sealed_change(&e, &id);
+    let uri = format!("/handbook/-/change/{}", block_id(2));
+    let a = as_(&e, &e.observer, &uri).await;
+    assert_eq!(a.status, StatusCode::OK, "{}", a.body());
+    let main = main_of(&a);
+    assert!(
+        main.contains(&format!(
+            "Accepted by Mika Ito (maintainer), under the rules as of {}.",
+            link_of(common::POLICY_BLOCK)
+        )),
+        "{main}"
+    );
+    assert!(main.contains("Proposed by Aiko Tanaka"), "{main}");
+    assert!(!main.contains("were not recorded"), "{main}");
+    let ja = main_of(&as_ja(&e, Some(&e.observer), &uri).await);
+    assert!(
+        ja.contains(&format!(
+            "Mika Ito（メンテナー）が受け入れました。適用されたルール: 変更 {} の時点。",
+            link_of(common::POLICY_BLOCK)
+        )),
+        "{ja}"
+    );
+
+    // Under the default rules, and by the hatch.
+    let e = env();
+    let id = page_proposal(&e).await;
+    accept_by_hand_under(&e.w, &id, &e.admin, &e.contributor, None, true);
+    sealed_change(&e, &id);
+    let main = main_of(&as_(&e, &e.observer, &uri).await);
+    assert!(
+        main.contains(
+            "Accepted by Mika Ito (admin) as an admin of the wiki, with no approvals asked, under the default rules."
+        ),
+        "{main}"
+    );
+}
+
+#[tokio::test]
+async fn the_change_page_of_an_acceptance_with_no_record_says_that_the_role_and_the_rules_were_not_recorded()
+ {
+    let e = env();
+    // The message names a proposal, and no record says that it was sealed as this change (an acceptance made before the records
+    // said this): the message is never taken for the proof.
+    let id = page_proposal(&e).await;
+    sealed_change(&e, &id);
+    let uri = format!("/handbook/-/change/{}", block_id(2));
+    let main = main_of(&as_(&e, &e.observer, &uri).await);
+    assert!(main.contains("Accepted by Mika Ito"), "{main}");
+    assert!(
+        main.contains("The role and the rules this was decided under were not recorded."),
+        "{main}"
+    );
+    assert!(!main.contains("under the default rules"), "{main}");
+    assert!(!main.contains("(maintainer)"), "{main}");
+}

@@ -78,10 +78,13 @@ fn appeal_view(t: T, row: &AppealRow) -> AppealView {
             .with("date", utc_minutes(row.at))
             .text(),
     ];
-    facts.push(match &row.decision {
-        Some(decision) => words::decision_line(t, decision),
-        None => t.get(Key::MineOpen),
-    });
+    match &row.decision {
+        Some(decision) => {
+            facts.push(words::decision_line(t, decision));
+            facts.push(words::decision_authority(t, decision));
+        }
+        None => facts.push(t.get(Key::MineOpen)),
+    }
     AppealView {
         head: words::kind_label(t, row.action.kind),
         facts,

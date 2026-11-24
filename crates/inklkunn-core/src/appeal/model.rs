@@ -3,7 +3,7 @@
 //! the appellant and the rung that decides ever read**; [`AppealMark`] is all the log gets.
 
 use inklkunn_store::{
-    AccountId, AppealId, AppealRecord, AppealState, AppealedAction, AppealedKind, ProposalId,
+    AccountId, AppealId, AppealRecord, AppealState, AppealedAction, AppealedKind, ProposalId, Role,
 };
 
 /// What a *contest this* link names: the kind of action and its record's id, **as a surface was given them** (a decline's id is
@@ -91,6 +91,10 @@ pub struct DecisionRow {
     pub by: String,
     /// Why.
     pub reason: String,
+    /// The rung the decider held when they decided (criterion 12); `None` when the decision was recorded without it (*not recorded*).
+    pub rung: Option<Role>,
+    /// The block that set the rules the rung was held under; `None` is the default rules when `rung` is set.
+    pub policy_block: Option<String>,
 }
 
 /// One appeal as the appellant and the rung that decides see it: **never anyone else**.

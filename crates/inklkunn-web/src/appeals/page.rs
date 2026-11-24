@@ -53,6 +53,8 @@ struct RowView {
     said: Vec<String>,
     proposal: Option<LinkView>,
     decision: Option<String>,
+    /// The rung and the rules the decision was made under.
+    decision_authority: Option<String>,
     blocked: Option<String>,
     form: Option<DecideForm>,
 }
@@ -131,6 +133,10 @@ fn row_view(t: T, slug: &str, row: &AppealRow, queued: Option<&Queued>) -> RowVi
         said: words::text_lines(&row.text),
         proposal,
         decision: row.decision.as_ref().map(|d| words::decision_line(t, d)),
+        decision_authority: row
+            .decision
+            .as_ref()
+            .map(|d| words::decision_authority(t, d)),
         blocked,
         form,
     }

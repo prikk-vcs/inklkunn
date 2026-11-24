@@ -990,7 +990,13 @@ CREATE TABLE IF NOT EXISTS appeals (
     decided_by      TEXT REFERENCES accounts(id),
     decision_reason TEXT CHECK (decision_reason IS NULL OR length(CAST(decision_reason AS BLOB)) BETWEEN 1 AND 4096),
     overturn_id     TEXT CHECK (overturn_id IS NULL OR (length(overturn_id) BETWEEN 1 AND 36 AND overturn_id NOT GLOB '*[^0-9a-f-]*')),
-    CHECK ((status = 'open' AND decided_at IS NULL AND decided_by IS NULL AND decision_reason IS NULL AND overturn_id IS NULL)
+    -- The rung the decider held and the block of the rules it was held under, written with the decision (acceptance criterion 12).
+    -- NULL rung is *not recorded*; NULL block with a rung is the default rules.
+    decided_rung    TEXT CHECK (decided_rung IS NULL OR decided_rung IN ('observer', 'questioner', 'contributor', 'reviewer', 'maintainer', 'admin')),
+    decided_block   TEXT CHECK (decided_block IS NULL OR (length(decided_block) BETWEEN 1 AND 128 AND decided_block NOT GLOB '*[^0-9a-f]*')),
+    CHECK (decided_block IS NULL OR decided_rung IS NOT NULL),
+    CHECK ((status = 'open' AND decided_at IS NULL AND decided_by IS NULL AND decision_reason IS NULL AND overturn_id IS NULL
+            AND decided_rung IS NULL AND decided_block IS NULL)
         OR (status = 'upheld' AND decided_at IS NOT NULL AND decided_by IS NOT NULL AND decision_reason IS NOT NULL AND overturn_id IS NULL)
         OR (status = 'overturned' AND decided_at IS NOT NULL AND decided_by IS NOT NULL AND decision_reason IS NOT NULL AND overturn_id IS NOT NULL)),
     CHECK (decided_at IS NULL OR decided_at >= at),

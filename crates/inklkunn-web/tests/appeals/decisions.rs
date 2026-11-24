@@ -373,3 +373,91 @@ async fn the_page_of_the_people_who_decide_says_how_many_more_are_open_when_it_l
     let main = main_of(&as_(&fewer, &fewer.admin, "/handbook/-/appeals").await);
     assert!(!main.contains("more open"), "{main}");
 }
+
+/// The pages that show an appeal's decision: the page of the people who decide, and the appellant's own.
+const DECISION_PAGES: [&str; 2] = ["/handbook/-/appeals", "/handbook/-/appeals/mine"];
+
+#[tokio::test]
+async fn a_decision_says_the_rung_of_the_decider_and_the_rules_it_was_made_under_on_both_pages() {
+    // Under the rules of a block (a policy file): the decider is the admin, and the block is named by its first characters.
+    let e = env_under(MAINTAINERS_DECIDE);
+    restrict(&e, &e.contributor, "3").await;
+    let r = restriction_of(&e, &e.contributor);
+    file(&e, &e.contributor, "restriction", &r.id.to_string()).await;
+    let appeal = open_appeals(&e).pop().expect("filed");
+    let a = decide(&e, &e.admin, &appeal, "upheld").await;
+    assert_eq!(a.status, StatusCode::SEE_OTHER, "{}", a.body());
+    let block = &common::POLICY_BLOCK[..12];
+    for (who, uri) in [
+        (&e.admin, DECISION_PAGES[0]),
+        (&e.contributor, DECISION_PAGES[1]),
+    ] {
+        let main = main_of(&as_(&e, who, uri).await);
+        assert!(
+            main.contains(&format!("Decided as admin, under the rules as of {block}.")),
+            "{uri}: {main}"
+        );
+        assert!(!main.contains("were not recorded"), "{uri}: {main}");
+        // Never the person: the rung is a role.
+        let ja = main_of(&as_ja(&e, who, uri).await);
+        assert!(
+            ja.contains(&format!(
+                "管理者 として決定しました。適用されたルール: 変更 {block} の時点。"
+            )),
+            "{uri}: {ja}"
+        );
+    }
+
+    // Under the default rules: no block, and it says so.
+    let e = env();
+    restrict(&e, &e.contributor, "3").await;
+    let r = restriction_of(&e, &e.contributor);
+    file(&e, &e.contributor, "restriction", &r.id.to_string()).await;
+    let appeal = open_appeals(&e).pop().expect("filed");
+    decide(&e, &e.admin, &appeal, "overturned").await;
+    for (who, uri) in [
+        (&e.admin, DECISION_PAGES[0]),
+        (&e.contributor, DECISION_PAGES[1]),
+    ] {
+        let main = main_of(&as_(&e, who, uri).await);
+        assert!(
+            main.contains("Decided as admin, under the default rules."),
+            "{uri}: {main}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_decision_recorded_without_its_rung_and_rules_says_they_were_not_recorded() {
+    let e = env();
+    restrict(&e, &e.contributor, "3").await;
+    let r = restriction_of(&e, &e.contributor);
+    file(&e, &e.contributor, "restriction", &r.id.to_string()).await;
+    let appeal = open_appeals(&e).pop().expect("filed");
+    // A decision written as one was before the columns existed: no rung and no block, and nothing is guessed.
+    e.w.store
+        .decide_appeal(
+            &appeal.id,
+            &inklkunn_store::AppealDecision {
+                at: common::NOW,
+                by: e.admin.clone(),
+                reason: REASON.to_owned(),
+                rung: None,
+                policy_block: None,
+                outcome: inklkunn_store::AppealOutcome::Upheld,
+            },
+        )
+        .unwrap();
+    for (who, uri) in [
+        (&e.admin, DECISION_PAGES[0]),
+        (&e.contributor, DECISION_PAGES[1]),
+    ] {
+        let main = main_of(&as_(&e, who, uri).await);
+        assert!(
+            main.contains("The role and the rules this was decided under were not recorded."),
+            "{uri}: {main}"
+        );
+        assert!(!main.contains("Decided as"), "{uri}: {main}");
+        assert!(!main.contains("default rules"), "{uri}: {main}");
+    }
+}

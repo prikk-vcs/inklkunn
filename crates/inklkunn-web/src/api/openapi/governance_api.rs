@@ -250,10 +250,12 @@ pub(super) fn schemas() -> Map<String, Value> {
                     "oneOf": [
                         {"type": "null"},
                         object(
-                            "How it was decided. Who decided is not named.",
+                            "How it was decided. Who decided is not named: only the role they held and the rules in force.",
                             json!({
                                 "at": {"type": "string", "description": "When (RFC 3339, UTC)."},
                                 "reason": {"type": "string", "description": "The reason given."},
+                                "rung": {"type": ["string", "null"], "enum": roles().into_iter().map(Value::from).chain([Value::Null]).collect::<Vec<_>>(), "description": "The role the decider held when they decided. `null`: it was not recorded (a decision made without it)."},
+                                "policy_block": {"type": ["string", "null"], "description": "The change that set the rules the role was held under. `null` is the default rules (a wiki with no governance files) when `rung` is set, and not recorded when it is not."},
                             }),
                             &[],
                         ),

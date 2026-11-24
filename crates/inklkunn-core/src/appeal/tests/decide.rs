@@ -394,6 +394,8 @@ fn a_decision_whose_record_fails_leaves_a_failed_event_and_the_reversal_is_not_k
                                 at: T0,
                                 by: by.clone(),
                                 reason: "First.".to_owned(),
+                                rung: Some(Role::Admin),
+                                policy_block: None,
                                 outcome: inklkunn_store::AppealOutcome::Upheld,
                             },
                         )
@@ -668,5 +670,64 @@ fn everyone_who_set_or_renewed_a_protection_is_barred_from_deciding_its_appeal()
             )
             .expect("a third person decides");
         assert!(!w.protected(), "{kind:?}");
+    }
+}
+
+/// G-1 (criterion 12): the decision itself keeps the rung the decider held and the block of the rules in force, upheld or
+/// overturned, and the rows the pages read say them.
+#[test]
+fn a_decision_keeps_the_rung_the_decider_held_and_the_rules_in_force_and_the_rows_say_them() {
+    for kind in KINDS {
+        // Under the rules of a block, decided by a maintainer (the rung the policy lets decide).
+        let w = World::under(kind, MAINTAINERS_DECIDE);
+        let decider = w.person("Mia", Some(Role::Maintainer));
+        for outcome in [Outcome::Upheld, Outcome::Overturned] {
+            let s = scene(&w, AppealedKind::Restriction);
+            let filed = w
+                .appeals
+                .file(&s.appellant.principal, &w.wiki, &s.contest, WORDS)
+                .unwrap();
+            w.appeals
+                .decide(&decider.principal, &w.wiki, &filed.id, outcome, WHY)
+                .unwrap();
+            let (AppealState::Upheld(decided) | AppealState::Overturned(decided, _)) =
+                w.appeal(&filed.id).state
+            else {
+                panic!("decided");
+            };
+            assert_eq!(
+                (decided.rung, decided.policy_block.as_deref()),
+                (Some(Role::Maintainer), Some(super::support::BLOCK)),
+                "{outcome:?}"
+            );
+            // The row a page reads, the appellant's own.
+            let mine = w.appeals.mine(&s.appellant.principal, &w.wiki).unwrap();
+            let row = mine.appeals.iter().find(|a| a.id == filed.id).unwrap();
+            assert_eq!(
+                row.decision
+                    .as_ref()
+                    .map(|d| (d.rung, d.policy_block.as_deref())),
+                Some((Some(Role::Maintainer), Some(super::support::BLOCK))),
+                "{outcome:?}"
+            );
+        }
+        // Under the default rules: the rung, and no block.
+        let w = World::new(kind);
+        let admin = w.person("Dee", Some(Role::Admin));
+        let s = scene(&w, AppealedKind::Restriction);
+        let filed = w
+            .appeals
+            .file(&s.appellant.principal, &w.wiki, &s.contest, WORDS)
+            .unwrap();
+        w.appeals
+            .decide(&admin.principal, &w.wiki, &filed.id, Outcome::Upheld, WHY)
+            .unwrap();
+        let AppealState::Upheld(decided) = w.appeal(&filed.id).state else {
+            panic!("upheld");
+        };
+        assert_eq!(
+            (decided.rung, decided.policy_block),
+            (Some(Role::Admin), None)
+        );
     }
 }

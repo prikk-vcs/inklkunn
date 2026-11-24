@@ -609,6 +609,10 @@ impl AppealService {
                         at: self.authorizer.now(),
                         by: acting.account.clone(),
                         reason: reason.clone(),
+                        // The rung the decider held and the rules it was held under, written with the decision itself
+                        // (criterion 12): the same two a reversal records of its own.
+                        rung: Some(rung),
+                        policy_block: acting.rules.block().map(str::to_owned),
                         outcome: outcome_record,
                     },
                 )

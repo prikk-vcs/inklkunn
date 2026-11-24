@@ -327,8 +327,14 @@ fn appeal_json(row: &AppealRow) -> Value {
                 Outcome::Upheld => "upheld",
                 Outcome::Overturned => "overturned",
             },
-            // Who decided is never said here: the caller was told the outcome and the reason.
-            json!({"at": crate::time::rfc3339(d.at), "reason": d.reason}),
+            // Who decided is never said here: the caller was told the outcome and the reason, and the role the decider held and the
+            // rules in force (a role, never a name); `rung` is `null` for a decision that was recorded without them.
+            json!({
+                "at": crate::time::rfc3339(d.at),
+                "reason": d.reason,
+                "rung": d.rung.map(|r| r.as_str()),
+                "policy_block": d.policy_block,
+            }),
         ),
     };
     json!({

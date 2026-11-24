@@ -399,6 +399,12 @@ async fn a_person_reads_their_own_appeals_and_nobody_elses() {
         body.at("/items/0/decision/reason"),
         "The record supports the action."
     );
+    // The role the decider held and the rules in force are said (G-1, criterion 12): a role, never a name.
+    assert_eq!(body.at("/items/0/decision/rung"), "admin");
+    assert_eq!(
+        body.at("/items/0/decision/policy_block"),
+        common::POLICY_BLOCK
+    );
     // Who decided is not named, and nobody else's text is in it.
     assert!(!mine.text().contains("Ada"), "{}", mine.text());
     // Someone else, in the same wiki, has none: not the appellant's, not the decider's.

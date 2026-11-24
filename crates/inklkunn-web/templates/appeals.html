@@ -46,6 +46,7 @@
 <ul class="change-facts">
 {% for f in row.facts %}<li>{{ f }}</li>
 {% endfor %}{% if let Some(text) = row.decision %}<li>{{ text }}</li>
+{% endif %}{% if let Some(text) = row.decision_authority %}<li>{{ text }}</li>
 {% endif %}</ul>
 <p class="note">{{ row.said_label }}</p>
 {% for line in row.said %}<p>{{ line }}</p>

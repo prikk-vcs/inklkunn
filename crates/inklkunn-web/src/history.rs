@@ -29,7 +29,7 @@ use inklkunn_core::read::{
     PageEvent, PageHistory, Presentation, Provenance, ReadError, Subject, Who,
 };
 use inklkunn_markup::path::path_to_title;
-use inklkunn_store::WikiRecord;
+use inklkunn_store::{AcceptanceOutcome, ProposalId, Role, WikiRecord};
 
 use crate::catalog::{Key, Rich, T};
 use crate::pages::{Page, PageState, answer};
@@ -474,7 +474,7 @@ struct ChangeTpl<'a> {
     signed: String,
     statement: String,
     summary: Option<String>,
-    facts: Vec<String>,
+    facts: Vec<Rich>,
     did: Vec<DidView>,
     too_large: Option<String>,
     more: Option<String>,
@@ -497,6 +497,114 @@ fn statement(t: T, provenance: &Provenance) -> String {
         Provenance::Recorded { .. } => t.get(Key::ChangeSignedService),
         Provenance::NotRecorded => t.get(Key::PeopleUnrecorded),
     }
+}
+
+/// What the acceptance records say of the rung and the rules a change was accepted under (RFC 006 D-5; criterion 12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Authority {
+    /// The record of the acceptance that sealed this change: the rung the acceptor held, the block that set the rules it
+    /// was held under (`None`: the default rules), and whether the acceptor used the admin's hatch.
+    Recorded {
+        /// The acceptor's rung.
+        role: Role,
+        /// The block of the rules.
+        block: Option<String>,
+        /// The acceptor used the hatch.
+        hatch: bool,
+    },
+    /// No record of an acceptance that sealed this change: it was made before the records said this, or not by an acceptance
+    /// of this server's.
+    NotRecorded,
+    /// The records could not be read now: nothing is said of what they say.
+    Unknown,
+}
+
+/// The record of the acceptance that sealed `info`'s change, when the change names a proposal and a record of that proposal
+/// says it was sealed as this block (a message that names a proposal is never taken for the proof that it was one).
+pub(crate) fn authority_of(
+    services: &Services,
+    principal: &inklkunn_core::Principal,
+    wiki: &WikiRecord,
+    info: &ChangeInfo,
+) -> Authority {
+    let Some(id) = info.proposal.as_deref().and_then(ProposalId::parse) else {
+        return Authority::NotRecorded;
+    };
+    let revisions = match services.proposals.revisions(principal, wiki, &id) {
+        Ok(revisions) => revisions,
+        // A proposal that is not there, or that the person may not see, has no record to read from here.
+        Err(inklkunn_core::ProposalError::NotFound | inklkunn_core::ProposalError::NotAllowed) => {
+            return Authority::NotRecorded;
+        }
+        Err(_) => return Authority::Unknown,
+    };
+    for revision in revisions {
+        let Ok(entries) = services.acceptances.acceptances_of(&id, revision.seq) else {
+            return Authority::Unknown;
+        };
+        for entry in entries {
+            if matches!(
+                entry.result.as_ref().map(|r| &r.outcome),
+                Some(AcceptanceOutcome::Sealed { block_id, .. }) if *block_id == info.block_id
+            ) {
+                return Authority::Recorded {
+                    role: entry.acceptance.acceptor_role,
+                    block: entry.acceptance.policy_block,
+                    hatch: entry.acceptance.hatch,
+                };
+            }
+        }
+    }
+    Authority::NotRecorded
+}
+
+/// The people of a change as the change page says them: the sentences of [`people`], and **the acceptor's line carries the rung
+/// and the rules** the acceptance record says (*Accepted by Name (maintainer), under the rules as of …*), or says that they
+/// were *not recorded*.
+fn accepted_facts(t: T, slug: &str, provenance: &Provenance, authority: &Authority) -> Vec<Rich> {
+    let Provenance::Recorded {
+        kind: HistoryChangeKind::Proposal | HistoryChangeKind::Rollback,
+        proposed_by,
+        accepted_by,
+    } = provenance
+    else {
+        return people(t, provenance)
+            .iter()
+            .map(|s| crate::catalog::plain(s))
+            .collect();
+    };
+    let proposed = t
+        .msg(Key::PeopleProposedBy)
+        .with("name", who_text(t, proposed_by))
+        .text();
+    let by_name = || {
+        t.msg(Key::PeopleAcceptedBy)
+            .with("name", who_text(t, accepted_by))
+            .text()
+    };
+    let mut out = vec![crate::catalog::plain(&proposed)];
+    match authority {
+        Authority::Recorded { role, block, hatch } => out.push(
+            t.msg(if *hatch {
+                Key::AuthorityAcceptedHatch
+            } else {
+                Key::AuthorityAccepted
+            })
+            .with("person", who_text(t, accepted_by))
+            .with("role", crate::people::sentences::role_label(t, *role))
+            .rich(
+                "authority",
+                crate::authority::under(t, slug, block.as_deref()),
+            )
+            .html(),
+        ),
+        Authority::NotRecorded => {
+            out.push(crate::catalog::plain(&by_name()));
+            out.push(crate::catalog::plain(&t.get(Key::AuthorityUnrecorded)));
+        }
+        Authority::Unknown => out.push(crate::catalog::plain(&by_name())),
+    }
+    out
 }
 
 fn did_view(
@@ -587,15 +695,17 @@ pub(crate) async fn change(
                 // The `moderate` rung is offered the form that hides or restores this change (RFC 006 D-8).
                 let principal = services.identity.principal(&headers);
                 let may = services.moderation.may_moderate(&principal, &start.wiki);
-                Ok((start, detail, may))
+                // The rung and the rules the acceptance was made under, from its record (criterion 12).
+                let authority = authority_of(&services, &principal, &start.wiki, &detail.info);
+                Ok((start, detail, may, authority))
             }
             Ok(ChangeOutcome::NoSuchChange) => Err(Early::NoSuchChange(start.wiki)),
             Err(e) => Err(failed(&services, start.wiki, "a change", e)),
         }
     })
     .await;
-    settle(&page, done, |(start, detail, may_moderate)| {
-        render_change(&page, &start, &detail, may_moderate)
+    settle(&page, done, |(start, detail, may_moderate, authority)| {
+        render_change(&page, &start, &detail, may_moderate, &authority)
     })
 }
 
@@ -604,6 +714,7 @@ fn render_change(
     start: &Start,
     detail: &ChangeDetail,
     may_moderate: bool,
+    authority: &Authority,
 ) -> Response {
     let t = page.t();
     let wiki = &start.wiki;
@@ -612,9 +723,13 @@ fn render_change(
     let info = &detail.info;
     let links = WikiLinks::new(t, slug, view);
     let shell = Shell::of(wiki);
-    let mut facts = people(t, &info.provenance);
-    facts.extend(flags(t, info));
-    facts.extend(crate::tombstone::facts(t, &info.hidden));
+    let mut facts: Vec<Rich> = accepted_facts(t, slug, &info.provenance, authority);
+    facts.extend(flags(t, info).iter().map(|f| crate::catalog::plain(f)));
+    facts.extend(
+        crate::tombstone::facts(t, &info.hidden)
+            .iter()
+            .map(|f| crate::catalog::plain(f)),
+    );
     let rendered = ChangeTpl {
         page,
         shell: &shell,
