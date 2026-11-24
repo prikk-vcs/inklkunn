@@ -759,6 +759,14 @@
   releases 0.1.0, 0.2.0 and 0.3.0 to `0.1.0`, `0.2.0` and `0.3.0` the same day. `release.yml` changes at R-5 (handoff 006,
   item 9), matching prikk and planeter. The signed tag's message is unchanged.
 
+- **2026-11-24 — the owner reviewed 0.4.0's Japanese** (531 new and 2 changed messages) and **accepted them**. The terms
+  are 閲覧者, 申し立て and 非表示, and 管理者 is kept, with two rulings:
+  - ***wiki* is written `Wiki` in Latin letters in Japanese** (この Wiki のページ), everywhere including the 0.3.0
+    messages. English keeps *wiki*.
+  - **モデレーション stays,** with a short clause saying what it covers where a reader first meets it.
+
+  Both are R-5 item 10. The messages changed after 2026-11-24 go to the owner at R-5.
+
 ## Pending on the owner
 
 - **Nothing now.** Next: the 0.4.0 cut, when the architect proposes it (target 2026-12-10).

@@ -351,4 +351,19 @@ says why it must be.
    `gh release create … --title "${GITHUB_REF_NAME}"`, not `"inklkunn ${GITHUB_REF_NAME}"`. This matches prikk and
    planeter. The signed tag's message stays `inklkunn X.Y.Z` (`docs/RELEASING.md`). The architect has already retitled
    0.1.0 – 0.3.0 on GitHub. The rehearsal at R-8 shows the new title.
+10. **The owner's review of the Japanese** (`.git-exclude/ja-review/0.4.0-messages-since-sign-off.md`, 531 new and 2
+    changed): **accepted on 2026-11-24**, with these rulings.
+    - The four term questions as recommended: 閲覧者, 申し立て, 非表示. 管理者 stays as written.
+    - **(a) *wiki* is written `Wiki` in Latin letters in Japanese**, not ウィキ: in every catalog message (204 places, the
+      0.3.0 messages included), the glossary and the Japanese parts of the docs.
+      - The spelling follows the catalog's existing spacing rule for Latin words (as `Cookie`): a half-width space on each
+        side (この Wiki のページ), none beside Japanese punctuation or brackets (「Wiki」, Wiki、).
+      - ウィキ joins the retired renderings in `tests/catalog_checks/japanese.rs`.
+      - English stays *wiki*.
+    - **(b) モデレーション / モデレーター stay**, and say what they mean where a reader first meets them.
+      - `policy.label_moderate` becomes *Who may moderate (hide content, restrict an account for a time, protect a
+        page)*, and the Japanese モデレーションできる人（内容の非表示、アカウントの一時的な制限、ページの保護）.
+      - The moderation form's and the moderation log's introductions carry the same clause.
+      - Glossary §1's row for *moderate* says it.
+    - The list of messages changed after 2026-11-24 (item 7) goes to the owner at R-5, as planned.
 
