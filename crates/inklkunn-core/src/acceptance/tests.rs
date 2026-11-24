@@ -333,6 +333,38 @@ fn each_failure_before_the_commit_has_its_own_word() {
 }
 
 #[test]
+fn the_list_of_failure_words_is_every_word_a_failed_acceptance_answers() {
+    // The words the signer's answers settle to (the cases above), and the one a knowledge file that is refused answers before
+    // the signer is asked: the list the API describes (`words::FAILED`) is exactly those.
+    let signer = [
+        AcceptError::Busy { holder: None },
+        AcceptError::Unavailable(String::new()),
+        AcceptError::CeilingExceeded {
+            verb: String::new(),
+            bytes: 1,
+        },
+        AcceptError::ChangeMismatch,
+        AcceptError::MessageMismatch,
+        AcceptError::NotPending,
+        AcceptError::Refused(String::new()),
+        AcceptError::RetirementUnfinished(String::new()),
+    ];
+    let mut said: Vec<&str> = signer
+        .into_iter()
+        .filter_map(|answer| match settle(Err(answer)) {
+            Settled::Failed { word, .. } => Some(word),
+            _ => None,
+        })
+        .collect();
+    said.push(AcceptFailure::KnowledgeInvalid(Vec::new()).word());
+    said.sort_unstable();
+    said.dedup();
+    let mut listed = words::FAILED.to_vec();
+    listed.sort_unstable();
+    assert_eq!(said, listed);
+}
+
+#[test]
 fn a_failure_after_the_commit_flags_the_wiki_and_nothing_is_committed_again() {
     for (answer, reason) in [
         (

@@ -218,7 +218,6 @@ async fn each_code_and_each_name_of_a_refusal_is_written_in_the_description_of_t
 }
 
 #[tokio::test]
-#[ignore = "defect: the `word` of an `acceptance-failed` problem (knowledge-invalid, refused, memory-limit, unavailable, ...) is the name that says why the change was not made, and the description of the API writes none of them (see the report of R-5 item 3)"]
 async fn the_word_of_an_acceptance_that_failed_is_written_in_the_description_of_the_api() {
     let w = cast().w;
     let doc = super::super::get(&w, "/-/api/v1/openapi.json").await.text();
@@ -227,6 +226,48 @@ async fn the_word_of_an_acceptance_that_failed_is_written_in_the_description_of_
             assert!(
                 doc.contains(&format!("`{word}`")),
                 "{failure:?}: the word `{word}` is written nowhere in the description"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn every_word_the_acceptance_can_fail_with_is_in_the_description_of_the_problem_and_is_the_one_sent()
+ {
+    // The description's words are the core's list (not hand-written), but the problem of a retirement that is not finished, which
+    // is its own code; and each is the word the problem carries for the failure that has it.
+    let w = cast().w;
+    let document: serde_json::Value =
+        serde_json::from_str(&super::super::get(&w, "/-/api/v1/openapi.json").await.text())
+            .expect("a document");
+    let schema = document
+        .pointer("/components/schemas/Problem/properties/word")
+        .expect("the `word` member of the problem is in the schema");
+    let listed: Vec<&str> = schema
+        .get("enum")
+        .and_then(|e| e.as_array())
+        .expect("the words")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    let from_core: Vec<&str> = inklkunn_core::acceptance::words::FAILED
+        .into_iter()
+        .filter(|word| *word != inklkunn_core::acceptance::words::RETIREMENT_UNFINISHED)
+        .collect();
+    assert_eq!(listed, from_core);
+    let said = schema
+        .get("description")
+        .and_then(|d| d.as_str())
+        .expect("a description");
+    for word in &listed {
+        assert!(said.contains(&format!("`{word}`")), "{word}: {said}");
+    }
+    // The problems the API sends carry words of the list.
+    for failure in samples() {
+        if let (_, "acceptance-failed", Some(word)) = expected(&failure) {
+            assert!(
+                listed.contains(&word),
+                "{failure:?}: `{word}` is not listed"
             );
         }
     }

@@ -311,6 +311,7 @@ fn components() -> Value {
                             },
                         },
                     },
+                    "word": {"type": "string", "enum": failure_words(), "description": failure_words_description()},
                     "needs": {"type": "string", "description": "`governance-rung` and `protected` (when `lacks` is `role`): the role the rules ask."},
                     "lacks": {"type": "string", "enum": ["role", "approval"], "description": "`protected`: what the acceptance lacked of what the protections ask: a higher role (`needs` names it), or an approval of the latest revision from someone other than the proposer."},
                     "protections": {
@@ -441,6 +442,28 @@ fn components() -> Value {
             },
         },
     })
+}
+
+/// The words an `acceptance-failed` problem names in `word`: every failure word of the acceptance, from the core's list
+/// (`words::FAILED`), but `retirement-unfinished`, which is a problem of its own (`retirement-unfinished`).
+fn failure_words() -> Vec<&'static str> {
+    inklkunn_core::acceptance::words::FAILED
+        .into_iter()
+        .filter(|word| *word != inklkunn_core::acceptance::words::RETIREMENT_UNFINISHED)
+        .collect()
+}
+
+/// What the `word` of an `acceptance-failed` says, with the words themselves (generated from [`failure_words`], so that none is
+/// written by hand and none can be left out).
+fn failure_words_description() -> String {
+    let words = failure_words()
+        .into_iter()
+        .map(|word| format!("`{word}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "`acceptance-failed`: the stable word that says why the change was not made. Nothing was put in the history and the proposal stays open. One of {words}."
+    )
 }
 
 fn problem_types() -> Value {

@@ -143,6 +143,21 @@ pub mod words {
     /// A change that touches `governance/` and something else is refused: a change to the rules is its own proposal
     /// (RFC 006 D-4; handoff G-T1 correction C-1). It is the word of [`Invalid::GovernanceMixed`](crate::proposal::Invalid).
     pub const GOVERNANCE_MIXED: &str = "governance-mixed";
+
+    /// **Every word an acceptance that ended without its change in the history carries as a failure**: the words of
+    /// [`AcceptFailure::Failed`](super::AcceptFailure) (what the signer's answer settles to: [`REFUSED`], [`UNAVAILABLE`],
+    /// [`MEMORY_LIMIT`], [`BUSY`] and [`RETIREMENT_UNFINISHED`]) and [`KNOWLEDGE_INVALID`] (refused before the signer is asked,
+    /// as [`AcceptFailure::KnowledgeInvalid`](super::AcceptFailure)). The API names them in the description of its problem
+    /// (`word`), and a test ties this list to the words the signer's answers settle to, so a word added to `settle` is added here
+    /// before the tests are green.
+    pub const FAILED: [&str; 6] = [
+        KNOWLEDGE_INVALID,
+        REFUSED,
+        UNAVAILABLE,
+        MEMORY_LIMIT,
+        BUSY,
+        RETIREMENT_UNFINISHED,
+    ];
 }
 
 /// What a proposal's change is recorded as: the message's `Kind`. A rollback is a proposal that was created as
