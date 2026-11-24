@@ -334,7 +334,7 @@ async fn the_history_lists_each_change_of_the_rules_newest_first_with_its_propos
 }
 
 /// A held proposal of the contributor, to be named by a change of the rules.
-async fn a_proposal(e: &Env, summary: &str) -> ProposalId {
+pub(crate) async fn a_proposal(e: &Env, summary: &str) -> ProposalId {
     let a = post_form(
         &e.w,
         "/handbook/-/proposals/new",

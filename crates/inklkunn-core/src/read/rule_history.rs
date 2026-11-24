@@ -9,8 +9,14 @@
 //! ([`RuleHistory::window_ended`] says the window was spent before the history was).
 //!
 //! **What a change did** is the two files' text before it and after it, read at the block and at the block before it with
-//! [`ReadService::source_at`], the one reader of a file at a block: the history reads nothing of its own. A file whose text is
-//! the same on both sides is not part of the change. The surfaces say each change in sentences, and never show the text.
+//! [`ReadService::source_or_hidden`], the reader of a file at a block that says *hidden* instead of failing: the history reads
+//! nothing of its own. A file whose text is the same on both sides is not part of the change. The surfaces say each change in
+//! sentences, and never show the text.
+//!
+//! **Moderation hides one change, not the history.** A change whose own text of a rules file is hidden, or whose text before it
+//! is (the file as the change before it left it), is listed with [`RuleChange::hidden`] and no sentences; the others are listed
+//! as they were. An error of the store that says what is hidden is still an error of the whole history (*could not be read
+//! now*): nothing is said when it cannot be known whether it may be.
 //!
 //! **The proposal** is the one the block's message names (the message is the service's record, CT-03). A change whose message is
 //! not in that form (an import, a block sealed outside inklkunn) names none.
@@ -38,6 +44,15 @@ pub struct RuleFileChange {
     pub after: Option<String>,
 }
 
+/// Which text of a change of the rules moderation hides, so that what the change did cannot be said.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleHidden {
+    /// The text of a rules file as this change wrote it.
+    ThisChange,
+    /// The text of a rules file as the change before this one left it (and this change's own text is not hidden).
+    EarlierChange,
+}
+
 /// One change of the default view that changed the rules.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleChange {
@@ -48,8 +63,11 @@ pub struct RuleChange {
     /// The proposal that made it, when the block's message names one.
     pub proposal: Option<String>,
     /// What it did to each governance file whose text it changed. **Empty** for a change that only cleared or made something at
-    /// or below a file's place (a repair).
+    /// or below a file's place (a repair), and for a change whose text is hidden ([`RuleChange::hidden`]).
     pub files: Vec<RuleFileChange>,
+    /// Moderation hides text that this change's sentences would say: none of it is read into the change, and the surfaces say
+    /// so in the change's place.
+    pub hidden: Option<RuleHidden>,
 }
 
 /// The changes of the rules, newest first.
@@ -113,25 +131,34 @@ impl ReadService {
                 .find_map(|pm| Message::parse(&pm.message).ok())
                 .and_then(|m| m.proposal_id().map(|p| p.as_str().to_owned()));
             let mut files = Vec::new();
+            let mut hidden = None;
             for file in GovernanceFile::ALL {
-                let after = self.source_at(wiki, &block.block_id, file.path())?;
+                let after = self.source_or_hidden(wiki, &block.block_id, file.path())?;
                 let before = match parent {
-                    Some(parent) => self.source_at(wiki, parent, file.path())?,
-                    None => None,
+                    Some(parent) => self.source_or_hidden(wiki, parent, file.path())?,
+                    None => Ok(None),
                 };
-                if before != after {
-                    files.push(RuleFileChange {
+                match (before, after) {
+                    (_, Err(_)) => hidden = Some(RuleHidden::ThisChange),
+                    (Err(_), Ok(_)) => hidden = hidden.or(Some(RuleHidden::EarlierChange)),
+                    (Ok(before), Ok(after)) if before != after => files.push(RuleFileChange {
                         file,
                         before,
                         after,
-                    });
+                    }),
+                    (Ok(_), Ok(_)) => {}
                 }
+            }
+            // Nothing of a change whose text is hidden is said: not even the file that is not.
+            if hidden.is_some() {
+                files.clear();
             }
             out.changes.push(RuleChange {
                 block_id: block.block_id.clone(),
                 number: block.update_seq,
                 proposal,
                 files,
+                hidden,
             });
         }
         Ok(out)

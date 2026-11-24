@@ -14,8 +14,9 @@ use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
+use inklkunn_core::ProposalError;
 use inklkunn_core::governance::{Lowered, Require, SelfAcceptance};
-use inklkunn_core::read::{RuleChange, WALK_BLOCKS};
+use inklkunn_core::read::{RuleChange, RuleHidden, WALK_BLOCKS};
 use inklkunn_store::{ProposalId, Visibility};
 
 use super::rules_change::{Compared, file_lines};
@@ -207,21 +208,25 @@ fn sections(t: T, ctx: &Ctx, data: &RulesData) -> Vec<SectionView> {
     ]
 }
 
-/// The label of a proposal as a link names it: its summary, or the words that stand in for one that moderation hid or that has none.
+/// The label of a proposal as a link names it: its summary, or the words that stand in for one that moderation hides, that has
+/// none, or that **cannot be known not to be hidden** (the store that says what is hidden failed): then the tombstone's place is
+/// shown, never the text.
 fn proposal_label(ctx: &Ctx, t: T, id: &ProposalId) -> String {
     let service = &ctx.services.proposals;
-    let Ok(record) = service.get(&ctx.principal, &ctx.wiki, id) else {
-        return t.get(Key::ProposalAnother);
+    // What moderation hides is asked first and on its own, so that no failure after it can put the text back.
+    let hidden = match service.hidden_of(&ctx.principal, &ctx.wiki, id) {
+        Ok(hidden) => hidden.summary.is_some(),
+        Err(ProposalError::Store(_)) => true,
+        Err(_) => return t.get(Key::ProposalAnother),
     };
-    let hidden = service
-        .hidden_of(&ctx.principal, &ctx.wiki, id)
-        .is_ok_and(|h| h.summary.is_some());
     if hidden {
-        t.get(Key::TombstoneSummaryHidden)
-    } else if record.summary.is_empty() {
-        t.get(Key::ProposalNoSummary)
-    } else {
-        record.summary
+        return t.get(Key::TombstoneSummaryHidden);
+    }
+    match service.get(&ctx.principal, &ctx.wiki, id) {
+        Ok(record) if record.summary.is_empty() => t.get(Key::ProposalNoSummary),
+        Ok(record) => record.summary,
+        Err(ProposalError::Store(_)) => t.get(Key::TombstoneSummaryHidden),
+        Err(_) => t.get(Key::ProposalAnother),
     }
 }
 
@@ -254,6 +259,17 @@ fn history_row(ctx: &Ctx, t: T, data: &RulesData, change: &RuleChange) -> Histor
             .html(),
         None => change_link(short),
     };
+    // A change whose text moderation hides says that, and nothing of what it did.
+    if let Some(hidden) = change.hidden {
+        let line = match hidden {
+            RuleHidden::ThisChange => t.get(Key::PolicyHistoryHidden),
+            RuleHidden::EarlierChange => t.get(Key::TombstoneDiffFrom),
+        };
+        return HistoryRow {
+            head,
+            lines: vec![line],
+        };
+    }
     let mut lines = Vec::new();
     for file in &change.files {
         match file_lines(

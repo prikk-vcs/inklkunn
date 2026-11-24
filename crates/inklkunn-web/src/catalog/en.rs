@@ -4404,6 +4404,10 @@ pub const CATALOG: &[Entry] = &[
         "policy.history_repair",
         "This change cleared or made something where the files of the rules belong, and changed no rule.",
     ),
+    msg(
+        "policy.history_hidden",
+        "The text of the rules in this change is hidden, so what it did is not shown.",
+    ),
     plural_msg(
         "policy.history_more",
         "…and {count} more change of the rules.",

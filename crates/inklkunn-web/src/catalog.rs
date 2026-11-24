@@ -2150,6 +2150,7 @@ keys! {
     PolicyHistoryRow => "policy.history_row",
     PolicyHistoryRowAlone => "policy.history_row_alone",
     PolicyHistoryRepair => "policy.history_repair",
+    PolicyHistoryHidden => "policy.history_hidden",
     PolicyHistoryMore => "policy.history_more",
     PolicyHistoryWindow => "policy.history_window",
     PolicyHistoryUnavailable => "policy.history_unavailable",

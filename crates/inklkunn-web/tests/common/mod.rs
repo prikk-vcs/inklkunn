@@ -775,6 +775,11 @@ impl World {
         }
     }
 
+    /// The same world served by `services` instead (a test replaces one service, over the same records).
+    pub fn with_services(self, services: Arc<Services>) -> World {
+        World { services, ..self }
+    }
+
     /// The operator's log so far.
     pub fn logged(&self) -> Vec<String> {
         self.log
