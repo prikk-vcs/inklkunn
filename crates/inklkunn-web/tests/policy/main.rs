@@ -14,6 +14,7 @@ use common::{
 };
 use inklkunn_store::{AccountId, ProposalId, ProposalStore, Role, Visibility};
 
+mod authority;
 mod closed;
 mod decisions;
 mod form;

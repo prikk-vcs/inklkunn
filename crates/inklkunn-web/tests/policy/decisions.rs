@@ -8,7 +8,7 @@ use super::page::RICH;
 use super::*;
 use common::{NOW, accept_by_hand_under, block_id, state_id};
 
-async fn page_proposal(e: &Env) -> ProposalId {
+pub(crate) async fn page_proposal(e: &Env) -> ProposalId {
     let a = post_form(
         &e.w,
         "/handbook/-/proposals/new",
@@ -31,7 +31,7 @@ async fn page_proposal(e: &Env) -> ProposalId {
     proposal_of(&a)
 }
 
-fn link_of(block: &str) -> String {
+pub(crate) fn link_of(block: &str) -> String {
     format!(
         "<a href=\"/handbook/-/change/{block}\">{}</a>",
         &block[..12]
@@ -308,7 +308,7 @@ async fn a_restriction_names_the_role_that_set_it_and_the_rules_to_the_moderator
 }
 
 /// The change the acceptance sealed (block 2) as the history has it: the message names `id`, and it touched the page.
-fn sealed_change(e: &Env, id: &ProposalId) {
+pub(crate) fn sealed_change(e: &Env, id: &ProposalId) {
     e.w.fake
         .set("pages/Home.md", &home_with("The bridge opened in 1951."));
     e.w.fake.say(
