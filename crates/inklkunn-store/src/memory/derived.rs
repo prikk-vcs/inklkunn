@@ -6,8 +6,8 @@ use std::sync::PoisonError;
 use crate::Result;
 use crate::derived::{
     BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeRows, LastWrite,
-    LaterWrite, MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter, PageKey, SearchDoc, SearchHit,
-    WriteKind, Writers, WritesState,
+    LaterMove, LaterWrite, MAX_LATER_MOVES, MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter,
+    PageKey, SearchDoc, SearchHit, WriteKind, Writers, WritesState,
 };
 use crate::governance::{GovernanceSnapshot, GovernanceSnapshotStore};
 use crate::record::WikiId;
@@ -361,6 +361,70 @@ impl DerivedStore for MemoryStore {
             })
             .take(limit)
             .collect())
+    }
+
+    fn later_maybes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+    ) -> Result<Vec<MaybeWriter>> {
+        let d = self.derived();
+        let Some(index) = d.writes.get(&(wiki.clone(), view.to_owned())) else {
+            return Ok(Vec::new());
+        };
+        let mut maybes: Vec<MaybeWriter> = [path, ""]
+            .iter()
+            .flat_map(|of| {
+                index.rows.range(
+                    ((*of).to_owned(), after.saturating_add(1))..=((*of).to_owned(), u64::MAX),
+                )
+            })
+            .filter(|(_, kind)| !is_certain(kind))
+            .map(|((_, number), kind)| MaybeWriter {
+                number: *number,
+                opaque: *kind == WriteKind::Opaque,
+            })
+            .collect();
+        // A block that is both (a row of the path and a row of every path) is listed once, opaque when either is.
+        maybes.sort_by(|a, b| a.number.cmp(&b.number).then(b.opaque.cmp(&a.opaque)));
+        maybes.dedup_by_key(|m| m.number);
+        maybes.truncate(MAX_MAYBE_WRITERS + 1);
+        Ok(maybes)
+    }
+
+    fn later_moves(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<LaterMove>> {
+        let d = self.derived();
+        let Some(index) = d.writes.get(&(wiki.clone(), view.to_owned())) else {
+            return Ok(Vec::new());
+        };
+        let limit = limit.clamp(1, MAX_LATER_MOVES).saturating_add(1);
+        let mut moves: Vec<LaterMove> = index
+            .rows
+            .iter()
+            .filter(|((_, number), _)| *number > after)
+            .filter_map(|((to, number), kind)| match kind {
+                WriteKind::Carried { from } if from == path => {
+                    index.blocks.get(number).map(|b| LaterMove {
+                        number: *number,
+                        block: b.block.clone(),
+                        to: to.clone(),
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        moves.sort_by(|a, b| a.number.cmp(&b.number).then_with(|| a.to.cmp(&b.to)));
+        moves.truncate(limit);
+        Ok(moves)
     }
 }
 

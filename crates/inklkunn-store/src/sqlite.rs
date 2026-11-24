@@ -1291,6 +1291,9 @@ CREATE TABLE IF NOT EXISTS path_writes (
     CHECK (kind <> 'opaque' OR path = ''),
     CHECK (path <> '' OR kind IN ('maybe', 'opaque'))
 );
+-- Where a file went: the rows that carry a path from another (a pure rename), found by the path they came from, so that the changes
+-- after a block that moved a page can be followed without reading the history (correction L-6).
+CREATE INDEX IF NOT EXISTS path_writes_by_origin ON path_writes(wiki_id, view, from_path, number) WHERE from_path IS NOT NULL;
 ";
 
 /// Every migration, in order, by the version it brings the database to. A new version is appended here and

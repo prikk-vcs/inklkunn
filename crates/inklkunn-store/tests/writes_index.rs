@@ -221,6 +221,48 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
         ]
     );
 
+    // Correction L-6: the blocks after one that may have written a path (a path's own maybe and the block-wide ones, a block once),
+    // and where a file was moved to with its bytes (found by the path it came from, one lookup).
+    let maybes = |path: &str, after: u64| {
+        store
+            .later_maybes(&w, VIEW, path, after)
+            .unwrap()
+            .into_iter()
+            .map(|m| (m.number, m.opaque))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(maybes("a", 1), vec![(6, false), (8, true)]);
+    assert_eq!(maybes("a", 6), vec![(8, true)], "after is exclusive");
+    assert_eq!(maybes("a", 8), Vec::new());
+    assert_eq!(maybes("nowhere", 0), vec![(6, false), (8, true)]);
+    let moves = |path: &str, after: u64, limit: usize| {
+        store
+            .later_moves(&w, VIEW, path, after, limit)
+            .unwrap()
+            .into_iter()
+            .map(|m| (m.number, m.block, m.to))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        moves("b", 1, 10),
+        vec![(3, block_of(3), "c".to_owned())],
+        "block 3 moved b to c"
+    );
+    assert_eq!(moves("b", 3, 10), Vec::new(), "after is exclusive");
+    assert_eq!(moves("a", 0, 10), Vec::new(), "a was written, never moved");
+    assert_eq!(
+        moves("c", 0, 10),
+        Vec::new(),
+        "c is where it went, not where it came from"
+    );
+    assert!(
+        store
+            .later_moves(&other, VIEW, "b", 0, 10)
+            .unwrap()
+            .is_empty(),
+        "another wiki's index is not this one's"
+    );
+
     // A block already there keeps what it has (a second reader built the same), and the state only moves forward.
     store
         .append_writes(
@@ -253,6 +295,36 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
     let crowded = store.last_writes(&w, VIEW, "a", head).unwrap();
     assert_eq!(crowded.maybes.len(), MAX_MAYBE_WRITERS);
     assert!(crowded.more);
+    // The list of later ones holds one more than the bound, so that a caller can say *at least*.
+    assert_eq!(
+        store.later_maybes(&w, VIEW, "a", 9).unwrap().len(),
+        MAX_MAYBE_WRITERS + 1
+    );
+    // A file moved several times is listed oldest first, with one more than the limit asked for.
+    let base = head + 1;
+    let moved: Vec<BlockWrites> = (0..3)
+        .map(|n| {
+            block(
+                base + n,
+                vec![write(
+                    &format!("m{n}"),
+                    WriteKind::Carried {
+                        from: "moved".to_owned(),
+                    },
+                )],
+            )
+        })
+        .collect();
+    store
+        .append_writes(&w, VIEW, &moved, &state(base + 2, 1, true))
+        .unwrap();
+    let listed: Vec<String> = store
+        .later_moves(&w, VIEW, "moved", 0, 2)
+        .unwrap()
+        .into_iter()
+        .map(|m| m.to)
+        .collect();
+    assert_eq!(listed, ["m0", "m1", "m2"], "two asked for, and one more");
 
     // Dropping a view's index drops that view's alone; `clear` drops the wiki's, and counts each view once.
     store

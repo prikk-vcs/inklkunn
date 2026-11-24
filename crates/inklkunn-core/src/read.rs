@@ -152,7 +152,10 @@ pub use why::{
     Attached, AttachedSource, Basis, Chain, EXCERPT_CHARS, MAX_WHY_PARAGRAPHS, MAX_WHY_WORK,
     Paragraph, Reach, WhyOutcome, WhyPage, WhyParagraph,
 };
-pub use writes::{LaterWriter, LaterWriters, MAX_INDEXED_SHOWS, MAX_RENAME_HOPS, MAX_WARM_ROUNDS};
+pub use writes::{
+    LaterWriter, LaterWriters, MAX_FOLLOWED_MOVES, MAX_INDEXED_SHOWS, MAX_RENAME_HOPS,
+    MAX_WARM_ROUNDS,
+};
 
 // The read API's reads (handoff 003 T8).
 pub use api::{

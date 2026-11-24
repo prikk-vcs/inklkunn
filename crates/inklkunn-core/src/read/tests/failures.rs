@@ -365,6 +365,25 @@ impl DerivedStore for BrokenStore {
     ) -> inklkunn_store::Result<Vec<inklkunn_store::LaterWrite>> {
         Err(StoreError::Backend("down".into()))
     }
+    fn later_maybes(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &str,
+        _: u64,
+    ) -> inklkunn_store::Result<Vec<inklkunn_store::MaybeWriter>> {
+        Err(StoreError::Backend("down".into()))
+    }
+    fn later_moves(
+        &self,
+        _: &WikiId,
+        _: &str,
+        _: &str,
+        _: u64,
+        _: usize,
+    ) -> inklkunn_store::Result<Vec<inklkunn_store::LaterMove>> {
+        Err(StoreError::Backend("down".into()))
+    }
 }
 
 #[test]

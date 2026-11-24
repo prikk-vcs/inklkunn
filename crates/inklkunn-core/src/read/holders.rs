@@ -13,7 +13,12 @@
 //! (it only removed text, moved the file, or changed its mode) **names nothing** for it.
 //!
 //! The candidates are the later revisions that **wrote the path** (a write, or a pure rename into it: [`ReadService::later_writers`],
-//! one indexed query) and nothing else: a revision that did not touch the path holds what the one before it did.
+//! one indexed query) and nothing else: a revision that did not touch the path holds what the one before it did. **A file that was
+//! moved with its bytes after the change is followed to where it went** (a later revision of the new path is a candidate, and so is
+//! the move itself), within a bound ([`super::MAX_FOLLOWED_MOVES`]); a rename that also edits the file in the same block is not followed.
+//! **A later revision that may have written the page and cannot be told to have** (an operation whose path was not resolved, a
+//! revision too large to list, a kind of revision whose effect is not listed) is **counted and said** ([`LaterHolders::untraced`]),
+//! never left out in silence.
 //!
 //! # What is read, and what is never told
 //!
@@ -28,10 +33,12 @@
 //! At most [`MAX_HOLDER_PATHS`] paths of one change are looked at, and at most [`MAX_HOLDER_CHECKS`] later revisions of one path are
 //! read; at most [`MAX_HOLDERS_LISTED`] holders are listed and the rest are counted. **A case the bounds leave unchecked is counted
 //! and said** ([`LaterHolders::unchecked`], [`LaterHolders::paths_unchecked`], and [`LaterHolders::unsettled`] when the index does
-//! not reach the change yet): it is never silently absent. The cost is one `show`, the change's own text and its parent's, one
+//! not reach the change yet, and the moves past the bound): it is never silently absent. The cost is one `show`, the change's own text and its parent's, one
 //! indexed query per path and at most `MAX_HOLDER_PATHS * MAX_HOLDER_CHECKS` reads, **whatever the length of the history**.
 
 use std::collections::HashSet;
+
+use std::collections::BTreeSet;
 
 use inklkunn_prikk::Point;
 use inklkunn_store::{MAX_LATER_WRITES, WikiRecord};
@@ -75,6 +82,15 @@ pub struct LaterHolders {
     pub unchecked_at_least: bool,
     /// Paths of the change that were not looked at (past [`MAX_HOLDER_PATHS`], or too large to read).
     pub paths_unchecked: usize,
+    /// Later revisions that **may have written** one of the change's pages and that the record of who wrote what cannot say did or did
+    /// not (an operation whose path was not resolved, a revision too large to list, a kind of revision whose effect is not listed):
+    /// they were not read, and are not listed.
+    pub untraced: usize,
+    /// There are at least [`LaterHolders::untraced`] of them: the record's list of them was cut at its bound.
+    pub untraced_at_least: bool,
+    /// A file of the change was moved away with its bytes more often than [`super::MAX_FOLLOWED_MOVES`] follows: the revisions of the paths
+    /// it went to after the last one followed are not looked at.
+    pub moves_unfollowed: bool,
     /// The index of who wrote what does not reach the change yet, or the change is too large to list: **nothing can be said**, and the
     /// rest of the answer is empty.
     pub unsettled: bool,
@@ -89,6 +105,8 @@ impl LaterHolders {
             && self.hidden == 0
             && self.unchecked == 0
             && self.paths_unchecked == 0
+            && self.untraced == 0
+            && !self.moves_unfollowed
             && !self.unsettled
     }
 
@@ -130,7 +148,10 @@ impl ReadService {
         };
         let paths = match self.written_paths(wiki, block_id)? {
             TouchesOf::Paths(paths) => paths,
-            TouchesOf::TooLarge => return Ok(LaterHolders::unsettled()),
+            // A change that may have written a path nothing names cannot be followed by the paths it names.
+            TouchesOf::TooLarge | TouchesOf::Unresolved(_) => {
+                return Ok(LaterHolders::unsettled());
+            }
         };
         if paths.is_empty() {
             return Ok(LaterHolders::default());
@@ -140,6 +161,8 @@ impl ReadService {
             ..LaterHolders::default()
         };
         let mut found: Vec<(String, String)> = Vec::new();
+        // The later revisions that may have written a page of the change and could not be told apart, by number (one for all pages).
+        let mut untraced: BTreeSet<u64> = BTreeSet::new();
         for path in paths.iter().take(MAX_HOLDER_PATHS) {
             let added = match self.added_lines(wiki, block_id, parent.as_deref(), path)? {
                 Some(added) => added,
@@ -158,11 +181,15 @@ impl ReadService {
             }
             out.unchecked += later.writers.len().saturating_sub(MAX_HOLDER_CHECKS);
             out.unchecked_at_least |= later.more;
+            untraced.extend(later.untraced.iter().copied());
+            out.untraced_at_least |= later.untraced_at_least;
+            out.moves_unfollowed |= later.moves_unfollowed;
             for writer in later.writers.iter().take(MAX_HOLDER_CHECKS) {
-                match self.text_at(wiki, view, &writer.block, path)? {
+                // A revision of the path the file was moved to is read at that path (the lines the change added are its own).
+                match self.text_at(wiki, view, &writer.block, &writer.path)? {
                     BlockText::Text(text) => {
                         if holds(&added, &text) {
-                            found.push((writer.block.clone(), path.clone()));
+                            found.push((writer.block.clone(), writer.path.clone()));
                         }
                     }
                     BlockText::Hidden(_) => out.hidden += 1,
@@ -171,6 +198,7 @@ impl ReadService {
                 }
             }
         }
+        out.untraced = untraced.len();
         out.more = found.len().saturating_sub(MAX_HOLDERS_LISTED);
         found.truncate(MAX_HOLDERS_LISTED);
         let blocks: Vec<String> = found.iter().map(|(block, _)| block.clone()).collect();

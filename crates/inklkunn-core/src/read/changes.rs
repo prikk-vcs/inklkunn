@@ -317,8 +317,9 @@ impl ReadService {
         }
     }
 
-    /// The wiki's open views by full name (`heads/main`), the default view first. Asks prikk unless the
-    /// views are held.
+    /// The wiki's open views by full name (`heads/main`), the default view first. **Always asks prikk** (never the held answer) and
+    /// then holds what it was told, so that a [`ReadService::tip`] asked right after is of the state just read: the tip check relies
+    /// on it (correction L-10), and a test holds it.
     pub fn open_views(&self, wiki: &WikiRecord) -> Result<Vec<String>, ReadError> {
         let repo = self.layout.repo_dir(&wiki.id);
         let views = self

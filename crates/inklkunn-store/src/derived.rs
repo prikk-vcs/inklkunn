@@ -460,6 +460,20 @@ pub struct LaterWrite {
 /// The most blocks [`DerivedStore::later_writes`] lists.
 pub const MAX_LATER_WRITES: usize = 100;
 
+/// A later block that moved a file away with its bytes, as [`DerivedStore::later_moves`] lists it (correction L-6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaterMove {
+    /// The block's number.
+    pub number: u64,
+    /// Its id.
+    pub block: String,
+    /// The path the file was moved to (the row is a [`WriteKind::Carried`] row of this path, from the path asked about).
+    pub to: String,
+}
+
+/// The most blocks [`DerivedStore::later_moves`] lists.
+pub const MAX_LATER_MOVES: usize = 32;
+
 /// The derived cache. Every implementation passes the same invariant tests (`tests/derived.rs`).
 ///
 /// **A row that cannot be read back is a miss**, never an error and never a made-up value: the cache is
@@ -571,4 +585,25 @@ pub trait DerivedStore: Send + Sync {
         after: u64,
         limit: usize,
     ) -> Result<Vec<LaterWrite>>;
+    /// The blocks after the one numbered `after` that **may have written** `path` and that the index cannot say did or did not
+    /// (correction L-6): a [`WriteKind::Maybe`] row of the path or of every path, or an [`WriteKind::Opaque`] block. Oldest first, one
+    /// per block (opaque when either row is), at most [`MAX_MAYBE_WRITERS`] **and one more** when there are more.
+    fn later_maybes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+    ) -> Result<Vec<MaybeWriter>>;
+    /// The blocks after the one numbered `after` that **moved the file at `path` away with its bytes** (a [`WriteKind::Carried`] row
+    /// whose origin is `path`), oldest first, at most `limit` (never more than [`MAX_LATER_MOVES`], at least one) **and one more**
+    /// when there are more. One indexed lookup, whatever the length of the history.
+    fn later_moves(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<LaterMove>>;
 }

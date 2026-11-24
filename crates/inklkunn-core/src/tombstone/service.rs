@@ -102,6 +102,9 @@ pub enum ModerationError {
         /// The view whose tip holds it (its short name), when the check could say.
         view: Option<String>,
     },
+    /// The change has an operation whose path could not be resolved, so it may have written a file that no tip can be compared
+    /// with: **its content cannot be hidden** (L-2), as for a change too large to compare. Its summary and its author can be.
+    TipUnresolved,
     /// The note is not one line of at most [`MAX_NOTE_CHARS`] characters.
     Note,
     /// The hiding to unhide or to show is not there, is not in force, or is another wiki's.
@@ -131,6 +134,10 @@ impl std::fmt::Display for ModerationError {
                 f,
                 "the content of a view's tip cannot be hidden ({}): revert or remove it first",
                 view.as_deref().unwrap_or("unchecked")
+            ),
+            ModerationError::TipUnresolved => write!(
+                f,
+                "the content of a change with an operation on an unresolved path cannot be hidden: it cannot be compared with the views' tips"
             ),
             ModerationError::Note => write!(f, "the note is not one short line"),
             ModerationError::NoSuchHiding => write!(f, "no such hiding in force"),
@@ -648,6 +655,7 @@ impl ModerationService {
                     return Err(ModerationError::TipContent { view: Some(view) });
                 }
                 TipCheck::Unchecked => return Err(ModerationError::TipContent { view: None }),
+                TipCheck::Unresolved => return Err(ModerationError::TipUnresolved),
             }
         }
         let declines = if parts.content {
@@ -1201,7 +1209,8 @@ impl ModerationService {
 
     /// What the moderation form needs to know of an item before it is shown: what is hidden of it now (the marks, never
     /// content), whether its **content** could be hidden or is a view's tip, whether hiding its content would also decline an
-    /// open proposal, and which parts it has. **Records nothing and shows no content.**
+    /// open proposal, and which parts it has. **Records nothing and shows no content.** Only the rung that may moderate is
+    /// answered ([`ModerationError::NotAllowed`] for another reader), because the answer is a read of the repository.
     pub fn preview(
         &self,
         principal: &Principal,
@@ -1209,6 +1218,11 @@ impl ModerationService {
         item: &Item,
     ) -> Result<Preview, ModerationError> {
         self.readable(principal, wiki)?;
+        // The preview runs the tip check and the list of later holders, which read the repository (up to a thousand reads): only
+        // the rung that may hide asks it (L-7), whatever the page in front of it checked. Nothing is drawn or recorded.
+        if !self.may_moderate(principal, wiki) {
+            return Err(ModerationError::NotAllowed);
+        }
         let found = self.find(wiki, item)?;
         let marks = self
             .hidden_of(wiki, &found.canonical, item)?
@@ -1228,6 +1242,7 @@ impl ModerationService {
                     (Some(ModerationError::TipContent { view: Some(view) }), None)
                 }
                 TipCheck::Unchecked => (Some(ModerationError::TipContent { view: None }), None),
+                TipCheck::Unresolved => (Some(ModerationError::TipUnresolved), None),
             }
         } else {
             (None, None)
@@ -1273,7 +1288,7 @@ pub struct Survives {
 pub struct Preview {
     /// The hidings in force on it, oldest first.
     pub marks: Vec<Mark>,
-    /// Why its content cannot be hidden, when it cannot ([`ModerationError::TipContent`]).
+    /// Why its content cannot be hidden, when it cannot ([`ModerationError::TipContent`], [`ModerationError::TipUnresolved`]).
     pub tip: Option<ModerationError>,
     /// Lines the change added that a tip's page still has, when its content may be hidden all the same: the hide does not hide them.
     pub survives: Option<Survives>,

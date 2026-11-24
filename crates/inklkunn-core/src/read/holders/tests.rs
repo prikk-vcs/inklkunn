@@ -3,6 +3,7 @@
 //! grow with the history. The repository is the read tests' double; the moderation records are the memory store's.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use super::super::MAX_FOLLOWED_MOVES;
 use super::super::testing::block_id;
 use super::super::writes::tests::{Rig, foo, op, rig, shows};
 use super::*;
@@ -297,4 +298,146 @@ fn a_list_of_later_writers_is_no_answer_while_the_index_stops_short_of_the_tip()
     let held = holders(&r, 2);
     assert!(held.unsettled, "{held:?}");
     assert!(held.listed.is_empty());
+}
+
+/// An operation whose path prikk could not resolve: the block that has it may have written any page.
+fn unresolved() -> inklkunn_prikk::Operation {
+    inklkunn_prikk::Operation {
+        kind: "edit-text".to_owned(),
+        paths: vec![inklkunn_prikk::storage::PathRef {
+            path: None,
+            unresolved_node_id: Some("n".repeat(8)),
+        }],
+    }
+}
+
+#[test]
+fn a_later_change_that_may_have_written_the_page_and_cannot_be_told_is_counted_not_left_out() {
+    // L-6: a later block whose operation names no path may have rewritten the page; the list does not know, and says so.
+    let r = world();
+    r.w.fake().set(FOO, &body(0..6)); // 2
+    r.w.fake().set(FOO, &body_and(0..6, 1)); // 3: holds it
+    r.w.fake().set(FOO, &body_and(0..6, 2)); // 4: the record cannot say what this block did
+    r.w.fake().show(4, shows(vec![unresolved()]));
+    r.warm();
+    let got = holders(&r, 2);
+    assert_eq!(blocks(&got), vec![block_id(3)], "{got:?}");
+    assert_eq!(got.untraced, 1, "{got:?}");
+    assert!(!got.untraced_at_least);
+    assert!(!got.is_silent(), "an untraced block is not silence");
+    // The writers' list says which block, and that it is no writer the index is sure of.
+    let writers = r
+        .service
+        .later_writers(&r.w.wiki, None, &block_id(2), FOO, 10)
+        .expect("writers");
+    assert_eq!(writers.untraced, vec![4]);
+    assert!(writers.writers.iter().all(|w| w.number != 4));
+}
+
+#[test]
+fn a_block_that_may_have_written_any_page_is_counted_once_for_every_page_of_the_change() {
+    let r = rig(&[(FOO, &foo("The page.")), (BAR, &foo("Bar."))]);
+    let both = [(FOO.to_owned(), body(0..6)), (BAR.to_owned(), body(0..6))];
+    r.w.fake().set_files(&both); // 2: two pages
+    r.w.fake().set(BAZ, &body(0..2)); // 3: a block that may have written anything
+    r.w.fake().show(3, shows(vec![unresolved()]));
+    r.warm();
+    let got = holders(&r, 2);
+    assert_eq!(got.untraced, 1, "one block, however many pages: {got:?}");
+}
+
+#[test]
+fn a_page_that_was_moved_with_its_bytes_is_followed_to_where_it_went() {
+    // L-6: after FOO -> BAZ (a pure rename), the later changes of BAZ hold the text the change wrote at FOO.
+    let r = world();
+    r.w.fake().set(FOO, &body(0..6)); // 2: the change
+    r.w.fake()
+        .change_files(&[(BAZ.to_owned(), body(0..6))], &[FOO]); // 3: moved, bytes untouched
+    r.w.fake()
+        .show(3, shows(vec![op("rename-path", &[FOO, BAZ])]));
+    r.w.fake().set(BAZ, &body_and(0..6, 1)); // 4: an edit of the new path that keeps the lines
+    r.w.fake().set(BAZ, &foo("Something else entirely.")); // 5: rewritten
+    r.warm();
+    let got = holders(&r, 2);
+    assert!(!got.unsettled && !got.moves_unfollowed, "{got:?}");
+    assert_eq!(
+        got.listed
+            .iter()
+            .map(|l| (l.block.clone(), l.path.clone()))
+            .collect::<Vec<_>>(),
+        vec![(block_id(3), BAZ.to_owned()), (block_id(4), BAZ.to_owned())],
+        "the move carries the text, and the edit of the new path holds it"
+    );
+    // The writers' list carries the path each wrote.
+    let writers = r
+        .service
+        .later_writers(&r.w.wiki, None, &block_id(2), FOO, 10)
+        .expect("writers");
+    assert_eq!(
+        writers
+            .writers
+            .iter()
+            .map(|w| (w.number, w.path.as_str(), w.carried))
+            .collect::<Vec<_>>(),
+        vec![(3, BAZ, true), (4, BAZ, false), (5, BAZ, false)]
+    );
+}
+
+#[test]
+fn a_chain_of_moves_is_followed_up_to_its_bound_and_the_bound_is_said() {
+    let moved = |hops: usize| {
+        let r = world();
+        r.w.fake().set(FOO, &body(0..6)); // 2: the change
+        let mut at = FOO.to_owned();
+        for hop in 0..hops {
+            let to = format!("pages/Q{hop}.md");
+            r.w.fake()
+                .change_files(&[(to.clone(), body(0..6))], &[at.as_str()]);
+            r.w.fake().show(
+                3 + hop as u64,
+                shows(vec![op("rename-path", &[at.as_str(), to.as_str()])]),
+            );
+            at = to;
+        }
+        r.w.fake().set(&at, &body_and(0..6, 1)); // the last edit, at the last path
+        r.warm();
+        (holders(&r, 2), at)
+    };
+    // As many moves as are followed: every one is, and the edit after the last is found.
+    let (got, last) = moved(MAX_FOLLOWED_MOVES);
+    assert!(!got.moves_unfollowed, "{got:?}");
+    assert_eq!(
+        got.listed.last().map(|l| l.path.clone()),
+        Some(last),
+        "{got:?}"
+    );
+    assert_eq!(got.listed.len(), MAX_FOLLOWED_MOVES + 1);
+    // One more is not, and the answer says so (and never lists what lies past it as if it were all).
+    let (got, last) = moved(MAX_FOLLOWED_MOVES + 1);
+    assert!(got.moves_unfollowed, "{got:?}");
+    assert!(
+        got.listed.iter().all(|l| l.path != last),
+        "the edit past the bound is not listed: {got:?}"
+    );
+    assert!(!got.is_silent());
+}
+
+#[test]
+fn a_move_that_also_edits_the_page_is_no_pure_move_and_is_not_followed() {
+    // A rename and an edit in one block is a write of the new path and a removal of the old: nothing links them.
+    let r = world();
+    r.w.fake().set(FOO, &body(0..6)); // 2
+    r.w.fake()
+        .change_files(&[(BAZ.to_owned(), body_and(0..6, 1))], &[FOO]); // 3: moved and edited
+    r.w.fake().show(
+        3,
+        shows(vec![
+            op("rename-path", &[FOO, BAZ]),
+            op("edit-text", &[BAZ]),
+        ]),
+    );
+    r.w.fake().set(BAZ, &body_and(0..6, 2)); // 4
+    r.warm();
+    let got = holders(&r, 2);
+    assert!(got.listed.is_empty(), "{got:?}");
 }

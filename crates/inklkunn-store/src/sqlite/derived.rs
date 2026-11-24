@@ -8,8 +8,9 @@ use crate::Result;
 use crate::derived::{
     BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeAnchorRow,
     KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow, KnowledgeRelationRow, KnowledgeRows,
-    KnowledgeSourceRow, LastWrite, LaterWrite, MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter,
-    PageKey, SearchDoc, SearchHit, SearchKind, WriteKind, Writers, WritesState,
+    KnowledgeSourceRow, LastWrite, LaterMove, LaterWrite, MAX_LATER_MOVES, MAX_LATER_WRITES,
+    MAX_MAYBE_WRITERS, MaybeWriter, PageKey, SearchDoc, SearchHit, SearchKind, WriteKind, Writers,
+    WritesState,
 };
 use crate::record::WikiId;
 
@@ -826,6 +827,105 @@ impl DerivedStore for SqliteStore {
                         block,
                         kind,
                     });
+                }
+            }
+            Ok(out)
+        })
+    }
+
+    fn later_maybes(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+    ) -> Result<Vec<MaybeWriter>> {
+        let after = i64::try_from(after).unwrap_or(i64::MAX);
+        self.with(|conn| {
+            let mut maybes: Vec<MaybeWriter> = Vec::new();
+            // The blocks that may have written this path, and the blocks that may have written any: the two rows' paths.
+            for of in [path, ""] {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT number, kind FROM path_writes \
+                         WHERE wiki_id = ?1 AND view = ?2 AND path = ?3 AND number > ?4 \
+                         AND kind NOT IN ('wrote', 'deleted', 'carried') ORDER BY number LIMIT ?5",
+                    )
+                    .map_err(backend)?;
+                let rows = stmt
+                    .query_map(
+                        params![
+                            wiki.as_str(),
+                            view,
+                            of,
+                            after,
+                            i64::try_from(MAX_MAYBE_WRITERS + 1).unwrap_or(i64::MAX)
+                        ],
+                        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+                    )
+                    .map_err(backend)?;
+                for row in rows {
+                    let (number, kind) = row.map_err(backend)?;
+                    if let Ok(number) = u64::try_from(number) {
+                        maybes.push(MaybeWriter {
+                            number,
+                            opaque: kind != "maybe",
+                        });
+                    }
+                }
+                if path.is_empty() {
+                    break;
+                }
+            }
+            // A block that is both (a row of the path and a row of every path) is listed once, opaque when either is.
+            maybes.sort_by(|a, b| a.number.cmp(&b.number).then(b.opaque.cmp(&a.opaque)));
+            maybes.dedup_by_key(|m| m.number);
+            maybes.truncate(MAX_MAYBE_WRITERS + 1);
+            Ok(maybes)
+        })
+    }
+
+    fn later_moves(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        path: &str,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<LaterMove>> {
+        let limit = limit.clamp(1, MAX_LATER_MOVES).saturating_add(1);
+        self.with(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT p.number, b.block_id, p.path FROM path_writes p \
+                     JOIN write_blocks b ON b.wiki_id = p.wiki_id AND b.view = p.view AND b.number = p.number \
+                     WHERE p.wiki_id = ?1 AND p.view = ?2 AND p.from_path = ?3 AND p.number > ?4 \
+                     AND p.kind = 'carried' ORDER BY p.number, p.path LIMIT ?5",
+                )
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(
+                    params![
+                        wiki.as_str(),
+                        view,
+                        path,
+                        i64::try_from(after).unwrap_or(i64::MAX),
+                        i64::try_from(limit).unwrap_or(i64::MAX)
+                    ],
+                    |r| {
+                        Ok((
+                            r.get::<_, i64>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                        ))
+                    },
+                )
+                .map_err(backend)?;
+            let mut out = Vec::new();
+            for row in rows {
+                let (number, block, to) = row.map_err(backend)?;
+                if let Ok(number) = u64::try_from(number) {
+                    out.push(LaterMove { number, block, to });
                 }
             }
             Ok(out)

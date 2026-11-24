@@ -16,7 +16,7 @@ use axum::extract::rejection::{PathRejection, QueryRejection};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
-use inklkunn_core::read::{LaterHolders, MAX_HOLDER_CHECKS, MAX_HOLDER_PATHS};
+use inklkunn_core::read::{LaterHolders, MAX_FOLLOWED_MOVES, MAX_HOLDER_CHECKS, MAX_HOLDER_PATHS};
 use inklkunn_core::tombstone::{Item, MAX_NOTE_CHARS, ModerationError, Preview, Revealed};
 use inklkunn_markup::path::path_to_title;
 use inklkunn_store::{HiddenParts, ReasonCategory, TombstoneEventId};
@@ -162,6 +162,24 @@ fn later_of(t: T, slug: &str, view: Option<&str>, later: &LaterHolders) -> Optio
             .text(),
         );
     }
+    if later.untraced > 0 {
+        notes.push(
+            t.msg(if later.untraced_at_least {
+                Key::ModerateLaterUntracedAtLeast
+            } else {
+                Key::ModerateLaterUntraced
+            })
+            .n(later.untraced as u64)
+            .text(),
+        );
+    }
+    if later.moves_unfollowed {
+        notes.push(
+            t.msg(Key::ModerateLaterMovesUnfollowed)
+                .with("limit", MAX_FOLLOWED_MOVES)
+                .text(),
+        );
+    }
     if later.paths_unchecked > 0 {
         notes.push(
             t.msg(Key::ModerateLaterPagesUnchecked)
@@ -296,18 +314,22 @@ fn form_page(
     let shell = Shell::of(&ctx.wiki);
     let slug = ctx.slug();
     let (tip_notice, tip_link) = match (&preview.tip, item) {
-        (Some(ModerationError::TipContent { view }), Item::PageRevision { block, view: shown }) => {
-            (
-                Some(match view {
-                    Some(view) => t.msg(Key::ModerateTipRefused).with("view", view).text(),
-                    None => t.get(Key::ModerateTipUnchecked),
-                }),
-                Some(LinkView {
-                    href: change_path(slug, shown.as_deref(), block),
-                    label: t.get(Key::ModerateTipLink),
-                }),
-            )
-        }
+        (
+            Some(refusal @ (ModerationError::TipContent { .. } | ModerationError::TipUnresolved)),
+            Item::PageRevision { block, view: shown },
+        ) => (
+            Some(match refusal {
+                ModerationError::TipContent { view: Some(view) } => {
+                    t.msg(Key::ModerateTipRefused).with("view", view).text()
+                }
+                ModerationError::TipUnresolved => t.get(Key::ModerateTipUnresolved),
+                _ => t.get(Key::ModerateTipUnchecked),
+            }),
+            Some(LinkView {
+                href: change_path(slug, shown.as_deref(), block),
+                label: t.get(Key::ModerateTipLink),
+            }),
+        ),
         _ => (None, None),
     };
     let parts = vec![
@@ -615,7 +637,7 @@ fn hide(page: &Page, ctx: &Ctx, item: &Item, typed: &Typed) -> Response {
             again(t.get(Key::ModerateProblemChanged), StatusCode::CONFLICT)
         }
         // The tip's text is told by the form itself (its sentence, and the link to the change), above the same choices.
-        Err(ModerationError::TipContent { .. }) => {
+        Err(ModerationError::TipContent { .. } | ModerationError::TipUnresolved) => {
             again(t.get(Key::ModerateProblemNoSuchPart), StatusCode::CONFLICT)
         }
         Err(other) => refused(page, ctx, &other),

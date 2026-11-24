@@ -64,9 +64,9 @@ pub use claim_thread::{ClaimCommentRecord, ClaimCommentRow, ClaimThreadPage, Cla
 pub use derived::{
     BlockWrites, DerivedHeading, DerivedLinks, DerivedMeta, DerivedPage, DerivedStore, IndexEntry,
     IndexedBlock, KnowledgeAnchorRow, KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow,
-    KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow, LastWrite, LaterWrite,
-    MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter, PageKey, PathWrite, SearchDoc, SearchHit,
-    SearchKind, WriteKind, Writers, WritesState,
+    KnowledgeRelationRow, KnowledgeRows, KnowledgeSourceRow, LastWrite, LaterMove, LaterWrite,
+    MAX_LATER_MOVES, MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter, PageKey, PathWrite,
+    SearchDoc, SearchHit, SearchKind, WriteKind, Writers, WritesState,
 };
 pub use governance::{
     Actor, AppealDecision, AppealOutcome, AppealRecord, AppealState, AppealedAction, AppealedKind,

@@ -66,13 +66,13 @@
 //! view, and a read of a block that is not in the view's log is unattributed.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use inklkunn_store::{
-    BlockWrites, IndexedBlock, LastWrite, LaterWrite, MAX_LATER_WRITES, PathWrite, StoreError,
-    WikiId, WikiRecord, WriteKind, WritesState,
+    BlockWrites, IndexedBlock, LastWrite, LaterWrite, MAX_LATER_WRITES, MAX_MAYBE_WRITERS,
+    PathWrite, StoreError, WikiId, WikiRecord, WriteKind, WritesState,
 };
 
 use super::history::{MAX_WINDOW, Touch, TouchKind, Touches};
@@ -88,6 +88,10 @@ pub const MAX_WARM_ROUNDS: usize = 4;
 const MAX_INDEXED_BLOCKS: usize = 5_000;
 /// The most renames followed back from a path to the change that wrote its text. A longer chain is unattributed.
 pub const MAX_RENAME_HOPS: usize = 32;
+/// The most times a file's move away is followed from one path, over the whole chain of moves (correction L-6): the later changes of
+/// the paths it was moved to are candidates too. A file moved more often than this is followed that far, and the answer says so
+/// ([`LaterWriters::moves_unfollowed`]).
+pub const MAX_FOLLOWED_MOVES: usize = 8;
 
 /// What the index says of the text of a path at a block, for the reader.
 #[derive(Debug, Clone)]
@@ -136,6 +140,9 @@ pub struct LaterWriter {
     pub number: u64,
     /// The change moved the path here without touching its bytes (a pure rename), instead of writing it.
     pub carried: bool,
+    /// The path the change wrote: the one asked about, or one the file was **moved to** after the block asked about (correction L-6;
+    /// the text it wrote at the first path is, after the move, the text at this one).
+    pub path: String,
 }
 
 /// The block before another in a view's log, as the writes index says.
@@ -158,6 +165,15 @@ pub struct LaterWriters {
     pub more: bool,
     /// The index does not reach the block yet (or it is not a block of the view), so nothing can be said: the list is not an answer.
     pub settled: bool,
+    /// The numbers of the changes after the block that **may have written** the path (or any) and that the index cannot say did or
+    /// did not (a path no operation of theirs resolved, a change too large to list, a kind of change whose effect is not listed), oldest
+    /// first, **not counting one that is listed in `writers`**: they could not be checked, and the answer says so (correction L-6).
+    pub untraced: Vec<u64>,
+    /// There are more of them than the bound of the index lists: `untraced` is a lower bound.
+    pub untraced_at_least: bool,
+    /// The file was moved away more often than [`MAX_FOLLOWED_MOVES`] follows: the later changes of the paths it went to after the
+    /// last one followed are not listed.
+    pub moves_unfollowed: bool,
 }
 
 // ------------------------------------------------------------------------------------ what a block did
@@ -637,6 +653,17 @@ impl ReadService {
     /// built on to the view's tip (within the bound of [`ReadService::warm_writes`]: a list of the changes *after* a block is an
     /// answer only when the index holds them). `settled` is false when the index does not reach the block **or the tip** yet (see the
     /// module's account): the list is then no answer.
+    ///
+    /// **The list is never silently short** (correction L-6):
+    ///
+    /// - A file **moved away** with its bytes after the block (a pure rename: a `carried` row of the new path) is followed to the new
+    ///   path, and the changes that wrote *it* after the move (and the move itself, which carries the text) are listed, each with its
+    ///   own [`LaterWriter::path`]. The moves of a chain are followed up to [`MAX_FOLLOWED_MOVES`] in all; past it
+    ///   [`LaterWriters::moves_unfollowed`] says so. (A rename that **also edits** the file in the same block is a write of the new
+    ///   path and a removal of the old one, and nothing in the index links them: it is not followed.)
+    /// - The changes after the block that **may have written** the path or any (an operation whose path was not resolved, a change too
+    ///   large to list, a kind of change whose effect is not listed) cannot be told to have or not, and are returned as
+    ///   [`LaterWriters::untraced`] for the moderation form to say so.
     pub fn later_writers(
         &self,
         wiki: &WikiRecord,
@@ -653,33 +680,79 @@ impl ReadService {
                     writers: Vec::new(),
                     more: false,
                     settled: false,
+                    untraced: Vec::new(),
+                    untraced_at_least: false,
+                    moves_unfollowed: false,
                 });
             }
         };
         let limit = limit.clamp(1, MAX_LATER_WRITES);
-        let mut found = self
-            .derived
-            .later_writes(&wiki.id, view, path, at.number, limit)
-            .map_err(|e| self.writes_failed(e))?;
-        let more = found.len() > limit;
-        found.truncate(limit);
+        // The paths the text may be at after the block, each with the number of the block it is looked at from (exclusive): the path
+        // asked about from the block itself, a path the file was moved to from the block before the move (the move carries the text).
+        let mut paths: Vec<(String, u64)> = vec![(path.to_owned(), at.number)];
+        let (mut writers, mut more, mut moves_unfollowed) = (Vec::new(), false, false);
+        let (mut untraced, mut untraced_at_least) = (BTreeSet::new(), false);
+        let mut next = 0;
+        while let Some((here, after)) = paths.get(next).cloned() {
+            next += 1;
+            let mut found = self
+                .derived
+                .later_writes(&wiki.id, view, &here, after, limit)
+                .map_err(|e| self.writes_failed(e))?;
+            more |= found.len() > limit;
+            found.truncate(limit);
+            writers.extend(found.into_iter().map(
+                |LaterWrite {
+                     number,
+                     block,
+                     kind,
+                 }| LaterWriter {
+                    block,
+                    number,
+                    carried: matches!(kind, WriteKind::Carried { .. }),
+                    path: here.clone(),
+                },
+            ));
+            let maybes = self
+                .derived
+                .later_maybes(&wiki.id, view, &here, after)
+                .map_err(|e| self.writes_failed(e))?;
+            untraced_at_least |= maybes.len() > MAX_MAYBE_WRITERS;
+            untraced.extend(maybes.into_iter().take(MAX_MAYBE_WRITERS).map(|m| m.number));
+            let moved = self
+                .derived
+                .later_moves(&wiki.id, view, &here, after, MAX_FOLLOWED_MOVES)
+                .map_err(|e| self.writes_failed(e))?;
+            moves_unfollowed |= moved.len() > MAX_FOLLOWED_MOVES;
+            for to in moved.into_iter().take(MAX_FOLLOWED_MOVES) {
+                if paths.iter().any(|(known, _)| *known == to.to) {
+                    continue;
+                }
+                if paths.len() > MAX_FOLLOWED_MOVES {
+                    moves_unfollowed = true;
+                } else {
+                    paths.push((to.to, to.number.saturating_sub(1)));
+                }
+            }
+        }
+        // Oldest first over every path; one entry for a block and a path.
+        writers.sort_by(|a: &LaterWriter, b: &LaterWriter| {
+            a.number.cmp(&b.number).then_with(|| a.path.cmp(&b.path))
+        });
+        writers.dedup_by(|a, b| a.number == b.number && a.path == b.path);
+        more |= writers.len() > limit;
+        writers.truncate(limit);
+        // What is listed was read; only what could not be told is untraced.
+        for writer in &writers {
+            untraced.remove(&writer.number);
+        }
         Ok(LaterWriters {
-            writers: found
-                .into_iter()
-                .map(
-                    |LaterWrite {
-                         number,
-                         block,
-                         kind,
-                     }| LaterWriter {
-                        block,
-                        number,
-                        carried: matches!(kind, WriteKind::Carried { .. }),
-                    },
-                )
-                .collect(),
+            writers,
             more,
             settled: true,
+            untraced: untraced.into_iter().collect(),
+            untraced_at_least,
+            moves_unfollowed,
         })
     }
 }

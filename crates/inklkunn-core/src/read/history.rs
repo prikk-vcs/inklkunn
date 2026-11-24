@@ -470,10 +470,14 @@ pub(super) struct Touch {
     pub(super) patch: usize,
 }
 
-/// The paths a block wrote, or that it is too large to say.
+/// The paths a block wrote, or that it is too large to say, or that some operation of it names none.
 pub(super) enum TouchesOf {
     /// Every path the block created, edited, renamed to or otherwise wrote (not the ones it deleted), once.
     Paths(Vec<String>),
+    /// The paths the block wrote **that could be read**, and it has an operation whose path prikk could not resolve (or of a kind
+    /// this reading does not know): that operation **may have written any path**, so the list is not the whole of what the block
+    /// wrote (correction L-2). What compares a change with a tip's files cannot settle such a block.
+    Unresolved(Vec<String>),
     /// Too large to list within the bounds.
     TooLarge,
 }
@@ -996,15 +1000,20 @@ impl ReadService {
         Ok(match self.touches_of(wiki, block_id)?.0 {
             Touches::Known(list) => {
                 let mut paths: Vec<String> = Vec::new();
-                for touch in list
-                    .iter()
-                    .filter(|t| t.kind != TouchKind::Delete && !t.path.is_empty())
-                {
-                    if !paths.contains(&touch.path) {
+                for touch in list.iter().filter(|t| t.kind != TouchKind::Delete) {
+                    if !touch.path.is_empty() && !paths.contains(&touch.path) {
                         paths.push(touch.path.clone());
                     }
                 }
-                TouchesOf::Paths(paths)
+                // An operation that names no path may have written any: the list is short by an unknown number of files.
+                if list
+                    .iter()
+                    .any(|t| t.kind == TouchKind::Unreadable && t.path.is_empty())
+                {
+                    TouchesOf::Unresolved(paths)
+                } else {
+                    TouchesOf::Paths(paths)
+                }
             }
             Touches::TooLarge => TouchesOf::TooLarge,
         })

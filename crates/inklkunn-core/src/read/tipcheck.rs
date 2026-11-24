@@ -11,8 +11,9 @@
 //! so large that the bound ended the count says *at least*. A hide covers **this** change, not text that a later change writes
 //! again.
 //!
-//! A change too large to list, or a file too large to compare, is **refused**, not allowed: what cannot be checked is not
-//! hidden. Reverting or removing the content first, by proposal, is the way (soft security first).
+//! A change too large to list, a change with an operation whose path could not be resolved (it may have written any file, so no
+//! tip can be shown not to hold it; L-2), or a file too large to compare, is **refused**, not allowed: what cannot be checked is
+//! not hidden. Reverting or removing the content first, by proposal, is the way (soft security first).
 
 use inklkunn_prikk::Point;
 use inklkunn_store::WikiRecord;
@@ -59,6 +60,9 @@ pub enum TipCheck {
     },
     /// The change, or a file of it, is too large to compare: it may not be hidden.
     Unchecked,
+    /// The change has an operation whose path could not be resolved, so it may have written a file that is not in the list of what
+    /// it wrote, and that file cannot be compared with any tip's: **the change may not be hidden, by name** (L-2).
+    Unresolved,
 }
 
 impl ReadService {
@@ -68,6 +72,7 @@ impl ReadService {
         let paths = match self.written_paths(wiki, block_id)? {
             TouchesOf::Paths(paths) => paths,
             TouchesOf::TooLarge => return Ok(TipCheck::Unchecked),
+            TouchesOf::Unresolved(_) => return Ok(TipCheck::Unresolved),
         };
         if paths.is_empty() {
             return Ok(TipCheck::Clear);
@@ -81,6 +86,8 @@ impl ReadService {
             }
         }
         let mut tips: Vec<String> = Vec::new();
+        // `open_views` asks prikk now and holds the answer, so each `tip` below is of the state the repository has **now**, never of
+        // the held one a seal by another process has left behind (correction L-10): the change that has just become a tip is refused.
         for view in self.open_views(wiki)? {
             let tip = self.tip(wiki, Some(&view))?;
             let listing = self
@@ -205,7 +212,7 @@ impl ReadService {
             return Ok(None);
         };
         let paths = match self.written_paths(wiki, block_id)? {
-            TouchesOf::Paths(paths) => paths,
+            TouchesOf::Paths(paths) | TouchesOf::Unresolved(paths) => paths,
             TouchesOf::TooLarge => Vec::new(),
         };
         let mut files = Vec::new();
@@ -227,8 +234,11 @@ impl ReadService {
         block_id: &str,
     ) -> Result<Option<Vec<String>>, ReadError> {
         Ok(match self.written_paths(wiki, block_id)? {
-            TouchesOf::Paths(paths) => Some(paths),
+            TouchesOf::Paths(paths) | TouchesOf::Unresolved(paths) => Some(paths),
             TouchesOf::TooLarge => None,
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

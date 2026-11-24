@@ -3852,6 +3852,10 @@ pub const CATALOG: &[Entry] = &[
         "moderate.tip_unchecked",
         "この変更は大きすぎて、ページの現在の本文と照らし合わせられないため、本文は非表示にできません。要約と作成者は、いま非表示にできます。",
     ),
+    msg(
+        "moderate.tip_unresolved",
+        "この変更には、どのファイルに対する操作なのかを特定できなかったものがあり、ページの現在の本文と照らし合わせられないため、本文は非表示にできません。要約と作成者は、いま非表示にできます。",
+    ),
     msg("moderate.tip_link", "変更を見る"),
     msg(
         "moderate.declines",
@@ -3890,6 +3894,18 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "moderate.later_pages_unchecked",
         "この変更が書いたページのうち、さらに {count} ページは確認できませんでした。見るのは先頭から {limit} ページまでで、比べるには大きすぎるページは飛ばします。",
+    ),
+    msg(
+        "moderate.later_untraced",
+        "後の変更のうち、{count} 件は、このページを書き換えた可能性がありますが、その変更の記録からは書き換えたかどうか分からないため、確認しておらず、一覧にも載せていません。",
+    ),
+    msg(
+        "moderate.later_untraced_at_least",
+        "後の変更のうち、少なくとも {count} 件は、このページを書き換えた可能性がありますが、その変更の記録からは書き換えたかどうか分からないため、確認しておらず、一覧にも載せていません。",
+    ),
+    msg(
+        "moderate.later_moves_unfollowed",
+        "この変更のあとで、このページは {limit} 回を超えて移動されたため、最後に追った移動より後の、移動先のページへの変更は一覧に載せていません。",
     ),
     msg(
         "moderate.later_unsettled",

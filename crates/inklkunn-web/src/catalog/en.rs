@@ -3815,6 +3815,10 @@ pub const CATALOG: &[Entry] = &[
         "moderate.tip_unchecked",
         "This change is too large to compare with the current text of the pages, so its text cannot be hidden. Its summary and its author can be hidden now.",
     ),
+    msg(
+        "moderate.tip_unresolved",
+        "Some of what this change did could not be traced to a file, so it cannot be compared with the current text of the pages, and its text cannot be hidden. Its summary and its author can be hidden now.",
+    ),
     msg("moderate.tip_link", "See the change"),
     msg(
         "moderate.declines",
@@ -3859,6 +3863,20 @@ pub const CATALOG: &[Entry] = &[
         "moderate.later_pages_unchecked",
         "{count} more page this change wrote could not be checked: at most {limit} pages are looked at, and a page too large to compare is skipped.",
         "{count} more pages this change wrote could not be checked: at most {limit} pages are looked at, and a page too large to compare is skipped.",
+    ),
+    plural_msg(
+        "moderate.later_untraced",
+        "{count} later change may have written this page, but the record of what it did cannot say so either way, so it was not checked and is not listed.",
+        "{count} later changes may have written this page, but the record of what they did cannot say so either way, so they were not checked and are not listed.",
+    ),
+    plural_msg(
+        "moderate.later_untraced_at_least",
+        "At least {count} later change may have written this page, but the record of what it did cannot say so either way, so it was not checked and is not listed.",
+        "At least {count} later changes may have written this page, but the record of what they did cannot say so either way, so they were not checked and are not listed.",
+    ),
+    msg(
+        "moderate.later_moves_unfollowed",
+        "This page was moved more than {limit} times after this change, so the changes to the pages it was moved to after the last of those moves are not listed.",
     ),
     msg(
         "moderate.later_unsettled",
