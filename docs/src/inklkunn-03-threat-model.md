@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15; the tests of §7 are named at 0.4.0's readiness). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
+| Version | **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15; the tests of §7 are named at 0.4.0's readiness: §7.5, 2026-11-25). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -696,3 +696,174 @@ languages; the sanitizer tests; the supply-chain gates (`cargo deny check`, `car
 *End of Threat Model v0.3. Its headline is RR-1, stated so no one discovers it after depending on it: inklkunn
 holds its wikis' signing keys by the owner's ruling, and everything in this model is built to make that
 custody bounded, detectable, attributable and recoverable rather than invisible.*
+### 7.5 Verification record (2026-11-25, 0.4.0 readiness R-5; re-verified at R-6)
+
+The items v0.4 (0.4.0, RFC 006) adds: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13 and INV-14. The acceptance
+criteria's half of the map is kept with the readiness review.
+- **Written by the dev team** (the readiness map, Part B).
+- **Re-verified by the architect:**
+  - every test named below was found by its name in the tree at `b6d005f`;
+  - the whole workspace passed on the pinned 1.99.1 with prikk 0.55.0 first (no guarded `skipping:` line), shimmed
+    off, on 0.57.0 and on 0.58.0;
+  - an independent review read the token layer (D-1) and the hidden-text reader.
+
+`[P]` marks a test on a real prikk. A file is named from `crates/` without the `inklkunn-` prefix, as the map writes
+it. **A GAP line says what no test covers**; nothing beyond the named tests is claimed.
+
+#### C-3d. A governance file that cannot be read makes the wiki refuse every write, naming file and line, while it still reads
+- `core/tests/governance_accept.rs::criterion_5_a_file_of_the_wrong_shape_written_outside_inklkunn_refuses_every_write_naming_the_file_and_line_while_reads_work` : [P] refused, named, reads work
+- `core/tests/governance_accept.rs::criterion_5_a_directory_where_a_governance_file_belongs_refuses_every_write_naming_the_path` : [P] not-a-file state
+- `core/src/authorize/tests/rules.rs::a_wiki_whose_governance_cannot_be_read_refuses_every_write_and_reads_on` : writes denied, reads allowed
+- `core/src/authorize/tests/rules.rs::only_someone_who_may_read_the_wiki_is_told_why_its_writes_refuse` : reason only to readers
+- `core/src/read/tests/rules.rs::a_governance_file_that_cannot_be_read_is_a_fault_with_its_file_and_line_and_the_defaults_decide` : fault with file, line
+- `core/src/read/tests/rules.rs::a_directory_where_a_governance_file_belongs_is_a_fault_naming_the_path_and_never_the_defaults` : not-a-file fault
+- `core/src/acceptance/tests/governance.rs::every_write_of_a_wiki_whose_governance_cannot_be_read_is_refused_naming_the_file_and_the_line` : acceptance refuses
+- `core/src/appeal/tests/decide.rs::a_wiki_whose_rules_cannot_be_read_refuses_to_file_and_to_decide_like_every_write_and_says_why` : appeals refuse too
+- `core/src/people/tests/grants.rs::a_wiki_that_cannot_be_seen_is_not_found_for_the_one_who_may_not_see_it_and_a_wiki_whose_rules_cannot_be_read_refuses` : grants refuse
+- `web/tests/proposals/accept.rs::every_cause_of_a_refusal_has_a_case_that_names_it_on_the_page_in_both_languages` : unreadable-rules page cases
+- `web/tests/api/governance.rs::a_wiki_with_no_rules_says_the_defaults_and_one_that_cannot_be_read_says_which_file_and_where` : API says file
+- GAP: see criterion 5 (nothing through the running product).
+
+#### C-3e. Governance files are read only from the default view's tip, and refused in a proposal in any other view
+- `core/src/read/tests/rules.rs::only_the_default_views_tip_is_read` : other view's files ignored
+- `core/src/acceptance/tests/governance.rs::a_governance_file_in_a_view_that_is_not_the_default_one_is_refused_by_name` : refused at acceptance
+- `core/src/acceptance/tests/governance.rs::a_proposal_in_another_view_is_judged_under_the_lease_by_the_rules_of_the_default_view_as_it_is_now` : rules of default view
+- `core/tests/governance_accept.rs::criterion_3_each_refusal_of_a_change_to_the_rules_is_by_name_and_leaves_the_repository_and_the_proposal_alone` : [P] alt view refused, untouched
+- `core/src/governance/tests/refusals.rs::a_governance_file_in_an_alternative_view_is_refused` : validator rule
+- GAP: refused at acceptance only. `refuse_outside_default_view` has no caller outside the acceptance (`core/src/acceptance/governance.rs:266`), so creating or submitting such a proposal succeeds and no test asserts otherwise.
+
+#### C-3f. The hatch: an admin can always accept a change to `governance/`, no approvals; the record names it
+- `core/tests/governance_accept.rs::criterion_4_a_policy_asking_for_more_approvals_than_anyone_can_give_is_accepted_with_a_warning_and_an_admin_repairs_it_by_the_hatch` : [P] hatch accepted, record names it
+- `core/src/acceptance/tests/governance.rs::the_hatch_is_an_admins_with_a_credential_that_carries_the_admin_scope_and_never_a_maintainers` : admin scope only
+- `core/src/acceptance/tests/governance.rs::the_hatch_is_for_a_change_to_governance_only_and_an_admin_needs_the_approvals_for_a_page` : rules only
+- `core/src/acceptance/tests/governance.rs::an_admin_cannot_carry_a_page_through_the_hatch_beside_a_no_op_edit_of_the_rules` : no smuggling
+- `core/src/acceptance/tests/governance.rs::the_hatch_checks_for_itself_that_every_path_it_covers_is_a_governance_file` : path check
+- `core/src/acceptance/tests/governance.rs::the_hatch_lifts_the_rule_against_accepting_ones_own_change_to_the_rules_and_no_other` : own-change rule lifted
+- `core/src/acceptance/tests/governance.rs::a_constitution_that_asks_an_admin_for_a_policy_change_is_obeyed_and_the_admin_uses_the_hatch` : constitution cannot bar
+- `bin/src/serve/writes_on/tests/governance.rs::a_policy_accepted_through_the_api_changes_who_may_accept_and_the_warning_and_the_hatch_are_the_pages_and_the_tokens` : [P] admin token hatch
+- `web/tests/policy/decisions.rs::an_acceptance_under_no_rules_of_the_wikis_own_says_the_default_rules_and_the_hatch_says_it_was_used` : page names hatch
+- GAP: none.
+
+#### C-3g. Protections and restrictions decided in the core, never in a template; each refusal names cause, reason and end
+- a restriction caps the rung inside `authorize()`:
+  - `core/src/authorize/tests/rules.rs::a_cap_lowers_the_rung_after_entry_and_none_caps_nothing` : cap inside authorize
+  - `core/src/people/tests/restrictions.rs::the_restriction_is_asked_about_for_every_write_by_an_account_and_never_for_a_read` : every write, no read
+- a protection limits acceptance, judged before the lease and again under it:
+  - `core/src/acceptance/tests/protections.rs::a_protection_set_between_the_early_judgement_and_the_lease_is_seen_under_the_lease` : judged again under lease
+  - `core/tests/protections.rs::criterion_7_a_protection_set_after_the_early_judgement_and_before_the_signer_is_seen_under_the_lease` : [P] same, real signer
+  - `core/src/acceptance/tests/protections.rs::a_protection_limits_acceptance_only_so_declining_asking_for_a_revision_and_superseding_stay_with_the_policy` : acceptance only
+- the acceptor must still hold the accept rung under the lease (G-T1 F-1):
+  - `core/src/acceptance/tests/lease_rung.rs::an_acceptor_demoted_by_a_grant_between_the_early_judgement_and_the_lease_is_refused_not_allowed_and_nothing_is_signed` : demoted, refused
+  - `core/src/acceptance/tests/lease_rung.rs::an_acceptor_restricted_between_the_early_judgement_and_the_lease_is_refused_restricted_and_nothing_is_signed` : restricted, refused
+  - `core/src/acceptance/tests/lease_rung.rs::the_rung_is_judged_before_the_protection_so_a_restricted_acceptor_is_told_the_restriction_and_not_the_protection` : cause order
+- each refusal names its cause (closed list, no wildcard), page and API:
+  - `web/tests/common/causes.rs::there_is_a_sample_of_every_cause_and_the_list_of_causes_is_whole` : every cause sampled
+  - `web/tests/proposals/accept.rs::every_cause_of_a_refusal_has_a_case_that_names_it_on_the_page_in_both_languages` : page case per cause
+  - `web/tests/api/write/refusals.rs::every_cause_of_a_refusal_comes_to_a_problem_that_names_it_in_both_languages` : problem per cause
+  - `web/tests/api/write/refusals.rs::each_code_and_each_name_of_a_refusal_is_written_in_the_description_of_the_api` : OpenAPI names them
+  - `web/tests/api/write/refusals.rs::every_word_the_acceptance_can_fail_with_is_in_the_description_of_the_problem_and_is_the_one_sent` : failure words in OpenAPI
+  - `web/tests/proposals/accept.rs::every_answer_of_the_acceptance_is_a_page_in_the_words_of_the_glossary_in_both_languages` : words, no operator leak
+- reason and end are said:
+  - `core/src/people/tests/restrictions.rs::the_restricted_person_is_told_the_reason_and_the_end_by_every_service_that_refuses_them_and_no_one_else_is` : restriction reason, end
+  - `web/tests/people/refusals.rs::a_restricted_person_is_told_the_reason_and_the_end_by_the_form_that_would_have_let_them_propose` : page shows both
+  - `web/tests/proposals/protections.rs::the_display_is_in_both_languages_and_the_reason_is_text_never_markup` : protection reason, escaped
+- never in a template:
+  - `web/tests/catalog_checks/refusals.rs::no_template_says_a_sentence_of_a_refusal_in_any_language` : scan templates for sentences
+  - `web/tests/catalog_checks/refusals.rs::no_template_decides_anything_a_template_shows_a_presence_and_nothing_more` : scan templates for decisions
+  - `web/tests/catalog_checks/refusals.rs::the_scans_of_the_refusals_are_shown_able_to_fail` : scans proven able to fail
+- GAP: none.
+
+#### C-14f. Moderation is a recorded, attributed, reversible act; its log is readable by the wiki's readers and never carries hidden content; never scripted through the API
+- never through the API:
+  - `web/tests/route_enumeration/web_only.rs::every_write_form_of_a_wiki_is_listed_as_web_only_or_as_ordinary` : new POST form must be classed
+  - `web/tests/route_enumeration/web_only.rs::a_token_of_the_strongest_scope_reaches_no_web_only_act_and_nothing_is_changed` : accept and admin tokens refused
+  - `web/tests/route_enumeration/web_only.rs::a_token_that_does_not_carry_the_scope_of_the_act_reaches_no_web_only_act` : weak scopes refused
+  - `web/tests/route_enumeration/web_only.rs::the_session_of_an_admin_does_each_web_only_act_with_the_body_the_token_tests_send` : control: session does act
+  - `web/tests/route_enumeration/web_only.rs::the_route_table_marks_exactly_the_web_only_acts` : marks equal the list
+  - `web/tests/route_enumeration/web_only.rs::a_request_with_a_token_and_the_admin_session_is_a_token_request_and_is_refused` : token wins over session
+  - `web/tests/route_enumeration/web_only.rs::the_api_document_says_these_acts_are_web_only_and_has_no_path_that_does_one` : OpenAPI has no path
+  - `web/tests/api/governance.rs::the_document_says_moderation_restrictions_protections_grants_and_appeal_decisions_are_web_only` : document says so
+- recorded and attributed:
+  - `web/tests/tombstones/acts.rs::one_hide_is_one_act_with_one_id_and_one_time_and_the_audit_trail_names_the_act` : act id, audit
+  - `core/src/people/tests/restrictions.rs::each_restriction_act_is_audited_with_the_rung_and_the_block_and_the_record_names_them_too` : restriction audited
+  - `core/src/acceptance/tests/protections.rs::setting_renewing_and_lifting_are_audited_with_the_actor_the_rung_and_the_block` : protection audited
+  - `core/src/people/tests/grants.rs::each_grant_is_an_audited_act_naming_the_rung_the_block_and_what_changed_and_it_is_recorded_before_the_record` : grant audited
+  - `core/src/appeal/tests/decide.rs::each_decision_is_audited_with_the_rung_and_the_block_before_the_record_and_never_the_words` : appeal audited
+- reversible:
+  - `web/tests/tombstones/acts.rs::an_unhide_restores_every_surface_exactly` : hide undone
+  - `core/src/people/tests/restrictions.rs::a_renewal_replaces_the_restriction_and_ends_from_now_and_a_lifting_ends_it_early` : restriction lifted
+  - `core/src/acceptance/tests/protections.rs::renewing_extends_it_lifting_ends_it_and_neither_works_on_nothing` : protection lifted
+- log public to readers, no hidden content:
+  - `web/tests/tombstones/acts.rs::the_log_lists_the_item_the_category_the_role_and_the_date_never_the_content` : page log, no content
+  - `web/tests/api/governance.rs::the_moderation_log_is_rows_with_no_text_no_name_and_no_note_and_is_read_by_everyone_who_reads_the_wiki` : API log, readers
+  - `web/tests/api/governance.rs::a_wiki_you_may_not_read_answers_every_member_as_one_that_is_not_there` : restricted wiki closed
+  - `web/tests/tombstones/acts.rs::the_note_is_for_the_moderate_rung_and_no_name_is_in_a_tombstone` : note private, no name
+  - `bin/src/serve/writes_on/tests/readiness.rs::governance_and_moderation_work_end_to_end_on_a_real_prikk` : [P] public log, no words, no name
+- GAP: none.
+
+#### C-14g. Appeals are bounded (one open per action per person, plus quotas) and decided by someone other than the actor
+- `core/src/appeal/tests/file.rs::a_second_open_appeal_against_the_same_action_by_the_same_person_is_refused_and_names_the_first` : one open per action
+- `core/src/appeal/tests/limits.rs::a_person_files_so_many_appeals_a_day_and_the_next_is_refused_by_name_with_when_it_will_be_possible` : daily quota
+- `core/src/appeal/tests/limits.rs::a_wiki_holds_so_many_open_appeals_and_the_next_is_refused_by_name_until_one_is_decided` : wiki queue bound
+- `core/src/appeal/tests/limits.rs::a_person_holds_so_many_open_appeals_and_the_next_is_refused_by_name_until_one_of_theirs_is_decided` : person bound
+- `core/src/appeal/tests/limits.rs::the_default_limits_are_the_documented_ones` : defaults documented
+- `core/src/appeal/tests/decide.rs::nobody_decides_an_appeal_against_their_own_action_and_it_is_said_by_name` : not the actor
+- `core/src/appeal/tests/decide.rs::nobody_decides_their_own_appeal` : not the appellant
+- `core/src/appeal/tests/file.rs::an_appeal_is_one_bounded_text_with_line_breaks_and_without_control_characters` : text bounded
+- `web/tests/appeals/decisions.rs::a_person_files_so_many_appeals_a_day_and_the_next_is_refused_naming_the_limit` : page names limit
+- `web/tests/appeals/decisions.rs::the_one_who_acted_and_the_appellant_are_refused_by_name_and_the_appeal_stays_open` : page refuses by name
+- `bin/src/config/tests.rs::the_three_limits_on_appeals_have_the_documented_defaults_and_named_refusals` : operator settings
+- GAP: none.
+
+#### C-14h. A maintainer cannot restrict a maintainer or an admin; a restriction is time-limited by the platform's limit and told with reason and end
+- `core/src/people/tests/restrictions.rs::a_maintainer_cannot_restrict_a_maintainer_or_an_admin_an_admin_can_restrict_a_maintainer_and_nobody_restricts_an_admin_or_themselves` : rung rule exact
+- `core/src/people/tests/rules.rs::a_maintainer_cannot_restrict_a_maintainer_or_an_admin_an_admin_can_restrict_a_maintainer_and_nobody_restricts_an_admin` : rule table
+- `web/tests/people/forms.rs::a_maintainer_cannot_restrict_a_maintainer_or_an_admin_and_an_admin_restricts_a_maintainer_but_not_an_admin` : form refuses
+- `core/src/people/tests/restrictions.rs::a_restriction_is_at_most_the_operators_limit_and_the_refusal_names_it` : limit enforced, named
+- `web/tests/people/forms.rs::a_restriction_longer_than_the_operators_limit_is_refused_naming_the_limit_and_so_is_one_with_no_reason` : page refuses, names
+- `core/src/people/tests/restrictions.rs::a_restriction_ends_by_the_clock_at_its_end_and_not_a_second_before_and_nothing_is_written_for_it_to_end` : ends by clock
+- `core/src/people/tests/restrictions.rs::the_restricted_person_is_told_the_reason_and_the_end_by_every_service_that_refuses_them_and_no_one_else_is` : told reason, end
+- `bin/src/serve/writes_on/tests/people.rs::a_restriction_set_through_the_product_refuses_the_restricted_accounts_writes_with_the_reason_and_the_end` : [P] through the product
+- GAP: none.
+
+#### C-15d. No surface serves hidden content (INV-13); a tip's content cannot be hidden, its author and summary can
+- as 8-i (the 15 `surface_*` tests, the gate, the unchecked tests, the end-to-end test) and 8-v (tip)
+- `web/tests/tombstones/reader.rs::a_difference_between_two_later_blocks_that_both_keep_the_hidden_text_is_hidden_on_both_sides` : later diffs masked
+- `web/tests/tombstones/reader.rs::a_page_moved_without_touching_its_bytes_is_hidden_and_a_move_with_an_edit_is_not` : moves tracked
+- `web/tests/tombstones/texts.rs::why_is_this_here_quotes_nothing_of_a_hidden_text_and_still_follows_the_page_across_it` : provenance masks text
+- `web/tests/tombstones/texts.rs::the_apis_revise_refuses_to_copy_the_hidden_text_into_a_new_revision` : API revise cannot copy
+- `web/tests/policy/closed.rs::a_store_that_cannot_say_what_is_hidden_shows_the_tombstones_place_and_never_the_summary` : fails closed
+- `core/tests/read_path.rs::a_real_historys_writers_are_what_prikks_show_says_and_a_hide_hides_exactly_what_its_change_wrote` : [P] real history
+- GAP: none (the hidden claim thread has no API member, by design).
+
+#### C-15e. The export carries tombstones, never hidden content
+- as 13-ii; `core/tests/export_suppression.rs::nothing_hidden_or_hiding_a_person_is_in_any_file_and_a_person_is_listed_only_for_what_is_not_hidden` is the whole-bundle check
+- GAP: as 13-ii (stand-in only for proposal revisions, content parts and thread comments hidden through the form) and 13-i (no schema for history/users).
+
+#### C-15f. Seeing hidden content is the `moderate` rung's alone, by an explicit act that is audited
+- `web/tests/tombstones/acts.rs::show_hidden_content_is_audited_and_only_the_moderate_rung_gets_it` : audit, rung gate, no-store
+- `web/tests/tombstones/reveal.rs::the_moderate_rung_shows_the_hidden_text_of_each_kind_of_item_to_nobody_else_and_an_unhide_restores_every_surface` : three kinds, nobody else
+- `web/tests/tombstones/reveal.rs::the_comment_of_a_claims_thread_is_hidden_shown_by_the_moderate_rung_alone_and_restored_by_an_unhide` : thread comment
+- `web/tests/route_enumeration/web_only.rs::a_token_of_the_strongest_scope_reaches_no_web_only_act_and_nothing_is_changed` : show act refused to tokens
+- GAP: [S] only; no real-prikk test of the show act.
+
+#### INV-13. No surface serves hidden content to a principal without the `moderate` rung
+- as C-15d; the `moderate` rung itself reads tombstones everywhere but the one reveal (`surfaces.rs` loops over four viewers including the moderator; `gate.rs` allows exactly one reveal route)
+- GAP: none beyond C-15d.
+
+#### INV-14. An admin of a wiki can always change its `governance/`
+- `core/src/acceptance/tests/hatch.rs::a_protection_that_names_the_rules_does_not_hold_the_hatch_up_and_does_not_open_it_to_anyone_else` : protection on rules, hatch passes
+- `core/src/acceptance/tests/hatch.rs::the_hatch_is_not_held_up_by_a_protection_that_asks_a_review_when_the_policy_asks_for_no_approval` : review protection
+- `core/src/acceptance/tests/hatch.rs::a_platform_limit_lowered_after_the_rules_were_accepted_does_not_hold_the_hatch_up` : lowered limit
+- `core/src/acceptance/tests/hatch.rs::a_change_that_stays_above_a_lowered_limit_is_refused_naming_the_limit_even_to_an_admin_and_the_admin_lowers_it_in_the_same_change` : limit still binds the content
+- `core/src/authorize/tests/rules.rs::an_admin_is_never_capped_so_that_the_wiki_can_always_change_its_rules_and_every_other_rung_is` : admin never capped
+- `core/src/people/tests/restrictions.rs::an_admin_is_not_held_down_by_a_restriction_it_has_on_record_so_the_rules_can_always_be_changed` : old restriction ignored
+- `core/src/people/tests/atomic.rs::the_store_will_not_take_the_last_admin_who_can_sign_in_and_does_not_count_a_disabled_one` : last admin kept
+- `core/src/people/tests/rules.rs::the_last_admin_who_can_sign_in_is_not_demoted_or_revoked_and_a_change_that_changes_nothing_is_refused` : last admin guard
+- `core/src/acceptance/tests/governance.rs::a_constitution_that_asks_an_admin_for_a_policy_change_is_obeyed_and_the_admin_uses_the_hatch` : constitution cannot lock
+- `core/tests/governance_accept.rs::criterion_4_a_policy_asking_for_more_approvals_than_anyone_can_give_is_accepted_with_a_warning_and_an_admin_repairs_it_by_the_hatch` : [P] locked wiki unlocked
+- `core/tests/governance_accept.rs::criterion_5_the_repair_by_an_admin_works_end_to_end_and_nothing_else_does` : [P] unreadable rules repaired
+- `core/tests/governance_accept.rs::d1_a_directory_where_the_policy_belongs_is_cleared_and_the_file_written_by_one_admins_proposal` : [P] stuck state repaired
+- `core/src/acceptance/tests/governance.rs::the_repair_does_not_open_the_wiki_to_anything_but_the_rules` : repair limited to rules
+- GAP: the two obstacles named by the readiness gap (a protection naming `governance/`, a lowered limit) are [S] only; the [P] hatch tests do not plant them. Note the design choice the lowered-limit test records: the hatch lifts approvals and the rung, not the limit on the content.
+

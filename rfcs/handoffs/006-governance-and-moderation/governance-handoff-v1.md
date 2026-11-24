@@ -371,3 +371,33 @@ says why it must be.
 items 1 – 9 stand assigned as written above; no further word is needed to start them. In item 7's list, the 204 *Wiki*
 messages are one line (*spelling and spacing only, per the owner's ruling*).
 
+## Readiness reviewed (R-6): the P round, then the candidate (2026-11-25)
+
+- **The L round: Approved** (`.git-exclude/reviewed/006-governance-l-review-result.md`).
+- **Readiness: Approved, with R-6's one correction round** (`.git-exclude/reviewed/0.4.0-readiness-review-result.md`).
+- **The threat model's §7.5** holds the v0.4 items by named test, re-verified.
+- **V19 is frozen.**
+
+**P-1 – P-7 (binding).** The details are in the result.
+- **P-1:**
+  - the tip check's stat branch uses `is_no_such_path`;
+  - the `judgement` bit is neutralised for hidden pages.
+- **P-2:** the fallback's windows do not evict the server's cache.
+- **P-3:**
+  - the scan matches path-qualified calls, and skips test files by `#[cfg(test)]`;
+  - L-9 reads the generation first.
+- **P-4:** the web-only test covers POST routes outside `/{slug}/`.
+- **P-5:** the writes index settles in the background after a hide and at start-up, a request's own part is bounded by
+  time (about 1 s), and the time from the hide to settled is measured again at K = 2,000.
+- **P-6:**
+  - C-3e refused at proposing;
+  - the end-to-end test adds an export, *show hidden content*, and a hide that declines an open proposal.
+- **P-7:**
+  - `cargo-audit` 0.23.0;
+  - 100 more soak runs on the final tree.
+
+Hand back as `0.4.0-readiness-corrections-review-request.md`.
+
+**R-7, the candidate**, follows its approval: the version 0.4.0 and the CHANGELOG heading `## [0.4.0] — <date>` only, as
+for 0.3.0. The architect adds the Japanese statement to the lead at R-8.
+
