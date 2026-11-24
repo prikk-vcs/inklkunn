@@ -19,7 +19,6 @@ use crate::read::ReadService;
 const HOME: &str = super::super::testing::HOME;
 /// The second the clock of these tests stands at (a real-looking time: the store's own checks need a positive one).
 const T0: i64 = 1_800_000_000;
-const DAY: i64 = 86_400;
 
 fn clock() -> i64 {
     NOW.load(Ordering::SeqCst)
@@ -198,8 +197,8 @@ fn the_hatch_is_not_held_up_by_a_protection_that_asks_a_review_when_the_policy_a
         "a protection naming a rules file held the hatch: {done:?}"
     );
     assert!(matches!(done, Ok(Accepted::Signed(_))), "{done:?}");
-    // The protection ends by itself, and nothing about it is in the record of the acceptance of the rules.
-    NOW.store(T0 + 8 * DAY, Ordering::SeqCst);
+    // Nothing about the protection is in the record of the acceptance of the rules. (The clock is not moved on here: it is one
+    // static of this file, and a test that moves it makes the others, which run beside it, see another time.)
     assert!(acceptance_of(&rig, &p).hatch);
 }
 

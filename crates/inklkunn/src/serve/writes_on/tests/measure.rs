@@ -58,7 +58,6 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::process::Command;
 
 use super::*;
 
@@ -94,7 +93,6 @@ fn loadavg() -> String {
 /// A prikk that counts: `<log>` gets one line, the verb, for each process.
 struct Counting {
     log: PathBuf,
-    script: PathBuf,
 }
 
 impl Counting {
@@ -113,7 +111,7 @@ impl Counting {
         .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         world.settings.prikk = script.clone().into_os_string();
-        Counting { log, script }
+        Counting { log }
     }
 
     /// The calls since the last `take`, by verb; the log is emptied.
@@ -129,25 +127,6 @@ impl Counting {
             *by_verb.entry(verb.to_owned()).or_insert(0) += 1;
         }
         Calls(by_verb)
-    }
-
-    /// What one start of the wrapper costs: `prikk --version` through it, minus the real one, in microseconds (a median of 50).
-    fn overhead_us(&self, real: &std::ffi::OsStr) -> u128 {
-        let median = |program: &std::ffi::OsStr| {
-            let mut times: Vec<u128> = (0..50)
-                .map(|_| {
-                    let start = Instant::now();
-                    let status = Command::new(program).arg("--version").output().unwrap();
-                    assert!(status.status.success());
-                    start.elapsed().as_micros()
-                })
-                .collect();
-            times.sort_unstable();
-            times.get(25).copied().unwrap_or(0)
-        };
-        let through = median(self.script.as_os_str());
-        let direct = median(real);
-        through.saturating_sub(direct)
     }
 }
 
@@ -231,11 +210,18 @@ impl Built {
     }
 }
 
+/// The prikk's version as the measurement names it: `INKLKUNN_MEASURE_PRIKK_VERSION` if set, else the `rel-X.Y.Z` directory the
+/// binary is in (how the machine's prikk assets are laid out), else `unknown`. (This file spawns nothing itself: only the
+/// driver, the signer and the fetcher do, and the boundary gate holds it.)
 fn prikk_version(real: &std::ffi::OsStr) -> String {
-    let out = Command::new(real).arg("--version").output().unwrap();
-    String::from_utf8_lossy(&out.stdout)
-        .trim()
-        .replace(' ', "-")
+    if let Ok(v) = std::env::var("INKLKUNN_MEASURE_PRIKK_VERSION") {
+        return v;
+    }
+    std::path::Path::new(real)
+        .components()
+        .filter_map(|c| c.as_os_str().to_str())
+        .find_map(|c| c.strip_prefix("rel-"))
+        .map_or_else(|| "unknown".to_owned(), |v| format!("prikk-{v}"))
 }
 
 fn fixtures_dir() -> PathBuf {
@@ -250,13 +236,21 @@ fn fixtures_dir() -> PathBuf {
 }
 
 fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
-    let status = Command::new("cp")
-        .arg("-a")
-        .arg(from)
-        .arg(to)
-        .status()
-        .unwrap();
-    assert!(status.success(), "cp {from:?} {to:?}");
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        let kind = entry.file_type().unwrap();
+        if kind.is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else if kind.is_symlink() {
+            let link = std::fs::read_link(entry.path()).unwrap();
+            std::os::unix::fs::symlink(link, &target).unwrap();
+        } else {
+            // `fs::copy` keeps the permission bits (a key file stays private, a script executable).
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
 }
 
 /// The wiki at the end of a build or of a copy: signed in as the person it needs.
@@ -657,7 +651,7 @@ fn run_once(
     data: &std::path::Path,
     built: &Built,
 ) -> Outcome {
-    let (mut world, counting, real) = copy_world(&format!("measure-{scenario}-{k}-{run}"), data);
+    let (mut world, counting, _real) = copy_world(&format!("measure-{scenario}-{k}-{run}"), data);
     let mut out = Outcome {
         k,
         scenario,
@@ -759,12 +753,6 @@ fn run_once(
         }
         other => panic!("no scenario {other}"),
     }
-    out.note = format!(
-        "{}{}wrapper {} us/call",
-        out.note,
-        if out.note.is_empty() { "" } else { "; " },
-        counting.overhead_us(&real)
-    );
     let _ = (&mut world, &anonymous);
     running.stop();
     out
