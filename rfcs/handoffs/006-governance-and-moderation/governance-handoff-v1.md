@@ -295,3 +295,56 @@ approved: the end-to-end proof on a real prikk, the upgrade from 0.3.0, the CHAN
 kill-matrix soak with every failing log kept, and the list of Japanese messages changed after
 `.git-exclude/ja-review/0.4.0-messages-since-sign-off.md`.
 
+## The J round reviewed; the L round; readiness R-5 assigned (2026-11-24)
+
+**The J round: Conditionally Approved** (`.git-exclude/reviewed/006-governance-h1-review-result.md`). No path serves a
+hidden change's text at a block that is not a tip. **G-T4 is Conditionally Approved**, and the whole tree is pushed.
+
+**The L round (binding; beside R-5).** The details and tests are in the result.
+- **L-1 (Medium, first):** the fallback across views happens only when the block is not in the default view's log at all,
+  persists a miss, caches the views list, and is capped per request.
+- **L-2:** the tip check refuses a hide for a change with an unresolved operation.
+- **L-3:** only *not found* means no file.
+- **L-4:** the gate is per call site; `Operation.content` is removed or scanned; `rules_at` is `pub(crate)` on a typed
+  point.
+- **L-5:** anchors at a base are filtered.
+- **L-6:** J-4 counts *maybe* and *opaque* blocks and follows renames forward.
+- **L-7 – L-9:**
+  - L-7: the preview asks `moderate` in the core.
+  - L-8: two defaults fail closed.
+  - L-9: a generation on the writes index.
+- **L-10:** `titles_without_hidden` is cached, and the hide's tip check reads the tip fresh.
+- **L-11:** unattributed text answers *cannot be checked yet* (503, `Retry-After`) with no tombstone.
+- **L-12:** the appeal pages link the block.
+
+Hand back as `006-governance-l-review-request.md`.
+
+### R-5 — Readiness (the 0.4.0 plan, §4 and §5; one request, `0.4.0-readiness-review-request.md`)
+
+**From R-5 on, the store schema (V19) is frozen.** A defect found from here is fixed without amending it, or the request
+says why it must be.
+1. **The end-to-end proof on a real prikk** (exit criterion 4), in the shape of 0.3.0's R-2: one scripted run, kept as a
+   test, and its transcript in the request. It shows, in order:
+   - an accepted policy change changes who may accept;
+   - a protection is shown and expires;
+   - a hidden comment and a hidden revision are not served, on every surface of the table, and the hiding is reversed;
+   - an appeal is decided;
+   - a page is removed and restored;
+   - a claim is retired.
+2. **The upgrade from 0.3.0** (exit criterion 6). The test exists. In the request, show it run against the release
+   binary, and show a policy change taking effect afterwards.
+3. **The readiness report.** It shows every RFC 006 acceptance criterion (1 – 15) by named test, and every item the
+   threat model's §7 gains for v0.4 (C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14) by named test, with the
+   gaps said.
+4. **The CHANGELOG lead** (exit criterion 7): in a reader's words, what 0.4.0 adds and what it does not do. Name the
+   section 2 *Not in 0.4.0* items a reader would look for: permanent removal, forks, page discussion.
+5. **The longer kill-matrix soak.** A few hundred runs of `acceptance_kill` on 0.58.0, every failing log kept, and every
+   failure explained. The first soak's unexplained rc 101 is either reproduced and explained or shown absent.
+6. **The writes index measured** on `tools/corpus`'s long history: a first anonymous request's cost on an unwarmed
+   index, the number of requests to settle, and a warmed request's cost.
+7. **The Japanese list's update:** the messages added, changed or removed since
+   `.git-exclude/ja-review/0.4.0-messages-since-sign-off.md` (2026-11-24, at `9b8ace1`), in the same format, as
+   `.git-exclude/ja-review/0.4.0-messages-since-2026-11-24.md`.
+8. **planeter 0.6.0 – 0.8.0** (RFC 010; last re-baselined at 0.5.0, PL-14): read their release notes for anything inklkunn
+   relies on (the ledger's PL rows). Fold the result into the ledger, and list any letter item for the owner.
+
