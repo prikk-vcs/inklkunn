@@ -102,6 +102,59 @@ async fn the_list_of_files_that_cannot_be_read_leads_whoever_may_moderate_to_the
 }
 
 #[tokio::test]
+async fn the_list_of_files_that_cannot_be_read_loses_a_file_when_what_the_form_proposes_is_in_the_history()
+ {
+    // Criterion 11, the end of it (readiness gap 6), from the page: the file is on the list; the form proposes the file that is read
+    // in its place and the list is unchanged while the proposal waits; once the repository holds what the proposal writes (what the
+    // acceptance seals: `core`'s `the_list_of_files_that_cannot_be_read_holds_a_file_until_its_replacement_is_signed_and_not_after`),
+    // the list has no file, in the page and in the API.
+    for (choice, text, summary) in [
+        ("retire", "", "Retire the unreadable claim"),
+        (
+            "write",
+            "kind: observation\nlifecycle: proposed\ncommunity_status:\n  status: unknown\nexpressions: []\nrelations: []\nsources: []\n",
+            "Write the claim again",
+        ),
+    ] {
+        let e = env();
+        with_an_unreadable_file(&e);
+        let page = "/handbook/-/health/knowledge-files";
+        let api = "/handbook/-/api/v1/health?list=knowledge-files";
+        for uri in [page, api] {
+            let body = as_(&e, &e.maintainer, uri).await.body();
+            assert!(body.contains(&unreadable_path()), "{choice}: {uri}: {body}");
+        }
+        let a = send(
+            &e,
+            &e.maintainer,
+            &fields(choice, text, "It held nothing anyone can read.", summary),
+        )
+        .await;
+        assert_eq!(a.status, StatusCode::SEE_OTHER, "{choice}: {}", a.body());
+        // Waiting changes nothing.
+        let to = a.header("location").expect("a location").to_owned();
+        for uri in [page, api] {
+            let body = as_(&e, &e.maintainer, uri).await.body();
+            assert!(body.contains(&unreadable_path()), "{choice}: {uri}: {body}");
+        }
+        // The repository holds what the proposal writes.
+        let files = files_of(&e, &to);
+        let [(path, Some(written))] = files.as_slice() else {
+            panic!("{choice}: {files:?}");
+        };
+        assert_eq!(*path, unreadable_path());
+        e.w.fake.set(path, written);
+        for uri in [page, api] {
+            let body = as_(&e, &e.maintainer, uri).await.body();
+            assert!(
+                !body.contains(&unreadable_path()),
+                "{choice}: {uri} still lists the file that is read now: {body}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn the_form_is_the_moderate_rungs_and_is_for_a_file_the_wiki_cannot_read() {
     let e = env();
     with_an_unreadable_file(&e);

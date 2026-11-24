@@ -153,6 +153,61 @@ fn an_author_who_still_may_moderate_has_the_file_replaced_whatever_made_it_unrea
     }
 }
 
+/// The files of the list *Knowledge files that cannot be read*, as the API and the page read it.
+fn unreadable_files(rig: &Rig) -> Vec<String> {
+    use crate::read::{HealthList, HealthRows};
+    rig.reads.forget_wiki(&rig.wiki);
+    let page = rig
+        .reads
+        .api_health(&rig.wiki, None, HealthList::KnowledgeFiles, None, 50)
+        .expect("the list");
+    let HealthRows::KnowledgeFiles(rows) = page.rows else {
+        panic!("not the list of knowledge files");
+    };
+    assert_eq!(page.total, rows.len());
+    rows.into_iter().map(|r| r.path).collect()
+}
+
+#[test]
+fn the_list_of_files_that_cannot_be_read_holds_a_file_until_its_replacement_is_signed_and_not_after()
+ {
+    // Criterion 11, the end of it (readiness gap 6): the file is on the list; the proposal that replaces it is accepted and the
+    // signer is given the file that is read in its place; and once the repository has what the signer was given, the list has no file.
+    for kind in KINDS {
+        let s = scene(kind);
+        assert_eq!(unreadable_files(&s.rig), [BROKEN], "{kind:?}: before");
+        let p = s.propose();
+        // Proposing and waiting change nothing of the list: the file is still not read.
+        assert_eq!(unreadable_files(&s.rig), [BROKEN], "{kind:?}: held");
+        let result = s.accept_with(&p, || {});
+        assert!(
+            matches!(result, Ok(Accepted::Signed(_))),
+            "{kind:?}: {result:?}"
+        );
+        let calls = s.rig.double.calls();
+        let [call] = calls.as_slice() else {
+            panic!("{kind:?}: one signing: {calls:?}");
+        };
+        let given: Vec<_> = call
+            .change
+            .files
+            .iter()
+            .map(|f| (f.path.to_string_lossy().into_owned(), f.content.clone()))
+            .collect();
+        assert_eq!(
+            given,
+            [(BROKEN.to_owned(), Some(GOOD.as_bytes().to_vec()))],
+            "{kind:?}: the signer is given the file that is read, in the file's place and nothing else"
+        );
+        // The repository has what the signer sealed.
+        s.rig.fake.set_bytes(BROKEN, GOOD.as_bytes());
+        assert!(
+            unreadable_files(&s.rig).is_empty(),
+            "{kind:?}: the replaced file is still on the list"
+        );
+    }
+}
+
 #[test]
 fn an_author_demoted_after_sending_is_refused_at_acceptance_and_nothing_is_signed() {
     for kind in KINDS {
