@@ -367,3 +367,7 @@ says why it must be.
       - Glossary §1's row for *moderate* says it.
     - The list of messages changed after 2026-11-24 (item 7) goes to the owner at R-5, as planned.
 
+**Item 10: Approved** (2026-11-24, `.git-exclude/reviewed/006-governance-r5-item10-review-result.md`). The L round and
+items 1 – 9 stand assigned as written above; no further word is needed to start them. In item 7's list, the 204 *Wiki*
+messages are one line (*spelling and spacing only, per the owner's ruling*).
+

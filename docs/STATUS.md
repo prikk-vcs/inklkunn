@@ -766,6 +766,8 @@
   - **モデレーション stays,** with a short clause saying what it covers where a reader first meets it.
 
   Both are R-5 item 10. The messages changed after 2026-11-24 go to the owner at R-5.
+  - **Item 10 is done and Approved** (`12a1b21`): Wiki in Latin letters with its spacing check, and the clause saying what
+    moderation covers.
 
 ## Pending on the owner
 
