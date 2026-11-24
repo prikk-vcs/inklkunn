@@ -21,6 +21,12 @@
 //! proposal and its proposer revises against the rules as they are now. A change that is to `governance/` alone is judged
 //! that way for every path it touches, byte for byte, whether the path is one of the two files or one below `governance/`
 //! that a repair removes (handoff G-T1 correction D-1); nothing there is read as a page.
+//!
+//! **The replacement of a knowledge file the wiki cannot read** (not text, not parsing, over the bound; RFC 006 D-10, handoff G-T6
+//! correction S-2) is never merged either: there is nothing to merge it with. When the tip's bytes of such a file are the base's
+//! bytes, nobody has changed it since the proposal was made, and the replacement is written as it is, beside whatever the merge
+//! makes of the revision's other files; when they differ, the file is read as before (and answers `Unreadable` where it cannot be
+//! read). A file over [`MAX_PAGE_BYTES`] is not compared (it cannot be read here), so it is answered as before.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -31,6 +37,7 @@ use inklkunn_signer::PreparedFile;
 use inklkunn_store::{CommentRecord, OverlapText, RevisionContent};
 
 use crate::governance::{GovernanceFile, is_governance_path};
+use crate::knowledge::{family_of, readability};
 use crate::merge::{MergeOutcome, Overlap, PageText, Place, merge};
 use crate::proposal::MAX_PAGE_BYTES;
 
@@ -171,6 +178,10 @@ pub(crate) fn prepare(
     if let Some(done) = governance_change(storage, repo, content, tip_block)? {
         return Ok(done);
     }
+    let unchanged = unchanged_unreadable(storage, repo, content, tip_block)?;
+    if !unchanged.is_empty() {
+        return with_unchanged_unreadable(storage, repo, content, tip_block, &unchanged);
+    }
     let touched: BTreeSet<String> = content
         .files
         .iter()
@@ -272,6 +283,124 @@ pub(crate) fn prepare(
             .map(|(f, t)| (PathBuf::from(f), PathBuf::from(t)))
             .collect(),
         reauthored: true,
+    })
+}
+
+/// The raw bytes of the file at `path` at `block`, whatever they are: `None` when there is no such file, or when it is over
+/// [`MAX_PAGE_BYTES`] (the read is refused, and nothing is known of it here).
+fn bytes_at(
+    storage: &dyn Storage,
+    repo: &Path,
+    block: &str,
+    path: &str,
+) -> Result<Option<Vec<u8>>, PrepareError> {
+    match storage.read(
+        repo,
+        &Point::Block(block.to_owned()),
+        path,
+        MAX_PAGE_BYTES as u64,
+    ) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(StorageError::Refused { .. }) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// The files the revision **replaces** that are knowledge files the wiki cannot read at the base and that the tip has with the
+/// very bytes the base had, each with those bytes. Asked of a file only when it is a knowledge file the revision writes whole
+/// and no rename names, so a revision of pages reads nothing more.
+fn unchanged_unreadable(
+    storage: &dyn Storage,
+    repo: &Path,
+    content: &RevisionContent,
+    tip_block: &str,
+) -> Result<BTreeMap<String, Vec<u8>>, PrepareError> {
+    let renamed: BTreeSet<&str> = content
+        .renames
+        .iter()
+        .flat_map(|r| [r.from.as_str(), r.to.as_str()])
+        .collect();
+    let mut out = BTreeMap::new();
+    for file in &content.files {
+        if file.text.is_none()
+            || family_of(&file.path).is_none()
+            || renamed.contains(file.path.as_str())
+        {
+            continue;
+        }
+        let Some(was) = bytes_at(storage, repo, &content.base.block_id, &file.path)? else {
+            continue;
+        };
+        if !readability(&file.path, was.len() as u64, &was).is_unreadable() {
+            continue;
+        }
+        if bytes_at(storage, repo, tip_block, &file.path)?.as_ref() == Some(&was) {
+            out.insert(file.path.clone(), was);
+        }
+    }
+    Ok(out)
+}
+
+/// The revision with the replacements of `unchanged` (see [`unchanged_unreadable`]) written as they are and everything else
+/// prepared as it would have been without them.
+fn with_unchanged_unreadable(
+    storage: &dyn Storage,
+    repo: &Path,
+    content: &RevisionContent,
+    tip_block: &str,
+    unchanged: &BTreeMap<String, Vec<u8>>,
+) -> Result<Prepared, PrepareError> {
+    // A replacement that says what the tip already has is no change.
+    let written: Vec<PreparedFile> = content
+        .files
+        .iter()
+        .filter(|f| {
+            unchanged
+                .get(&f.path)
+                .is_some_and(|tip| f.text.as_deref().map(str::as_bytes) != Some(tip.as_slice()))
+        })
+        .map(|f| prepared_file(&f.path, f.text.clone()))
+        .collect();
+    let rest = RevisionContent {
+        files: content
+            .files
+            .iter()
+            .filter(|f| !unchanged.contains_key(&f.path))
+            .cloned()
+            .collect(),
+        ..content.clone()
+    };
+    let only_these = Prepared::Change {
+        files: Vec::new(),
+        renames: Vec::new(),
+        reauthored: true,
+    };
+    let rest = if rest.files.is_empty() && rest.renames.is_empty() {
+        only_these
+    } else {
+        prepare(storage, repo, &rest, tip_block)?
+    };
+    Ok(match rest {
+        Prepared::Change {
+            mut files, renames, ..
+        } => {
+            files.extend(written);
+            if files.is_empty() && renames.is_empty() {
+                Prepared::NothingToChange
+            } else {
+                Prepared::Change {
+                    files,
+                    renames,
+                    reauthored: true,
+                }
+            }
+        }
+        Prepared::NothingToChange if !written.is_empty() => Prepared::Change {
+            files: written,
+            renames: Vec::new(),
+            reauthored: true,
+        },
+        other => other,
     })
 }
 

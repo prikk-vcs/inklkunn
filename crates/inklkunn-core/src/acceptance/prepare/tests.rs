@@ -251,6 +251,101 @@ fn the_accepted_bytes_are_every_path_and_every_text() {
     assert_eq!(change_bytes(&files, &renames), 10 + 3 + 10 + 3);
 }
 
+// --- the replacement of a knowledge file the wiki cannot read (G-T6 correction S-2; K-3)
+
+const CLAIM: &str = "knowledge/claims/019a0000-0000-7000-8000-000000000c01.yaml";
+const NOT_TEXT: &[u8] = &[0xff, 0xfe, 0x00, b'x'];
+const NEW_CLAIM: &str = "kind: observation\nlifecycle: proposed\n";
+
+#[test]
+fn the_replacement_of_an_unreadable_file_the_tip_has_as_the_base_had_it_is_applied_as_it_is() {
+    let fake = Fake::new(&[("pages/A.md", &page("a", "One.\n\nTwo.\n")), (CLAIM, "x")]);
+    fake.set_bytes(CLAIM, NOT_TEXT);
+    // The proposal was made at version 2 (the file is not text there); the tip moves on, and the file is as it was.
+    let base = Base::new(&fake.state_id(), &fake.block_id()).unwrap();
+    fake.set("pages/A.md", &page("a", "One.\n\nZwei.\n"));
+    let content = RevisionContent {
+        base,
+        ..revision(&[(CLAIM, Some(NEW_CLAIM.to_owned()))], &[])
+    };
+    let (files, renames, reauthored) = change(run(&fake, &content));
+    assert_eq!(files, vec![(CLAIM.to_owned(), Some(NEW_CLAIM.to_owned()))]);
+    assert!(renames.is_empty() && reauthored);
+
+    // Beside a page that is merged: both are written.
+    let content = RevisionContent {
+        files: vec![
+            FileChange {
+                path: "pages/A.md".to_owned(),
+                text: Some(page("a", "Uno.\n\nTwo.\n")),
+            },
+            FileChange {
+                path: CLAIM.to_owned(),
+                text: Some(NEW_CLAIM.to_owned()),
+            },
+        ],
+        ..content
+    };
+    let (files, _, reauthored) = change(run(&fake, &content));
+    assert!(reauthored);
+    assert!(
+        files.contains(&(CLAIM.to_owned(), Some(NEW_CLAIM.to_owned()))),
+        "{files:?}"
+    );
+    assert!(
+        files.iter().any(|(path, _)| path == "pages/A.md"),
+        "{files:?}"
+    );
+}
+
+#[test]
+fn the_replacement_of_an_unreadable_file_the_tip_has_changed_is_answered_as_before() {
+    let fake = Fake::new(&[("pages/A.md", &page("a", "One.\n")), (CLAIM, "x")]);
+    fake.set_bytes(CLAIM, NOT_TEXT);
+    let base = Base::new(&fake.state_id(), &fake.block_id()).unwrap();
+    // Somebody wrote the file again, to bytes of their own.
+    fake.set_bytes(CLAIM, &[0xfe, 0xff, 0x00, b'y']);
+    let content = RevisionContent {
+        base,
+        ..revision(&[(CLAIM, Some(NEW_CLAIM.to_owned()))], &[])
+    };
+    assert!(matches!(
+        prepare(&fake, Path::new("/r"), &content, &fake.block_id()),
+        Err(PrepareError::Unreadable)
+    ));
+}
+
+#[test]
+fn a_replacement_that_says_what_the_tip_has_is_no_change_and_a_readable_file_is_merged_as_always() {
+    // A file that is text and does not parse is unreadable too, and a replacement of it by itself changes nothing.
+    let broken = "kind: [unclosed\n";
+    let fake = Fake::new(&[("pages/A.md", &page("a", "One.\n")), (CLAIM, broken)]);
+    let base = Base::new(&fake.state_id(), &fake.block_id()).unwrap();
+    fake.set("pages/A.md", &page("a", "Two.\n"));
+    let content = RevisionContent {
+        base,
+        ..revision(&[(CLAIM, Some(broken.to_owned()))], &[])
+    };
+    assert!(matches!(run(&fake, &content), Prepared::NothingToChange));
+
+    // A knowledge file the wiki reads is not special: it goes through the merge, which has the last word.
+    let fake = Fake::new(&[(CLAIM, NEW_CLAIM), ("pages/A.md", &page("a", "One.\n"))]);
+    let base = Base::new(&fake.state_id(), &fake.block_id()).unwrap();
+    fake.set("pages/A.md", &page("a", "Two.\n"));
+    let content = RevisionContent {
+        base,
+        ..revision(
+            &[(
+                CLAIM,
+                Some("kind: observation\nlifecycle: proposed\n# edited\n".to_owned()),
+            )],
+            &[],
+        )
+    };
+    let (_, _, reauthored) = change(run(&fake, &content));
+    assert!(reauthored);
+}
+
 // --- CM-5
 
 fn comment(page: &str, block_id: Option<&str>, quote: Option<&str>, ordinal: u32) -> CommentRecord {
