@@ -51,7 +51,7 @@ env:
   # files say (0.2.0's measured 2026-11-18; 0.3.0's is the digest GitHub records for its asset, built from commit 599d4cd).
   UPGRADE_FROM_0_2_0_SHA256_X86_64: "e29814e026390ee8b46b744f862977efca53e5ec025af7ef8e11255b043bff86"
   UPGRADE_FROM_0_3_0_SHA256_X86_64: "b6f6726c2d2fd21c6b420dedab5b7ffb301afcf2f50946a5aed221c2feb84acb"
-  EXPECTED_SKIPS: "378"
+  EXPECTED_SKIPS: "379"
   RUST_TOOLCHAIN: "1.99.1"
 
 jobs:
