@@ -281,7 +281,9 @@ async fn the_comment_of_a_claims_thread_is_hidden_shown_by_the_moderate_rung_alo
     };
     let before = read_all().await;
     assert!(
-        String::from_utf8_lossy(&before[0]).contains("ZEBRACLAIM"),
+        before
+            .first()
+            .is_some_and(|bytes| String::from_utf8_lossy(bytes).contains("ZEBRACLAIM")),
         "the text is not on the page before it is hidden"
     );
     let item = [
