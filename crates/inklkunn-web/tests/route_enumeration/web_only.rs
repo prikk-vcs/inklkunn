@@ -2,7 +2,7 @@
 //! restoring and showing hidden content, putting a role in place or taking it away, restricting a person and renewing or lifting a
 //! restriction, a temporary protection and the decision of an appeal are acts of a person at the site, not of a script. (The form that
 //! proposes a change to the rules is a proposal, which the propose API makes as well: it is listed as ordinary, with that reason.) The API document says they are web-only, and **this walks the route table**: every `POST`
-//! of the application origin that is under a wiki and not under the API's prefix is either one of [`WEB_ONLY`] (and is sent, with the
+//! of the application origin that is not the API's (under a wiki, or on the site itself: P-4) is either one of [`WEB_ONLY`] (and is sent, with the
 //! strongest scope a token has, as an admin's token, and refused, and nothing in the records changes) or one of [`ORDINARY`] (the
 //! forms of the collaboration the API also offers, each with the reason it is not in the first list). **A new write form that is in
 //! neither list fails here**, so whoever adds one has to say which it is, and a web-only one is held to the refusal the day it is
@@ -15,6 +15,7 @@
 use std::collections::BTreeSet;
 
 use axum::http::StatusCode;
+use inklkunn_core::{Guard, RouteTable};
 use inklkunn_store::{
     AccountId, AppealRecord, AuditOutcome, GovernanceStore, ProposalId, ProposalStore, Role, Scope,
     TombstoneEvent, Visibility,
@@ -37,7 +38,7 @@ const WEB_ONLY: &[&str] = &[
     "/{slug}/-/appeals/decide",
 ];
 
-/// The writes of the collaboration and of a person's own, which are not in the list above. A new `POST` under a wiki that is in neither
+/// The writes of the collaboration and of a person's own, which are not in the list above. A new `POST` of the application origin (the site's own forms included) that is in neither
 /// list fails the walk: **add it to the list it belongs to** (a web-only act to [`WEB_ONLY`], with its body in [`prepare`]).
 const ORDINARY: &[(&str, &str)] = &[
     (
@@ -111,6 +112,51 @@ const ORDINARY: &[(&str, &str)] = &[
     (
         "/{slug}/-/verification",
         "the wiki's own check of its history, which any reader may ask for",
+    ),
+    // The forms of the site itself (P-4): outside every wiki, none of them acts on a wiki's pages or on another person.
+    (
+        "/-/sign-in",
+        "a person's own sign-in: it asks for a name and a password and serves no wiki data",
+    ),
+    (
+        "/-/sign-out",
+        "ends this browser's own session; it serves no wiki data",
+    ),
+    (
+        "/-/join",
+        "making an account where the operator opened joining to anyone; no wiki data",
+    ),
+    (
+        "/-/invite/{secret}",
+        "making an account with the one-time link an operator made; no wiki data",
+    ),
+    (
+        "/-/lang",
+        "the visitor's own language cookie; it names no wiki",
+    ),
+    (
+        "/-/inbox",
+        "a person's own notices marked as read; it acts on nobody else's",
+    ),
+    (
+        "/-/account/name",
+        "the signed-in person's own display name; a session is needed and a token is not enough",
+    ),
+    (
+        "/-/account/password",
+        "the signed-in person's own password; a session is needed and a token is not enough",
+    ),
+    (
+        "/-/account/sessions/end",
+        "one of the signed-in person's own sessions ended; a session is needed and a token is not enough",
+    ),
+    (
+        "/-/account/tokens",
+        "an API token made for the signed-in person's own account; a session is needed and a token cannot make another",
+    ),
+    (
+        "/-/account/tokens/revoke",
+        "one of the signed-in person's own API tokens revoked; a session is needed and a token is not enough",
     ),
 ];
 
@@ -386,32 +432,52 @@ fn encode(fields: &[(String, String)]) -> String {
         .join("&")
 }
 
-/// Every address of the application origin that takes a `POST`, is under a wiki and is not the API's.
-fn posts_under_a_wiki() -> BTreeSet<String> {
-    inklkunn_web::routes::application_table()
-        .unwrap()
+/// Is this address the API's (a wiki's, or the site's description)? The API's writes are held by its own tests: a token does them.
+fn is_api(path: &str) -> bool {
+    path.starts_with("/{slug}/-/api/v1/") || path.starts_with("/-/api/v1/")
+}
+
+/// Every address of a table that takes a `POST` and is not the API's, **wherever it is**: under a wiki, or on the site (the
+/// sign-in and the account's own forms, a person's inbox, the language, a new wiki).
+fn posts_to_classify(table: &RouteTable) -> BTreeSet<String> {
+    table
         .entries()
         .iter()
         .filter(|e| e.methods.contains(&"POST"))
         .map(|e| e.path.to_owned())
-        .filter(|p| p.starts_with("/{slug}/") && !p.starts_with("/{slug}/-/api/v1/"))
+        .filter(|p| !is_api(p))
         .collect()
 }
 
-#[test]
-fn every_write_form_of_a_wiki_is_listed_as_web_only_or_as_ordinary() {
+/// The `POST` addresses of a table that are in neither list: what a new write form is until someone says which it is.
+fn in_neither_list(table: &RouteTable) -> Vec<String> {
     let known: BTreeSet<String> = WEB_ONLY
         .iter()
         .copied()
         .chain(ORDINARY.iter().map(|(p, _)| *p))
         .map(str::to_owned)
         .collect();
-    let registered = posts_under_a_wiki();
-    let unlisted: Vec<_> = registered.difference(&known).collect();
+    posts_to_classify(table)
+        .difference(&known)
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn every_write_form_is_listed_as_web_only_or_as_ordinary() {
+    let table = inklkunn_web::routes::application_table().unwrap();
+    let unlisted = in_neither_list(&table);
     assert!(
         unlisted.is_empty(),
         "a write form is in neither WEB_ONLY nor ORDINARY (a web-only act must be held to the token refusal): {unlisted:?}"
     );
+    let known: BTreeSet<String> = WEB_ONLY
+        .iter()
+        .copied()
+        .chain(ORDINARY.iter().map(|(p, _)| *p))
+        .map(str::to_owned)
+        .collect();
+    let registered = posts_to_classify(&table);
     let gone: Vec<_> = known.difference(&registered).collect();
     assert!(
         gone.is_empty(),
@@ -422,6 +488,34 @@ fn every_write_form_of_a_wiki_is_listed_as_web_only_or_as_ordinary() {
             .iter()
             .all(|p| !ORDINARY.iter().any(|(o, _)| o == p)),
         "a route is in both lists"
+    );
+}
+
+#[test]
+fn a_write_form_outside_the_wiki_prefix_is_in_neither_list_until_it_is_classified() {
+    // P-4: the check used to look under `/{slug}/` only, so a write form on the site itself (a new wiki, a person's account, the
+    // sign-in) was never asked which list it belongs to. A table with one that nobody classified: it fails the check, wherever it is.
+    let public = Guard::Public {
+        reason: "a table of this test only: it serves no wiki data",
+    };
+    let mut table = RouteTable::new();
+    for (path, methods) in [
+        ("/-/mystery", &["POST"][..]),
+        ("/-/mystery/{id}/again", &["GET", "HEAD", "POST"][..]),
+        ("/{slug}/-/mystery", &["POST"][..]),
+        // Not a write: a read of the site, and the API's own writes (a token does them).
+        ("/-/elsewhere", &["GET", "HEAD"][..]),
+        ("/{slug}/-/api/v1/things", &["POST"][..]),
+        ("/-/api/v1/things", &["POST"][..]),
+    ] {
+        table
+            .register(path.to_owned().leak(), methods.to_vec().leak(), public)
+            .unwrap();
+    }
+    assert_eq!(
+        in_neither_list(&table),
+        ["/-/mystery", "/-/mystery/{id}/again", "/{slug}/-/mystery"],
+        "an unclassified POST fails the check outside the wiki prefix as well as under it"
     );
 }
 
