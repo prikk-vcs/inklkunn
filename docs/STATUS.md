@@ -786,6 +786,8 @@
     `.git-exclude/upstream/prikk/send/draft/2026-11-25-a-recovery-order-show-cost-and-our-cases-for-the-trust-round.md`.
   - **For the owner:** the Japanese delta list (`.git-exclude/ja-review/0.4.0-messages-since-2026-11-24.md`: 20 new, 3
     changed, 1 removed, and 184 *Wiki* spellings as one line), and the letter.
+  - **CI 45512105485 on `198bb2d`:** one test failed on its first attempt (two `free_port()` calls gave the same port: a
+    test race, now P-8). It was green on the rerun of the failed job.
 
 ## Pending on the owner
 

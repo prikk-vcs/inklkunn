@@ -401,3 +401,10 @@ Hand back as `0.4.0-readiness-corrections-review-request.md`.
 **R-7, the candidate**, follows its approval: the version 0.4.0 and the CHANGELOG heading `## [0.4.0] — <date>` only, as
 for 0.3.0. The architect adds the Japanese statement to the lead at R-8.
 
+**P-8 (added 2026-11-25, from CI run 45512105485).**
+`serve::tests::a_started_server_answers_over_a_socket_with_its_headers_and_stops_when_told` failed once in CI. Its two
+`free_port()` calls returned the same port, and the server rightly refused a content origin equal to the app origin.
+It is a test race, not a product defect.
+- Take the second port while holding the first listener, or loop until the two differ.
+- Look for the same pattern in the other tests that take two ports.
+
