@@ -784,7 +784,7 @@ fn a_page_none_of_whose_texts_can_name_it_is_named_by_its_path_and_its_hidden_te
     );
     assert!(!everything(&files).contains(WORDS_1));
     // Its file is named by its path, and says what happened to it without the text.
-    let harbour_records = records(&files, "~Harbour");
+    let harbour_records = records(&files, "~%48arbour");
     assert_eq!(
         harbour_records.len(),
         2,
@@ -811,6 +811,41 @@ fn a_page_none_of_whose_texts_can_name_it_is_named_by_its_path_and_its_hidden_te
         at(anchor.first().unwrap(), "/suppressed"),
         &serde_json::json!(["content"])
     );
+}
+
+#[test]
+fn the_files_of_pages_with_no_id_are_named_so_that_a_file_system_that_ignores_case_keeps_them_apart() {
+    // `Ab` and `aB` are two pages; a bundle unpacked on a file system that does not tell them apart must keep two files (X-5).
+    let nameless = |title: &str, word: &str| format!("---\ntitle: {title}\n---\n\n{word}\n");
+    let blocks = vec![block(
+        &b(0),
+        1,
+        "a0",
+        &system("Create the wiki"),
+        &[("add", "pages/Ab.md"), ("add", "pages/aB.md")],
+    )];
+    let stand = Stand::new(
+        BTreeMap::from([
+            ("pages/Ab.md".to_owned(), nameless("Ab", "one")),
+            ("pages/aB.md".to_owned(), nameless("aB", "two")),
+        ]),
+        blocks,
+    )
+    .giving(&b(0), "pages/Ab.md", &nameless("Ab", "one"))
+    .giving(&b(0), "pages/aB.md", &nameless("aB", "two"));
+    let r = rig("case");
+    let files = export(&r, &stand, "bundle");
+    let names: Vec<&String> = files.keys().filter(|k| k.starts_with("history/")).collect();
+    assert_eq!(
+        names,
+        ["history/~%41b.jsonl", "history/~a%42.jsonl"],
+        "no upper-case letter is written as one"
+    );
+    let folded: std::collections::BTreeSet<String> =
+        names.iter().map(|n| n.to_ascii_lowercase()).collect();
+    assert_eq!(folded.len(), names.len(), "{names:?}");
+    assert_eq!(records(&files, "~%41b").len(), 1);
+    assert_eq!(records(&files, "~a%42").len(), 1);
 }
 
 #[test]

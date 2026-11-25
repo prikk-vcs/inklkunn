@@ -444,15 +444,17 @@ enum Key {
 const MAX_STEM_BYTES: usize = 255 - ".jsonl".len();
 
 /// The name of the history file of a page with no id (XFER-7: *or by its path when no identifier exists*): **`~` and the page's
-/// path under `pages/`, without `.md`, every byte but `A-Z a-z 0-9 . _ -` written as `%` and two hex digits** (`pages/Docs/Deep
-/// Page.md` is `~Docs%2FDeep%20Page`). The `~` is what no page id can start with (an id is letters, digits, `.`, `_` and `-`), so a
-/// path's name is never an id's; and the coding is one to one, so two paths never share a file. `None` when the name would be
-/// longer than a file system's name may be.
+/// path under `pages/`, without `.md`, every byte but `a-z 0-9 . _ -` written as `%` and two upper-case hex digits, the upper-case
+/// letters of the path included** (`pages/Docs/Deep Page.md` is `~%44ocs%2F%44eep%20%50age`). The `~` is what no page id can start
+/// with (an id is letters, digits, `.`, `_` and `-`), so a path's name is never an id's; the coding is one to one, so two paths
+/// never share a file; and, since the only letters left unescaped are lower-case and the escapes' hex digits are always upper-case,
+/// **two names that are not one never become one when their case is ignored** (a bundle that is unpacked on a file system that does
+/// not tell `Ab` from `aB` keeps both files). `None` when the name would be longer than a file system's name may be.
 fn path_file_name(path: &str) -> Option<String> {
     let title = path.strip_prefix("pages/")?.strip_suffix(".md")?;
     let mut name = String::from("~");
     for byte in title.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-') {
+        if byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-') {
             name.push(char::from(byte));
         } else {
             name.push_str(&format!("%{byte:02X}"));
