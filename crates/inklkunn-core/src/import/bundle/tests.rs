@@ -13,8 +13,20 @@ fn fixture(rel: &str) -> PathBuf {
 #[test]
 fn explore() {
     for (name, opts) in [
-        ("mediawiki/bundle", BundleOptions { bundle_license: Some("CC-BY-SA-4.0".into()), ..BundleOptions::default() }),
-        ("bookstack/bundle", BundleOptions { bundle_license: Some("CC0-1.0".into()), ..BundleOptions::default() }),
+        (
+            "mediawiki/bundle",
+            BundleOptions {
+                bundle_license: Some("CC-BY-SA-4.0".into()),
+                ..BundleOptions::default()
+            },
+        ),
+        (
+            "bookstack/bundle",
+            BundleOptions {
+                bundle_license: Some("CC0-1.0".into()),
+                ..BundleOptions::default()
+            },
+        ),
         ("inklkunn/bundle", BundleOptions::default()),
     ] {
         let plan = plan_bundle(&fixture(name), &ReadConfig::default(), &opts).unwrap();

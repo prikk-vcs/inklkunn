@@ -17,6 +17,8 @@
 //! | `INKLKUNN_INDEX_MAX_MIB` | (`serve`, and `wiki import-folder`: from the environment, or from `--config FILE`) the largest wiki, in MiB of everything it holds (attachments too), the title index is built from; a larger one is "could not be read now" until this is raised. **The build extracts the whole wiki into `<data dir>/wikis/…/scratch` for a moment, so the data directory needs that much free disk.** | `4096` |
 //! | `INKLKUNN_INDEX_MAX_FILES` | (`serve`, and `wiki import-folder`: from the environment, or from `--config FILE`) the most files the title index is built from | `200000` |
 //! | `INKLKUNN_PAGE_MAX_KIB` | (`serve`, and `wiki import-folder`: from the environment, or from `--config FILE`) the largest page source read, in KiB | `1024` |
+//! | `INKLKUNN_IMPORT_MAX_REVISIONS` | (`wiki import-bundle`: from the environment, or from `--config FILE`) the most revisions of a bundle that are replayed, one block each (RFC 007 D-2). A bundle with more is refused at the plan, with its count and the cap; `--no-history` imports its pages as they are, in one change. **Provisional: the default is set from the measured cost of building a history (500 blocks: 154 s), and moves only on a measurement** | `500` |
+//! | `INKLKUNN_IMPORT_MAX_HISTORY_MIB` | (`wiki import-bundle`: from the environment, or from `--config FILE`) the most MiB of `history/` a bundle may hold (RFC 007 D-5; threat model C-5e). A bundle with more is refused, and `--no-history` is the way on | `256` |
 //! | `INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS` | (`serve`) `knowledge.review_after` (RFC 005 part 2 D-10): how many days after a person last reviewed a source it is listed on the health list *Sources to review*; a source marked unavailable, or never reviewed, is listed whatever this says. The wiki fetches nothing: a person looks at a source and says so in a proposal | `1096` (three years) |
 //! | `INKLKUNN_GOVERNANCE_ENTRY_MAX` | (`serve`) the platform constitution's first limit (RFC 006 D-3): the highest `entry` rung a wiki's policy may give every signed-in account without a grant: `none`, `observer`, `questioner` or `contributor`. A policy above it is refused when it is accepted; if the operator lowers it later, a wiki above it is read as if it were at the limit, and its policy page says so | `contributor` |
 //! | `INKLKUNN_GOVERNANCE_LIMIT_DAYS` | (`serve`) the platform constitution's second limit (RFC 006 D-3): the longest a temporary protection or restriction may last, in days (1 to 3650) | `90` |
@@ -416,6 +418,37 @@ impl ReadSettings {
     }
 }
 
+/// The bundle import's two caps (RFC 007 D-2, D-5; threat model C-5e).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportSettings {
+    /// `INKLKUNN_IMPORT_MAX_REVISIONS`, default 500 (provisional).
+    pub max_revisions: u64,
+    /// `INKLKUNN_IMPORT_MAX_HISTORY_MIB`, default 256.
+    pub max_history_mib: u64,
+}
+
+impl ImportSettings {
+    /// Read the bundle import's settings through `get`.
+    pub fn load(get: &dyn Fn(&str) -> Option<OsString>) -> Result<Self, ConfigError> {
+        Ok(ImportSettings {
+            max_revisions: number_setting(
+                get,
+                "INKLKUNN_IMPORT_MAX_REVISIONS",
+                inklkunn_core::import::bundle::DEFAULT_MAX_REVISIONS,
+                1,
+                1_000_000,
+            )?,
+            max_history_mib: number_setting(
+                get,
+                "INKLKUNN_IMPORT_MAX_HISTORY_MIB",
+                inklkunn_core::import::bundle::DEFAULT_MAX_HISTORY_BYTES >> 20,
+                1,
+                65_536,
+            )?,
+        })
+    }
+}
+
 /// Read the platform constitution's two limits (RFC 006 D-3) through `get`: `INKLKUNN_GOVERNANCE_ENTRY_MAX` and
 /// `INKLKUNN_GOVERNANCE_LIMIT_DAYS`, the defaults where they are not set. A value that is not one of the words, or not
 /// in the range, is a start-up error that names the variable.
@@ -534,6 +567,8 @@ pub const KNOWN: &[&str] = &[
     "INKLKUNN_INDEX_MAX_FILES",
     "INKLKUNN_PAGE_MAX_KIB",
     "INKLKUNN_KNOWLEDGE_REVIEW_AFTER_DAYS",
+    "INKLKUNN_IMPORT_MAX_REVISIONS",
+    "INKLKUNN_IMPORT_MAX_HISTORY_MIB",
     "INKLKUNN_GOVERNANCE_ENTRY_MAX",
     "INKLKUNN_GOVERNANCE_LIMIT_DAYS",
     "INKLKUNN_APPEAL_PER_PERSON_PER_DAY",

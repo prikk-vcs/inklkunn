@@ -662,6 +662,8 @@ fn judge(
         source_url: manifest.source_url.as_deref().map(shown),
         source_engine: manifest.source_engine.as_deref().map(shown),
         pseudonymized: manifest.pseudonymized,
+        languages: manifest.languages.iter().map(|l| shown(l)).collect(),
+        visibility_default: manifest.visibility_default.clone(),
         unknown_manifest_keys: manifest.unknown_keys.clone(),
         fidelity_declared: manifest.fidelity_level,
         degraded_at_source: manifest.degraded.iter().map(|c| shown(c)).collect(),

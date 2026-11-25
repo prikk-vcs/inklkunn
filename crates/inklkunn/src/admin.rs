@@ -37,6 +37,7 @@ use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{
     ExportError, ExportNote, HistoryInputs, export_bundle_with, knowledge_records,
 };
+use inklkunn_core::import::bundle::{BundleOptions, plan_bundle, shown};
 use inklkunn_core::import::{ImportError, judge_knowledge, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::read::ReadService;
@@ -51,10 +52,10 @@ use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, PrikkCli, Storage};
 use inklkunn_store::{
     AuditEvent, AuditOutcome, AuditSink, DisplayName, NewWiki, PrikkVersion, RecoveryReason,
-    RootLayout, Slug, SqliteStore, Visibility, WikiId, WikiRecord, WikiStore,
+    RootLayout, Slug, SqliteStore, StoreError, Visibility, WikiId, WikiRecord, WikiStore,
 };
 
-use crate::config::{ReadSettings, Settings, UNCONFINED_BANNER};
+use crate::config::{ImportSettings, ReadSettings, Settings, UNCONFINED_BANNER};
 use crate::keys::{find_wiki, key_authority, make_private_directory};
 
 /// The operator at the host, in the audit trail.
@@ -79,6 +80,8 @@ pub(crate) enum Command {
         /// reads under (K57).
         config: Option<String>,
     },
+    /// `wiki import-bundle`: a new wiki from a Portable Wiki Bundle (RFC 007 D-1).
+    ImportBundle(ImportBundleArgs),
     Export {
         wiki: String,
         bundle: Option<String>,
@@ -100,11 +103,37 @@ pub(crate) enum Command {
     },
 }
 
+/// What `wiki import-bundle <new-wiki> <bundle-dir>` was asked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ImportBundleArgs {
+    /// The slug of the new wiki.
+    pub(crate) slug: String,
+    /// The bundle, a directory.
+    pub(crate) dir: String,
+    /// `--name`, as `wiki create` has it.
+    pub(crate) name: String,
+    /// `--lang`, as `wiki create` has it.
+    pub(crate) languages: Vec<String>,
+    /// `--visibility`, as `wiki create` has it.
+    pub(crate) visibility: Option<String>,
+    /// `--bundle-license`: the licence of a bundle that declares none.
+    pub(crate) bundle_license: Option<String>,
+    /// `--leave-out-incompatible`.
+    pub(crate) leave_out_incompatible: bool,
+    /// `--no-history`.
+    pub(crate) no_history: bool,
+    /// `--dry-run`.
+    pub(crate) dry_run: bool,
+    /// `--config FILE`.
+    pub(crate) config: Option<String>,
+}
+
 impl Command {
     /// The configuration file the command was given (`--config FILE`), when it takes one.
     pub(crate) fn config_file(&self) -> Option<&str> {
         match self {
             Command::ImportFolder { config, .. } => config.as_deref(),
+            Command::ImportBundle(args) => args.config.as_deref(),
             _ => None,
         }
     }
@@ -116,10 +145,11 @@ pub(crate) struct Usage(pub String);
 
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|private]\n       \
 inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing] [--config <file>]\n       \
+inklkunn [--dev-unconfined] wiki import-bundle <new-wiki> <bundle-dir> --name <name> [--dry-run] [--bundle-license <spdx>] [--leave-out-incompatible] [--no-history] [--lang <tag>]... [--visibility public|internal|restricted] [--config <file>]\n       \
 inklkunn [--dev-unconfined] wiki export <wiki> [--bundle <dir>] [--archive <file>]\n       \
 inklkunn [--dev-unconfined] wiki recover <wiki> [--plan] [--discard-queued-patch <patch id>]\n       \
 inklkunn [--dev-unconfined] wiki metrics <wiki> [--days <n> | --from <unix> --to <unix>]\n\
-<wiki> is the wiki's slug or id. `import-folder --config <file>` reads the file `serve --config` reads (the environment still wins over it), so the import is judged under the same limits as the server. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing (prikk's own preview of taking a queued patch back is shown by a run, not by --plan). `--discard-queued-patch <patch id>` asks to take the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and the plan and the audit trail say whether it was used.";
+<wiki> is the wiki's slug or id. `import-bundle` makes a NEW wiki from a Portable Wiki Bundle (a directory; unpack an archive first): the wiki takes the bundle's licence (`--bundle-license` declares it for a bundle that has none), `--dry-run` prints the plan and writes nothing, `--leave-out-incompatible` leaves out the files whose licence the wiki cannot take, `--no-history` imports the pages as they are, in one change; `wiki import-folder` adds pages to a wiki that exists. `import-folder --config <file>` reads the file `serve --config` reads (the environment still wins over it), so the import is judged under the same limits as the server. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing (prikk's own preview of taking a queued patch back is shown by a run, not by --plan). `--discard-queued-patch <patch id>` asks to take the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and the plan and the audit trail say whether it was used.";
 
 /// Parse what follows `wiki` for `create`, `import-folder` and `export`.
 pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
@@ -197,6 +227,68 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
                 replace_existing,
                 config,
             })
+        }
+        "import-bundle" => {
+            let (dir, rest) = match flags.split_first() {
+                Some((d, r)) if !d.starts_with("--") => (d.clone(), r),
+                _ => return Err(usage("which bundle (a directory)?")),
+            };
+            flags = rest;
+            let mut args = ImportBundleArgs {
+                slug: first,
+                dir,
+                name: String::new(),
+                languages: Vec::new(),
+                visibility: None,
+                bundle_license: None,
+                leave_out_incompatible: false,
+                no_history: false,
+                dry_run: false,
+                config: None,
+            };
+            let mut name = None;
+            let mut it = flags.iter();
+            while let Some(flag) = it.next() {
+                match flag.as_str() {
+                    "--name" => name = Some(value("--name", &mut it)?),
+                    "--lang" => args.languages.push(value("--lang", &mut it)?),
+                    "--visibility" => args.visibility = Some(value("--visibility", &mut it)?),
+                    "--bundle-license" => {
+                        if args.bundle_license.is_some() {
+                            return Err(usage("--bundle-license is given once"));
+                        }
+                        args.bundle_license = Some(value("--bundle-license", &mut it)?);
+                    }
+                    "--leave-out-incompatible" => args.leave_out_incompatible = true,
+                    "--no-history" => args.no_history = true,
+                    "--dry-run" => args.dry_run = true,
+                    "--license" => {
+                        // One name for one thing: the wiki's licence is the bundle's, and the option that says it is another.
+                        return Err(usage(
+                            "a wiki made from a bundle takes the bundle's licence, so there is no --license; --bundle-license declares the licence of a bundle that declares none",
+                        ));
+                    }
+                    "--config" => {
+                        if args.config.is_some() {
+                            return Err(usage("--config is given once"));
+                        }
+                        let file = value("--config", &mut it)?;
+                        if file.starts_with("--") {
+                            return Err(usage(&format!(
+                                "--config needs a file, and `{file}` is an option"
+                            )));
+                        }
+                        args.config = Some(file);
+                    }
+                    other => {
+                        return Err(usage(&format!(
+                            "`{other}` is not an option of `import-bundle`"
+                        )));
+                    }
+                }
+            }
+            args.name = name.ok_or_else(|| usage("a wiki needs a name: --name <name>"))?;
+            Ok(Command::ImportBundle(args))
         }
         "export" => {
             let (mut bundle, mut archive) = (None, None);
@@ -460,6 +552,7 @@ fn run(
             out,
             err,
         ),
+        Command::ImportBundle(args) => import_bundle(settings, get_env, now, args, out),
         Command::Export {
             wiki,
             bundle,
@@ -871,6 +964,113 @@ fn import_folder(
             done.and(Err(e.to_string()))
         }
     }
+}
+
+/// `inklkunn wiki import-bundle`: a new wiki from a Portable Wiki Bundle (RFC 007 D-1, D-4 – D-6; handoff I-T2). **This build plans
+/// and reports, and does not replay**: `--dry-run` prints the plan and writes nothing, and a run without it prints the same plan
+/// and then says that the import itself is not built yet (the replay is the next task). Nothing is written either way: the plan
+/// needs neither prikk nor the signer, and a deployment without a store is as good as one without the wiki.
+fn import_bundle(
+    settings: &Settings,
+    get_env: &dyn Fn(&str) -> Option<OsString>,
+    now: i64,
+    args: &ImportBundleArgs,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    // The request first, as `create` judges it: nothing is read for one that cannot be a wiki.
+    let slug = Slug::new(&args.slug)
+        .map_err(|e| format!("`{}` is not a usable slug ({e})", shown(&args.slug)))?;
+    let display_name = DisplayName::new(&args.name)
+        .map_err(|e| format!("`{}` is not a usable name ({e})", shown(&args.name)))?;
+    let mut new = NewWiki::new(slug.clone(), display_name);
+    new.languages = args.languages.clone();
+    if let Some(v) = &args.visibility {
+        new.visibility = Visibility::parse(v).ok_or_else(|| {
+            format!(
+                "`{}` is not a visibility (public, internal or restricted)",
+                shown(v)
+            )
+        })?;
+    }
+    WikiRecord::from_new(WikiId::new(), new.clone(), now).map_err(|e| e.to_string())?;
+    // A wiki that exists is never the target: `import-folder` is the way to add pages to one.
+    if settings.store_path().is_file() {
+        let store = existing_store(settings)?;
+        match store.by_slug(&slug) {
+            Ok(_) => {
+                return Err(format!(
+                    "a wiki `{slug}` exists already; `wiki import-bundle` makes a new wiki and never changes one (`wiki import-folder {slug} <folder>` adds pages to a wiki that exists)"
+                ));
+            }
+            Err(StoreError::NotFound) => {}
+            Err(e) => return Err(format!("the store could not be read: {e}")),
+        }
+    }
+    let folder = absolute(&args.dir)?;
+    // The limits the server reads under: a page is judged at every revision under the same ones.
+    let read_config = ReadSettings::load(get_env)
+        .map_err(|e| e.to_string())?
+        .read_config();
+    let caps = ImportSettings::load(get_env).map_err(|e| e.to_string())?;
+    let options = BundleOptions {
+        bundle_license: args.bundle_license.clone(),
+        leave_out_incompatible: args.leave_out_incompatible,
+        no_history: args.no_history,
+        max_revisions: caps.max_revisions,
+        max_history_bytes: caps.max_history_mib << 20,
+    };
+    let plan = plan_bundle(&folder, &read_config, &options).map_err(|e| e.to_string())?;
+    // A bundle that says it is not for everyone does not become a public wiki unless the admin says so.
+    let bundle_is_open = plan
+        .report
+        .visibility_default
+        .as_deref()
+        .is_none_or(|v| v == "public");
+    let visibility = match (&args.visibility, bundle_is_open) {
+        (Some(_), _) => new.visibility,
+        (None, true) => Visibility::Public,
+        (None, false) => plan
+            .report
+            .visibility_default
+            .as_deref()
+            .and_then(Visibility::parse)
+            .unwrap_or(Visibility::Restricted),
+    };
+    let _ = writeln!(
+        out,
+        "plan for a new wiki `{slug}` ({}), visibility {}{}, from the bundle at {}",
+        shown(&args.name),
+        visibility.as_str(),
+        if args.visibility.is_none() && !bundle_is_open {
+            " (the bundle says it is not public; --visibility public makes it public)"
+        } else {
+            ""
+        },
+        shown(&folder.display().to_string())
+    );
+    let _ = write!(out, "{}", plan.render());
+    if !plan.is_importable() {
+        let n = plan.plan.refused.len();
+        let refused = format!(
+            "{n} entr{} refused, so none of the bundle would be imported; nothing was written",
+            if n == 1 { "y is" } else { "ies are" }
+        );
+        if args.dry_run {
+            let _ = writeln!(
+                out,
+                "dry run: nothing was written; the import would be refused"
+            );
+        }
+        return Err(refused);
+    }
+    if args.dry_run {
+        let _ = writeln!(out, "dry run: nothing was written");
+        return Ok(());
+    }
+    Err(
+        "the import itself is not built yet: this build plans a bundle's import and reports it (--dry-run), and cannot run it; nothing was written"
+            .to_owned(),
+    )
 }
 
 /// One export of the bundle, saying on `out` what the history's records cost and when it waits (RFC 007 D-7): the number of

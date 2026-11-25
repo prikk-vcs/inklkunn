@@ -82,7 +82,7 @@ pub(crate) fn run(
         }
         [
             "wiki",
-            "create" | "import-folder" | "export" | "recover" | "metrics",
+            "create" | "import-folder" | "import-bundle" | "export" | "recover" | "metrics",
             ..,
         ] => {
             let rest: Vec<String> = args.iter().skip(1).cloned().collect();
@@ -118,7 +118,7 @@ pub(crate) fn run(
         other => {
             let _ = writeln!(
                 err,
-                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export`, `account`, `wiki keys`, `wiki create`, `wiki import-folder`, `wiki export`, `wiki recover` and `wiki metrics`\n{}\n{}\n{}",
+                "inklkunn: unknown command `{}`; there are `--version`, `serve`, `audit export`, `account`, `wiki keys`, `wiki create`, `wiki import-folder`, `wiki import-bundle`, `wiki export`, `wiki recover` and `wiki metrics`\n{}\n{}\n{}",
                 other.join(" "),
                 SERVE_USAGE,
                 keys::USAGE,

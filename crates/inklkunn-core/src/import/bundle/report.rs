@@ -120,6 +120,10 @@ pub struct BundleReport {
     pub source_engine: Option<String>,
     /// The bundle says the people's identities were replaced by stable identifiers.
     pub pseudonymized: bool,
+    /// The languages the bundle says its pages are in (the wiki's are `--lang`'s, or English).
+    pub languages: Vec<String>,
+    /// `visibility_default`: what the bundle says who may read it (the wiki's is `--visibility`'s).
+    pub visibility_default: Option<String>,
     /// Manifest keys this build does not know (never interpreted).
     pub unknown_manifest_keys: Vec<String>,
     /// `fidelity.level` as declared: **reported, not trusted**.
@@ -246,6 +250,17 @@ impl BundleReport {
             out.push_str(
                 "  the bundle says its people's identities were replaced by stable identifiers\n",
             );
+        }
+        if !self.languages.is_empty() {
+            out.push_str(&format!(
+                "  languages:       {} (the wiki's are what --lang says, English without it)\n",
+                self.languages.join(", ")
+            ));
+        }
+        if let Some(v) = &self.visibility_default {
+            out.push_str(&format!(
+                "  visibility:      {v} (the bundle's claim; the wiki's is what --visibility says)\n"
+            ));
         }
         match self.fidelity_declared {
             Some(level) => out.push_str(&format!(
@@ -470,6 +485,8 @@ impl BundleReport {
                 "source_url": self.source_url,
                 "source_engine": self.source_engine,
                 "pseudonymized": self.pseudonymized,
+                "languages": lines(&self.languages),
+                "visibility_default": self.visibility_default,
                 "unknown_manifest_keys": lines(&self.unknown_manifest_keys),
             },
             "fidelity": {
