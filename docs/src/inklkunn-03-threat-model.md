@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15, RR-16; the tests of §7 are named at 0.4.0's readiness: §7.5, 2026-11-25). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
+| Version | **v0.5, 2026-11-26** (0.5.0: RFC 007, interchange: T-5 rewritten with C-5a – C-5h, C-15g, C-15h, C-17k, INV-13's surfaces, RR-17). Before it: **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15, RR-16; the tests of §7 are named at 0.4.0's readiness: §7.5, 2026-11-25). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -187,15 +187,34 @@ about its type, a rename to a path outside `pages/` (TB-3; A-HOST, A-HISTORY).
 
 ### T-5 — Hostile imports (TB-10)
 Archive traversal, symbolic links, deep nesting, size bombs, a bundle whose manifest lies, a prikk archive
-carrying keys to adopt.
+carrying keys to adopt, and (v0.5, RFC 007) **a history that lies**: forged times, authors, licences and revision
+ids, a converter's output taken for the source's.
 
-- **C-5a** Imports are admin-only, dry-run first, bounded, extracted into a private scratch directory with
-  every entry's path validated; symbolic links refused; checksums verified when present (wiki-commons
-  SEC-7).
+- **C-5a** Imports are admin-only, dry-run first and bounded. A bundle is read as a **directory only** (no archive
+  parser), walked without following a link, with every entry's path validated. **Checksums are verified strictly
+  when present** (every file against the manifest's `checksums` file, and every file the file does not name), and
+  their absence is said in the report and in the wiki's notice (wiki-commons SEC-7; RFC 007 D-5).
 - **C-5b** A prikk archive import never adopts carried keys; the wiki's own keys remain the only trusted
   signers (prikk's own rule: carried, not adopted).
-- **C-5c** Imported content goes through the same sanitizer and the same path mapping as a proposal, and
-  arrives as attributed changes with an import report (IX-3).
+- **C-5c** Imported content goes through the same sanitizer and the same path mapping as a proposal, **at every
+  revision**, and arrives as the wiki's own changes. **The source's author and time are data, never a signature or a
+  trust label** (*Imported. Originally by …*), a source's name is never linked to or matched with a local account,
+  and the import report is the plan, shown before anything is written (IX-3; RFC 007 D-3, D-6).
+- **C-5d** (v0.5) **A bundle's history is a claim.** Its `at`, author, licence and `rev` are recorded as the source's
+  and never shown as inklkunn's facts. Within a page, its file's order is its history: a `parent` or `at` that breaks
+  it refuses the import, so a forged time cannot rearrange a page (RFC 007 D-2).
+- **C-5e** (v0.5) **Bounds:** a revision cap (`INKLKUNN_IMPORT_MAX_REVISIONS`, set from measurement), the page cap
+  at every revision, a cap on the bytes of `history/`, record fields read by type, and the replay's cost stated
+  before the run. Nothing in a bundle is fetched, and no converter is run (RFC 007 D-2, D-5).
+- **C-5f** (v0.5) **No half-history is ever served.** `wiki import-bundle` is *create wiki* extended to the whole
+  history: the wiki appears only when complete. What a killed import leaves is reported by the start-up sweep and
+  removed only by `wiki discard-unfinished`, a person's audited act, refused for any wiki that was ever stored
+  (RFC 007 D-1; IS-13; R9).
+- **C-5g** (v0.5) **Checksums show integrity, not authorship.** Anyone can write them: they prove that the bundle the
+  admin checked is the bundle that was read, and nothing about who made it.
+- **C-5h** (v0.5) **A licence is never relabelled.** The new wiki takes the bundle's licence (or one the admin
+  declares when the bundle has none, which the notice says), and a page's or an attachment's own licence that is
+  incompatible is refused, never imported under another (RFC 007 D-4).
 
 ### T-6 — Cross-site scripting through rendered content (TB-7)
 - **C-6a** Strict CSP, no inline script, no third-party scripts; `nosniff`, `frame-ancestors 'none'`,
@@ -306,6 +325,13 @@ forgotten (register item 14; A-CONTENT).
 - **C-15e** The export carries tombstones, never hidden content (RFC 006 D-13; wiki-commons XFER-7).
 - **C-15f** Seeing hidden content through inklkunn is the `moderate` rung's alone, by an explicit act that is audited
   (RFC 006 D-8).
+- **C-15g** (v0.5) **An imported history's people are permanent.** The names a bundle's history carries enter the
+  repository's signed history, which nothing short of the permanent removal procedure (C-15b) changes. The dry run's
+  report says how many people the history names, SECURITY.md says it, and a `users.yaml` entry with an e-mail
+  address refuses the import (RFC 007 D-3).
+- **C-15h** (v0.5) **The export reads every revision's text through the one reader** (`text_at`), so a hidden
+  revision is a record with `suppressed: [content]` and no text, and an export never has a gap where the index has not
+  settled (RFC 007 D-7).
 
 ### T-16 — The planeter boundary (TB-9)
 A forged identity assertion from a fake planeter; planeter's guarantees weakened by inklkunn.
@@ -385,6 +411,11 @@ Claims and sources are text from strangers that a reader is invited to trust. Th
     the three-part tail. A user's directory that looks like one is left alone.
   - Network filesystems stay unsupported (RR-10).
 
+- **C-17k** (v0.5) **The interwiki map is a governance file** (`governance/interwiki.yaml`, RFC 007 D-8): one change to
+  a template redirects every link with its prefix, in every page, so it needs the policy-change rung and is validated
+  at acceptance. Templates are `https:` with a host, no user information and `{title}` as the only placeholder, in the
+  path or the query; the links are rendered external (`rel="nofollow ugc"`). An imported map is judged the same way.
+
 ### T-18 — The sandbox and the container (TB-4, TB-11; IS-19)
 prikk and `curl` run in bubblewrap so that a parser fault, or a hostile response, stays contained (C-9a, RR-3). Three
 ways that containment can fail or weaken:
@@ -452,7 +483,8 @@ ways that containment can fail or weaken:
 - **INV-12 — Confined or refused.** prikk and `curl` run inside bubblewrap on every supported host layout. Otherwise
   the server refuses to run them, unless an operator passed the development flag and the banner says so.
 - **INV-13 — Hidden is hidden everywhere.** No inklkunn surface, page or API member serves content hidden by
-  moderation to a principal without the `moderate` rung (RFC 006 D-8; C-15d).
+  moderation to a principal without the `moderate` rung (RFC 006 D-8; C-15d). (v0.5: the surfaces include the export's revision `content`,
+  `listProposals`, `listProposalComments` and the proposals feed; RFC 007 D-7, D-9.)
 - **INV-14 — A wiki cannot lock itself.** An admin of a wiki can always change its `governance/` (RFC 006 D-4; C-3f).
 
 ## 5. Residual risks and assumptions (RR-…, ASSUME-…)
@@ -542,6 +574,10 @@ ways that containment can fail or weaken:
   - M61 and M62 fixed the state that soak did find, so this may have been an instance of it. That is not shown.
   - **If it recurs, the kept log is the first thing to read.** The dev team keeps the soak harness, and
     the release rehearsal runs the matrix once.
+- **RR-17 — A long history cannot yet be imported with its history** (RFC 007 D-2; ledger PK-50). One source
+  revision is one block, and prikk's cost per block grows with the log (500 blocks: 154 s; 2,000: 1,438 s). The
+  revision cap refuses longer histories with the count, the cap and the way on (`--no-history`, the final state as
+  one change). The cap moves only on a measurement, at the re-baseline of prikk 0.60.0's `show` fix or later.
 - **ASSUME-1** The operator and the host are trusted; inklkunn defends against network actors and malicious
   users, not a hostile operator.
 - **ASSUME-2** prikk's offline `verify` is correct and is the arbiter of history integrity.

@@ -41,6 +41,7 @@ subjects not yet written: 005 knowledge layer
 | 004 | [Proposals: propose, review, accept and seal; re-author a moved base gently; never lose a half-state](accepted/004-proposals.md) | M2 | **accepted** 2026-10-28; T1 – T8 and corrections P1 – P12 built; P2 redone as **P2′** (review of 2026-11-01) before writes are switched on; the sign-in handoff's U1 – U5 built (U1 – U4 conditionally approved, U5 approved), U6 after P2′ |
 | 005 | [Knowledge layer, part 1: claim identity, attachment to pages, one change, epistemic state (an investigation)](accepted/005-knowledge-layer-part-1-claim-identity.md) | M3 | **parts 1 and 2 accepted** 2026-10-31; spike C approved; K-T1 – K-T4 **approved** 2026-11-01; K-T5 on after 0.2.0 |
 | 006 | [Governance and moderation: rules a wiki can read and change, and moderation that hides without erasing](accepted/006-governance-and-moderation.md) | M4 (0.4.0) | **accepted** 2026-11-19 (Q-1 – Q-5 as recommended); handoff `handoffs/006-governance-and-moderation/governance-handoff-v1.md` |
+| 007 | [Interchange and API: a wiki that comes in with its history, and leaves with it](accepted/007-interchange-and-api.md) | M5 (0.5.0) | **accepted** 2026-11-26 (Q-1 – Q-5 as recommended, with eight refinements from the philosophy check); handoff `handoffs/007-interchange-and-api/interchange-handoff-v1.md` |
 | 010 | [Upstream tracking and supply-chain maintenance](done/010-upstream-and-supply-chain-maintenance.md) | all | **done** 2026-10-28 (approved after review); its procedures run at every release and re-baseline |
 
 ## Current state

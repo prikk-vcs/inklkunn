@@ -443,7 +443,8 @@ an opaque score.
   HTML fragment), history, revisions, diffs, backlinks, health views, search, recent changes, proposals,
   discussions. Writes, per authorization: propose, revise, comment, review, accept, with optimistic
   concurrency by `ETag` or base revision (API-11). Errors as problem details (RFC 9457) with stable codes;
-  `Link` pagination; rate-limit headers; scopes enforced per endpoint (API-13, API-14); planeter's API
+  `Link` pagination; rate-limit headers once the IETF's header fields are published as an RFC (until then a refusal
+  carries `Retry-After`, RFC 9110; RFC 007 Q-4, ruled 2026-11-26); scopes enforced per endpoint (API-13, API-14); planeter's API
   conventions where the two overlap.
 - **IX-5 — Feeds.** Atom for the recent changes of the wiki, a namespace and a page, and for proposals
   (API-6).
