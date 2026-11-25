@@ -20,6 +20,9 @@
 //!   change of the rules are **not served on any surface of the table** (`inklkunn_core::tombstone::surfaces::SURFACES`,
 //!   iterated here: every row, each address of it, as an anonymous reader and as a moderator, in the HTML and in the API
 //!   where the row has one), every one says why in its place, and the unhide brings each back on the surfaces that show it;
+//!   with the hides in place the wiki is **exported** (no byte of the bundle carries what is hidden; the history lines and
+//!   the manifest carry the tombstones), the moderator's **show hidden content** act is audited and refused to a contributor,
+//!   and a hide of the text of an open proposal **declines it in the same act** (`hides.rs`);
 //! - (d) the author of a hidden revision appeals, a person who did not hide it reverses it, the appeal pages say which rung
 //!   decided under which rules, and the content is back;
 //! - (e) a page is removed (`410`, with the removal's summary), the two rows of the table that speak of a removed page are
@@ -1175,8 +1178,8 @@ impl Story {
         }
     }
 
-    /// Hide `parts` of the item whose form is at `query` as Maya, through the form.
-    fn hide(&mut self, query: &str, parts: &[&str]) {
+    /// Hide `parts` of the item whose form is at `query` as Maya, through the form; the answer it gave.
+    fn hide(&mut self, query: &str, parts: &[&str]) -> Reply {
         let page = self.maya.browser.get(&format!("{MODERATE}?{query}"));
         assert_eq!(page.status, 200, "{query}: {}", page.body);
         let mut form = form_to(&page, MODERATE);
@@ -1192,6 +1195,7 @@ impl Story {
         form.check("category", &category);
         let hid = self.maya.browser.submit(&form, None);
         assert_eq!(hid.status, 200, "{query}: {}\n{}", hid.head, hid.body);
+        hid
     }
 
     /// Every hide in force is undone, through the moderation log's own form.
@@ -1308,6 +1312,11 @@ impl Story {
             &log.body,
         );
 
+        // The export, the *show hidden content* act and a hide that declines a proposal, with the hides in place.
+        self.export_with_the_hides_in_place();
+        self.show_hidden_content(&revision_query);
+        self.a_hide_declines_an_open_proposal();
+
         let undone = self.unhide_all();
         self.t
             .did("Maya restores each hide from the moderation log");
@@ -1321,8 +1330,11 @@ impl Story {
         self.t
             .did("every row of the table once more, shown, as a reader and as the moderator");
         self.check_table(&all, false, &[]);
+        self.export_with_the_hides_undone();
     }
 }
+
+mod hides;
 
 // ------------------------------------------------------------------------------------ (d) an appeal
 
