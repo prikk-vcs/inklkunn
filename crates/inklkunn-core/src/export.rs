@@ -5,7 +5,7 @@
 //!   `knowledge/`, `governance/`, `.prikkignore`), read from **one `extract` pinned to the tip's block id**, so the
 //!   bundle is one state and a write in between cannot mix two.
 //! - **`history/<page id>.jsonl`**, one **wiki-commons history record** per revision of the page, oldest first (RFC 007 D-7;
-//!   XFER-7; the module [`history`](self::history) says what each carries): `rev` (the block's id), `parent`, `at`, `type`,
+//!   XFER-7; the module `history` says what each carries): `rev` (the block's id), `parent`, `at`, `type`,
 //!   `author`, `summary`, **the page's full text** (`content` and its `sha256`, read through the one reader of a page's text
 //!   at a block) and inklkunn's own facts under one `inklkunn` key. A page since removed or renamed has its file too, by its
 //!   page id; a change to a path that is not a page (an attachment, a rule) has no file to belong to and is counted in the

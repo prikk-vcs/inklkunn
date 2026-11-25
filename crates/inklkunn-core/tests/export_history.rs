@@ -292,7 +292,6 @@ fn try_export(
         &records,
         &mut inputs,
     );
-    drop(inputs);
     (said.into_inner(), result)
 }
 

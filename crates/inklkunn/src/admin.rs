@@ -911,6 +911,7 @@ fn export_bundle_once(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn export(
     settings: &Settings,
     get_env: &dyn Fn(&str) -> Option<OsString>,

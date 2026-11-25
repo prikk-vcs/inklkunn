@@ -309,7 +309,7 @@ fn view_made(r: &Rig, name: &str, kind: ViewKind, by: &AccountId, at: i64, ended
 fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_changes_nothing_of_it()
  {
     let r = rig("threads");
-    let (ann, ben) = (person(&*r.store, "Ann"), person(&*r.store, "Ben"));
+    let (ann, ben) = (person(&r.store, "Ann"), person(&r.store, "Ben"));
     let first = say(
         &r,
         C1,
@@ -625,7 +625,7 @@ fn an_export_leaves_a_directory_beside_its_destination_that_it_did_not_make_whol
 fn the_names_of_the_people_are_the_names_they_have_and_a_person_the_service_lost_is_nameless_not_dropped()
  {
     let r = rig("names");
-    let ann = person(&*r.store, "Ann");
+    let ann = person(&r.store, "Ann");
     say(&r, C1, &ann, None, "Hello", 5);
     let discussions =
         claim_discussions(&*r.store, &*r.store, &Suppressions::default(), &r.wiki.id).unwrap();
