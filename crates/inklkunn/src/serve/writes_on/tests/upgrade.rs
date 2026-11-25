@@ -269,6 +269,7 @@ pub(super) fn masked(html: &str, ports: [u16; 2]) -> String {
         .replace(&format!("localhost:{}", ports[0]), "localhost:PORT")
         .replace(&format!("localhost:{}", ports[1]), "localhost:CONTENT-PORT")
         .replace("inklkunn version 0.2.0", "inklkunn version VERSION")
+        .replace("inklkunn version 0.3.0", "inklkunn version VERSION")
         .replace(
             &format!("inklkunn version {}", env!("CARGO_PKG_VERSION")),
             "inklkunn version VERSION",
