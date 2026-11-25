@@ -77,9 +77,11 @@ impl ProcessTable for ProcFs {
             if argv.is_empty() {
                 continue; // a kernel thread, or one that is exiting
             }
-            let cwd = std::fs::read_link(at.join("cwd"))
-                .ok()
-                .map(|p| p.display().to_string());
+            let cwd = match cwd_read(std::fs::read_link(at.join("cwd"))) {
+                CwdRead::Gone => continue, // it went between the two reads, as the command line's NotFound says
+                CwdRead::Known(cwd) => Some(cwd),
+                CwdRead::Unreadable => None,
+            };
             out.push(ProcessInfo {
                 pid,
                 parent: parent_of(&at).unwrap_or(0),
@@ -89,6 +91,30 @@ impl ProcessTable for ProcFs {
             });
         }
         out
+    }
+}
+
+/// What reading a process's working directory (`/proc/<pid>/cwd`) said.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CwdRead {
+    /// The directory it works in.
+    Known(String),
+    /// **The process is gone** (`NotFound`): it exited between the read of its command line and this one, as any process of the host
+    /// may while the table is read. It is not working here: it is left out, as one whose command line vanished is. (Without this
+    /// a prikk of *another* session that exited in that instant was counted as a tool whose directory could not be read, and a
+    /// plan stopped as `ForeignProcess` for a process that no longer existed.)
+    Gone,
+    /// It could not be read for another reason (permission: a process of another user, or one that hardened itself): **a tool
+    /// whose directory is not known might be working here**, and is counted as foreign: the deliberate, fail-closed answer.
+    Unreadable,
+}
+
+/// Read the answer of `read_link` on `/proc/<pid>/cwd`.
+pub(crate) fn cwd_read(read: std::io::Result<std::path::PathBuf>) -> CwdRead {
+    match read {
+        Ok(path) => CwdRead::Known(path.display().to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => CwdRead::Gone,
+        Err(_) => CwdRead::Unreadable,
     }
 }
 

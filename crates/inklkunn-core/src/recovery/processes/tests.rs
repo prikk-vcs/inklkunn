@@ -127,3 +127,28 @@ fn the_real_table_lists_this_process_and_its_parent_chain_ends() {
         "ourselves are not foreign"
     );
 }
+
+#[test]
+fn a_process_whose_directory_vanished_is_gone_and_one_whose_directory_may_not_be_read_stays_foreign()
+ {
+    use super::{CwdRead, cwd_read};
+    use std::io::{Error, ErrorKind};
+    assert_eq!(
+        cwd_read(Ok("/srv/wiki".into())),
+        CwdRead::Known("/srv/wiki".to_owned())
+    );
+    // It exited between the two reads: not working here.
+    assert_eq!(
+        cwd_read(Err(Error::from(ErrorKind::NotFound))),
+        CwdRead::Gone
+    );
+    // Another user's process, or one that hardened itself: its directory is not known, and a tool might be working here.
+    assert_eq!(
+        cwd_read(Err(Error::from(ErrorKind::PermissionDenied))),
+        CwdRead::Unreadable
+    );
+    assert_eq!(
+        cwd_read(Err(Error::from(ErrorKind::Other))),
+        CwdRead::Unreadable
+    );
+}
