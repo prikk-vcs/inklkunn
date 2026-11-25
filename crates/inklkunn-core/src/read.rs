@@ -153,8 +153,9 @@ pub use why::{
     Paragraph, Reach, WhyOutcome, WhyPage, WhyParagraph,
 };
 pub use writes::{
-    LaterWriter, LaterWriters, MAX_FOLLOWED_MOVES, MAX_INDEXED_SHOWS, MAX_RENAME_HOPS,
-    MAX_WARM_ROUNDS,
+    AskedFor, BACKGROUND_STEP_SHOWS, BACKGROUND_STEP_TIME, BackgroundStep, DEFAULT_REQUEST_BUDGET,
+    LaterWriter, LaterWriters, MAX_BACKGROUND_VIEWS, MAX_FOLLOWED_MOVES, MAX_INDEXED_SHOWS,
+    MAX_RENAME_HOPS, Monotonic, WritesBackground,
 };
 
 // The read API's reads (handoff 003 T8).
@@ -443,6 +444,14 @@ pub struct ReadService {
     history: history::State,
     /// One lock per `(wiki, view)` for the writes index, which the one reader of a page's text at a block builds, one reader at a time.
     writes_locks: writes::Locks,
+    /// The clock a request's time budget for building that index is read from (a test gives one that ticks by itself).
+    monotonic: writes::Monotonic,
+    /// How long a request may spend building the index (correction P-5).
+    writes_budget: Duration,
+    /// What builds the index in the background when a content hide is recorded; `None`: nothing does, and the hide builds it itself.
+    writes_background: Option<Arc<dyn writes::WritesBackground>>,
+    /// How many times a request built something of an index: what the background build yields to.
+    request_advances: AtomicU64,
     /// The title indexes at a base with what a hidden change wrote taken out, each held with the moderation log's newest event it was
     /// made under (correction L-10).
     titles_filtered: past::FilteredTitles,
@@ -495,6 +504,10 @@ impl ReadService {
             flags: None,
             history: history::State::default(),
             writes_locks: Mutex::new(HashMap::new()),
+            monotonic: writes::real_clock(),
+            writes_budget: writes::DEFAULT_REQUEST_BUDGET,
+            writes_background: None,
+            request_advances: AtomicU64::new(0),
             titles_filtered: past::FilteredTitles::default(),
             #[cfg(test)]
             titles_filter_runs: AtomicU64::new(0),
@@ -505,6 +518,25 @@ impl ReadService {
             clock: inklkunn_store::record::now_secs,
             review_after_days: crate::knowledge::freshness::DEFAULT_REVIEW_AFTER_DAYS,
         }
+    }
+
+    /// The same, with a request's part in building the index of who wrote each path bounded by `per_request` of time read from
+    /// `clock` (correction P-5: the default is [`DEFAULT_REQUEST_BUDGET`] of the real clock; a test gives a clock that ticks by
+    /// itself, so that where a request stops is the same every run).
+    #[must_use]
+    pub fn with_writes_budget(mut self, per_request: Duration, clock: Monotonic) -> Self {
+        self.writes_budget = per_request;
+        self.monotonic = clock;
+        self
+    }
+
+    /// The same, with `background` building the index of who wrote each path while a content hide is in force (correction P-5): a
+    /// hide asks it instead of building the index itself, a server's start asks it, and a reader that finds the index short asks it
+    /// again. The server runs the how ([`WritesBackground`]); this crate starts no thread.
+    #[must_use]
+    pub fn with_writes_background(mut self, background: Arc<dyn WritesBackground>) -> Self {
+        self.writes_background = Some(background);
+        self
     }
 
     /// The same, reading the day for the freshness list (*Sources to review*) from this clock, in Unix seconds. The

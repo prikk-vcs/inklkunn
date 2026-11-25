@@ -54,13 +54,24 @@
 //! nothing of the index: it is one more or one less change in the set the answer is read against, and that set is never listed.
 //!
 //! The index is **derived**: built from the repository's own record of each block (`show`, once per block, held), oldest block
-//! first, **by the first reader that needs it** and no one else (a wiki in which nothing has its content hidden pays one query for
-//! a read, and builds nothing), kept as the view's log grows (a new block costs one `show`), and built again after
-//! [`ReadService::clear_derived`]. **A build is bounded per call**: at most [`MAX_INDEXED_SHOWS`] blocks that cost a process
-//! (blocks the service already holds cost none), so a first request on a long history does not wait for all of it: it indexes what
-//! it may and answers *not checked yet* for what it could not reach (**never the text**); the requests after it go on
-//! from where it stopped, and each makes the next one cheaper. Reading a view's log further back than [`MAX_WINDOW`] blocks is
-//! not done: the oldest blocks of a longer history are unindexed, and a text written there is unattributed.
+//! first, **only while a change of the wiki has its content hidden** (a wiki in which nothing has its content hidden pays one query
+//! for a read, and builds nothing), kept as the view's log grows (a new block costs one `show`), and built again after
+//! [`ReadService::clear_derived`]. It is built **by the server in the background and, for what a request needs, by the request**
+//! (correction P-5):
+//!
+//! - **In the background.** After a content hide, and at start-up while one is in force, the server asks for the index of each
+//!   view to be built to the view's tip ([`WritesBackground`], [`ReadService::background_step`]), one small step at a time, so that
+//!   an old version of a page answers with its text or its tombstone **without any reader having walked the history to make it**.
+//!   A step is bounded ([`BACKGROUND_STEP_SHOWS`] blocks that cost a process, [`BACKGROUND_STEP_TIME`]), holds the view's lock only
+//!   for itself, and is **resumable**: the index is derived and kept, so a restart, a failure or a shutdown loses nothing.
+//! - **By a request.** **A request's own part is bounded by time** ([`DEFAULT_REQUEST_BUDGET`], about a second, shared by every
+//!   view the request asks), with [`MAX_INDEXED_SHOWS`] blocks that cost a process as a hard backstop (blocks the service already
+//!   holds cost none): it indexes what it may and answers *not checked yet* for what it could not reach (**never the text**); the
+//!   requests after it, and the background, go on from where it stopped. A request always indexes at least the block it is
+//!   at when the budget is first looked at (it is never refused for time before it began).
+//!
+//! Reading a view's log further back than [`MAX_WINDOW`] blocks is not done: the oldest blocks of a longer history are unindexed,
+//! and a text written there is unattributed.
 //!
 //! **Every view is read under the same rule.** The index is per view (a view's log orders its blocks), built when a read names the
 //! view, and a read of a block that is not in the view's log is unattributed.
@@ -82,15 +93,17 @@
 //!
 //! # A read of an index that is dropped under it (correction L-9)
 //!
-//! The index has a **generation** ([`inklkunn_store::DerivedStore::writes_generation`]) that dropping it moves forward. A reader reads it **before** the
-//! index's state and again **after** the rows it asked for, and a reader whose two numbers differ gives no answer: the rows it read
-//! may be those of an index that was being dropped (no row for a path, with a state that still says the index began at the view's first
-//! block, is *nobody wrote this*, which is not true of an index that is gone).
+//! The index has a **generation** ([`inklkunn_store::DerivedStore::writes_generation`]) that dropping it moves forward. A reader
+//! reads it **before anything of the index** (before the block is placed in the view's index, so before the index is built toward
+//! it too, correction P-3), and again **after** the rows it asked for, and a reader whose two numbers differ gives no answer: the
+//! rows it read may be those of an index that was being dropped, or placed by one that is gone (no row for a path, with a state
+//! that still says the index began at the view's first block, is *nobody wrote this*, which is not true of an index that is gone).
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use inklkunn_store::{
     BlockWrites, IndexedBlock, LastWrite, LaterWrite, MAX_LATER_WRITES, MAX_MAYBE_WRITERS,
@@ -101,11 +114,21 @@ use super::history::{Hold, MAX_WINDOW, Touch, TouchKind, Touches};
 use super::{Cause, ReadError, ReadService};
 use crate::tombstone::Mark;
 
-/// The most blocks one call of the index's build indexes that cost a `show` (a process) each. A block the service holds already
-/// costs none.
-pub const MAX_INDEXED_SHOWS: usize = 64;
-/// The most calls of the index's build [`ReadService::warm_writes`] makes.
-pub const MAX_WARM_ROUNDS: usize = 4;
+/// **The backstop** of a request's part in building the index: the most blocks that cost a `show` (a process) each that one request
+/// indexes, over every view it asks. What bounds a request is [`DEFAULT_REQUEST_BUDGET`] (time); this bounds it when time does not
+/// (a clock that does not move, a storage that answers at once). A block the service holds already costs none.
+pub const MAX_INDEXED_SHOWS: usize = 512;
+/// How long a request may spend building the index (correction P-5): about a second, over every view the request asks.
+/// [`ReadService::with_writes_budget`] sets another.
+pub const DEFAULT_REQUEST_BUDGET: Duration = Duration::from_secs(1);
+/// The most blocks that cost a `show` one **background** step indexes. A step is short so that a reader who needs the same view's
+/// index does not wait for it for long.
+pub const BACKGROUND_STEP_SHOWS: usize = 16;
+/// The longest one background step goes on after its first `show` (it never stops before one).
+pub const BACKGROUND_STEP_TIME: Duration = Duration::from_secs(1);
+/// The most views one wiki's background build looks after (the default view first); a view beyond them is built by the
+/// requests that need it, as before the background build.
+pub const MAX_BACKGROUND_VIEWS: usize = MAX_VIEWS_ASKED;
 /// The most blocks one call indexes in all, held or not (a bound on the work of one request).
 const MAX_INDEXED_BLOCKS: usize = 5_000;
 /// The most renames followed back from a path to the change that wrote its text. A longer chain is unattributed.
@@ -117,6 +140,75 @@ pub const MAX_FOLLOWED_MOVES: usize = 8;
 /// The most views a request that looks for a block outside the default view asks, **counting only the views that were not known
 /// not to hold it** (what a view is found not to hold is kept). The rest are answered *not checked yet*.
 pub const MAX_VIEWS_ASKED: usize = 16;
+
+/// A monotonic clock, as the time since an origin of its own: what a request's time budget is read from. A test passes one that
+/// ticks by itself ([`ReadService::with_writes_budget`]).
+pub type Monotonic = Arc<dyn Fn() -> Duration + Send + Sync>;
+
+/// The clock a service has unless it is given another: the time since it was made.
+pub(super) fn real_clock() -> Monotonic {
+    let origin = std::time::Instant::now();
+    Arc::new(move || origin.elapsed())
+}
+
+/// **What one call that builds the index may spend** (correction P-5): a time (read from the service's clock) and a number of
+/// blocks that cost a process, shared by every view a request asks. It never stops a call **before** the call's first `show`
+/// of the budget: whatever the clock says, a request that has not built anything yet builds at least one block, so a budget that is
+/// spent only by time never starves the request that arrives late.
+pub(super) struct Budget {
+    clock: Monotonic,
+    /// When the time is up, on `clock`; `None` for a budget of blocks only.
+    until: Option<Duration>,
+    /// The blocks that cost a process the budget still allows.
+    shows_left: usize,
+    /// The blocks that cost a process the budget has been spent on.
+    fetched: usize,
+    /// Whether the budget is a request's (and not the background's): a request that built something is a reader that is working,
+    /// which the background yields to ([`ReadService::reader_advances`]).
+    request: bool,
+}
+
+impl Budget {
+    /// Whether the call is to stop now: something was built under the budget, and its time or its blocks are spent.
+    fn stop(&self) -> bool {
+        self.fetched > 0
+            && (self.shows_left == 0 || self.until.is_some_and(|until| (self.clock)() >= until))
+    }
+
+    fn spent_one(&mut self) {
+        self.fetched += 1;
+        self.shows_left = self.shows_left.saturating_sub(1);
+    }
+}
+
+/// What the server does to build a wiki's writes index **in the background** (correction P-5). `inklkunn-core` starts no thread
+/// it cannot stop and leaves the how to the binary, as it does for [`AfterSeal`](crate::AfterSeal): the binary runs one worker that
+/// calls [`ReadService::background_step`] for the wikis it is asked about.
+pub trait WritesBackground: Send + Sync {
+    /// The wiki's index is to be built toward the tip of each of its views. **Never blocks and never waits for the work**; asking
+    /// again while the wiki is being built is the same ask.
+    fn ask(&self, wiki: &WikiRecord, why: AskedFor);
+}
+
+/// Why the background build is asked for (the binary may treat a reader's ask more patiently than a hide's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AskedFor {
+    /// A content hide was recorded, or one is in force as the server starts: the work is due.
+    Hide,
+    /// A reader met *not checked yet* while a hide is in force: it may be that nothing is building (an earlier build failed).
+    Reader,
+}
+
+/// What one [`ReadService::background_step`] did.
+#[derive(Debug, Clone)]
+pub enum BackgroundStep {
+    /// Nothing is left to do: no change of the wiki has its content hidden (any more), or every view's index reaches its tip.
+    Idle,
+    /// An index was built a step further and another step may be due.
+    Progress,
+    /// The step failed (prikk or the store): it is the read error. A step that failed built nothing wrong, and the next one retries.
+    Failed(ReadError),
+}
 
 /// What the index says of the text of a path at a block, for the reader.
 ///
@@ -138,8 +230,8 @@ pub(super) enum Authorship {
 
 /// What asking one view's index for a block found (correction L-1).
 enum Located {
-    /// The block's place in the view's index.
-    At(IndexedBlock),
+    /// The block's place in the view's index, with the index's generation read **before** the block was looked for (L-9).
+    At(IndexedBlock, u64),
     /// The view's log, as far as it is read, does not hold the block: nothing about it can be learned from this view.
     NotInLog,
     /// The view's log holds the block and the index has not reached it (the bound of a call), or the request has no more views to
@@ -355,18 +447,24 @@ impl ReadService {
         {
             return Ok(Reading::NothingHidden);
         }
-        let (view, at) = self.view_holding(wiki, view.unwrap_or(&wiki.default_view), block_id)?;
-        // The generation is read **before** the state, and again after the rows (see the module's account).
-        let generation = self
-            .derived
-            .writes_generation(&wiki.id, &view)
-            .map_err(|e| self.writes_failed(e))?;
+        let mut budget = self.request_budget();
+        // The index's generation is read inside, before the block is looked for in the view's index (before anything of the index is
+        // read, and before it is built toward the block), and again after the rows (see the module's account).
+        let (view, at, generation) = match self.view_holding(
+            wiki,
+            view.unwrap_or(&wiki.default_view),
+            block_id,
+            &mut budget,
+        ) {
+            Err(ReadError::NotCheckedYet) => return Err(self.starved(wiki)),
+            held => held?,
+        };
         let Some(state) = self
             .derived
             .writes_state(&wiki.id, &view)
             .map_err(|e| self.writes_failed(e))?
         else {
-            return Err(ReadError::NotCheckedYet);
+            return Err(self.starved(wiki));
         };
         Ok(Reading::Ready(Ready {
             view,
@@ -387,11 +485,12 @@ impl ReadService {
         wiki: &WikiRecord,
         view: &str,
         block_id: &str,
-    ) -> Result<(String, IndexedBlock), ReadError> {
+        budget: &mut Budget,
+    ) -> Result<(String, IndexedBlock, u64), ReadError> {
         // The view named is always asked: the bound is of the views looked through after it.
         let mut unbounded = usize::MAX;
-        match self.locate(wiki, view, block_id, &mut unbounded, Hold::Keep)? {
-            Located::At(at) => return Ok((view.to_owned(), at)),
+        match self.locate(wiki, view, block_id, &mut unbounded, Hold::Keep, budget)? {
+            Located::At(at, generation) => return Ok((view.to_owned(), at, generation)),
             Located::NotYet => return Err(ReadError::NotCheckedYet),
             Located::NotInLog if view != wiki.default_view => return Err(ReadError::NotCheckedYet),
             Located::NotInLog => {}
@@ -402,8 +501,8 @@ impl ReadService {
                 continue;
             }
             // The logs of the views asked in turn are read once and not held (P-2): they would put out the default view's.
-            match self.locate(wiki, &other, block_id, &mut allowed, Hold::Once) {
-                Ok(Located::At(at)) => return Ok((other, at)),
+            match self.locate(wiki, &other, block_id, &mut allowed, Hold::Once, budget) {
+                Ok(Located::At(at, generation)) => return Ok((other, at, generation)),
                 Ok(Located::NotInLog) => {}
                 // The block is in that view's log, and the index has not reached it; or no more views may be asked now.
                 Ok(Located::NotYet) => return Err(ReadError::NotCheckedYet),
@@ -551,9 +650,17 @@ impl ReadService {
         block_id: &str,
     ) -> Result<Option<IndexedBlock>, ReadError> {
         let mut unbounded = usize::MAX;
+        let mut budget = self.request_budget();
         Ok(
-            match self.locate(wiki, view, block_id, &mut unbounded, Hold::Keep)? {
-                Located::At(at) => Some(at),
+            match self.locate(
+                wiki,
+                view,
+                block_id,
+                &mut unbounded,
+                Hold::Keep,
+                &mut budget,
+            )? {
+                Located::At(at, _) => Some(at),
                 Located::NotInLog | Located::NotYet => None,
             },
         )
@@ -572,14 +679,20 @@ impl ReadService {
         block_id: &str,
         allowed: &mut usize,
         hold: Hold,
+        budget: &mut Budget,
     ) -> Result<Located, ReadError> {
         let failed = |e| self.writes_failed(e);
+        // Before anything of the view's index is read or built (correction P-3, L-9).
+        let generation = self
+            .derived
+            .writes_generation(&wiki.id, view)
+            .map_err(failed)?;
         if let Some(at) = self
             .derived
             .indexed_block(&wiki.id, view, block_id)
             .map_err(failed)?
         {
-            return Ok(Located::At(at));
+            return Ok(Located::At(at, generation));
         }
         let tip = self.tip(wiki, Some(view))?;
         if self
@@ -593,13 +706,13 @@ impl ReadService {
             return Ok(Located::NotYet);
         };
         *allowed = left;
-        let held = self.advance_writes(wiki, view, Some(block_id), hold)?;
+        let held = self.advance_writes(wiki, view, Some(block_id), hold, budget)?;
         if let Some(at) = self
             .derived
             .indexed_block(&wiki.id, view, block_id)
             .map_err(failed)?
         {
-            return Ok(Located::At(at));
+            return Ok(Located::At(at, generation));
         }
         Ok(match held {
             Reach::InLog => Located::NotYet,
@@ -621,8 +734,8 @@ impl ReadService {
     }
 
     /// **Index the blocks of `view`'s log that the index does not hold, oldest first**, until the block `until` is in it (when one
-    /// is named) or the bound of a call is reached: [`MAX_INDEXED_SHOWS`] blocks that cost a `show`. One reader builds at a time;
-    /// the next finds what it built. An index that is not of the log read now (its newest block is not the log's block of that
+    /// is named) or the `budget` is spent (its time, or its blocks that cost a `show`; see [`Budget`]). One builder works on a view
+    /// at a time; the next finds what it built. An index that is not of the log read now (its newest block is not the log's block of that
     /// number) is dropped and built again; the logs it reads are held only when `hold` says so (P-2). **An error is prikk's or the store's**, never the index being unfinished. [`Reach::NotInLog`]
     /// says that the block asked for is not in the part of the view's log that is read.
     pub(super) fn advance_writes(
@@ -631,6 +744,7 @@ impl ReadService {
         view: &str,
         until: Option<&str>,
         hold: Hold,
+        budget: &mut Budget,
     ) -> Result<Reach, ReadError> {
         let lock = self.writes_lock(&wiki.id, view);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
@@ -645,6 +759,13 @@ impl ReadService {
             return Ok(Reach::InLog);
         }
         let tip = self.tip(wiki, Some(view))?;
+        // The generation the build begins under: an index dropped while it builds (an administrator's refresh, in this process or
+        // another) is not appended to, for what would be left is the newest blocks of a log with the oldest ones missing, under a
+        // state that says the index begins at the view's first block.
+        let mut generation = self
+            .derived
+            .writes_generation(&wiki.id, view)
+            .map_err(failed)?;
         let mut state = self.derived.writes_state(&wiki.id, view).map_err(failed)?;
         // The log, back to the newest block the index holds (the whole log, as far as it is read, for an index that has none).
         let first = self.window_held(wiki, &tip, super::history::DEFAULT_WINDOW, hold)?;
@@ -669,6 +790,11 @@ impl ReadService {
             if !same {
                 // Not the log this index was built from: begin again, from the whole log.
                 self.derived.reset_writes(&wiki.id, view).map_err(failed)?;
+                // Our own drop moves the generation: the build goes on under the one it left.
+                generation = self
+                    .derived
+                    .writes_generation(&wiki.id, view)
+                    .map_err(failed)?;
                 state = None;
                 window = self.window_held(wiki, &tip, MAX_WINDOW, hold)?;
             }
@@ -683,12 +809,12 @@ impl ReadService {
         let head = state.as_ref().map(|s| s.head_number);
         let mut batch: Vec<BlockWrites> = Vec::new();
         let mut first_indexed: Option<bool> = None;
-        let (mut shows, mut visited) = (0_usize, 0_usize);
+        let mut visited = 0_usize;
         for (at, info) in infos.iter().enumerate().rev() {
             if head.is_some_and(|head| info.number <= head) {
                 continue;
             }
-            if shows >= MAX_INDEXED_SHOWS || visited >= MAX_INDEXED_BLOCKS {
+            if budget.stop() || visited >= MAX_INDEXED_BLOCKS {
                 break;
             }
             visited += 1;
@@ -696,7 +822,9 @@ impl ReadService {
                 rows_of(&Touches::TooLarge, true)
             } else {
                 let (touches, fetched) = self.touches_of(wiki, &info.block_id)?;
-                shows += usize::from(fetched);
+                if fetched {
+                    budget.spent_one();
+                }
                 rows_of(&touches, false)
             };
             first_indexed.get_or_insert(info.first);
@@ -713,6 +841,14 @@ impl ReadService {
         let Some(newest) = batch.last() else {
             return Ok(Reach::InLog);
         };
+        if self
+            .derived
+            .writes_generation(&wiki.id, view)
+            .map_err(failed)?
+            != generation
+        {
+            return Ok(Reach::InLog);
+        }
         let next = WritesState {
             head_number: newest.number,
             head_block: newest.block.clone(),
@@ -726,14 +862,16 @@ impl ReadService {
         self.derived
             .append_writes(&wiki.id, view, &batch, &next)
             .map_err(failed)?;
+        if budget.request {
+            self.request_advances.fetch_add(1, Ordering::Relaxed);
+        }
         Ok(Reach::InLog)
     }
 
-    /// **Build the default view's index toward its tip now**, in at most [`MAX_WARM_ROUNDS`] calls of the bound of a call each (so at
-    /// most `MAX_WARM_ROUNDS * MAX_INDEXED_SHOWS` blocks that cost a process): what a moderator's hide does after it is recorded,
-    /// so that the first reads after it find the index built, in a wiki of any size a hide is likely to be made in. Nothing depends
-    /// on it: a read that finds the index short of what it needs builds on, and answers *not checked yet* for what it could not reach. `true`
-    /// when the index reaches the view's tip.
+    /// **Build the default view's index toward its tip now**, within a request's budget ([`DEFAULT_REQUEST_BUDGET`]): what a hide
+    /// does when the server has no background build to ask ([`ReadService::warm_writes_after_hide`]), and what a test does to have
+    /// the index built. Nothing depends on it: a read that finds the index short of what it needs builds on, and answers *not checked
+    /// yet* for what it could not reach. `true` when the index reaches the view's tip.
     pub fn warm_writes(&self, wiki: &WikiRecord) -> Result<bool, ReadError> {
         self.warm_writes_of(wiki, wiki.default_view.as_str())
     }
@@ -741,18 +879,159 @@ impl ReadService {
     /// [`ReadService::warm_writes`] for any view: what a list of **later** writers needs, because it is an answer only when the index
     /// reaches the view's tip (an index built until the block asked about knows nothing of the blocks after it).
     pub(super) fn warm_writes_of(&self, wiki: &WikiRecord, view: &str) -> Result<bool, ReadError> {
-        for _ in 0..MAX_WARM_ROUNDS {
-            self.advance_writes(wiki, view, None, Hold::Keep)?;
+        let mut budget = self.request_budget();
+        let mut before = None;
+        loop {
+            self.advance_writes(wiki, view, None, Hold::Keep, &mut budget)?;
             let tip = self.tip(wiki, Some(view))?;
             let state = self
                 .derived
                 .writes_state(&wiki.id, view)
                 .map_err(|e| self.writes_failed(e))?;
-            if state.is_some_and(|s| s.head_block == tip.block_id()) {
+            let head = state.map(|s| (s.head_number, s.head_block));
+            if head
+                .as_ref()
+                .is_some_and(|(_, block)| block == tip.block_id())
+            {
                 return Ok(true);
             }
+            // Out of budget, or a call that went no further: what is built is kept, and the next call goes on.
+            if budget.stop() || head == before {
+                return Ok(false);
+            }
+            before = head;
         }
-        Ok(false)
+    }
+
+    // ------------------------------------------------------------------------------------ the background build
+
+    /// A budget for the part a request has in building the index: [`DEFAULT_REQUEST_BUDGET`] (or what
+    /// [`ReadService::with_writes_budget`] gave) from now, over [`MAX_INDEXED_SHOWS`] blocks that cost a process.
+    pub(super) fn request_budget(&self) -> Budget {
+        Budget {
+            until: Some((self.monotonic)() + self.writes_budget),
+            clock: Arc::clone(&self.monotonic),
+            shows_left: MAX_INDEXED_SHOWS,
+            fetched: 0,
+            request: true,
+        }
+    }
+
+    /// A moderator's content hide was recorded: **the writes index is to be built** (correction P-5). With a background build
+    /// ([`ReadService::with_writes_background`]) that is asked for and nothing waits for it; without one (a service no server runs)
+    /// it is [`ReadService::warm_writes`] now, within a request's budget, best effort.
+    pub fn warm_writes_after_hide(&self, wiki: &WikiRecord) {
+        match &self.writes_background {
+            Some(background) => background.ask(wiki, AskedFor::Hide),
+            None => {
+                let _ = self.warm_writes(wiki);
+            }
+        }
+    }
+
+    /// The server is starting: **ask for the background build of the wiki if a content hide is in force**, so that a restart
+    /// continues where the last run stopped (the index is derived and kept). `true` when it was asked for. Nothing is asked for a
+    /// wiki in which nothing is hidden, and nothing when this service has no background build.
+    pub fn resume_writes_background(&self, wiki: &WikiRecord) -> Result<bool, ReadError> {
+        let (Some(background), Some(tombstones)) = (&self.writes_background, &self.tombstones)
+        else {
+            return Ok(false);
+        };
+        if tombstones
+            .content_hide_in_force(&wiki.id)
+            .map_err(|e| self.tombstone_failed(e))?
+            .is_none()
+        {
+            return Ok(false);
+        }
+        background.ask(wiki, AskedFor::Hide);
+        Ok(true)
+    }
+
+    /// A reader could not be answered because the index is short, while a hide is in force: say so to the background build (it may
+    /// be that nothing is building) and give the reader its answer, *not checked yet*.
+    fn starved(&self, wiki: &WikiRecord) -> ReadError {
+        if let Some(background) = &self.writes_background {
+            background.ask(wiki, AskedFor::Reader);
+        }
+        ReadError::NotCheckedYet
+    }
+
+    /// How many times a **request** built something of an index, since the service was made: what the background build yields to (a
+    /// reader that is building is doing its work, and a step of its own would only make the reader wait for the view's lock).
+    pub fn reader_advances(&self) -> u64 {
+        self.request_advances.load(Ordering::Relaxed)
+    }
+
+    /// **One step of the background build of `wiki`'s writes index** (correction P-5): the first view, the default one first (at most
+    /// [`MAX_BACKGROUND_VIEWS`]), whose index does not reach its tip is built [`BACKGROUND_STEP_SHOWS`] blocks that cost a process
+    /// further, or for [`BACKGROUND_STEP_TIME`] (and never less than one block). The step holds the view's lock for itself only: a
+    /// reader that needs the same view waits for one step, not for the build.
+    ///
+    /// [`BackgroundStep::Idle`] when no change of the wiki has its content hidden, or every view's index reaches its tip: the caller
+    /// stops asking. [`BackgroundStep::Failed`] builds nothing wrong, and the next step retries. **Never panics, never poisons**: a
+    /// step touches the same locks a reader does, and each lock is taken the way a reader takes it.
+    pub fn background_step(&self, wiki: &WikiRecord) -> BackgroundStep {
+        match self.background_step_inner(wiki) {
+            Ok(step) => step,
+            Err(e) => BackgroundStep::Failed(e),
+        }
+    }
+
+    fn background_step_inner(&self, wiki: &WikiRecord) -> Result<BackgroundStep, ReadError> {
+        let Some(tombstones) = &self.tombstones else {
+            return Ok(BackgroundStep::Idle);
+        };
+        if tombstones
+            .content_hide_in_force(&wiki.id)
+            .map_err(|e| self.tombstone_failed(e))?
+            .is_none()
+        {
+            return Ok(BackgroundStep::Idle);
+        }
+        let views = self.open_views_held(wiki)?;
+        for view in views.iter().take(MAX_BACKGROUND_VIEWS) {
+            let tip = match self.tip(wiki, Some(view)) {
+                Ok(tip) => tip,
+                // A view that closed since the list was read has nothing to build.
+                Err(ReadError::NoSuchView(_)) => continue,
+                Err(e) => return Err(e),
+            };
+            let head = |this: &Self| -> Result<Option<(u64, String)>, ReadError> {
+                Ok(this
+                    .derived
+                    .writes_state(&wiki.id, view)
+                    .map_err(|e| this.writes_failed(e))?
+                    .map(|s| (s.head_number, s.head_block)))
+            };
+            let before = head(self)?;
+            if before
+                .as_ref()
+                .is_some_and(|(_, block)| block == tip.block_id())
+            {
+                continue;
+            }
+            let mut budget = Budget {
+                until: Some((self.monotonic)() + BACKGROUND_STEP_TIME),
+                clock: Arc::clone(&self.monotonic),
+                shows_left: BACKGROUND_STEP_SHOWS,
+                fetched: 0,
+                request: false,
+            };
+            // The logs of the other views are read once and not held (P-2): they would put out the default view's.
+            let hold = if *view == wiki.default_view {
+                Hold::Keep
+            } else {
+                Hold::Once
+            };
+            self.advance_writes(wiki, view, None, hold, &mut budget)?;
+            // A view that went no further (a log that is read no further back, a view that moved while it was asked) is left to the
+            // readers: stopping here is what keeps the build from asking again for ever.
+            if head(self)? != before {
+                return Ok(BackgroundStep::Progress);
+            }
+        }
+        Ok(BackgroundStep::Idle)
     }
 
     /// **The block before `block_id` in `view`'s log**, by the writes index: one indexed lookup, whatever the length of the history

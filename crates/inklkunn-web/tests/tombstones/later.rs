@@ -189,11 +189,12 @@ async fn later_changes_past_the_bound_are_counted_and_said() {
 #[tokio::test]
 async fn an_index_that_does_not_reach_the_change_is_said_not_left_out() {
     let mut s = wiki();
-    for own in 0..70 {
+    // More changes than one request builds, whatever the clock says (`MAX_INDEXED_SHOWS`, the backstop of a request's time).
+    for own in 0..(inklkunn_core::read::MAX_INDEXED_SHOWS + 8) {
         s.write(&lines(6, own));
     }
-    let change = s.write(&lines(7, 100));
-    s.write(&lines(7, 101));
+    let change = s.write(&lines(7, 100_000));
+    s.write(&lines(7, 100_001));
     // The first request builds one bound of the index from the oldest change; this one is further on.
     let body = s.form(change).await.body();
     assert!(

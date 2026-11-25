@@ -3,9 +3,11 @@
 //! grow with the history. The repository is the read tests' double; the moderation records are the memory store's.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::time::Duration;
+
 use super::super::MAX_FOLLOWED_MOVES;
 use super::super::testing::block_id;
-use super::super::writes::tests::{Rig, foo, op, rig, shows};
+use super::super::writes::tests::{Rig, foo, op, rig, rig_with, shows, ticking};
 use super::*;
 
 const FOO: &str = "pages/Foo.md";
@@ -29,8 +31,19 @@ fn body_and(range: std::ops::Range<usize>, own: usize) -> String {
         .join("\n\n"))
 }
 
+/// A world whose requests build the writes index for `blocks` blocks that cost a `show` each (a clock that is 100 ms further at each
+/// look, and a budget of that many tenths of a second).
+fn world_building(blocks: u64) -> Rig {
+    rig_with(&[(FOO, &foo("The page."))], |s| {
+        s.with_writes_budget(
+            Duration::from_millis(blocks * 100),
+            ticking(Duration::from_millis(100)),
+        )
+    })
+}
+
 fn world() -> Rig {
-    rig(&[(FOO, &foo("The page."))])
+    world_building(64)
 }
 
 fn holders(r: &Rig, n: u64) -> LaterHolders {
@@ -265,9 +278,10 @@ fn the_cost_is_the_same_on_a_page_with_sixty_later_revisions_and_with_a_thousand
     assert_eq!(few.read, MAX_HOLDER_CHECKS as u64 + 2, "{few:?}");
 }
 
-/// A world with more changes than one warm-up builds (four calls of sixty-four blocks).
+/// A world with more changes than one request builds (a request builds 150 blocks, and the two it makes for a list of later writers
+/// 300 at most: the second of them reaches the tip).
 fn long_world() -> Rig {
-    let r = world();
+    let r = world_building(150);
     for at in 0..300 {
         r.w.fake().set(FOO, &body_and(0..6, at));
     }

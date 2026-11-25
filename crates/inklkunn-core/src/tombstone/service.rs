@@ -698,10 +698,11 @@ impl ModerationService {
         );
         match done {
             Ok(()) => {
-                // The reads that follow a hide of a content ask who wrote each path: build that index toward the tip now, once
-                // (best effort: a read that finds it short builds on, and says *hidden* for what it could not reach).
+                // The reads that follow a hide of a content ask who wrote each path: the index of that is built toward the tip (by
+                // the server in the background, when it runs one: the hide does not wait for it; else now, best effort). A read that
+                // finds it short builds on within its own time, and says *cannot be checked yet* for what it could not reach.
                 if parts.content {
-                    let _ = self.read.warm_writes(wiki);
+                    self.read.warm_writes_after_hide(wiki);
                 }
                 Ok(HideMade {
                     id,

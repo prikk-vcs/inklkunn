@@ -16,7 +16,7 @@ use inklkunn_store::{
 
 use super::super::testing::{World, block_id};
 use super::*;
-use crate::read::{BlockText, ReadConfig};
+use crate::read::{BlockText, Monotonic, ReadConfig};
 use crate::tombstone::Tombstones;
 
 const SECRET: &str = "---\ntitle: Foo\n---\n\nZEBRA personal data.\n";
@@ -60,6 +60,14 @@ pub(in crate::read) struct Rig {
 }
 
 pub(in crate::read) fn rig(files: &[(&str, &str)]) -> Rig {
+    rig_with(files, |service| service)
+}
+
+/// A rig whose read service is the usual one as `adjust` makes it (a budget, a clock, a background).
+pub(in crate::read) fn rig_with(
+    files: &[(&str, &str)],
+    adjust: impl FnOnce(ReadService) -> ReadService,
+) -> Rig {
     let w = World::with(files, config());
     w.fake().derive_changes();
     w.store
@@ -71,7 +79,7 @@ pub(in crate::read) fn rig(files: &[(&str, &str)]) -> Rig {
             disabled: false,
         })
         .unwrap();
-    let service = service_of(&w);
+    let service = adjust(service_of(&w));
     Rig { w, service }
 }
 
@@ -676,27 +684,43 @@ fn the_index_is_built_again_after_the_derived_store_is_cleared() {
     assert_eq!(state().expect("built again").head_number, 4);
 }
 
+/// A clock that ticks by `step` each time it is read (and says 0 the first time): a request's time budget is then a number of
+/// looks, the same every run.
+pub(in crate::read) fn ticking(step: Duration) -> Monotonic {
+    let now = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let step = u64::try_from(step.as_nanos()).expect("a small step");
+    Arc::new(move || Duration::from_nanos(now.fetch_add(step, std::sync::atomic::Ordering::SeqCst)))
+}
+
+mod background;
+
 #[test]
-fn a_first_read_of_a_long_history_builds_what_it_may_says_not_checked_yet_for_what_it_could_not_reach_and_never_gives_the_text()
+fn a_first_read_of_a_long_history_builds_what_its_time_allows_says_not_checked_yet_for_what_it_could_not_reach_and_never_gives_the_text()
  {
-    let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
+    // Each look at the clock is 100 ms: a budget of 6.4 s lets a request build 64 blocks that cost a `show`.
+    let r = rig_with(
+        &[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))],
+        |s| {
+            s.with_writes_budget(
+                Duration::from_millis(6_400),
+                ticking(Duration::from_millis(100)),
+            )
+        },
+    );
     for i in 0..150 {
         r.w.fake()
             .set("pages/Bar.md", &bar(&format!("revision {i}")));
     }
     r.w.fake().set("pages/Foo.md", SECRET); // 152
     r.hide(152);
-    // Block 100 is further than one call builds to: its text is not attributed yet, and not given (and no tombstone is said).
+    // Block 100 is further than one request builds to: its text is not attributed yet, and not given (and no tombstone is said).
     let (first, calls) = r.w.counted(|| {
         r.service
             .text_at(&r.w.wiki, None, &block_id(100), "pages/Bar.md")
     });
     assert!(matches!(first, Err(ReadError::NotCheckedYet)), "{first:?}");
-    assert!(
-        calls.change <= u64::try_from(MAX_INDEXED_SHOWS).unwrap(),
-        "one call builds at most {MAX_INDEXED_SHOWS} blocks: {calls:?}"
-    );
-    // Each call goes on from where the last stopped; a few calls reach it, and then the text reads.
+    assert_eq!(calls.change, 64, "the time allows 64 blocks: {calls:?}");
+    // Each request goes on from where the last stopped; a second one reaches it, and then the text reads.
     let mut calls_needed = 1;
     loop {
         calls_needed += 1;
@@ -706,7 +730,7 @@ fn a_first_read_of_a_long_history_builds_what_it_may_says_not_checked_yet_for_wh
         }
         assert!(calls_needed <= 4, "the build does not go on");
     }
-    assert_eq!(calls_needed, 2, "the second call reaches block 100");
+    assert_eq!(calls_needed, 2, "the second request reaches block 100");
     assert!(r.is_hidden(152, "pages/Foo.md"));
 }
 
@@ -928,7 +952,16 @@ fn the_logs_of_the_views_a_request_looks_through_do_not_put_out_the_default_view
 
 #[test]
 fn a_block_the_default_views_log_holds_and_the_index_has_not_reached_is_not_looked_for_elsewhere() {
-    let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
+    // A request builds 64 blocks (a clock that is 100 ms further at each look, a budget of 6.4 s).
+    let r = rig_with(
+        &[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))],
+        |s| {
+            s.with_writes_budget(
+                Duration::from_millis(6_400),
+                ticking(Duration::from_millis(100)),
+            )
+        },
+    );
     for i in 0..150 {
         r.w.fake()
             .set("pages/Bar.md", &bar(&format!("revision {i}")));

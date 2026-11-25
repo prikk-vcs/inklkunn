@@ -45,6 +45,10 @@ struct State {
     messages: BTreeMap<u64, String>,
     /// What `show` answers for a block id.
     shows: BTreeMap<String, Result<Change>>,
+    /// What every `show` answers instead of its block's change, when set (a repository that cannot be read now).
+    fail_change: Option<StorageError>,
+    /// Called at the start of every `show`, before it answers (a test moves something in the middle of a build).
+    on_change: Option<Arc<dyn Fn() + Send + Sync>>,
     /// `show` of a block nobody scripted answers what the block changed, from the files at it and at the block before.
     derive_shows: bool,
     /// What `diff` answers, and every `diff` asked.
@@ -169,6 +173,16 @@ impl Fake {
     /// How many extracts were asked of this double so far.
     pub(crate) fn materialized(&self) -> u64 {
         self.state().materialized
+    }
+
+    /// Every `show` fails with `e` (`None`: they answer again).
+    pub(crate) fn fail_change(&self, e: Option<StorageError>) {
+        self.state().fail_change = e;
+    }
+
+    /// `hook` runs at the start of every `show`, before it answers, with no lock of the repository held.
+    pub(crate) fn on_change(&self, hook: impl Fn() + Send + Sync + 'static) {
+        self.state().on_change = Some(Arc::new(hook));
     }
 
     pub(crate) fn fail_stat(&self, e: Option<StorageError>) {
@@ -471,7 +485,14 @@ impl Storage for Fake {
     }
 
     fn change(&self, _: &Path, id: &str) -> Result<Change> {
+        let hook = self.state().on_change.clone();
+        if let Some(hook) = hook {
+            hook();
+        }
         let s = self.state();
+        if let Some(e) = &s.fail_change {
+            return Err(e.clone());
+        }
         if let Some(scripted) = s.shows.get(id) {
             return scripted.clone();
         }
