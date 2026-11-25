@@ -43,3 +43,5 @@ inklkunn:
   as_of_block: "b10c000000000000000000000000000000000000000000000000000000000003"
   history_changes_without_a_page: 0
   histories_not_written: 0
+  revisions_withheld: 0
+  histories_after_untraced: []
