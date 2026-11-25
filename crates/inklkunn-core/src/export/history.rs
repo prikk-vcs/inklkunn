@@ -115,6 +115,7 @@ pub struct HistoryInputs<'a> {
     waited: usize,
     pause: Duration,
     cap: u64,
+    seen_chunk: usize,
 }
 
 impl<'a> HistoryInputs<'a> {
@@ -127,6 +128,7 @@ impl<'a> HistoryInputs<'a> {
             waited: 0,
             pause: DEFAULT_ROUND_PAUSE,
             cap: MAX_HISTORY_TEXT_BYTES,
+            seen_chunk: FIRST_SEEN_CHUNK,
         }
     }
 
@@ -149,6 +151,15 @@ impl<'a> HistoryInputs<'a> {
     #[must_use]
     pub fn holding_at_most(mut self, bytes: u64) -> Self {
         self.cap = bytes.min(MAX_HISTORY_TEXT_BYTES);
+        self
+    }
+
+    /// The same, recording when blocks were first seen `blocks` at a time ([`FIRST_SEEN_CHUNK`] otherwise, which is the most): each
+    /// write is one transaction, and a long export must not hold the store's write lock for longer than a running server waits for
+    /// it (I-T1 correction X-6). A smaller number is for a test.
+    #[must_use]
+    pub fn first_seen_in_chunks_of(mut self, blocks: usize) -> Self {
+        self.seen_chunk = blocks.clamp(1, FIRST_SEEN_CHUNK);
         self
     }
 
@@ -943,7 +954,7 @@ pub(super) fn histories(
     }
     let need: Vec<(usize, String)> = need.into_iter().collect();
     let mut seen_at: HashMap<usize, i64> = HashMap::new();
-    for chunk in need.chunks(FIRST_SEEN_CHUNK) {
+    for chunk in need.chunks(inputs.seen_chunk) {
         let ids: Vec<String> = chunk.iter().map(|(_, id)| id.clone()).collect();
         let seen = inputs
             .derived
