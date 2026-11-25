@@ -81,6 +81,8 @@ use crate::bundle::{KNOWLEDGE_EXTENSION, KNOWLEDGE_EXTENSION_VERSION};
 use crate::read::scratch::Extract;
 use crate::read::{ReadConfig, ReadService};
 
+pub mod bundle;
+
 /// Folders nested deeper than this are refused (a path cap would refuse them anyway; this bounds the walk).
 const MAX_DEPTH: usize = 48;
 
@@ -762,6 +764,38 @@ struct Walk<'a> {
     ids: HashMap<String, String>,
     /// The page paths of the folder.
     pages: Vec<String>,
+    /// What a bundle plan gathers beside the walk (`None` for a folder import, which is unchanged by it).
+    bundle: Option<bundle::Gathered>,
+}
+
+/// The caps of a repository path (`inklkunn_markup::path`), with the numbers: why `rel` is too long, if it is.
+fn cap_fault(rel: &str) -> Option<String> {
+    if rel.len() > MAX_PATH_BYTES {
+        return Some(format!(
+            "the path is {} bytes, over the {MAX_PATH_BYTES}-byte cap of a repository path",
+            rel.len()
+        ));
+    }
+    rel.split('/')
+        .find(|c| c.len() > MAX_COMPONENT_BYTES)
+        .map(|long| {
+            format!(
+                "a name of {} bytes is over the {MAX_COMPONENT_BYTES}-byte cap of a path component",
+                long.len()
+            )
+        })
+}
+
+/// Why `rel` is not the one path its page title spells, if it is not.
+fn canonical_fault(rel: &str) -> Option<String> {
+    let canonical = path_to_title(rel).and_then(|t| title_to_path(&t).ok());
+    if canonical.as_deref() == Some(rel) {
+        return None;
+    }
+    Some(match canonical {
+        Some(c) => format!("is not the canonical path of the page it spells (that page is `{c}`)"),
+        None => "is not a path any page title spells".to_owned(),
+    })
 }
 
 impl Walk<'_> {
@@ -850,24 +884,14 @@ impl Walk<'_> {
 
     fn file(&mut self, parent: &OwnedFd, name: &OsStr, source: &Path, rel: &str) {
         // The caps first, with the numbers: prikk's own (`inklkunn_markup::path`).
-        if rel.len() > MAX_PATH_BYTES {
-            self.refuse(
-                rel,
-                format!(
-                    "the path is {} bytes, over the {MAX_PATH_BYTES}-byte cap of a repository path",
-                    rel.len()
-                ),
-            );
+        if let Some(why) = cap_fault(rel) {
+            self.refuse(rel, why);
             return;
         }
-        if let Some(long) = rel.split('/').find(|c| c.len() > MAX_COMPONENT_BYTES) {
-            self.refuse(
-                rel,
-                format!(
-                    "a name of {} bytes is over the {MAX_COMPONENT_BYTES}-byte cap of a path component",
-                    long.len()
-                ),
-            );
+        // A bundle's own files (its manifest, `users.yaml`, `history/`, whatever it carries that is not content) are not
+        // repository paths: they are inventoried, read when the plan needs them, and judged by the bundle plan.
+        if self.bundle.as_ref().is_some_and(|g| !g.is_content(rel)) {
+            self.other_file(parent, name, rel);
             return;
         }
         // Then the signer's rule, which is the one that would refuse it at the end.
@@ -893,20 +917,9 @@ impl Walk<'_> {
             return;
         }
         // A page lives at the path its title spells, and no other (the same title would otherwise have two).
-        if is_page {
-            let canonical = path_to_title(rel).and_then(|t| title_to_path(&t).ok());
-            if canonical.as_deref() != Some(rel) {
-                self.refuse(
-                    rel,
-                    match canonical {
-                        Some(c) => format!(
-                            "is not the canonical path of the page it spells (that page is `{c}`)"
-                        ),
-                        None => "is not a path any page title spells".to_owned(),
-                    },
-                );
-                return;
-            }
+        if is_page && let Some(why) = canonical_fault(rel) {
+            self.refuse(rel, why);
+            return;
         }
         // Opened relative to its directory's handle and looked at through the open handle: what is examined, and
         // read below, is that file.
@@ -988,6 +1001,9 @@ impl Walk<'_> {
                     if want_digest {
                         digest = Some(sha256(&bytes));
                     }
+                    if let Some(gathered) = self.bundle.as_mut() {
+                        gathered.page(rel, &bytes, id.clone());
+                    }
                     if let Some(id) = id {
                         if let Some(other) = self.ids.get(&id) {
                             let other = other.clone();
@@ -1017,7 +1033,17 @@ impl Walk<'_> {
                     if want_digest {
                         digest = Some(sha256(&bytes));
                     }
+                    if let Some(gathered) = self.bundle.as_mut() {
+                        gathered.seen(rel, Some(sha256(&bytes)));
+                    }
                 }
+            }
+        } else if let Some(gathered) = self.bundle.as_mut() {
+            // A bundle's attachment: its sidecar is read (the licence is there), and the rest is hashed when checksums are to be
+            // verified.
+            if let Err(why) = gathered.attachment(rel, opened.file, cap) {
+                self.refuse(rel, why);
+                return;
             }
         } else if want_digest {
             match hash_all(opened.file, cap) {
@@ -1107,6 +1133,7 @@ pub fn plan_folder(
         keys: HashMap::new(),
         ids: HashMap::new(),
         pages: Vec::new(),
+        bundle: None,
     };
     walk.plan.dirs.insert(folder.to_path_buf(), root_identity);
     let listing = list_dir(&root)
