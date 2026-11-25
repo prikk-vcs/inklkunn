@@ -297,14 +297,10 @@ fn prepare_probing(
     notes.extend(signing.notes);
     // A restart goes on where the last run stopped: a wiki in which a content hide is in force has its index built on in the
     // background (the index is derived and kept; a wiki in which nothing is hidden builds nothing).
-    for wiki in store.list().unwrap_or_default() {
-        if read.resume_writes_background(&wiki).unwrap_or(false) {
-            notes.push(format!(
-                "a content hide is in force in wiki {}: its index of who wrote each page is built in the background",
-                wiki.slug
-            ));
-        }
-    }
+    // A store that cannot be looked at is said in a line, and the start goes on.
+    notes.extend(index_warm::resume_notes(store.list(), |wiki| {
+        read.resume_writes_background(wiki)
+    }));
     let services = Arc::new(Services {
         wikis: store.clone(),
         read,

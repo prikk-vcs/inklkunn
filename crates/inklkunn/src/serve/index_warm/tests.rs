@@ -64,6 +64,8 @@ struct Script {
     reader_looks: AtomicU64,
     /// How many looks at the readers had been made when the first step was taken.
     looks_at_first_step: Mutex<Option<u64>>,
+    /// When each step was taken, on the stand-in's clock (the test's own: the worker's pauses are measured against it).
+    times: Mutex<Vec<Instant>>,
 }
 
 #[derive(Clone, Copy)]
@@ -109,6 +111,7 @@ impl Build for Script {
             let _ = gate.recv_timeout(Duration::from_secs(10));
         }
         self.order.lock().unwrap().push(slug.clone());
+        self.times.lock().unwrap().push(Instant::now());
         let next = self
             .steps
             .lock()
@@ -389,4 +392,161 @@ fn an_ask_before_the_service_is_bound_builds_nothing_and_the_next_ask_after_it_d
     script.say(&slug, &[Step::Progress]);
     warmer.ask(&wiki, AskedFor::Hide);
     until("the build", || script.count(&slug) >= 3);
+}
+
+/// Asks for a new wiki every `every` for at most `how_long` (a busy server: readers in many wikis).
+fn traffic(warmer: &IndexWarmer, wikis: &[WikiRecord], every: Duration, how_long: Duration) {
+    let began = Instant::now();
+    for wiki in wikis {
+        if began.elapsed() >= how_long {
+            break;
+        }
+        warmer.ask(wiki, AskedFor::Hide);
+        std::thread::sleep(every);
+    }
+}
+
+#[test]
+fn a_job_every_few_milliseconds_does_not_cut_the_pause_between_steps_short() {
+    let floor = Duration::from_millis(120);
+    let r = rig(Pacing { floor, ..quick() });
+    let all = wikis(80);
+    let (first, others) = all.split_first().unwrap();
+    // Every wiki has more to do (so the worker always has a next turn to pause for: a look after a task is over is not paced, it is
+    // the same turn), and a new wiki is asked for every 10 ms.
+    for wiki in &all {
+        r.script.say(&wiki.slug.to_string(), &[Step::Progress; 50]);
+    }
+    r.warmer.ask(first, AskedFor::Hide);
+    traffic(
+        &r.warmer,
+        others,
+        Duration::from_millis(10),
+        Duration::from_millis(700),
+    );
+    let times = r.script.times.lock().unwrap().clone();
+    assert!(times.len() >= 3, "the worker built: {}", times.len());
+    for pair in times.windows(2) {
+        let [a, b] = pair else { continue };
+        assert!(
+            b.duration_since(*a) >= floor,
+            "two steps {:?} apart, a pause is {floor:?}",
+            b.duration_since(*a)
+        );
+    }
+    // Over 700 ms of traffic and a 120 ms pause: a handful of steps, not one for each of the 70 asks.
+    assert!(times.len() <= 10, "{} steps", times.len());
+}
+
+#[test]
+fn a_job_during_the_yield_pause_is_queued_and_taken_after_it_not_instead_of_it() {
+    let yield_pause = Duration::from_millis(300);
+    let r = rig(Pacing {
+        yield_pause,
+        max_yields: 1,
+        ..quick()
+    });
+    r.script.busy_readers.store(true, Ordering::SeqCst);
+    let all = wikis(30);
+    let (first, others) = all.split_first().unwrap();
+    let asked = Instant::now();
+    r.warmer.ask(first, AskedFor::Hide);
+    traffic(
+        &r.warmer,
+        others,
+        Duration::from_millis(10),
+        Duration::from_millis(250),
+    );
+    until("the first step", || {
+        !r.script.times.lock().unwrap().is_empty()
+    });
+    let first_step = r.script.times.lock().unwrap().first().copied().unwrap();
+    assert!(
+        first_step.duration_since(asked) >= yield_pause,
+        "the first step was taken {:?} after the ask; the readers' pause is {yield_pause:?}",
+        first_step.duration_since(asked)
+    );
+    // What was asked for meanwhile was queued, and is built after.
+    r.quiet();
+    assert!(r.script.count(&others.first().unwrap().slug.to_string()) >= 1);
+}
+
+#[test]
+fn a_second_look_that_fails_is_said_once_and_takes_the_retry_pause() {
+    // Readers are heard at once after a finished task, and not for an hour after a failure: only the failure's pause can hold one.
+    let r = rig(Pacing {
+        reader_every: Duration::ZERO,
+        retry_after: Duration::from_secs(3600),
+        ..quick()
+    });
+    let wiki = wikis(1).remove(0);
+    let slug = wiki.slug.to_string();
+    // The step finds nothing left to do, and the look after it fails.
+    r.script.say(&slug, &[Step::Idle, Step::Fail]);
+    r.warmer.ask(&wiki, AskedFor::Hide);
+    r.quiet();
+    assert_eq!(r.script.count(&slug), 2, "the step and the second look");
+    assert_eq!(r.heard().len(), 1, "said: {:?}", r.heard());
+    assert!(
+        r.heard().iter().all(|l| l.contains(&slug)),
+        "{:?}",
+        r.heard()
+    );
+    r.warmer.ask(&wiki, AskedFor::Reader);
+    std::thread::sleep(Duration::from_millis(60));
+    assert_eq!(
+        r.script.count(&slug),
+        2,
+        "a reader's ask is not heard within the retry pause"
+    );
+    // Said once: the same failure again is not news; a hide retries at once.
+    r.script.say(&slug, &[Step::Idle, Step::Fail]);
+    r.warmer.ask(&wiki, AskedFor::Hide);
+    until("the retry", || r.script.count(&slug) >= 4);
+    r.quiet();
+    assert_eq!(r.heard().len(), 1, "said once: {:?}", r.heard());
+}
+
+#[test]
+fn the_start_up_resume_says_a_store_error_in_a_line_and_goes_on() {
+    let all = wikis(3);
+    let [s0, s1, _]: [String; 3] = all
+        .iter()
+        .map(|w| w.slug.to_string())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    // The wiki list fails: one line, nothing else.
+    let notes = resume_notes(Err::<Vec<WikiRecord>, _>("the store\nsaid no"), |_| {
+        Ok::<bool, String>(true)
+    });
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert!(notes.iter().all(|l| !l.contains('\n')), "{notes:?}");
+    assert!(
+        notes.iter().all(|l| l.contains("the store said no")),
+        "{notes:?}"
+    );
+    // One wiki's hide cannot be looked at: a line that names it; the others are resumed or not as they are.
+    let notes = resume_notes(Ok::<_, String>(all), |wiki| {
+        let slug = wiki.slug.to_string();
+        if slug == s0 {
+            Ok(true)
+        } else if slug == s1 {
+            Err("it\nfailed".to_owned())
+        } else {
+            Ok(false)
+        }
+    });
+    assert_eq!(notes.len(), 2, "{notes:?}");
+    let [resumed, unreadable]: [String; 2] = notes.try_into().unwrap();
+    assert!(
+        resumed.contains(&s0) && resumed.contains("in force"),
+        "{resumed:?}"
+    );
+    assert!(
+        unreadable.contains(&s1) && unreadable.contains("it failed") && !unreadable.contains('\n'),
+        "{unreadable:?}"
+    );
+    // Nothing in force and nothing wrong: no line.
+    assert!(resume_notes(Ok::<_, String>(wikis(2)), |_| Ok::<bool, String>(false)).is_empty());
 }

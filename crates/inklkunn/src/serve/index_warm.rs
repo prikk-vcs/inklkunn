@@ -13,15 +13,21 @@
 //! - **Niced** (the box is shared, and a `show` is a process): between two steps the worker **pauses** for the time the step took
 //!   (at least [`Pacing::floor`]), so that it uses at most about half of one core, and **yields to readers**: a request that built
 //!   something of an index since the last step is a reader that is working, and the worker waits a little longer for it
-//!   ([`Pacing::yield_pause`], at most [`Pacing::max_yields`] times in a row, so that it is never starved).
+//!   ([`Pacing::yield_pause`], at most [`Pacing::max_yields`] times in a row, so that it is never starved). **A pause is a whole
+//!   pause**: a wiki asked for during it is queued (once: the set of wikis in flight) and taken up after it, never instead of it, so
+//!   that traffic in many wikis does not cut the worker's rest short.
 //! - **Bounded.** A step is bounded by the core; a task by [`Pacing::max_steps`]; the worker's pauses are the queue's own timeouts, so
-//!   a new wiki is taken up during a pause, and the worker **ends when the last sender is dropped** (the server is going down: the
+//!   a new wiki is queued during a pause, and the worker **ends when the last sender is dropped** (the server is going down: the
 //!   step in flight finishes, and no other begins).
 //! - **Resumable.** The index is derived and kept by the core; a task that ends for any reason loses nothing, and the next one goes on.
 //!   A step that fails ends the wiki's task and is **said once** to the operator (until a step of that wiki succeeds again); a hide
 //!   asks again at once, and a reader's ask is heard once a pause ([`Pacing::retry_after`]) has passed, so that a reader's *try
 //!   again in a little while* is true and a failing prikk is not asked for at every request.
 //! - **Never panics, never poisons.** A step that panics is a failure like another.
+//! - **Not joined at exit.** The worker's thread is detached: the server does not wait for it when it goes down, and a step in flight
+//!   is cut off with the process. That is safe because a step does nothing that a cut can half-do: the core's append to the index is
+//!   **one transaction** (it is all there or not at all, and the next task goes on from the index as it was), and the `show` the step
+//!   waits for only **reads**.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -173,6 +179,49 @@ impl WritesBackground for IndexWarmer {
     }
 }
 
+/// Start-up's resume: ask for the background build of each wiki in which a content hide is in force (`resume` does the asking and
+/// says whether it did), and say it in **a line** each: what is resumed, and **what could not be looked at** (the wiki list, or one
+/// wiki's hide). Nothing here fails the start: a wiki that could not be looked at is built when a hide or a reader asks. The lines
+/// are the start-up notes (the same place as the server's other start-up lines).
+pub(crate) fn resume_notes<E: std::fmt::Display, F: std::fmt::Display>(
+    wikis: Result<Vec<WikiRecord>, E>,
+    mut resume: impl FnMut(&WikiRecord) -> Result<bool, F>,
+) -> Vec<String> {
+    let wikis = match wikis {
+        Ok(wikis) => wikis,
+        Err(e) => {
+            return vec![format!(
+                "the wikis could not be listed to resume the background build of the writes index ({}); it is built when a hide or a reader asks for it",
+                one_line(&e)
+            )];
+        }
+    };
+    let mut notes = Vec::new();
+    for wiki in wikis {
+        match resume(&wiki) {
+            Ok(true) => notes.push(format!(
+                "a content hide is in force in wiki {}: its index of who wrote each page is built in the background",
+                wiki.slug
+            )),
+            Ok(false) => {}
+            Err(e) => notes.push(format!(
+                "whether a content hide is in force in wiki {} could not be looked at ({}); its writes index is built when a hide or a reader asks for it",
+                wiki.slug,
+                one_line(&e)
+            )),
+        }
+    }
+    notes
+}
+
+/// An error as one line (a start-up note is a line).
+fn one_line(e: &dyn std::fmt::Display) -> String {
+    e.to_string()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// A wiki being built.
 struct Task {
     wiki: WikiRecord,
@@ -259,24 +308,10 @@ impl Worker {
                     }
                 }
                 Outcome::Idle => {
-                    failing.remove(&task.wiki.id);
-                    next_turn = self.finish(task);
+                    // (A failing wiki is a failing wiki until the look after the task, `finish`, succeeds too.)
+                    next_turn = self.finish(task, &mut failing);
                 }
-                Outcome::Failed(why) => {
-                    let mut shared = self.shared();
-                    shared.queued.remove(&task.wiki.id);
-                    shared.quiet.insert(
-                        task.wiki.id.clone(),
-                        Instant::now() + self.pacing.retry_after,
-                    );
-                    drop(shared);
-                    if failing.insert(task.wiki.id.clone()) {
-                        (self.log)(&format!(
-                            "the writes index of wiki {} could not be built in the background ({why}); it is tried again at the next hide, the next start, or when a reader needs it",
-                            task.wiki.slug
-                        ));
-                    }
-                }
+                Outcome::Failed(why) => self.failed(&task.wiki, &why, &mut failing),
             }
             while let Ok(wiki) = self.jobs.try_recv() {
                 active.push_back(Task { wiki, steps: 0 });
@@ -306,10 +341,29 @@ impl Worker {
         }
     }
 
+    /// A step failed: the wiki's task ends, a reader's ask is not heard until [`Pacing::retry_after`] has passed (a hide's always is),
+    /// and the operator is told **once** (until a step of that wiki succeeds again).
+    fn failed(&self, wiki: &WikiRecord, why: &str, failing: &mut HashSet<WikiId>) {
+        {
+            let mut shared = self.shared();
+            shared.queued.remove(&wiki.id);
+            shared
+                .quiet
+                .insert(wiki.id.clone(), Instant::now() + self.pacing.retry_after);
+        }
+        if failing.insert(wiki.id.clone()) {
+            (self.log)(&format!(
+                "the writes index of wiki {} could not be built in the background ({why}); it is tried again at the next hide, the next start, or when a reader needs it",
+                wiki.slug
+            ));
+        }
+    }
+
     /// A task found nothing left to do. It **leaves the set, and is looked at once more**: an ask that came after the last look and
-    /// before the leaving was heard as the same task, and the look finds what it asked for (a hide is recorded before it asks).
+    /// before the leaving was heard as the same task, and the look finds what it asked for (a hide is recorded before it asks). A
+    /// look that fails is a failed step like another ([`Worker::failed`]: said once, and the retry pause is taken).
     /// `Some` when the look found more to do.
-    fn finish(&self, mut task: Task) -> Option<Task> {
+    fn finish(&self, mut task: Task, failing: &mut HashSet<WikiId>) -> Option<Task> {
         {
             let mut shared = self.shared();
             shared.queued.remove(&task.wiki.id);
@@ -321,8 +375,18 @@ impl Worker {
         let builder = self.builder.get().and_then(Weak::upgrade)?;
         let outcome = self.step(builder.as_ref(), &task.wiki);
         drop(builder);
-        if !matches!(outcome, Outcome::Progress) {
-            return None;
+        match outcome {
+            Outcome::Progress => {
+                failing.remove(&task.wiki.id);
+            }
+            Outcome::Idle => {
+                failing.remove(&task.wiki.id);
+                return None;
+            }
+            Outcome::Failed(why) => {
+                self.failed(&task.wiki, &why, failing);
+                return None;
+            }
         }
         // More to do after all: back in the set (unless a newer ask is already queued for it, which is the same task).
         let mut shared = self.shared();
@@ -334,15 +398,17 @@ impl Worker {
         Some(task)
     }
 
-    /// Wait `pause`, taking up the wikis asked for meanwhile. `true` when the worker is to end.
+    /// Wait **the whole of** `pause`, queuing the wikis asked for meanwhile (they are taken up after the pause, not instead of it: a
+    /// wiki asked for every few milliseconds must not cut the pause short). `true` when the worker is to end.
     fn wait(&self, pause: Duration, active: &mut VecDeque<Task>) -> bool {
-        match self.jobs.recv_timeout(pause) {
-            Ok(wiki) => {
-                active.push_back(Task { wiki, steps: 0 });
-                false
+        let deadline = Instant::now() + pause;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.jobs.recv_timeout(left) {
+                Ok(wiki) => active.push_back(Task { wiki, steps: 0 }),
+                Err(RecvTimeoutError::Timeout) => return false,
+                Err(RecvTimeoutError::Disconnected) => return true,
             }
-            Err(RecvTimeoutError::Timeout) => false,
-            Err(RecvTimeoutError::Disconnected) => true,
         }
     }
 }
