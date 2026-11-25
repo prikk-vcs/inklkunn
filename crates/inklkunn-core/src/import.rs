@@ -36,7 +36,7 @@
 //!
 //! **What a folder is.** The layout an export writes: `pages/**/*.md` and `attachments/**`, and, **when the manifest
 //! declares the knowledge extension** (`extensions_used: inklkunn-knowledge`, version 1; RFC 005 part 2 D-12), the claim and
-//! source files of `knowledge/`. Everything else at the top (the manifest, `SHA256SUMS`, `users.yaml`, `history/`,
+//! source files of `knowledge/`. Everything else at the top (the manifest, `sha256sums.txt` (or `SHA256SUMS`, as 0.3.0 wrote it), `users.yaml`, `history/`,
 //! `extensions/`, `governance/`, and `knowledge/` when no extension the import knows gives it meaning) is *not imported*
 //! and is listed as such: a Portable Wiki Bundle's import with its history is RFC 007's. **A manifest that declares
 //! tombstones** (`inklkunn.tombstones`, RFC 006 D-13: entries of the bundle whose content, summary or author was hidden by
@@ -91,8 +91,12 @@ const NOT_IMPORTED: &[(&str, &str)] = &[
         "the manifest describes the export, and is read only for the extensions it declares; the wiki keeps its own",
     ),
     (
-        "SHA256SUMS",
+        "sha256sums.txt",
         "the checksums of the export's files; the import reads the files themselves",
+    ),
+    (
+        "SHA256SUMS",
+        "the checksums of the export's files, as 0.3.0 named them; the import reads the files themselves",
     ),
     (
         "users.yaml",

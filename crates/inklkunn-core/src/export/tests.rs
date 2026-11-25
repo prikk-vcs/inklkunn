@@ -180,7 +180,7 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_th
         "  history_changes_without_a_page: 4",
         "interwiki:\n  \"wp\": \"https://en.wikipedia.org/wiki/\"",
         "  histories_not_written: 2",
-        "checksums: SHA256SUMS\n",
+        "checksums: sha256sums.txt\n",
     ] {
         assert!(text.contains(needle), "{needle}\n{text}");
     }

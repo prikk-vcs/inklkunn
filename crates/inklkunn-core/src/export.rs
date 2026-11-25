@@ -19,7 +19,7 @@
 //!   is one line per alternative view that was created (its name, kind, the view and block it was forked from, who
 //!   created it and when). A claim's thread is not a page's discussion (XFER-10 is one file per page), so nothing of it
 //!   is under `discussions/` and the manifest's `discussions` stays a statement about page discussions. A thread never
-//!   changes a claim: the bundle carries it beside the claim's file, not instead of it. All are listed in `SHA256SUMS`
+//!   changes a claim: the bundle carries it beside the claim's file, not instead of it. All are listed in `sha256sums.txt`
 //!   like every other file. (Comments on proposals are not exported here.)
 //! - **What moderation hides is not in it** (RFC 006 D-13; [`Suppressions`]): an entry with a hidden part is marked
 //!   `suppressed` with its `reasons` and omits that part (a history record's `content`, `summary` or `author`, a thread
@@ -28,7 +28,7 @@
 //! - **`users.yaml`**: the accounts that appear in those messages and in those threads, with the names they had.
 //! - **`wiki-bundle.yaml`**: the manifest, with the fidelity, the real counts, the block it is as of, the
 //!   interwiki map and, in `checksums`, the name of the file below (wiki-commons' shape).
-//! - **`SHA256SUMS`**, beside the manifest: one `"<sha256>  <path>"` line for every other file.
+//! - **`sha256sums.txt`** (wiki-commons' conventional name), beside the manifest: one `"<sha256>  <path>"` line for every other file.
 //!
 //! The bundle is built beside its destination and renamed into place only when complete, and the destination
 //! must not exist: a failed export leaves nothing. The extraction directory in the wiki's scratch directory is

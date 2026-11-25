@@ -36,7 +36,7 @@ extensions_used:
     directory: extensions/inklkunn-knowledge
 exported_at: "2023-11-14T22:30:00Z"
 interwiki: {}
-checksums: SHA256SUMS
+checksums: sha256sums.txt
 inklkunn:
   default_view: heads/main
   policy_bootstrap: default

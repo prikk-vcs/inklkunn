@@ -876,7 +876,7 @@ fn the_knowledge_layer_works_end_to_end_on_a_real_prikk() {
             && views_record.contains("\"kind\":\"interpretation\""),
         "AC D-9, D-12: the view's creation record travels: {views_record}"
     );
-    let sums = read("SHA256SUMS");
+    let sums = read("sha256sums.txt");
     assert!(
         sums.contains(&format!(
             "extensions/inklkunn-knowledge/threads/{claim}.jsonl"

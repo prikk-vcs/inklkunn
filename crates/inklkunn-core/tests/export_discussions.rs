@@ -486,7 +486,7 @@ fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_c
     assert_eq!(done.users, 2);
 
     // The checksums list every file but themselves and the manifest, and each is right.
-    let sums: BTreeMap<String, String> = text(&files, "SHA256SUMS")
+    let sums: BTreeMap<String, String> = text(&files, "sha256sums.txt")
         .lines()
         .map(|l| {
             let (sum, path) = l.split_once("  ").unwrap();

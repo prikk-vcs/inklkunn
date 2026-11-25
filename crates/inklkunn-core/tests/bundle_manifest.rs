@@ -1,6 +1,6 @@
 //! The bundle manifest follows wiki-commons (R6, handoff 003 corrections): every manifest the code writes is
 //! valid against `schemas/bundle-manifest.schema.json` (the copy under `tests/fixtures/`), `checksums` is the
-//! name of a `SHA256SUMS`-style file, and that file's lines are `"<sha256>  <path>"`. The export of a real wiki
+//! name of a `sha256sums.txt`-style file, and that file's lines are `"<sha256>  <path>"`. The export of a real wiki
 //! is checked the same way in `export_roundtrip.rs`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -74,7 +74,7 @@ fn the_manifest_an_export_writes_is_valid_and_names_the_checksums_file() {
         text.lines().any(|l| l == format!("checksums: {CHECKSUMS}")),
         "{text}"
     );
-    assert_eq!(CHECKSUMS, "SHA256SUMS");
+    assert_eq!(CHECKSUMS, "sha256sums.txt");
     assert!(
         text.contains("  histories_not_written: 1"),
         "a history that was not written is counted in the manifest\n{text}"
@@ -156,7 +156,7 @@ fn the_old_shape_of_checksums_is_what_the_schema_check_catches() {
     // The manifest before R6 wrote `checksums` as an object; the schema says it is a path.
     let good = manifest_with(&record(), "1.2.3", &facts());
     let old = good.replace(
-        "checksums: SHA256SUMS",
+        "checksums: sha256sums.txt",
         "checksums:\n  algorithm: sha256\n  files:\n    \"pages/A.md\": \"00ff\"",
     );
     let problems = bundle_manifest::violations(&old);

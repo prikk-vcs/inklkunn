@@ -17,8 +17,9 @@ pub const KEEP: &str = ".keep";
 /// prikk's ignore file: literal path prefixes, one per line.
 pub const PRIKKIGNORE: &str = ".prikkignore";
 /// The file the manifest's `checksums` names (wiki-commons: "path of a file of `<sha256>  <path>` lines"), beside
-/// the manifest.
-pub const CHECKSUMS: &str = "SHA256SUMS";
+/// the manifest, under wiki-commons' conventional name (chapter 10). **An export names it in the manifest, and a reader reads
+/// whatever the manifest names, never this name** (0.3.0's exports named it `SHA256SUMS`).
+pub const CHECKSUMS: &str = "sha256sums.txt";
 /// The first page of every wiki.
 pub const HELP_PAGE: &str = "pages/Help.md";
 /// The name of the extension that gives `knowledge/` its meaning (RFC 005 part 2 D-12), as the manifest's

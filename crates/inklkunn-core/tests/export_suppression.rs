@@ -695,7 +695,7 @@ fn the_bundle_is_whole(files: &BTreeMap<String, Vec<u8>>) {
     let manifest = text(files, "wiki-bundle.yaml");
     let problems = bundle_manifest::violations(&manifest);
     assert!(problems.is_empty(), "{problems:#?}\n{manifest}");
-    let sums: BTreeMap<String, String> = text(files, "SHA256SUMS")
+    let sums: BTreeMap<String, String> = text(files, "sha256sums.txt")
         .lines()
         .map(|l| {
             let (sum, path) = l.split_once("  ").unwrap();

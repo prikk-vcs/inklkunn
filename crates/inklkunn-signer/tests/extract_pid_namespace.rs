@@ -358,7 +358,7 @@ fn an_export_beside_a_sweep_from_another_pid_namespace_keeps_its_directories_and
             "{path} is in the bundle as it was extracted"
         );
     }
-    let sums = std::fs::read_to_string(dest.join("SHA256SUMS")).expect("checksums");
+    let sums = std::fs::read_to_string(dest.join("sha256sums.txt")).expect("checksums");
     for path in files.keys() {
         assert!(sums.contains(path), "{path} is listed in the checksums");
     }

@@ -301,11 +301,11 @@ fn sha(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// The `<sha256>  <path>` lines of a bundle's `SHA256SUMS` file, which its manifest's `checksums` names.
+/// The `<sha256>  <path>` lines of a bundle's `sha256sums.txt` file, which its manifest's `checksums` names.
 fn bundle_checksums(files: &BTreeMap<String, Vec<u8>>) -> BTreeMap<String, String> {
     let manifest = String::from_utf8(get(files, "wiki-bundle.yaml").clone()).unwrap();
     assert!(
-        manifest.lines().any(|l| l == "checksums: SHA256SUMS"),
+        manifest.lines().any(|l| l == "checksums: sha256sums.txt"),
         "{manifest}"
     );
     let problems = bundle_manifest::violations(&manifest);
@@ -313,7 +313,7 @@ fn bundle_checksums(files: &BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Strin
         problems.is_empty(),
         "the manifest is not valid against wiki-commons' schema: {problems:#?}\n{manifest}"
     );
-    String::from_utf8(get(files, "SHA256SUMS").clone())
+    String::from_utf8(get(files, "sha256sums.txt").clone())
         .unwrap()
         .lines()
         .map(|l| {
@@ -411,7 +411,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         let sums = bundle_checksums(&one);
         let others: Vec<&String> = one
             .keys()
-            .filter(|k| *k != "wiki-bundle.yaml" && *k != "SHA256SUMS")
+            .filter(|k| *k != "wiki-bundle.yaml" && *k != "sha256sums.txt")
             .collect();
         assert_eq!(sums.keys().collect::<Vec<_>>(), others);
         for (path, hash) in &sums {
@@ -483,10 +483,10 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             skipped,
             vec![
                 ".prikkignore",
-                "SHA256SUMS",
                 "governance",
                 "history",
                 "knowledge",
+                "sha256sums.txt",
                 "users.yaml",
                 "wiki-bundle.yaml"
             ]
@@ -519,7 +519,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
                     !k.starts_with("history/")
                         && *k != "users.yaml"
                         && *k != "wiki-bundle.yaml"
-                        && *k != "SHA256SUMS"
+                        && *k != "sha256sums.txt"
                 })
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect()
@@ -798,7 +798,7 @@ fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_sile
     assert_eq!(
         sums.len(),
         files.len() - 2,
-        "all but the manifest and SHA256SUMS"
+        "all but the manifest and sha256sums.txt"
     );
 }
 
