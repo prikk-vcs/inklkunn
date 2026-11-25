@@ -30,8 +30,9 @@ use inklkunn_core::{
 use inklkunn_prikk::{Admission, Point, PrikkCli, Sandbox, Storage};
 use inklkunn_store::{
     AcceptanceRecord, AcceptanceStore, Account, AccountId, AccountStore, ActStore, AuditLog,
-    DecisionKind, DisplayName, FileChange, NewWiki, ProposalId, ProposalRecord, ProposalState,
-    ProposalStore, Role, RoleGrant, RoleStore, Slug, SqliteStore, SystemActKind,
+    DecisionKind, DisplayName, FileChange, NewWiki, ProposalChange, ProposalId, ProposalOp,
+    ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
+    RevisionRecord, Role, RoleGrant, RoleStore, Slug, SqliteStore, SystemActKind,
 };
 
 /// Every question this crate asks of the prikk on `PATH`: the only place a test reaches a capability (maintenance M39).
@@ -63,7 +64,6 @@ fn dir_in(base: &Path, tag: &str) -> Dir {
 }
 
 struct Person {
-    #[allow(dead_code)]
     id: AccountId,
     principal: Principal,
 }
@@ -519,8 +519,30 @@ fn criterion_3_each_refusal_of_a_change_to_the_rules_is_by_name_and_leaves_the_r
         assert_eq!(names(&failure), [name], "{text:?}");
         assert!(w.file("governance/policy.yaml").is_none());
     }
-    // A governance file in an alternative view.
+    // A governance file in an alternative view. The service refuses such a proposal when it is made, saved, sent and revised
+    // (P-6); the acceptance's own refusal holds against a record that reached it some other way (made before the rule, a store
+    // written by hand): a page proposal for the view, its second revision written to the store as it is.
     w.make_other_view();
+    let rules_elsewhere = |files: Vec<FileChange>| ProposalEdit {
+        summary: "Rules, elsewhere".to_owned(),
+        files,
+        ..ProposalEdit::default()
+    };
+    let rules = || {
+        vec![FileChange {
+            path: "governance/policy.yaml".to_owned(),
+            text: Some("entry: none\n".to_owned()),
+        }]
+    };
+    assert!(matches!(
+        w.proposals.create(
+            &w.author.principal,
+            &w.wiki,
+            Some("heads/other"),
+            rules_elsewhere(rules())
+        ),
+        Err(ProposalError::GovernanceInvalid(_))
+    ));
     let id = ProposalId::new();
     w.proposals
         .create_named(
@@ -528,21 +550,42 @@ fn criterion_3_each_refusal_of_a_change_to_the_rules_is_by_name_and_leaves_the_r
             &w.author.principal,
             &w.wiki,
             Some("heads/other"),
-            ProposalEdit {
-                summary: "Rules, elsewhere".to_owned(),
-                files: vec![FileChange {
-                    path: "governance/policy.yaml".to_owned(),
-                    text: Some("entry: none\n".to_owned()),
-                }],
-                ..ProposalEdit::default()
-            },
+            rules_elsewhere(vec![FileChange {
+                path: "pages/Home.md".to_owned(),
+                text: Some(home_changed()),
+            }]),
         )
         .unwrap();
     w.proposals
         .submit(&w.author.principal, &w.wiki, &id)
         .unwrap();
+    let first = w.store.revisions(&id, None).unwrap().pop().unwrap();
+    w.store
+        .change_proposal(&ProposalChange {
+            transition: ProposalTransition {
+                proposal: id.clone(),
+                op: ProposalOp::Revise,
+                from: Some(ProposalState::HeldForReview),
+                to: ProposalState::HeldForReview,
+                actor: w.author.id.clone(),
+                reason: None,
+                at: first.created_at + 1,
+            },
+            text: None,
+            revision: Some(RevisionRecord {
+                proposal: id.clone(),
+                seq: first.seq + 1,
+                content: RevisionContent {
+                    files: rules(),
+                    ..first.content.clone()
+                },
+                created_at: first.created_at + 1,
+            }),
+            superseded_by: None,
+        })
+        .unwrap();
     let other_tip = w.tip_in("heads/other");
-    let failure = match w.accept(&w.maintainer, &id) {
+    let failure = match w.acceptor.accept(&w.maintainer.principal, &w.wiki, &id, 2) {
         Err(e) => e,
         Ok(done) => panic!("accepted: {done:?}"),
     };
@@ -553,7 +596,7 @@ fn criterion_3_each_refusal_of_a_change_to_the_rules_is_by_name_and_leaves_the_r
         "the other view did not move"
     );
     assert_eq!(w.state(&id), ProposalState::HeldForReview);
-    assert!(w.store.acceptances_of(&id, 1).unwrap().is_empty());
+    assert!(w.store.acceptances_of(&id, 2).unwrap().is_empty());
 }
 
 #[test]

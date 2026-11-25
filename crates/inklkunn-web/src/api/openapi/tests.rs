@@ -416,8 +416,11 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
     // proposal service's own refusal, `ProposalError::GovernanceInvalid`, is told by the same problem.
     let outside = governance_problem(&[Fault::outside_default_view(Some(GovernanceFile::Policy))])
         .body(crate::catalog::T::new(crate::catalog::EN));
-    assert_eq!(outside["reason"], "governance-invalid");
-    assert_eq!(outside["refusals"][0]["rule"], "outside-default-view");
+    assert_eq!(outside.pointer("/reason").unwrap(), "governance-invalid");
+    assert_eq!(
+        outside.pointer("/refusals/0/rule").unwrap(),
+        "outside-default-view"
+    );
     let proposing = [
         invalid_word(Invalid::GovernancePath),
         invalid_word(Invalid::GovernanceMixed),

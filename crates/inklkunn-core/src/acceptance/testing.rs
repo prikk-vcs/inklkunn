@@ -622,6 +622,29 @@ impl Rig {
         summary: &str,
         files: &[(&str, Option<&str>)],
     ) -> ProposalRecord {
+        self.propose_unjudged_at(id, &self.wiki.default_view, author, summary, files)
+    }
+
+    /// [`Rig::propose_unjudged`] addressed at `view`: what a proposal for another view that names a governance file is, made
+    /// before the service refused it (P-6; the acceptance's own refusal still holds against a record that reaches it so).
+    pub(crate) fn propose_unjudged_in(
+        &self,
+        view: &str,
+        author: &Principal,
+        summary: &str,
+        files: &[(&str, Option<&str>)],
+    ) -> ProposalRecord {
+        self.propose_unjudged_at(ProposalId::new(), view, author, summary, files)
+    }
+
+    fn propose_unjudged_at(
+        &self,
+        id: ProposalId,
+        view: &str,
+        author: &Principal,
+        summary: &str,
+        files: &[(&str, Option<&str>)],
+    ) -> ProposalRecord {
         use inklkunn_store::{
             ProposalChange, ProposalOp, ProposalState, ProposalTransition, RevisionContent,
             RevisionRecord,
@@ -649,7 +672,7 @@ impl Rig {
         let record = ProposalRecord {
             id,
             wiki: self.wiki.id.clone(),
-            view: self.wiki.default_view.clone(),
+            view: view.to_owned(),
             state: ProposalState::Draft,
             author: account.clone(),
             summary: summary.to_owned(),

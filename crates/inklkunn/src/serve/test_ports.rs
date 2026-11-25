@@ -1,3 +1,4 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 //! Two free local ports for a test that starts a server (an app origin and a content origin).
 
 /// Two free ports on `127.0.0.1` that differ.

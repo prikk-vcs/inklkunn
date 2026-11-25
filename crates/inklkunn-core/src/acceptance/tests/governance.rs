@@ -1036,17 +1036,26 @@ fn a_governance_file_in_a_view_that_is_not_the_default_one_is_refused_by_name() 
             "policy_change:\n  approvals: 1\n",
         ),
     ] {
-        let id = ProposalId::new();
-        rig.proposals
-            .create_named(
-                id.clone(),
+        // The service refuses such a proposal now (P-6), when it is made, saved, sent and revised; the acceptance's own
+        // refusal holds against a record that reached it some other way (made before the rule, a store written by hand).
+        assert!(matches!(
+            rig.proposals.create_named(
+                ProposalId::new(),
                 &author,
                 &rig.wiki,
                 Some("heads/other"),
                 edit(path, text),
+            ),
+            Err(ProposalError::GovernanceInvalid(_))
+        ));
+        let id = rig
+            .propose_unjudged_in(
+                "heads/other",
+                &author,
+                "Rules, elsewhere",
+                &[(path, Some(text))],
             )
-            .unwrap();
-        rig.proposals.submit(&author, &rig.wiki, &id).unwrap();
+            .id;
         let failure = refused(rig.acceptor().accept(&maintainer, &rig.wiki, &id, 1));
         assert_eq!(names(&failure), ["outside-default-view"], "{path}");
         let AcceptFailure::GovernanceInvalid(faults) = &failure else {

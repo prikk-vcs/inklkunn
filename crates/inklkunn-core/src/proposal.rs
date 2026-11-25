@@ -1412,6 +1412,7 @@ impl ProposalService {
     /// What a submission is checked on, besides who may touch which page: the text finished, the files fit the wiki,
     /// the knowledge files hold. **Shared** by [`ProposalService::submit`] and the reconfirm step, which is made already
     /// sent, so that the two cannot differ.
+    #[allow(clippy::too_many_arguments)]
     fn judge_submission(
         &self,
         principal: &Principal,
