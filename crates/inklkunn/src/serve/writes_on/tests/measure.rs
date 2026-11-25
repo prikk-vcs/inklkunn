@@ -12,8 +12,8 @@
 //! The knobs (all optional): `INKLKUNN_MEASURE_SIZES` (blocks of the default view's log, comma separated; default `500`),
 //! `INKLKUNN_MEASURE_RUNS` (default `1`), `INKLKUNN_MEASURE_FIXTURES` (where a built history is kept, default
 //! `$TMPDIR/inklkunn-measure-fixtures`; a history is built once per size, prikk version and size, and reused),
-//! `INKLKUNN_MEASURE_SCENARIOS` (a subset of `natural,cold,warm,views`; default all but `views`, which is slow: it opens
-//! twenty views), `INKLKUNN_MEASURE_BUILD_ONLY` (build the histories and stop).
+//! `INKLKUNN_MEASURE_SCENARIOS` (a subset of `natural,cold,warm,background,views`; default all but `views`, which is slow: it
+//! opens twenty views), `INKLKUNN_MEASURE_BUILD_ONLY` (build the histories and stop).
 //!
 //! # The history
 //!
@@ -42,8 +42,10 @@
 //! # The scenarios (each on a fresh copy of the built history; the derived store empty at the start)
 //!
 //! - **natural**: a moderator opens the moderation form for the middle edit and hides its text. The form's page lists the later
-//!   changes of the text, which builds the index toward the tip within its bound (`ReadService::later_writers`), and the hide's
-//!   post warms it again (`ReadService::warm_writes`): both are counted as the hide's own cost (the form's latency). Then
+//!   changes of the text, which builds the index toward the tip within a request's time (`ReadService::later_writers`), and the
+//!   hide's post asks the server's background build for the rest (since correction P-5 it does not build anything itself; before
+//!   it did, 256 `show`s): both are counted as the hide's own cost (the form's latency). The readers that follow ask continuously,
+//!   which the background build yields to, so this is the readers' own path. Then
 //!   readers ask for *Help* at the hidden block (a permalink at an old block) until the answer is not *not checked yet*, then
 //!   for *Help* at the newest block, then for *Help* at the early edit's block (the warmed request: the index holds it, the page is
 //!   not held) and again (the page is held).
@@ -51,6 +53,16 @@
 //!   meets an empty index and a process that has read nothing.
 //! - **warm**: the index is built to the tip first (a decoy hide, of the early edit's text, then `warm_writes` until it reaches
 //!   the tip); then the middle edit is hidden and the same requests are made.
+//! - **background** (0.4.0 correction P-5): the same hide, and then **no reader at all**. What is measured is **the time from the
+//!   return of the hide's POST until the writes index reaches the tip of the default view**, by the server's background build
+//!   alone. It is polled **once a second, in the derived store's file** (the state of the index, through a second connection of
+//!   the test: no request to the server, no prikk process, so a poll is no work of the server's and no reader), and then one
+//!   request each is made for the old version of *Help* at the hidden block and for the newest block, which must answer at once
+//!   with no `show`. The number printed is the seconds of the poll that first saw the tip (so the true time is up to a second
+//!   less), the number of prikk calls from the POST's return to that poll (by verb: the build's own, since nothing else asks), and
+//!   the CPU of the test process (the server, the build and the poll) and of the prikk children it waited for, in seconds, over the
+//!   same time. The moderation form's page, which the hide goes through first, builds the index for up to a second itself (a
+//!   request's own part); that is before the POST, and is counted as the hide's own cost, as in the other scenarios.
 //! - **views**: twenty views open (`v01` to `v20`), each holding one edit of its own, and an open proposal in the last one; the
 //!   middle edit is hidden, the derived store cleared and the server started again, and the page of that proposal is asked, which
 //!   reads the text the proposal was written against: a block that the default view's log does not hold, found among the
@@ -58,6 +70,8 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+use inklkunn_store::DerivedStore;
 
 use super::*;
 
@@ -71,10 +85,10 @@ const BUILD_ONLY: &str = "INKLKUNN_MEASURE_BUILD_ONLY";
 const SETTLE_CAP: usize = 1_000;
 /// The wiki's pages the edits go to besides *Help* (round robin); the ones that exist in a new wiki.
 const OTHER_PAGES: [&str; 4] = ["Alpha", "Beta", "Gamma", "Delta"];
-const HELP_TITLE: &str = "Help";
+pub(super) const HELP_TITLE: &str = "Help";
 const COUNTER: &str = "Measurement edit counter ";
 /// The words the page says in place of a hidden text.
-const HIDDEN_WORDS: &str = "Hidden by moderation";
+pub(super) const HIDDEN_WORDS: &str = "Hidden by moderation";
 const NOT_YET_WORDS: &str = "cannot be checked yet";
 
 fn env_or(name: &str, default: &str) -> String {
@@ -91,12 +105,12 @@ fn loadavg() -> String {
 // ------------------------------------------------------------------------------------ counting prikk
 
 /// A prikk that counts: `<log>` gets one line, the verb, for each process.
-struct Counting {
+pub(super) struct Counting {
     log: PathBuf,
 }
 
 impl Counting {
-    fn install(world: &mut World, real: &std::ffi::OsStr) -> Counting {
+    pub(super) fn install(world: &mut World, real: &std::ffi::OsStr) -> Counting {
         let log = world.tmp.0.join("prikk-calls.log");
         let script = world.tmp.0.join("prikk-counting");
         std::fs::write(&log, "").unwrap();
@@ -115,7 +129,7 @@ impl Counting {
     }
 
     /// The calls since the last `take`, by verb; the log is emptied.
-    fn take(&self) -> Calls {
+    pub(super) fn take(&self) -> Calls {
         let text = std::fs::read_to_string(&self.log).unwrap_or_default();
         std::fs::OpenOptions::new()
             .write(true)
@@ -131,14 +145,14 @@ impl Counting {
 }
 
 #[derive(Debug, Clone, Default)]
-struct Calls(BTreeMap<String, usize>);
+pub(super) struct Calls(BTreeMap<String, usize>);
 
 impl Calls {
     fn total(&self) -> usize {
         self.0.values().sum()
     }
 
-    fn of(&self, verb: &str) -> usize {
+    pub(super) fn of(&self, verb: &str) -> usize {
         self.0.get(verb).copied().unwrap_or(0)
     }
 
@@ -267,7 +281,7 @@ fn sign_in_as(running: &Running, login: &'static str, name: &'static str) -> Per
 }
 
 /// An edit of `title` through the pages in `view`: proposed by `noor`, approved and accepted by `maya`; the proposal's id.
-fn edit_page(
+pub(super) fn edit_page(
     noor: &mut Person,
     maya: &mut Person,
     title: &str,
@@ -578,19 +592,52 @@ struct Outcome {
     tip: Vec<Step>,
     warmed: Option<Step>,
     repeat: Option<Step>,
+    /// What the background build alone did, when the scenario is `background`.
+    background: Option<Background>,
     /// The decoy hide's cost and the rounds of warming before (the warm scenario).
     note: String,
+}
+
+/// What the server's background build alone did from the hide's return until the index reached the tip (the `background` scenario).
+#[derive(Debug, Clone)]
+struct Background {
+    /// The seconds from the POST's return to the poll that first saw the index at the tip.
+    seconds: f64,
+    /// The prikk calls in that time, by verb.
+    calls: Calls,
+    /// The CPU seconds of the test process (server, build, polls) over that time, user + system.
+    cpu: f64,
+    /// The CPU seconds of the prikk children the process waited for over that time, user + system.
+    children_cpu: f64,
+    /// The prikk calls an old version and the newest block cost afterwards (none are expected).
+    asked_after: usize,
+}
+
+/// The CPU seconds of this process and of the children it has waited for (`/proc/self/stat`: utime + stime, cutime + cstime, in clock
+/// ticks of a hundredth of a second, which is what Linux's `USER_HZ` is on every platform this runs on).
+fn cpu_seconds() -> (f64, f64) {
+    let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
+    // The fields after the command name (which is in parentheses and may hold spaces).
+    let after = stat.rsplit_once(')').map_or("", |(_, rest)| rest);
+    let fields: Vec<f64> = after
+        .split_whitespace()
+        .skip(11)
+        .take(4)
+        .map(|f| f.parse().unwrap_or(0.0))
+        .collect();
+    let at = |i: usize| fields.get(i).copied().unwrap_or(0.0) / 100.0;
+    (at(0) + at(1), at(2) + at(3))
 }
 
 /// A moderator's hide of the text of a proposal's revision: the form's page (which lists the later changes of the text, so
 /// builds the index toward the tip, within its bound) and the form's POST (which records the hide and warms the index again).
 #[derive(Debug, Clone)]
-struct Hide {
+pub(super) struct Hide {
     form: Step,
     post: Step,
 }
 
-fn hide_content(maya: &mut Person, counting: &Counting, proposal: &str) -> Hide {
+pub(super) fn hide_content(maya: &mut Person, counting: &Counting, proposal: &str) -> Hide {
     let query = format!("kind=proposal-revision&proposal={proposal}&seq=1");
     counting.take();
     let started = Instant::now();
@@ -630,7 +677,7 @@ fn hide_content(maya: &mut Person, counting: &Counting, proposal: &str) -> Hide 
 
 const MODERATE: &str = "/handbook/-/moderate";
 
-fn permalink(block: &str) -> String {
+pub(super) fn permalink(block: &str) -> String {
     format!("/handbook/-/at/{block}/{HELP_TITLE}")
 }
 
@@ -662,6 +709,7 @@ fn run_once(
         tip: Vec::new(),
         warmed: None,
         repeat: None,
+        background: None,
         note: String::new(),
     };
     let mut running = Running::start(&world);
@@ -701,6 +749,39 @@ fn run_once(
             );
             out.hide = Some(hide_content(&mut maya, &counting, &built.middle.0));
             requests(&mut anonymous, &counting, built, &mut out);
+        }
+        "background" => {
+            out.hide = Some(hide_content(&mut maya, &counting, &built.middle.0));
+            counting.take();
+            let (cpu0, children0) = cpu_seconds();
+            let began = Instant::now();
+            loop {
+                std::thread::sleep(Duration::from_secs(1));
+                let state = world
+                    .store
+                    .writes_state(&world.wiki.id, &world.wiki.default_view)
+                    .unwrap();
+                if state.is_some_and(|s| s.head_block == built.tip) {
+                    break;
+                }
+                assert!(
+                    began.elapsed() < Duration::from_secs(3 * 3600),
+                    "the index did not reach the tip in three hours"
+                );
+            }
+            let seconds = began.elapsed().as_secs_f64();
+            let (cpu1, children1) = cpu_seconds();
+            let calls = counting.take();
+            // One request each, which must need no `show`.
+            out.middle = vec![ask(&mut anonymous, &counting, &permalink(&built.middle.1))];
+            out.tip = vec![ask(&mut anonymous, &counting, &permalink(&built.tip))];
+            out.background = Some(Background {
+                seconds,
+                calls,
+                cpu: cpu1 - cpu0,
+                children_cpu: children1 - children0,
+                asked_after: calls_of(&out.middle) + calls_of(&out.tip),
+            });
         }
         "views" => {
             let mut noor = sign_in_as(&running, "noor", "Noor Contributor");
@@ -772,6 +853,10 @@ fn calls(steps: &[Step]) -> usize {
     steps.iter().map(|s| s.calls.total()).sum()
 }
 
+fn calls_of(steps: &[Step]) -> usize {
+    calls(steps)
+}
+
 fn print_outcome(o: &Outcome) {
     println!(
         "RUN k={} scenario={} run={} load-before={} load-after={}",
@@ -833,6 +918,18 @@ fn print_outcome(o: &Outcome) {
                 w.answer()
             );
         }
+    }
+    if let Some(b) = &o.background {
+        println!(
+            "  background build alone: the index reached the tip {:.0} s after the hide's POST returned (polled once a second); prikk calls {} ({}), shows {}; CPU of the process {:.1} s, of the prikk children {:.1} s; the two requests after it cost {} prikk calls",
+            b.seconds,
+            b.calls.total(),
+            b.calls.describe(),
+            b.calls.of("show"),
+            b.cpu,
+            b.children_cpu,
+            b.asked_after
+        );
     }
     if !o.note.is_empty() {
         println!("  note: {}", o.note);
@@ -923,8 +1020,8 @@ fn the_writes_index_on_a_long_history() {
         .map(|s| s.trim().parse().expect("a size"))
         .collect();
     let runs: usize = env_or(RUNS, "1").parse().expect("a number of runs");
-    let wanted = env_or(SCENARIOS, "natural,cold,warm");
-    let scenarios: Vec<&'static str> = ["natural", "cold", "warm", "views"]
+    let wanted = env_or(SCENARIOS, "natural,cold,warm,background");
+    let scenarios: Vec<&'static str> = ["natural", "cold", "warm", "background", "views"]
         .into_iter()
         .filter(|s| wanted.split(',').any(|w| w.trim() == *s))
         .collect();

@@ -14,7 +14,7 @@ use inklkunn_core::{
 };
 use inklkunn_prikk::sandbox::{Sandbox, probe_bwrap};
 use inklkunn_prikk::{Admission, PrikkCli, SizeHints, Storage};
-use inklkunn_store::{AuditSink, RootLayout, SqliteStore};
+use inklkunn_store::{AuditSink, RootLayout, SqliteStore, WikiStore};
 use inklkunn_web::serve::{Shutdown, run_blocking};
 use inklkunn_web::{AuthIdentity, Services, Site, WebConfig, routes};
 
@@ -24,6 +24,7 @@ use crate::outbound;
 
 mod acceptor;
 mod follow_up;
+mod index_warm;
 #[cfg(test)]
 mod test_ports;
 #[cfg(test)]
@@ -148,6 +149,12 @@ fn prepare_probing(
         store.clone(),
         store.clone(),
     ));
+    // The index of who wrote each path is built in the background while a content hide is in force (0.4.0 correction P-5): one worker
+    // thread, asked by the hide, by this start and by a reader that finds the index short; it ends with the service.
+    let index_warmer = Arc::new(index_warm::IndexWarmer::start(
+        index_warm::Pacing::default(),
+        log.clone(),
+    ));
     let read = Arc::new(
         ReadService::new(
             storage.clone(),
@@ -168,8 +175,12 @@ fn prepare_probing(
         // The rules of each wiki, read from its default view's tip and kept as a derived row (RFC 006 D-5), under the
         // operator's two limits (D-3).
         .with_governance_snapshots(store.clone())
-        .with_platform_limits(web.governance),
+        .with_platform_limits(web.governance)
+        .with_writes_background(index_warmer.clone()),
     );
+    let weak_read = Arc::downgrade(&read);
+    let builder: std::sync::Weak<dyn index_warm::Build> = weak_read;
+    index_warmer.bind(builder);
     // `authorize()` reads the rules of a wiki through the read service, and only through it: a handler cannot pass one.
     let authorizer = Arc::new(
         Authorizer::new(
@@ -284,6 +295,16 @@ fn prepare_probing(
     });
     let mut notes = notes;
     notes.extend(signing.notes);
+    // A restart goes on where the last run stopped: a wiki in which a content hide is in force has its index built on in the
+    // background (the index is derived and kept; a wiki in which nothing is hidden builds nothing).
+    for wiki in store.list().unwrap_or_default() {
+        if read.resume_writes_background(&wiki).unwrap_or(false) {
+            notes.push(format!(
+                "a content hide is in force in wiki {}: its index of who wrote each page is built in the background",
+                wiki.slug
+            ));
+        }
+    }
     let services = Arc::new(Services {
         wikis: store.clone(),
         read,
