@@ -145,6 +145,38 @@ async fn a_change_with_an_operation_on_no_resolved_path_cannot_have_its_text_hid
 }
 
 #[tokio::test]
+async fn a_refusal_that_is_not_not_found_leaves_a_change_unchecked_and_its_text_cannot_be_hidden() {
+    // P-1 (a): the page a change added is not at the tip, and the `stat` that tells why refuses with something that is not *not found*:
+    // the file may be there, so the change is not shown to be no tip's, and the hide is refused with the refusal for a change that
+    // cannot be compared (it is allowed once the store says the file is not there).
+    const NEW: &str = "pages/New.md";
+    let s = wiki();
+    s.w.fake.set(NEW, &foo("Call the number on file."));
+    s.w.fake.say(2, &service_text("Add a page"));
+    s.w.fake.show(2, shown(vec![op("create-file", &[NEW])]));
+    s.w.fake.remove(NEW);
+    s.w.fake.say(3, &service_text("Remove the page"));
+    s.w.fake.show(3, shown(vec![op("delete-file", &[NEW])]));
+    s.w.fake
+        .fail_stat(Some(inklkunn_prikk::StorageError::Refused {
+            verb: "cat",
+            message: "the store is damaged".to_owned(),
+            kind: None,
+            reason: None,
+        }));
+    let form = s.form(2, "en").await.body();
+    assert!(
+        form.contains("too large to compare with the current text of the pages"),
+        "{form}"
+    );
+    let refused = s.hide(2, &[("part_content", "1")]).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.body());
+    s.w.fake.fail_stat(None);
+    let done = s.hide(2, &[("part_content", "1")]).await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body());
+}
+
+#[tokio::test]
 async fn later_changes_that_may_have_written_the_page_and_a_page_moved_past_the_bound_are_said_in_both_languages()
  {
     let s = wiki();

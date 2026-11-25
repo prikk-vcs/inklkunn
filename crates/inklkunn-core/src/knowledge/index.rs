@@ -41,7 +41,8 @@ use super::{AnchorState, Claim, Digest, File, Rule, Source, anchor_state, read_f
 pub const CURRENT: &str = "current";
 /// It was judged on an earlier wording of the claim.
 pub const EARLIER: &str = "earlier";
-/// There is nothing it was judged on (a standing that was never decided).
+/// There is nothing it was judged on (a standing that was never decided), **or nothing is said of it**: a claim said on a page whose
+/// text is hidden has its judgements shown so, since *current* or *earlier* would tell which paragraph of the page was edited.
 pub const NOT_JUDGED: &str = "none";
 
 /// The word a retired claim's `lifecycle` and a retired source's have in the index (RFC 006 D-10).
@@ -185,6 +186,25 @@ impl KnowledgeIndex {
             .retain(|r| !gone(HiddenKind::Claim, &r.claim));
         rows.links.retain(|l| !gone(HiddenKind::Claim, &l.claim));
         rows.anchors.retain(|a| !gone(HiddenKind::Claim, &a.claim));
+        // The claims that are said on a page whose text is hidden. What a link or a standing was judged on is *current* or *earlier*
+        // by the digest of a paragraph the claim names, so for such a claim the word says which paragraph of the hidden page was
+        // edited (P-1): it is not said. **Nothing judged** is the word the types already have for *nothing is said of it*.
+        let on_hidden_page: std::collections::HashSet<String> = rows
+            .anchors
+            .iter()
+            .filter(|a| hidden_pages.contains(&a.page_id))
+            .map(|a| a.claim.clone())
+            .collect();
+        for link in &mut rows.links {
+            if on_hidden_page.contains(&link.claim) {
+                link.judgement = NOT_JUDGED.to_owned();
+            }
+        }
+        for claim in &mut rows.claims {
+            if on_hidden_page.contains(&claim.id) {
+                claim.standing_judgement = NOT_JUDGED.to_owned();
+            }
+        }
         // A place on a page whose text is hidden says whether the paragraph is there and what its digest is, which is read from
         // the text; the page was found by the frontmatter `id` the text carries.
         rows.anchors.retain(|a| !hidden_pages.contains(&a.page_id));

@@ -82,7 +82,7 @@ impl ReadService {
             match self.bytes_unchecked_at(wiki, &Point::Block(block_id.to_owned()), path)? {
                 Unchecked::Held(bytes) => ours.push((path.clone(), bytes)),
                 Unchecked::Missing => {}
-                Unchecked::Large => return Ok(TipCheck::Unchecked),
+                Unchecked::Large | Unchecked::CannotTell => return Ok(TipCheck::Unchecked),
             }
         }
         let mut tips: Vec<String> = Vec::new();
@@ -119,7 +119,9 @@ impl ReadService {
                         candidate,
                     )? {
                         Unchecked::Missing => {}
-                        Unchecked::Large => return Ok(TipCheck::Unchecked),
+                        Unchecked::Large | Unchecked::CannotTell => {
+                            return Ok(TipCheck::Unchecked);
+                        }
                         Unchecked::Held(theirs) if theirs == *bytes => {
                             return Ok(TipCheck::Holds {
                                 view: view.strip_prefix("heads/").unwrap_or(&view).to_owned(),
@@ -132,23 +134,26 @@ impl ReadService {
             tips.push(tip.block_id().to_owned());
         }
         Ok(match self.surviving_lines(wiki, block_id, &ours, &tips)? {
-            (0, _) => TipCheck::Clear,
-            (lines, at_least) => TipCheck::Survives { lines, at_least },
+            None => TipCheck::Unchecked,
+            Some((0, _)) => TipCheck::Clear,
+            Some((lines, at_least)) => TipCheck::Survives { lines, at_least },
         })
     }
 
     /// How many lines the change added that a tip's page still has, and whether the count stopped at its bound. A line is a line of
     /// text with something in it; it is **added** when the change's file has it and the file the change's parent had at the same
     /// path did not; it **survives** when the tip's page at that path has it as a line. Per file, the view that holds most counts.
+    /// `None` when a file the count needs cannot be told apart from a file that is not there (a refusal that is not *not found*;
+    /// P-1): the change is then not compared, and the hide is refused.
     fn surviving_lines(
         &self,
         wiki: &WikiRecord,
         block_id: &str,
         ours: &[(String, Vec<u8>)],
         tips: &[String],
-    ) -> Result<(usize, bool), ReadError> {
+    ) -> Result<Option<(usize, bool)>, ReadError> {
         let Some(info) = self.change_info_raw(wiki, None, block_id)? else {
-            return Ok((0, false));
+            return Ok(Some((0, false)));
         };
         let (mut total, mut looked, mut capped) = (0_usize, 0_usize, false);
         for (path, bytes) in ours {
@@ -163,6 +168,7 @@ impl ReadService {
                             .map(|l| l.trim().to_owned())
                             .collect(),
                         Unchecked::Missing | Unchecked::Large => std::collections::HashSet::new(),
+                        Unchecked::CannotTell => return Ok(None),
                     }
                 }
                 None => std::collections::HashSet::new(),
@@ -183,20 +189,22 @@ impl ReadService {
             }
             let mut best = 0;
             for tip in tips {
-                if let Unchecked::Held(now) =
-                    self.bytes_unchecked_at(wiki, &Point::Block(tip.clone()), path)?
-                {
-                    let held: std::collections::HashSet<&str> = std::str::from_utf8(&now)
-                        .unwrap_or_default()
-                        .lines()
-                        .map(str::trim)
-                        .collect();
-                    best = best.max(added.iter().filter(|line| held.contains(**line)).count());
+                match self.bytes_unchecked_at(wiki, &Point::Block(tip.clone()), path)? {
+                    Unchecked::Held(now) => {
+                        let held: std::collections::HashSet<&str> = std::str::from_utf8(&now)
+                            .unwrap_or_default()
+                            .lines()
+                            .map(str::trim)
+                            .collect();
+                        best = best.max(added.iter().filter(|line| held.contains(**line)).count());
+                    }
+                    Unchecked::Missing | Unchecked::Large => {}
+                    Unchecked::CannotTell => return Ok(None),
                 }
             }
             total += best;
         }
-        Ok((total, capped))
+        Ok(Some((total, capped)))
     }
 
     /// The change `block_id` of the view as it was written, with nothing hidden: `Ok(None)` when the view's history has no such

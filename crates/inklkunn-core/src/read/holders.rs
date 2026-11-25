@@ -246,7 +246,7 @@ impl ReadService {
         let ours = match self.bytes_unchecked_at(wiki, &Point::Block(block_id.to_owned()), path)? {
             Unchecked::Held(bytes) => bytes,
             Unchecked::Missing => return Ok(Some(HashSet::new())),
-            Unchecked::Large => return Ok(None),
+            Unchecked::Large | Unchecked::CannotTell => return Ok(None),
         };
         let Ok(text) = std::str::from_utf8(&ours) else {
             return Ok(Some(HashSet::new()));
@@ -264,6 +264,7 @@ impl ReadService {
                         .map(|l| l.trim().to_owned())
                         .collect(),
                     Unchecked::Missing | Unchecked::Large => HashSet::new(),
+                    Unchecked::CannotTell => return Ok(None),
                 }
             }
             None => HashSet::new(),

@@ -8,7 +8,11 @@ use std::sync::atomic::Ordering;
 use super::super::testing::{block_id, state_id};
 use super::super::writes::tests::{Rig, rig};
 use super::*;
-use crate::knowledge::{Claim, ClaimId, Expression, claim_path};
+use crate::knowledge::index as kix;
+use crate::knowledge::{
+    Bearing, Claim, ClaimId, CommunityStatus, Expression, Link, SourceId, SourceLink, Standing,
+    block_digest, claim_path,
+};
 
 const ONE: &str = "---\ntitle: One\nid: p1\naliases: [Uno]\n---\n\nSaid. ^b1\n\nOther.\n";
 const ONE_SECRET: &str =
@@ -23,6 +27,31 @@ fn claim_id(n: u8) -> ClaimId {
 fn claim_file(n: u8, page_id: &str, block: &str) -> (String, String) {
     let mut claim = Claim::new(claim_id(n));
     claim.expressions = vec![Expression::new(page_id, block).expect("an expression")];
+    (claim_path(&claim.id), claim.to_yaml())
+}
+
+/// The digest of a block as a claim's judgement names it.
+fn digest_of(block: &str) -> crate::knowledge::Digest {
+    let found = inklkunn_markup::blocks(block);
+    block_digest(found.first().expect("a block"))
+}
+
+/// The path and text of a claim said at `page_id#block`, with a standing and a link to a source both judged on the wording `judged`.
+fn judged_claim_file(n: u8, page_id: &str, block: &str, judged: &str) -> (String, String) {
+    let mut claim = Claim::new(claim_id(n));
+    claim.expressions = vec![Expression::new(page_id, block).expect("an expression")];
+    claim.community_status = CommunityStatus {
+        status: Standing::Contested,
+        proposal: Some("01930000-aaaa-7000-8000-000000000001".to_owned()),
+        judged_on: Some(digest_of(judged)),
+    };
+    claim.sources = vec![SourceLink {
+        source: SourceId::parse("01931111-0000-7000-8000-000000000001").expect("a source id"),
+        relation: Link::Supports,
+        bearing: Bearing::Partial,
+        note: None,
+        judged_on: digest_of(judged),
+    }];
     (claim_path(&claim.id), claim.to_yaml())
 }
 
@@ -149,4 +178,46 @@ fn the_title_index_at_a_base_is_held_and_is_never_served_after_a_hide_or_an_unhi
         "and the other hide is still in force"
     );
     assert_eq!(runs(), 4);
+}
+
+/// **What a link and a standing were judged on is not said for a claim on a hidden page** (P-1): *current* or *earlier* is the digest of
+/// the paragraph the claim names against the digest it was judged on, so on a hidden page it says which paragraph the hidden change
+/// edited. The same claim on a page that is not hidden says it as it did; with nothing hidden nothing changes.
+#[test]
+fn what_a_claim_on_a_hidden_page_was_judged_on_is_not_said_in_the_knowledge_index_at_a_base() {
+    let (a_path, a_text) = judged_claim_file(1, "p1", "b1", "Said. ^b1");
+    let (b_path, b_text) = judged_claim_file(2, "p2", "b2", "Plain. ^b2");
+    let r = rig(&[
+        ("pages/One.md", ONE),
+        ("pages/Two.md", TWO),
+        (a_path.as_str(), a_text.as_str()),
+        (b_path.as_str(), b_text.as_str()),
+    ]);
+    r.w.fake().set("pages/One.md", ONE_SECRET); // 2: the paragraph the claim names is edited
+    r.w.fake()
+        .set("pages/Two.md", &TWO.replace("Plain.", "Plain again.")); // 3: so is the other
+    let (a, b) = (claim_id(1).to_string(), claim_id(2).to_string());
+    let judged = |k: &KnowledgeIndex, claim: &str| {
+        let links: Vec<String> = k.links_of(claim).map(|l| l.judgement.clone()).collect();
+        let standing = k.claim(claim).map(|c| c.standing_judgement.clone());
+        (links, standing)
+    };
+    // Nothing hidden: both were judged on an earlier wording.
+    let earlier = (vec![kix::EARLIER.to_owned()], Some(kix::EARLIER.to_owned()));
+    let k = knowledge_at_3(&r);
+    assert_eq!(judged(&k, &a), earlier);
+    assert_eq!(judged(&k, &b), earlier);
+    // Change 2 is hidden: the claim on `One` says nothing of what it was judged on, and the claim on `Two` says it as it did.
+    r.hide(2);
+    r.warm();
+    let k = knowledge_at_3(&r);
+    assert_eq!(
+        judged(&k, &a),
+        (
+            vec![kix::NOT_JUDGED.to_owned()],
+            Some(kix::NOT_JUDGED.to_owned())
+        ),
+        "the word would tell which paragraph of the hidden page the hidden change edited"
+    );
+    assert_eq!(judged(&k, &b), earlier, "a page that is not hidden");
 }

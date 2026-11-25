@@ -69,6 +69,8 @@ struct State {
     touch_shows: usize,
     /// Make `show` fail.
     fail_show: bool,
+    /// What `stat` answers instead of a file's size or its absence, when set.
+    fail_stat: Option<StorageError>,
 }
 
 /// How many of the calls that cost a process for each page were asked ([`Fake::asked`]).
@@ -280,6 +282,11 @@ impl Fake {
     pub fn fail_show(&self, fail: bool) {
         self.state().fail_show = fail;
     }
+
+    /// Make every `stat` refuse with this (`None` ends it).
+    pub fn fail_stat(&self, refusal: Option<StorageError>) {
+        self.state().fail_stat = refusal;
+    }
 }
 
 pub fn clean() -> Verification {
@@ -410,6 +417,9 @@ impl Storage for Fake {
     fn stat(&self, _: &Path, point: &Point, path: &str) -> Result<FileMeta> {
         let mut s = self.state();
         s.file_calls += 1;
+        if let Some(refusal) = &s.fail_stat {
+            return Err(refusal.clone());
+        }
         let Point::Block(id) = point else {
             return unsupported("cat");
         };

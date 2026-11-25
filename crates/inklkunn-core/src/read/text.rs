@@ -104,6 +104,10 @@ pub(super) enum Unchecked {
     Missing,
     /// The file is larger than a page may be.
     Large,
+    /// The storage refused, and not with *the file is not there*: whether the file is there, and what it holds, is not known (a
+    /// damaged store, a bound, a refusal this reader does not know). **Not a file's absence**: whatever asks must treat it as a file
+    /// that cannot be compared, never as no file (P-1).
+    CannotTell,
 }
 
 impl ReadService {
@@ -222,7 +226,7 @@ impl ReadService {
         match self.bytes_unchecked_at(wiki, &point, path)? {
             Unchecked::Held(bytes) => Ok(FileAt::Held(bytes)),
             Unchecked::Missing => Ok(FileAt::Missing),
-            Unchecked::Large => match self.storage.read(
+            Unchecked::Large | Unchecked::CannotTell => match self.storage.read(
                 &self.layout.repo_dir(&wiki.id),
                 &point,
                 path,
@@ -266,7 +270,9 @@ impl ReadService {
             Err(refused @ StorageError::Refused { .. }) => {
                 // Either the file is not there at that point, or it is over the size read: `stat` tells.
                 match self.storage.stat(&repo, point, path) {
-                    Err(StorageError::Refused { .. }) => Ok(Unchecked::Missing),
+                    // Only the refusal that says *not found* says the file is not there; any other says nothing of it (P-1).
+                    Err(e) if is_no_such_path(&e, path) => Ok(Unchecked::Missing),
+                    Err(StorageError::Refused { .. }) => Ok(Unchecked::CannotTell),
                     Ok(_) => Ok(Unchecked::Large),
                     Err(_) => Err(self.storage_error(wiki, refused)),
                 }
@@ -355,7 +361,7 @@ impl ReadService {
             match self.bytes_unchecked_at(wiki, &Point::Block(block.to_owned()), path)? {
                 Unchecked::Held(bytes) => String::from_utf8(bytes).ok().map(Some),
                 Unchecked::Missing => Some(None),
-                Unchecked::Large => None,
+                Unchecked::Large | Unchecked::CannotTell => None,
             },
         )
     }
