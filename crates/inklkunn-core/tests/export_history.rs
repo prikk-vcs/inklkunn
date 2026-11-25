@@ -786,7 +786,12 @@ fn a_page_none_of_whose_texts_can_name_it_is_named_by_its_path_and_its_hidden_te
     assert!(!everything(&files).contains(WORDS_1));
     // Its file is named by its path, and says what happened to it without the text.
     let harbour_records = records(&files, "~Harbour");
-    assert_eq!(harbour_records.len(), 2, "{:?}", files.keys().collect::<Vec<_>>());
+    assert_eq!(
+        harbour_records.len(),
+        2,
+        "{:?}",
+        files.keys().collect::<Vec<_>>()
+    );
     assert_eq!(
         at(harbour_records.first().unwrap(), "/suppressed"),
         &serde_json::json!(["content"])
