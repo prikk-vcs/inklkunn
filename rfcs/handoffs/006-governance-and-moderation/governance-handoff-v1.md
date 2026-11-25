@@ -412,3 +412,20 @@ It is a test race, not a product defect.
 `b6d005f` is reviewed. **The P round and the candidate list any Japanese message they add or change** in their review
 requests (key, English, Japanese), so that the architect gives the owner the last list at R-8.
 
+## The P round reviewed: the Q round, then the candidate (2026-11-25)
+
+**P-1 – P-8: Approved** (`.git-exclude/reviewed/0.4.0-readiness-corrections-review-result.md`), and pushed. **Q-1 –
+Q-6 (binding, small, before the candidate):**
+- **Q-1:** the builder's pause waits out its deadline (loop on `recv_timeout`), and the yield pause the same.
+- **Q-2:** `append_writes` compares the expected generation inside its transaction.
+- **Q-3:** one time budget per request (preferred), or the doc says *per lookup*.
+- **Q-4:**
+  - `finish`'s second look logs and takes the retry window;
+  - start-up's resume says a store error;
+  - the doc says the worker is not joined, and why that is safe.
+- **Q-5:** `moderate.tip_unchecked` is reworded for both causes, in both languages.
+- **Q-6:** the Japanese added or changed since `b6d005f`, listed as `.git-exclude/ja-review/0.4.0-messages-since-2026-11-25.md`.
+
+Hand back as `0.4.0-readiness-q-review-request.md`. **R-7, the candidate,** follows its approval:
+`0.4.0-candidate-review-request.md`, with the version 0.4.0 and the CHANGELOG heading only.
+

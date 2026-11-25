@@ -794,9 +794,30 @@
   now the owner's.** Anything the P round or the candidate adds or changes is listed for the owner at R-8, in the same
   format, before the cut.
 
+- **2026-11-25 — the P round (P-1 – P-8) Approved** (`d901c57`, pushed). An independent review of the background builder
+  ran beside the architect's.
+  - **The writes index builds in the background:** after a hide in a 2,000-block wiki it reaches the tip in about 99 s
+    with no reader, and the hide's own POST went from 1.9 s to 0.15 s.
+  - **A governance file in another view is refused at proposing.**
+  - **The end-to-end proof** gains an export, *show hidden content* and a decline by a hide.
+  - **The soak:** 100 more runs on the final tree, all green. RR-16 records the one unexplained failure of 2026-11-21,
+    not reproduced in 480 runs.
+  - **The Q round, small, before the candidate:** Q-1 – Q-4 in the builder, Q-5 one message reworded, Q-6 the last
+    Japanese list.
+
+- **2026-11-25 — the owner sent the prikk letter, and prikk replied the same day** (`.git-exclude/upstream/prikk/receive/2026-11-25-reply-recovery-order-show-cost-and-the-trust-round.md`;
+  ledger v1.13).
+  - **PK-49:** our recovery order is sound; `seal` alone would do both steps.
+  - **0.59.0 changes `doctor`'s wording for that state.** Recovery reads the old wording word for word, so at the 0.59.0
+    re-baseline it would stop (fail closed) until it reads the new words. That is a re-baseline action, not a 0.4.0
+    defect.
+  - **PK-50:** `show` starts from the nearest checkpoint in 0.60.0, and our range ask is input to their 0.59.0 JSON
+    round.
+  - **PK-34:** our four key cases are input to their 0.59.0 trust round, whose design comes to us before anything is
+    built.
+
 ## Pending on the owner
 
-- **The prikk letter** in `send/draft/` (2026-11-25), to send when convenient.
 - Next: the 0.4.0 cut, when the architect proposes it (target 2026-12-10).
 
 ## Pending upstream
@@ -816,7 +837,7 @@ M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and h
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **0.3.0 released 2026-11-19.** **The dev team's order now:**
-**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). G-T2 – G-T3 and D-1 conditionally approved (2026-11-23). F-1 – E-1 approved; G-T5 – G-T6 conditionally approved; G-T4 changes requested (2026-11-24). G-T4 – G-T6's corrections approved but for H-1, and G-T7 conditionally approved (2026-11-24). Readiness approved with its correction round (2026-11-25). Now: the P round (P-1 – P-7); then R-7, the candidate; then G-T2 – G-T7. The test by a person using
+**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). G-T2 – G-T3 and D-1 conditionally approved (2026-11-23). F-1 – E-1 approved; G-T5 – G-T6 conditionally approved; G-T4 changes requested (2026-11-24). G-T4 – G-T6's corrections approved but for H-1, and G-T7 conditionally approved (2026-11-24). Readiness and the P round approved (2026-11-25). Now: the Q round (Q-1 – Q-6); then R-7, the candidate; then G-T2 – G-T7. The test by a person using
 assistive technology is planned before 1.0 or the first public deployment (owner, 2026-11-18).
 
 ## Issue register

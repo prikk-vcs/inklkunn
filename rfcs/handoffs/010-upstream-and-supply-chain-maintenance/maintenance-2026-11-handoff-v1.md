@@ -607,3 +607,15 @@ C-1 is **Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-m62-correcti
 M62 are done. Still owed at 0.4.0's readiness (R-5): the longer kill-matrix soak, with every failing log kept. PK-49's
 question goes into the next prikk letter.
 
+## For the prikk 0.59.0 re-baseline (recorded 2026-11-25, from prikk's reply; not assigned yet)
+
+When prikk 0.59.0 is released, the re-baseline (RFC 010) must cover these, besides the usual run:
+- **`doctor`'s recommendation for a pointer that leads its log changes** (PK-49): it names `seal --allow-no-audit` first,
+  and `ref complete <ref>` as the step that needs no key.
+  - `Diagnostic::lead_ref` matches 0.55.0's words exactly, so on 0.59.0 both M61's seal lead and K19's view creation may
+    stop as `doctor-trouble`, which fails closed.
+  - Read the new wording, keep the old one for the floor, and decide with the architect whether M61's plan becomes
+    `seal` alone, as prikk says it may.
+  - The kill matrix's `LEAD` rows and K19's tests on 0.59.0 show it.
+- **prikk's 0.59.0 design rounds** (JSON consumers read; trust) send drafts before building. The architect answers them.
+
