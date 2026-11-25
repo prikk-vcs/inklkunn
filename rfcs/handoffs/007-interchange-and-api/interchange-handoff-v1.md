@@ -192,3 +192,27 @@ Readiness (R-5) follows the plan:
 - the Japanese list since `162f0cc`, in `.git-exclude/ja-review/` format.
 
 Hand back as `0.5.0-readiness-review-request.md`.
+
+## I-T1 reviewed: corrections X-1 – X-10 (2026-11-26; binding), and I-T2 assigned
+
+**I-T1: Conditionally Approved** (`.git-exclude/reviewed/007-interchange-i-t1-review-result.md`), and pushed. An
+independent review found no way for hidden content to leave in an export. **Corrections:**
+- **X-1 (Medium):** tell *not yet* from *never*. Wait only while the index is short of the tip. Once it is at the tip,
+  withhold a text that is unattributable for good: `inklkunn.withheld` with its reason, never `suppressed`, said and
+  counted. One opaque block must not refuse every export.
+- **X-2 (Medium):** `at` is the act's sealing time, then the source's (I-T3), then first-seen, with `inklkunn.at_from`.
+  It never decreases within a file.
+- **X-3:** a block whose effect is not listed is said in the file after it (`after_untraced`), and nothing is
+  invented.
+- **X-4:** a removal and a recreation with one id in one block is a rename; a move out of `pages/` and back is carried.
+- **X-5:** `~` names escape upper-case letters.
+- **X-6:** `first_seen` writes in chunks.
+- **X-7:** a moderation act recorded during the export fails it, to be run again.
+- **X-8:** the cap counts serialised bytes, and files are written one at a time.
+- **X-9:** `sha256sums.txt`, named by the manifest; the import reads what the manifest names.
+- **X-10:** two tests that fail under load (a recovery test on 0.58.0; the 0.2.0 upgrade wait), fixed without
+  loosening them.
+
+Hand back as `007-interchange-i-t1-corrections-review-request.md`. **I-T2 is assigned now** (the section above), beside
+the corrections, built on X-1, X-2 and X-9's shape. It is handed back with I-T3 as
+`007-interchange-i-t2-i-t3-review-request.md`.

@@ -671,3 +671,9 @@ cycle.** It is a request of its own, when it comes.
 Hand back as `010-maintenance-2026-11-m63-review-request.md`, with the whole workspace's numbers on 0.55.0 first,
 shimmed off, on 0.57.0 and on 0.58.0, and the output of `cargo publish --workspace --dry-run --locked` on your tree.
 One CHANGELOG entry goes under `## [Unreleased]`.
+
+## M63 reviewed (2026-11-26)
+
+**M63: Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-m63-review-result.md`), and pushed. The crates package
+and verify, and the rehearsal now proves it. Publishing waits for 0.5.0's cut and the owner's `CARGO_REGISTRY_TOKEN`
+secret. The two load-dependent tests seen in its gates are assigned with I-T1's corrections (X-10, handoff 007).
