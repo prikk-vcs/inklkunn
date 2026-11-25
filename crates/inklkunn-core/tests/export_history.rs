@@ -624,10 +624,7 @@ fn every_file_is_in_order(files: &BTreeMap<String, Vec<u8>>) {
             })
             .collect();
         // RFC 3339 times of one zone, in whole seconds, sort as they read.
-        assert!(
-            times.windows(2).all(|w| w[0] <= w[1]),
-            "{path} runs backwards: {times:?}"
-        );
+        assert!(times.is_sorted(), "{path} runs backwards: {times:?}");
         seen += times.len();
     }
     assert!(seen > 0, "no file was checked");

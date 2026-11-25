@@ -154,7 +154,7 @@ impl<'a> HistoryInputs<'a> {
         self
     }
 
-    /// The same, recording when blocks were first seen `blocks` at a time ([`FIRST_SEEN_CHUNK`] otherwise, which is the most): each
+    /// The same, recording when blocks were first seen `blocks` at a time (10,000 otherwise, which is the most): each
     /// write is one transaction, and a long export must not hold the store's write lock for longer than a running server waits for
     /// it (I-T1 correction X-6). A smaller number is for a test.
     #[must_use]
