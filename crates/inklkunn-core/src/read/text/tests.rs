@@ -6,7 +6,7 @@
 //! `diff` (the hunks of a difference, which are the text of both sides), and a `Tip {` literal (a tip is read unchecked, because
 //! the content of a view's tip cannot be hidden, so no module may call a block a tip). Each has its list of the places that may,
 //! each with its reason, and a planted violation of its own. The scan is over the sources of every crate of the workspace but the
-//! driver's (which defines the calls), with comments and strings left out; a test file or test support is no product code.
+//! driver's (which defines the calls), with comments and strings left out; a file is test code by its `#[cfg(test)]` and not by its name, and is no product code.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -399,8 +399,9 @@ fn code_of(source: &str) -> String {
 }
 
 /// The lines (1-based) at which a call named `name` is made with `arity` arguments (`None`: any number): a method call
-/// (`.name(`), or the storage trait's name in a path (`Storage::name(`, whatever the arguments). A definition (`fn name(`), a
-/// longer name, a comment and a string are not calls.
+/// (`.name(`), a call by a path (`<dyn Storage>::name(`, `<S as Storage>::name(`, `S::name(`, which has the receiver for one argument
+/// more), or the storage trait's name in a path (`Storage::name(`, whatever the arguments). A definition (`fn name(`), a longer name,
+/// a comment and a string are not calls.
 fn calls(source: &str, name: &str, arity: Option<usize>) -> Vec<usize> {
     let code = code_of(source);
     let bytes = code.as_bytes();
@@ -428,13 +429,32 @@ fn calls(source: &str, name: &str, arity: Option<usize>) -> Vec<usize> {
             found.push(line_of(start));
             continue;
         }
+        // A call by a path whatever the type is called (`<dyn Storage>::read(`, `<S as Storage>::read(`, `S::read(`) is the same call
+        // with the receiver as its first argument, so it has one argument more (P-3). A *type's* path says so: `>` closes a qualified
+        // one and a type's name begins with a capital, while `cleanup::read(` is a module's function and no trait's call. A definition
+        // has `fn` before its name, not `::`.
+        let by_path = before.strip_suffix("::").is_some_and(|path| {
+            let last: String = path
+                .chars()
+                .rev()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            path.ends_with('>') || last.chars().last().is_some_and(char::is_uppercase)
+        });
         // A method call: `.name(`, with `fn name(` (a definition) left out.
-        if !before.ends_with('.') {
+        if !before.ends_with('.') && !by_path {
             continue;
         }
         let Some(arity) = arity else {
             found.push(line_of(start));
             continue;
+        };
+        let arity_wanted = |args: usize| {
+            if by_path {
+                args == arity + 1
+            } else {
+                args == arity
+            }
         };
         let open = code.len() - rest.len();
         let (mut depth, mut args, mut any, mut end) = (0_i32, 1_usize, false, open);
@@ -461,7 +481,7 @@ fn calls(source: &str, name: &str, arity: Option<usize>) -> Vec<usize> {
         }
         // A trailing comma is no argument.
         let args = if any { args } else { args.saturating_sub(1) };
-        if end > open && args == arity {
+        if end > open && arity_wanted(args) {
             found.push(line_of(start));
         }
     }
@@ -503,31 +523,9 @@ fn tip_literals(source: &str) -> Vec<usize> {
 }
 
 /// The lines at which a helper that reads past the check is called: a method call or a call by path (`Self::name(`,
-/// `ReadService::name(`). A definition, a longer name, a comment and a string are not calls.
+/// `ReadService::name(`, any other). A definition, a longer name, a comment and a string are not calls.
 fn helper_calls(source: &str, name: &str) -> Vec<usize> {
-    let mut found = calls(source, name, None);
-    let code = code_of(source);
-    let line_of = |at: usize| 1 + code.get(..at).map_or(0, |s| s.matches('\n').count());
-    for prefix in ["Self::", "ReadService::"] {
-        let needle = format!("{prefix}{name}");
-        let mut from = 0;
-        while let Some(at) = code.get(from..).and_then(|s| s.find(&needle)) {
-            let start = from + at;
-            from = start + needle.len();
-            let rest = code.get(from..).unwrap_or("");
-            let word_before = code
-                .get(..start)
-                .unwrap_or("")
-                .chars()
-                .next_back()
-                .is_some_and(|c| c.is_alphanumeric() || c == '_');
-            if !word_before && rest.trim_start().starts_with('(') {
-                found.push(line_of(start));
-            }
-        }
-    }
-    found.sort_unstable();
-    found
+    calls(source, name, None)
 }
 
 /// The name of the function whose body holds `line` (1-based): the last `fn name` of the code at or before it. (A function written
@@ -644,8 +642,8 @@ fn ways() -> Vec<Way> {
     ]
 }
 
-/// Every product source of the workspace's crates but the driver's: `(path relative to `crates/`, source)`.
-fn product_sources() -> Vec<(String, String)> {
+/// Every source of the workspace's crates but the driver's, test code included: `(path relative to `crates/`, source)`.
+fn all_sources() -> Vec<(String, String)> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(Path::to_path_buf)
@@ -678,12 +676,8 @@ fn product_sources() -> Vec<(String, String)> {
                     .and_then(|n| n.to_str())
                     .unwrap_or_default();
                 if path.is_dir() {
-                    // A directory of tests is no product code.
-                    if file != "tests" {
-                        stack.push(path);
-                    }
+                    stack.push(path);
                 } else if file.ends_with(".rs")
-                    && !matches!(file, "tests.rs" | "testing.rs" | "support.rs")
                     && let Ok(source) = fs::read_to_string(&path)
                 {
                     let relative = path
@@ -697,6 +691,137 @@ fn product_sources() -> Vec<(String, String)> {
         }
     }
     out
+}
+
+/// What follows the attribute `#[cfg(test)]` at `at` (the end of it) in `code`, when it is a module: `(name, end of the declaration,
+/// is it inline)`. Other attributes between the two and the module's visibility are passed over; anything but a module (a `use`, a
+/// function, an `impl`) is `None` and stays product code, since it is in the product file.
+fn module_after_cfg_test(code: &str, at: usize) -> Option<(String, usize, bool)> {
+    let bytes = code.as_bytes();
+    let mut i = at;
+    loop {
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        if !code.get(i..)?.starts_with("#[") {
+            break;
+        }
+        let mut depth = 0_i32;
+        while let Some(&c) = bytes.get(i) {
+            i += 1;
+            match c {
+                b'[' => depth += 1,
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut rest = code.get(i..)?;
+    if let Some(after) = rest.strip_prefix("pub") {
+        let after = after.trim_start();
+        rest = match after.strip_prefix('(') {
+            Some(inner) => inner.split_once(')')?.1,
+            None => after,
+        };
+    }
+    let rest = rest.trim_start().strip_prefix("mod ")?.trim_start();
+    let name: String = rest
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    let mut j = code.len() - rest.len() + name.len();
+    while bytes.get(j).is_some_and(u8::is_ascii_whitespace) {
+        j += 1;
+    }
+    match bytes.get(j) {
+        Some(b';') => Some((name, j + 1, false)),
+        Some(b'{') => {
+            let mut depth = 0_i32;
+            let mut end = bytes.len();
+            for (n, &c) in bytes.iter().enumerate().skip(j) {
+                match c {
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = n + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some((name, end, true))
+        }
+        _ => None,
+    }
+}
+
+/// The directory a module declared in the file `path` keeps its own modules in: `a/b/c.rs` declares `a/b/c/x.rs`; `a/b/mod.rs`,
+/// `lib.rs` and `main.rs` declare `a/b/x.rs`.
+fn module_dir_of(path: &str) -> String {
+    let (dir, file) = path.rsplit_once('/').unwrap_or(("", path));
+    match file {
+        "mod.rs" | "lib.rs" | "main.rs" => dir.to_owned(),
+        _ => format!("{dir}/{}", file.trim_end_matches(".rs")),
+    }
+}
+
+/// The product code of a workspace's sources (P-3): **a file is test code when the source says so, never by its name**. A file is
+/// test code when a file that declares it does so under `#[cfg(test)]` (`#[cfg(test)] mod tests;`, under whatever name), when it is
+/// under the directory of such a module, or when it says `#![cfg(test)]` at its head; a `#[cfg(test)] mod name { … }` body is blanked
+/// where it stands. What is left is returned as code (comments and strings left out, the lines as they were). A production file that
+/// is *named* `tests.rs` or `*_tests.rs` and is not under `#[cfg(test)]` is scanned like any other.
+fn product_of(all: &[(String, String)]) -> Vec<(String, String)> {
+    let mut test_files: Vec<String> = Vec::new();
+    let mut test_dirs: Vec<String> = Vec::new();
+    let mut product: Vec<(String, String)> = Vec::new();
+    for (path, source) in all {
+        let mut code = code_of(source);
+        let mut blank: Vec<(usize, usize)> = Vec::new();
+        for (at, found) in code.match_indices("#[cfg(test)]") {
+            let Some((name, end, inline)) = module_after_cfg_test(&code, at + found.len()) else {
+                continue;
+            };
+            if inline {
+                blank.push((at, end));
+            } else {
+                let dir = module_dir_of(path);
+                test_files.push(format!("{dir}/{name}.rs"));
+                test_files.push(format!("{dir}/{name}/mod.rs"));
+                test_dirs.push(format!("{dir}/{name}/"));
+            }
+        }
+        for (from, to) in blank {
+            let blanked: String = code
+                .get(from..to)
+                .unwrap_or_default()
+                .chars()
+                .map(|c| if c == '\n' { '\n' } else { ' ' })
+                .collect();
+            code.replace_range(from..to, &blanked);
+        }
+        if code.trim_start().starts_with("#![cfg(test)]") {
+            test_files.push(path.clone());
+            test_dirs.push(format!("{}/", module_dir_of(path)));
+            continue;
+        }
+        product.push((path.clone(), code));
+    }
+    product.retain(|(path, _)| {
+        !test_files.contains(path) && !test_dirs.iter().any(|dir| path.starts_with(dir.as_str()))
+    });
+    product
+}
+
+/// Every product source of the workspace's crates but the driver's: `(path relative to `crates/`, code)`.
+fn product_sources() -> Vec<(String, String)> {
+    product_of(&all_sources())
 }
 
 /// The calls of a way that no site allows, **per call site** (L-4): a call in a function that is not listed for the file, and the
@@ -885,6 +1010,224 @@ fn a_planted_extract_of_a_whole_tree_is_found() {
             "{fine}"
         );
     }
+}
+
+#[test]
+fn a_planted_call_by_a_path_is_found_whatever_the_type_is_called() {
+    // P-3: the trait's call written as a path (the receiver is its first argument) is the same call.
+    let elsewhere = "inklkunn-core/src/elsewhere.rs";
+    for (begins, call, allowed, function) in [
+        (
+            "the storage's `read`",
+            "fn f() { <dyn Storage>::read(&*s, repo, &point, path, max); }",
+            "inklkunn-core/src/read/text.rs",
+            "file_at",
+        ),
+        (
+            "the storage's `read`",
+            "fn f() { <S as Storage>::read(&s, repo, &point, path, max); }",
+            "inklkunn-core/src/read/text.rs",
+            "file_at",
+        ),
+        (
+            "the storage's `read`",
+            "fn f<S: Storage>() { S::read(&s, repo, &point, path, max); }",
+            "inklkunn-core/src/read/text.rs",
+            "file_at",
+        ),
+        (
+            "the storage's `read`",
+            "fn f() { Store::read(\n    &s,\n    repo,\n    &point,\n    path,\n    max,\n); }",
+            "inklkunn-core/src/read/text.rs",
+            "file_at",
+        ),
+        (
+            "the storage's `diff`",
+            "fn f() { <dyn Storage>::diff(&*s, &repo, &from, &to, &[path]); }",
+            "inklkunn-core/src/read/history.rs",
+            "page_diff",
+        ),
+        (
+            "the storage's `diff`",
+            "fn f<S: Storage>() { S::diff(&s, &repo, &from, &to, &[]); }",
+            "inklkunn-core/src/read/history.rs",
+            "page_diff",
+        ),
+        (
+            "the storage's `materialize`",
+            "fn f() { <S as Storage>::materialize(&s, &repo, &point, &scratch, name, bounds); }",
+            "inklkunn-core/src/export.rs",
+            "export_bundle_inner",
+        ),
+        (
+            "the storage's `materialize`",
+            "fn f() { S::materialize(&s, &repo, &point, &scratch, name, bounds); }",
+            "inklkunn-core/src/import.rs",
+            "wiki_state",
+        ),
+        (
+            "`with_tree`",
+            "fn f() { ReadService::with_tree(&service, wiki, &at, |root| Ok(1)); }",
+            "inklkunn-core/src/read/graph.rs",
+            "link_graph",
+        ),
+        (
+            "`with_block_tree`",
+            "fn f() { Self::with_block_tree(&reads, wiki, &at, |root, c| 1); }",
+            "inklkunn-core/src/knowledge/check.rs",
+            "check_change_report",
+        ),
+    ] {
+        let way = way(begins);
+        assert_eq!(violations_of(&way, &at(elsewhere, call)).len(), 1, "{call}");
+        // The same call in the function that may is the listed one.
+        let listed = call.replacen("fn f", &format!("fn {function}"), 1);
+        assert!(
+            violations_of(&way, &at(allowed, &listed)).is_empty(),
+            "{listed} in {allowed}"
+        );
+    }
+    // What is no call of the storage's: a module's function, a type's own function with the arguments of the storage's, another name.
+    for (begins, fine) in [
+        (
+            "the storage's `read`",
+            "fn f() { cleanup::read(&*p.storage, &repo, &status, &doctor, &acts); }",
+        ),
+        (
+            "the storage's `read`",
+            "fn f() { Rules::read(block, policy, constitution, limits); }",
+        ),
+        (
+            "the storage's `read`",
+            "fn f() { thread::read(services, headers, &wiki, &claim, params); }",
+        ),
+        ("the storage's `read`", "fn f() { fs::read(path); }"),
+        (
+            "the storage's `read`",
+            "fn f() { Reader::reads(&s, repo, &point, path, max); }",
+        ),
+        (
+            "the storage's `diff`",
+            "fn f() { Words::diff(a, b, c, d); }",
+        ),
+        ("`with_tree`", "fn f() { module::with_tree(wiki, &at, f); }"),
+    ] {
+        assert!(
+            violations_of(&way(begins), &at("inklkunn-core/src/elsewhere.rs", fine)).is_empty(),
+            "{fine}"
+        );
+    }
+    // A call by a path is counted like any other in a place that may: the second one fails.
+    let text = "inklkunn-core/src/read/text.rs";
+    let two = "fn file_at() { storage.read(repo, &point, path, max);\n    <S as Storage>::read(&s, repo, &point, path, max); }";
+    assert_eq!(
+        violations_of(&way("the storage's `read`"), &at(text, two)),
+        vec![format!("{text}:2 (file_at)")]
+    );
+}
+
+fn file(path: &str, source: &str) -> (String, String) {
+    (path.to_owned(), source.to_owned())
+}
+
+/// The paths of the product code of some sources.
+fn product_paths(all: &[(String, String)]) -> Vec<String> {
+    product_of(all).into_iter().map(|(path, _)| path).collect()
+}
+
+#[test]
+fn a_file_is_test_code_by_its_cfg_test_and_never_by_its_name() {
+    // P-3: `tests.rs`, `testing.rs`, `support.rs` and `*_tests.rs` were skipped by their names. A **production** file with one of them
+    // is scanned, and a test file under any name is not.
+    let call = "fn f() { storage.read(repo, &point, path, max); }";
+    let production = |path: &str| {
+        let sources = vec![
+            file("inklkunn-core/src/read.rs", "mod helpers;"),
+            file(path, call),
+        ];
+        violations(&product_of(&sources))
+    };
+    for name in [
+        "inklkunn-core/src/read/tests.rs",
+        "inklkunn-core/src/read/testing.rs",
+        "inklkunn-core/src/read/support.rs",
+        "inklkunn-core/src/read/page_tests.rs",
+        "inklkunn-core/src/read/tests/deep.rs",
+    ] {
+        assert_eq!(
+            production(name),
+            vec![format!("{name}:1 (f)")],
+            "{name} is production code: nothing declares it under `#[cfg(test)]`"
+        );
+    }
+    // A test file by its declaration, whatever it is called, and every module under it.
+    let sources = vec![
+        file(
+            "inklkunn-core/src/read.rs",
+            "mod page;\n#[cfg(test)]\nmod checks;\n#[cfg(test)]\n#[allow(dead_code)]\npub(crate) mod fixtures;\n",
+        ),
+        file("inklkunn-core/src/read/page.rs", "fn page() {}"),
+        file(
+            "inklkunn-core/src/read/checks.rs",
+            &format!("mod deeper;\n{call}"),
+        ),
+        file("inklkunn-core/src/read/checks/deeper.rs", call),
+        file("inklkunn-core/src/read/fixtures/mod.rs", call),
+        file("inklkunn-core/src/read/fixtures/more.rs", call),
+    ];
+    assert_eq!(
+        product_paths(&sources),
+        [
+            "inklkunn-core/src/read.rs",
+            "inklkunn-core/src/read/page.rs"
+        ]
+    );
+    // The same for a file that declares its tests beside itself, and for the crate's root.
+    let sources = vec![
+        file(
+            "inklkunn-core/src/read/text.rs",
+            "#[cfg(test)]\nmod tests;\nfn file_at() {}",
+        ),
+        file("inklkunn-core/src/read/text/tests.rs", call),
+        file("inklkunn-core/src/lib.rs", "#[cfg(test)]\nmod suite;"),
+        file("inklkunn-core/src/suite.rs", call),
+    ];
+    assert_eq!(
+        product_paths(&sources),
+        ["inklkunn-core/src/read/text.rs", "inklkunn-core/src/lib.rs"]
+    );
+    // A file that says `#![cfg(test)]` at its head is test code, and so are its modules.
+    let sources = vec![
+        file(
+            "inklkunn-core/src/odd.rs",
+            &format!("#![cfg(test)]\n{call}"),
+        ),
+        file("inklkunn-core/src/odd/inner.rs", call),
+    ];
+    assert!(product_paths(&sources).is_empty());
+    // A `#[cfg(test)] mod name { … }` body is test code where it stands; what follows it is not.
+    let inline = format!("#[cfg(test)]\nmod scratch {{\n    {call}\n}}\n{call}\n");
+    assert_eq!(
+        violations(&product_of(&at("inklkunn-core/src/elsewhere.rs", &inline))),
+        vec!["inklkunn-core/src/elsewhere.rs:5 (f)".to_owned()]
+    );
+    // Only a module is a test module: a function under `#[cfg(test)]` is product code that tests use, and is scanned.
+    let function = format!("#[cfg(test)]\n{call}\n");
+    assert_eq!(
+        violations(&product_of(&at(
+            "inklkunn-core/src/elsewhere.rs",
+            &function
+        )))
+        .len(),
+        1
+    );
+    // `#[cfg(any(test, feature = "x"))]` is not test code: the product build has it with the feature.
+    let either = "#[cfg(any(test, feature = \"x\"))]\nmod helpers;";
+    let sources = vec![
+        file("inklkunn-core/src/lib.rs", either),
+        file("inklkunn-core/src/helpers.rs", call),
+    ];
+    assert_eq!(violations(&product_of(&sources)).len(), 1);
 }
 
 #[test]
