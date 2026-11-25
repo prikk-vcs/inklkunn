@@ -128,7 +128,7 @@ jobs:
           test "$(type -ap prikk | awk '!seen[$0]++' | sed -n 2p)" = "$HOME/.local/prikk-test/bin/prikk"
           test "$(prikk --version)" = "prikk ${PRIKK_VERSION}"
       - name: Install cargo-deny and cargo-audit (pinned)
-        run: cargo install cargo-deny@0.20.2 cargo-audit@0.22.2 --locked
+        run: cargo install cargo-deny@0.20.2 cargo-audit@0.23.0 --locked
       - name: Gates, with prikk on PATH
         run: |
           set -euo pipefail
