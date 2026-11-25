@@ -611,7 +611,11 @@ question goes into the next prikk letter.
 
 When prikk 0.59.0 is released, the re-baseline (RFC 010) must cover these, besides the usual run:
 - **`doctor`'s recommendation for a pointer that leads its log changes** (PK-49): it names `seal --allow-no-audit` first,
-  and `ref complete <ref>` as the step that needs no key.
+  then `ref complete <ref>`. **Both need the maintainer key** (prikk's correction of 2026-11-25; their reply had said
+  `ref complete` needs none). 0.59.0 prints, on `verify`, `doctor` and a writer's refusal alike:
+  *run `prikk seal --allow-no-audit`: it finishes the publication and the queue, and needs a maintainer key adopted
+  here; `prikk ref complete heads/main` would finish the publication alone, needs the same key, and leaves the `seal`
+  still due*. `status --format json`'s `route` is unchanged.
   - `Diagnostic::lead_ref` matches 0.55.0's words exactly, so on 0.59.0 both M61's seal lead and K19's view creation may
     stop as `doctor-trouble`, which fails closed.
   - Read the new wording, keep the old one for the floor, and decide with the architect whether M61's plan becomes

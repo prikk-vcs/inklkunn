@@ -440,3 +440,9 @@ Hand back as `0.4.0-readiness-q-review-request.md`. **R-7, the candidate,** foll
 - gates as always, and any Japanese message added or changed listed (none is expected).
 
 Hand back as `0.4.0-candidate-review-request.md`. Then R-8 (the architect's) and R-9 (the owner's).
+
+## R-7 reviewed: the candidate (2026-11-25)
+
+**R-7: Approved** (`.git-exclude/reviewed/0.4.0-candidate-review-result.md`), and pushed. **Nothing more is asked of the
+dev team for 0.4.0.** R-8 (the rehearsal, the floor, the lead's Japanese statement, the owner's last list, the cut
+proposal) is the architect's, and R-9 the owner's.
