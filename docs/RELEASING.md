@@ -31,7 +31,11 @@ released from M0; this document exists so that the first release is a rehearsed 
    125,000 characters, and 0.2.0's section alone is longer); the gates job checks it exists and fits before anything is
    built or published (the brackets in the heading matter).
 5. **Versions**: `Cargo.toml`'s workspace version is `X.Y.Z`, and so is the `version = "…"` beside every
-   intra-workspace `path` dependency (cargo-deny's wildcard rule wants one; `grep -rn 'version = "' crates/*/Cargo.toml`);
+   intra-workspace `path` dependency (cargo-deny's wildcard rule wants one; `grep -rn 'version = "' crates/*/Cargo.toml`), **except a
+   crate's dev-dependencies on itself, and `inklkunn-signer`'s on `inklkunn-core`**: those carry no `version` on purpose. Cargo keeps a
+   dev-dependency that has a version in the published manifest, and a crate that names itself, or a crate that depends on the one that
+   depends on it, cannot then be published (`no matching package named …`); without a version cargo drops the line when it packages.
+   `deny.toml`'s `allow-wildcard-paths` covers them, so the wildcard rule is not loosened for normal dependencies;
    `README.md` and `docs/STATUS.md` say so.
 6. **Dry run**: `release.yml` in rehearsal mode (`workflow_dispatch`, `mode: rehearsal`) on the candidate
    commit; it builds everything, attests under a rehearsal label and pushes only the throwaway image
@@ -57,8 +61,11 @@ be moved to the fixed commit, with the owner's agreement, and the move recorded 
 published, a fix is a new patch release, never a moved tag.
 
 **crates.io is optional per release:** with no `CARGO_REGISTRY_TOKEN` secret the crates step skips with a notice. When
-it is set, nine crates are published (the eight libraries and the `inklkunn` binary, in dependency order); the tools
-are never published. A published crate cannot be deleted, only yanked.
+it is set, nine crates are published (the eight libraries and the `inklkunn` binary) by one `cargo publish --workspace --locked`, which
+orders them itself; the tools are never published. The token is the owner's `CARGO_REGISTRY_TOKEN` secret (0.5.0's P-4). **The gates job,
+in the rehearsal and on a tag alike, runs `cargo publish --workspace --dry-run --locked`**: every crate is packaged and built from its
+package, and nothing is uploaded, so a crate that cannot be published fails before any tag. Each crate carries the workspace's `LICENSE`
+(Apache-2.0 §4(a)), held by `tools/floor-check`'s `crate_licence` test. A published crate cannot be deleted, only yanked.
 
 **The binaries are built on Ubuntu 22.04** (glibc 2.35) so they run on the image's Debian 12 base and on any Linux with
 glibc 2.35 or newer; a step refuses a binary that needs a newer glibc. The container package on `ghcr.io` must be
@@ -102,7 +109,7 @@ checked against the recorded checksum, bubblewrap and prlimit; **each image is r
 settings SECURITY.md gives for confinement, and the job fails unless `wiki create` on a scratch volume succeeds, which it
 cannot unless prikk is confined in the image (IS-19)) → provenance attestations for the tarballs and
 for each image digest → a manifest list under `ghcr.io/prikk-vcs/inklkunn:X.Y.Z` → the GitHub release with the
-`CHANGELOG.md` section and the checksums → `cargo publish` of the crates in dependency order (after the
+`CHANGELOG.md` section and the checksums → `cargo publish --workspace` of the crates (after the
 release run is green).
 
 ## Verifying a release
@@ -124,7 +131,8 @@ is each architecture's image. Verify the one you pull.
 
 A failed job before "release" leaves nothing published: fix on `main`, delete the tag locally and remotely
 (`git push --delete origin X.Y.Z`), tag again at the fixed commit. A failure **after** the release step
-(crates.io) is completed by hand with `cargo publish` in dependency order; a published GitHub release is
+(crates.io) is completed by hand with `cargo publish --locked -p <crate>` for each crate not yet published, in dependency order
+(`inklkunn-markup`, `-prikk`, `-fetch`, `-store`, `-signer`, `-auth`, `-core`, `-web`, `inklkunn`); a published GitHub release is
 never deleted: a follow-up patch release supersedes it.
 
 ## Rollback

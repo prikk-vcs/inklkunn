@@ -594,7 +594,7 @@ pub fn rehearsal_violations(release_yaml: &str) -> Vec<String> {
     let mut out = Vec::new();
     for step in steps(release_yaml) {
         let names_real = names_real_image(&step.text);
-        let publishes = PUBLISHING.iter().any(|f| step.text.contains(f));
+        let publishes = publishes(&step.text);
         let is_rehearsal = step.text.contains(REHEARSAL_IMAGE) || rehearsal_marked(&step);
         if (names_real || publishes) && !push_guarded(&step) {
             out.push(format!(
@@ -615,6 +615,28 @@ pub fn rehearsal_violations(release_yaml: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// Does a step publish? Any of [`PUBLISHING`]'s forms, **except `cargo publish` run with `--dry-run`** (maintenance M63: the
+/// rehearsal and the gates package and verify every crate and upload nothing). `cargo publish` is judged **by command**:
+/// a line is split at `&&`, `||`, `;` and `|`, a comment is dropped, and a command that names `cargo publish` without its own
+/// `--dry-run` token publishes, so `cargo publish --dry-run && cargo publish` is a publication and an `echo` of the words in a
+/// string is read as the text it is (as every rule here reads text: this is a guard against a mistake, not against evasion).
+fn publishes(step: &str) -> bool {
+    if PUBLISHING
+        .iter()
+        .filter(|f| **f != "cargo publish")
+        .any(|f| step.contains(f))
+    {
+        return true;
+    }
+    step.lines().any(|line| {
+        let code = line.split('#').next().unwrap_or("");
+        code.split(['&', '|', ';']).any(|command| {
+            command.contains("cargo publish")
+                && !command.split_whitespace().any(|t| t == "--dry-run")
+        })
+    })
 }
 
 fn first(step: &str) -> String {

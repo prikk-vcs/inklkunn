@@ -2,7 +2,7 @@
 # tagged commit (the same two test runs as CI: prikk at the floor on PATH, with the test-only 0.58.0 beside it, and
 # shimmed off), the Linux binaries are built, the container image is built natively per architecture and joined under one tag by a
 # manifest list, the tarballs and the image are attested, the GitHub release is created from the CHANGELOG
-# section, and the crates are published in dependency order. The `rehearsal` dispatch mode exercises every
+# section, and the crates are published (`cargo publish --workspace`, which orders them itself). The `rehearsal` dispatch mode exercises every
 # step against a throwaway package (ghcr.io/prikk-vcs/inklkunn-rehearsal) and can never publish anything
 # real (pin-check enforces the shape). The owner authorizes a release and the architect tags it (the project
 # rules); the tag is signed by the owner's git configuration, and its signature is checked by readers, not here
@@ -146,6 +146,8 @@ jobs:
           cargo deny check
           cargo audit
           RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
+      - name: Every crate packages and verifies (a dry run: nothing is uploaded; a crate that cannot be published fails here, before any tag)
+        run: cargo publish --workspace --dry-run --locked
       - name: Tests with prikk shimmed off PATH (every self-skip visible, and counted)
         run: |
           set -euo pipefail
@@ -402,7 +404,7 @@ jobs:
           set -euo pipefail
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.99.1
-      - name: Publish the crates in dependency order (tag push; the token is the owner's, supplied as a secret)
+      - name: Publish the crates (tag push; cargo orders them itself; the token is the owner's, supplied as a secret)
         if: github.event_name == 'push'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -413,6 +415,4 @@ jobs:
             echo "::notice::no CARGO_REGISTRY_TOKEN secret: the crates are not published to crates.io for ${GITHUB_REF_NAME}"
             exit 0
           fi
-          for c in inklkunn-markup inklkunn-prikk inklkunn-fetch inklkunn-store inklkunn-signer inklkunn-auth inklkunn-core inklkunn-web inklkunn; do
-            cargo publish --locked -p "$c"
-          done
+          cargo publish --workspace --locked

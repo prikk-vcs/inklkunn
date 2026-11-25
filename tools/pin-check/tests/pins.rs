@@ -777,6 +777,34 @@ fn pin_rules_catch_planted_failures() {
     assert_eq!(rehearsal_violations(widened).len(), 1);
     let echoed = "jobs:\n  crates:\n    steps:\n      - name: publish\n        run: |\n          echo \"github.event_name == 'push'\"\n          cargo publish\n";
     assert_eq!(rehearsal_violations(echoed).len(), 1);
+    // M63: `cargo publish --dry-run` packages and verifies and uploads nothing: it needs no tag-push guard and may stand in a
+    // rehearsal; the same command without `--dry-run`, or a real publication chained after a dry run, is still a publication.
+    let dry = "jobs:\n  gates:\n    steps:\n      - name: package\n        run: cargo publish --workspace --dry-run --locked\n";
+    assert!(
+        rehearsal_violations(dry).is_empty(),
+        "{:?}",
+        rehearsal_violations(dry)
+    );
+    let dry_in_rehearsal = "jobs:\n  crates:\n    steps:\n      - name: package\n        if: inputs.mode == 'rehearsal'\n        run: cargo publish --workspace --dry-run --locked\n";
+    assert!(
+        rehearsal_violations(dry_in_rehearsal).is_empty(),
+        "{:?}",
+        rehearsal_violations(dry_in_rehearsal)
+    );
+    let chained = "jobs:\n  gates:\n    steps:\n      - name: package\n        run: cargo publish --dry-run && cargo publish\n";
+    assert_eq!(
+        rehearsal_violations(chained).len(),
+        1,
+        "a real publication after a dry run"
+    );
+    let chained_pipe = "jobs:\n  gates:\n    steps:\n      - name: package\n        run: |\n          cargo publish --workspace --dry-run --locked\n          cargo publish --locked -p inklkunn\n";
+    assert_eq!(
+        rehearsal_violations(chained_pipe).len(),
+        1,
+        "a real publication on the next line"
+    );
+    let commented = "jobs:\n  gates:\n    steps:\n      - name: note\n        run: |\n          # cargo publish later\n          true\n";
+    assert!(rehearsal_violations(commented).is_empty());
     let id_step = "jobs:\n  image:\n    steps:\n      - name: a\n        if: github.event_name == 'push'\n        run: true\n      - id: b\n        run: docker push ghcr.io/prikk-vcs/inklkunn:1\n";
     assert_eq!(
         rehearsal_violations(id_step).len(),
