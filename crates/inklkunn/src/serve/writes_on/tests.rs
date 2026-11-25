@@ -51,6 +51,22 @@ fn until(what: &str, mut done: impl FnMut() -> bool) {
     }
 }
 
+/// [`until`] for a condition that can say what it saw instead: `Err(what it saw)` is the last answer the wait got, and the
+/// failure after the bound reports it, so that a wait that ran out names the page or the log it was waiting on.
+fn until_seeing(what: &str, mut done: impl FnMut() -> Result<(), String>) {
+    let end = Instant::now() + Duration::from_secs(60);
+    loop {
+        let Err(saw) = done() else {
+            return;
+        };
+        assert!(
+            Instant::now() < end,
+            "timed out waiting for {what}; the last answer was:\n{saw}"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
 fn now() -> i64 {
     inklkunn_store::record::now_secs()
 }

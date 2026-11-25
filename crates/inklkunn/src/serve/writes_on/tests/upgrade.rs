@@ -107,6 +107,8 @@ pub(super) struct OldServer {
 }
 
 impl OldServer {
+    /// Start the server on two free ports and return once it listens on the first. The ports are never ones another test
+    /// of this process was given (`two_free_ports`), so no other test's server can answer on this one's port.
     pub(super) fn start(bin: &Path, world: &World) -> OldServer {
         let (port, content_port) = crate::serve::test_ports::two_free_ports();
         let log = world.tmp.0.join("old-serve.log");
@@ -453,12 +455,23 @@ pub(super) fn schema_of(store: &Path) -> i64 {
 
 /// Wait for the check after a seal to be recorded, so that stopping the server does not interrupt it.
 pub(super) fn settled(reader: &mut Browser, since: i64) {
-    until("the check after the change", || {
+    until_seeing("the check after the change", || {
         let page = reader.get("/handbook/-/verification");
-        page.body
+        let checked = page
+            .body
             .split_once("Last checked: ")
             .and_then(|(_, after)| after.split_once('.'))
-            .is_some_and(|(at, _)| at >= utc_minutes(since).as_str())
+            .is_some_and(|(at, _)| at >= utc_minutes(since).as_str());
+        if checked {
+            Ok(())
+        } else {
+            Err(format!(
+                "status {}, wanted a check at or after {}:\n{}",
+                page.status,
+                utc_minutes(since),
+                page.body
+            ))
+        }
     });
 }
 
@@ -529,11 +542,10 @@ fn a_directory_made_by_the_0_2_0_binary_is_opened_migrated_and_used_by_this_tree
 
     let started = now();
     let server = OldServer::start(&old, &world);
+    let banner = std::fs::read_to_string(&server.log).unwrap();
     assert!(
-        std::fs::read_to_string(&server.log)
-            .unwrap()
-            .contains("accepting proposals: the signer is open"),
-        "the 0.2.0 server did not open its signer"
+        banner.contains("accepting proposals: the signer is open"),
+        "the 0.2.0 server did not open its signer; its log so far:\n{banner}"
     );
     let mut maya = redeem(&server, &maintainer_link, "maya", "Maya Maintainer");
     let mut noor = redeem(&server, &contributor_link, "noor", "Noor Contributor");

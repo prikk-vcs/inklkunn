@@ -175,11 +175,10 @@ fn a_directory_made_by_the_0_3_0_binary_is_migrated_to_schema_19_and_its_wikis_b
 
     let started = now();
     let server = OldServer::start(&old, &world);
+    let banner = std::fs::read_to_string(&server.log).unwrap();
     assert!(
-        std::fs::read_to_string(&server.log)
-            .unwrap()
-            .contains("accepting proposals: the signer is open"),
-        "the 0.3.0 server did not open its signer"
+        banner.contains("accepting proposals: the signer is open"),
+        "the 0.3.0 server did not open its signer; its log so far:\n{banner}"
     );
     let mut maya = redeem(&server, &maintainer_link, "maya", "Maya Maintainer");
     let mut noor = redeem(&server, &contributor_link, "noor", "Noor Contributor");
