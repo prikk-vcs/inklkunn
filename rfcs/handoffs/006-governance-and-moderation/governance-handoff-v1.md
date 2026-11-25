@@ -446,3 +446,9 @@ Hand back as `0.4.0-candidate-review-request.md`. Then R-8 (the architect's) and
 **R-7: Approved** (`.git-exclude/reviewed/0.4.0-candidate-review-result.md`), and pushed. **Nothing more is asked of the
 dev team for 0.4.0.** R-8 (the rehearsal, the floor, the lead's Japanese statement, the owner's last list, the cut
 proposal) is the architect's, and R-9 the owner's.
+
+## 0.4.0 released (2026-11-25)
+
+The owner authorized the cut, and **0.4.0 was released on 2026-11-25** (tag on `162f0cc`). This handoff is complete.
+`main` is open again. Nothing is assigned until the 0.5.0 plan, and the prikk 0.59.0 re-baseline waits for prikk
+0.59.0 (`rfcs/handoffs/010-upstream-and-supply-chain-maintenance/maintenance-2026-11-handoff-v1.md`, last section).
