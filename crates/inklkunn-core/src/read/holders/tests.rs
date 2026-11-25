@@ -278,8 +278,8 @@ fn the_cost_is_the_same_on_a_page_with_sixty_later_revisions_and_with_a_thousand
     assert_eq!(few.read, MAX_HOLDER_CHECKS as u64 + 2, "{few:?}");
 }
 
-/// A world with more changes than one request builds (a request builds 150 blocks, and the two it makes for a list of later writers
-/// 300 at most: the second of them reaches the tip).
+/// A world with more changes than one request builds (a request builds 150 blocks, and **one** budget serves all it asks for a list
+/// of later writers, the block's place and the build to the tip: the third request reaches the tip, correction Q-3).
 fn long_world() -> Rig {
     let r = world_building(150);
     for at in 0..300 {
@@ -298,7 +298,12 @@ fn a_list_of_later_writers_is_no_answer_while_the_index_stops_short_of_the_tip()
         .expect("an answer");
     assert!(!first.settled, "{first:?}");
     assert!(first.writers.is_empty());
-    // The next request goes on from where the first stopped.
+    // The next request goes on from where the first stopped, and has no more than a budget: 300 blocks are not yet the tip.
+    let second = r
+        .service
+        .later_writers(&r.w.wiki, None, &block_id(2), FOO, 10)
+        .expect("an answer");
+    assert!(!second.settled, "{second:?}");
     let next = r
         .service
         .later_writers(&r.w.wiki, None, &block_id(2), FOO, 10)
@@ -312,6 +317,16 @@ fn a_list_of_later_writers_is_no_answer_while_the_index_stops_short_of_the_tip()
     let held = holders(&r, 2);
     assert!(held.unsettled, "{held:?}");
     assert!(held.listed.is_empty());
+}
+
+#[test]
+fn a_list_of_later_holders_is_one_request_with_one_budget() {
+    // The block's place (block 2 is built toward first), the later writers of the page (the build to the tip) and the texts of the
+    // later revisions are one request: what it builds is one budget (150 blocks), not one for the block and one for the tip.
+    let r = long_world();
+    let (held, calls) = r.w.counted(|| holders(&r, 2));
+    assert!(held.unsettled, "{held:?}");
+    assert_eq!(calls.change, 150, "one budget in all: {calls:?}");
 }
 
 /// An operation whose path prikk could not resolve: the block that has it may have written any page.

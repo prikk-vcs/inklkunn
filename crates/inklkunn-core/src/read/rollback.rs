@@ -30,6 +30,7 @@ use inklkunn_prikk::{Change as PrikkChange, StorageError};
 use inklkunn_store::{Base, FileChange, WikiRecord};
 
 use super::history::ChangeInfo;
+use super::writes::RequestBudget;
 use super::{BlockText, ReadError, ReadService};
 use crate::message::SUMMARY_MAX_CHARS;
 
@@ -179,20 +180,23 @@ pub(crate) fn quoted_summary(summary: &str, hidden: &str) -> bool {
 
 impl ReadService {
     /// The plan that undoes the change `block_id` of the view (the default view for `None`): the pages it
-    /// touched, as they were before it. Reads the change once (`show`) and each touched page twice (`cat`).
+    /// touched, as they were before it. Reads the change once (`show`) and each touched page twice (`cat`). **One request, one budget**
+    /// for the part it has in building the index of who wrote each page, whatever the number of pages (correction Q-3).
     pub fn rollback_plan(
         &self,
         wiki: &WikiRecord,
         view: Option<&str>,
         block_id: &str,
     ) -> Result<RollbackOutcome, ReadError> {
-        Ok(match self.plan_of(wiki, view, block_id)? {
-            Planned::Plan(plan) => RollbackOutcome::Plan(plan),
-            Planned::No(why) => RollbackOutcome::No(why),
-            Planned::Hidden { titles, .. } => {
-                RollbackOutcome::No(NoRollback::TextHidden { titles })
-            }
-        })
+        Ok(
+            match self.plan_of(wiki, view, block_id, &self.request_budget())? {
+                Planned::Plan(plan) => RollbackOutcome::Plan(plan),
+                Planned::No(why) => RollbackOutcome::No(why),
+                Planned::Hidden { titles, .. } => {
+                    RollbackOutcome::No(NoRollback::TextHidden { titles })
+                }
+            },
+        )
     }
 
     /// What planning the rollback of the change came to, **with the pages whose text is hidden told apart**: what the offer of a
@@ -202,6 +206,7 @@ impl ReadService {
         wiki: &WikiRecord,
         view: Option<&str>,
         block_id: &str,
+        budget: &RequestBudget,
     ) -> Result<Planned, ReadError> {
         let no = |why| Ok(Planned::No(why));
         let Some(info) = self.change_info(wiki, view, block_id)? else {
@@ -239,14 +244,14 @@ impl ReadService {
             };
             // The text after the change is compared and never given: when it is hidden (the change being undone is the one
             // moderation hid) the page is taken as one the change changed, which the plan then writes as it was before.
-            let after = match self.text_at(wiki, view, block_id, &path)? {
+            let after = match self.text_at_within(wiki, view, block_id, &path, budget)? {
                 BlockText::Text(text) => Some(Some(text)),
                 BlockText::Missing => Some(None),
                 BlockText::NotText | BlockText::TooLarge => return no(NoRollback::NotText),
                 BlockText::Hidden(_) => None,
             };
             // The text before it is what the plan writes: it is never hidden text.
-            let before = match self.text_at(wiki, view, &parent, &path)? {
+            let before = match self.text_at_within(wiki, view, &parent, &path, budget)? {
                 BlockText::Text(text) => Some(text),
                 BlockText::Missing => None,
                 BlockText::NotText | BlockText::TooLarge => return no(NoRollback::NotText),

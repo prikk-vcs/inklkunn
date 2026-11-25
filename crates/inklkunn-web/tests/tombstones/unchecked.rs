@@ -34,7 +34,9 @@ pub(crate) fn plant(w: &World, last: u64, decoy: &str) {
             }],
         })
         .collect();
-    w.store
+    let generation = w.store.writes_generation(wiki, view).expect("a generation");
+    let outcome = w
+        .store
         .append_writes(
             wiki,
             view,
@@ -45,8 +47,10 @@ pub(crate) fn plant(w: &World, last: u64, decoy: &str) {
                 floor_number: 1,
                 genesis: true,
             },
+            generation,
         )
         .expect("an index");
+    assert_eq!(outcome, inklkunn_store::Appended::Done);
 }
 
 /// A page that says the text cannot be checked yet: `503`, `Retry-After`, the sentence, nothing of the text, no tombstone.

@@ -773,7 +773,8 @@ impl ReadService {
         let at = BlockPoint::new(view.unwrap_or(&wiki.default_view), state_id, block_id);
         let whole = self.knowledge_of(wiki, &at)?;
         let titles = self.index_at(wiki, &at)?;
-        self.knowledge_without_hidden(wiki, &at, whole, titles)
+        // One request: the one budget serves the knowledge index and the title index it is read with.
+        self.knowledge_without_hidden(wiki, &at, whole, titles, &self.request_budget())
     }
 
     /// The title index of exactly the state a proposal's base names, whatever the view has moved to since: where every
@@ -792,7 +793,7 @@ impl ReadService {
     ) -> Result<Arc<TitleIndex>, ReadError> {
         let at = BlockPoint::new(view.unwrap_or(&wiki.default_view), state_id, block_id);
         let whole = self.index_at(wiki, &at)?;
-        self.titles_without_hidden(wiki, &at, whole)
+        self.titles_without_hidden(wiki, &at, whole, &self.request_budget())
     }
 
     /// [`ReadService::knowledge_index`] of a tip that was already read: the index of exactly that state, whatever the

@@ -44,7 +44,8 @@ pub struct Attached {
 
 impl ReadService {
     /// The source files the change `block_id` created, read at that block: at most `limit` of them are read, the
-    /// rest are counted in [`Attached::omitted`].
+    /// rest are counted in [`Attached::omitted`]. **One budget for the files of the one change** (correction Q-3); a page that lists
+    /// the sources of many changes calls it for each, and each call has a budget of its own (*per call*).
     pub fn attached_sources(
         &self,
         wiki: &WikiRecord,
@@ -65,17 +66,19 @@ impl ReadService {
             omitted: wanted.len().saturating_sub(limit),
             ..Attached::default()
         };
+        let budget = self.request_budget();
         for path in wanted.into_iter().take(limit) {
-            let found = match self.file_at(wiki, None, block_id, path, MAX_FILE_BYTES as u64) {
-                Ok(found) => found,
-                // Whose the file is cannot be checked yet: it is not read, and it is counted among the files that could not be
-                // listed (a hide is not the reason, so no tombstone is said; correction L-11).
-                Err(ReadError::NotCheckedYet) => {
-                    out.unreadable += 1;
-                    continue;
-                }
-                Err(e) => return Err(e),
-            };
+            let found =
+                match self.file_at(wiki, None, block_id, path, MAX_FILE_BYTES as u64, &budget) {
+                    Ok(found) => found,
+                    // Whose the file is cannot be checked yet: it is not read, and it is counted among the files that could not be
+                    // listed (a hide is not the reason, so no tombstone is said; correction L-11).
+                    Err(ReadError::NotCheckedYet) => {
+                        out.unreadable += 1;
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
             let bytes = match found {
                 FileAt::Held(bytes) => bytes,
                 // No such file at the block, or one over the size a knowledge file may have.

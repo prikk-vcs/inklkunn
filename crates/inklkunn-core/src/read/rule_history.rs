@@ -110,6 +110,8 @@ impl ReadService {
             )));
         };
         let blocks = history.blocks.get(start..).unwrap_or(&[]);
+        // One request: every file of every change draws from the one budget (correction Q-3).
+        let budget = self.request_budget();
         let mut out = RuleHistory {
             window_ended: u64::try_from(blocks.len()).is_ok_and(|n| n >= WALK_BLOCKS),
             ..RuleHistory::default()
@@ -137,9 +139,12 @@ impl ReadService {
             let mut files = Vec::new();
             let mut hidden = None;
             for file in GovernanceFile::ALL {
-                let after = self.source_or_hidden(wiki, &block.block_id, file.path())?;
+                let after =
+                    self.source_or_hidden_within(wiki, &block.block_id, file.path(), &budget)?;
                 let before = match parent {
-                    Some(parent) => self.source_or_hidden(wiki, parent, file.path())?,
+                    Some(parent) => {
+                        self.source_or_hidden_within(wiki, parent, file.path(), &budget)?
+                    }
                     None => Ok(None),
                 };
                 match (before, after) {

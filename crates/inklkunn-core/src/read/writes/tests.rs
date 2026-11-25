@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use inklkunn_prikk::storage::PathRef;
 use inklkunn_prikk::{Change, Operation, Patch, StorageError};
+use inklkunn_store::Appended;
 use inklkunn_store::{
     Account, AccountId, AccountStore, Actor, DerivedStore, DisplayName, GovernanceStore,
     HiddenItem, HiddenItemKind, HiddenParts, ReasonCategory, Role, TombstoneAct, TombstoneActId,
@@ -174,6 +175,18 @@ impl Rig {
 
     fn shows(&self, n: u64, path: &str) -> bool {
         matches!(self.text(n, path), BlockText::Text(_))
+    }
+
+    /// Put `blocks` and `state` in the default view's index as they are, under the generation it has now (an index made by hand).
+    fn append_by_hand(&self, blocks: &[BlockWrites], state: &WritesState) {
+        let (wiki, view) = (&self.w.wiki.id, &self.w.wiki.default_view);
+        let generation = self.w.store.writes_generation(wiki, view).unwrap();
+        let outcome = self
+            .w
+            .store
+            .append_writes(wiki, view, blocks, state, generation)
+            .unwrap();
+        assert_eq!(outcome, Appended::Done);
     }
 
     /// Build the whole index (a long history takes a few calls, each within its bound).
@@ -604,29 +617,25 @@ fn a_block_whose_effect_is_not_listed_cannot_be_passed_by_a_text_while_anything_
         proposal: None,
         writes,
     };
-    r.w.store
-        .append_writes(
-            &r.w.wiki.id,
-            &r.w.wiki.default_view,
-            &[
-                block(
-                    1,
-                    vec![
-                        row("pages/Foo.md", WriteKind::Wrote),
-                        row("pages/Bar.md", WriteKind::Wrote),
-                    ],
-                ),
-                block(2, vec![row("", WriteKind::Opaque)]),
-                block(3, vec![row("pages/Bar.md", WriteKind::Wrote)]),
-            ],
-            &WritesState {
-                head_number: 3,
-                head_block: block_id(3),
-                floor_number: 1,
-                genesis: true,
-            },
-        )
-        .unwrap();
+    r.append_by_hand(
+        &[
+            block(
+                1,
+                vec![
+                    row("pages/Foo.md", WriteKind::Wrote),
+                    row("pages/Bar.md", WriteKind::Wrote),
+                ],
+            ),
+            block(2, vec![row("", WriteKind::Opaque)]),
+            block(3, vec![row("pages/Bar.md", WriteKind::Wrote)]),
+        ],
+        &WritesState {
+            head_number: 3,
+            head_block: block_id(3),
+            floor_number: 1,
+            genesis: true,
+        },
+    );
     // Nothing is hidden: nothing is asked of the index.
     assert!(r.shows(2, "pages/Foo.md"));
     r.hide(3);
@@ -732,6 +741,82 @@ fn a_first_read_of_a_long_history_builds_what_its_time_allows_says_not_checked_y
     }
     assert_eq!(calls_needed, 2, "the second request reaches block 100");
     assert!(r.is_hidden(152, "pages/Foo.md"));
+}
+
+// ------------------------------------------------------------------------------------ one budget for a request (Q-3)
+
+/// A history of 152 blocks with the change at 152 hidden, on a clock that ticks 100 ms for each look at it and a budget of 6.4 s
+/// for a request: a request builds 64 blocks that cost a `show`, however many lookups it makes.
+fn long_history_with_a_hide() -> Rig {
+    let r = rig_with(
+        &[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))],
+        |s| {
+            s.with_writes_budget(
+                Duration::from_millis(6_400),
+                ticking(Duration::from_millis(100)),
+            )
+        },
+    );
+    for i in 0..150 {
+        r.w.fake()
+            .set("pages/Bar.md", &bar(&format!("revision {i}")));
+    }
+    r.w.fake().set("pages/Foo.md", SECRET); // 152
+    r.hide(152);
+    r
+}
+
+#[test]
+fn a_request_that_asks_twice_spends_one_budget_and_the_second_lookup_costs_no_show() {
+    let r = long_history_with_a_hide();
+    let budget = r.service.request_budget();
+    let lookup = |n: u64| {
+        r.service
+            .hidden_text_within(&r.w.wiki, None, &block_id(n), "pages/Bar.md", &budget)
+    };
+    // The first lookup is at a block further than the budget goes: it builds what the budget allows and says *not checked yet*.
+    let (first, calls) = r.w.counted(|| lookup(100));
+    assert!(matches!(first, Err(ReadError::NotCheckedYet)), "{first:?}");
+    assert_eq!(calls.change, 64, "the budget allows 64 blocks: {calls:?}");
+    // The second lookup of the same request finds the budget spent: it builds nothing, and is *not checked yet* too.
+    let (second, calls) = r.w.counted(|| lookup(120));
+    assert!(
+        matches!(second, Err(ReadError::NotCheckedYet)),
+        "{second:?}"
+    );
+    assert_eq!(
+        calls.change, 0,
+        "a second lookup of the request has no budget left: {calls:?}"
+    );
+    // A lookup of a block the first one built to is answered from the index with no `show`, and gives the text, not a verdict
+    // that was never reached.
+    let (held, calls) = r.w.counted(|| lookup(40));
+    assert!(matches!(held, Ok(None)), "{held:?}");
+    assert_eq!(calls.change, 0, "{calls:?}");
+    // A request of its own has a budget of its own, and goes on from where the first stopped.
+    let (next, calls) = r.w.counted(|| {
+        r.service
+            .hidden_text(&r.w.wiki, None, &block_id(120), "pages/Bar.md")
+    });
+    assert!(matches!(next, Ok(None)), "{next:?}");
+    assert_eq!(calls.change, 56, "blocks 65 to 120: {calls:?}");
+}
+
+#[test]
+fn a_diff_of_two_sides_spends_one_budget_in_all_and_not_one_for_each() {
+    let r = long_history_with_a_hide();
+    // The older side is within what one budget builds (block 40); the newer is not (block 100 needs 60 more of the 24 left).
+    let (diff, calls) = r.w.counted(|| {
+        r.service
+            .page_diff(&r.w.wiki, None, &block_id(40), &block_id(100), "Bar")
+    });
+    assert!(matches!(diff, Err(ReadError::NotCheckedYet)), "{diff:?}");
+    assert_eq!(
+        calls.change, 64,
+        "both sides together spend one budget: {calls:?}"
+    );
+    // The diff was not asked of prikk: neither side was settled.
+    assert!(r.w.fake().diffs_asked().is_empty());
 }
 
 #[test]
@@ -997,7 +1082,7 @@ fn a_block_the_default_views_log_holds_and_the_index_has_not_reached_is_not_look
 fn ready_of(r: &Rig, n: u64) -> Ready {
     match r
         .service
-        .reading(&r.w.wiki, None, &block_id(n))
+        .reading(&r.w.wiki, None, &block_id(n), &r.service.request_budget())
         .expect("a reading")
     {
         Reading::Ready(ready) => ready,
@@ -1093,19 +1178,15 @@ fn a_refusal_that_is_not_not_found_is_not_the_absence_of_a_file() {
             kind: WriteKind::Wrote,
         }],
     };
-    r.w.store
-        .append_writes(
-            &r.w.wiki.id,
-            &r.w.wiki.default_view,
-            &[wrote_bar(1), wrote_bar(2)],
-            &WritesState {
-                head_number: 2,
-                head_block: block_id(2),
-                floor_number: 1,
-                genesis: true,
-            },
-        )
-        .unwrap();
+    r.append_by_hand(
+        &[wrote_bar(1), wrote_bar(2)],
+        &WritesState {
+            head_number: 2,
+            head_block: block_id(2),
+            floor_number: 1,
+            genesis: true,
+        },
+    );
     r.hide(2);
     let hidden = |path: &str| r.service.hidden_text(&r.w.wiki, None, &block_id(2), path);
     // There is no such file: nothing is hidden there.

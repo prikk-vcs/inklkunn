@@ -1257,9 +1257,11 @@ impl ReadService {
         // A side whose text is hidden gives no difference: the lines of a diff are the hidden text, one side at a time. Whose
         // text a side is, is the one reader's to say (RFC 006 D-8; H-1): the change that last wrote the page there, which may
         // be a change long before the block named.
+        // One request: the two sides draw from one budget, so that a diff costs the index one budget and not two (correction Q-3).
+        let budget = self.request_budget();
         let (from_hidden, to_hidden) = (
-            self.hidden_text(wiki, view, from, &path)?,
-            self.hidden_text(wiki, view, to, &path)?,
+            self.hidden_text_within(wiki, view, from, &path, &budget)?,
+            self.hidden_text_within(wiki, view, to, &path, &budget)?,
         );
         if from_hidden.is_some() || to_hidden.is_some() {
             return Ok(DiffOutcome::Hidden(Box::new(HiddenDiff {
@@ -1322,6 +1324,8 @@ impl ReadService {
             return Ok(AtOutcome::NoSuchChange);
         };
         let change = self.masked(wiki, change)?;
+        // One request: the page and every page it includes draw from one budget (correction Q-3).
+        let budget = self.request_budget();
         let index = self.index_at(wiki, &tip)?;
         let (path, page_title) = match resolve(&index, title)? {
             Target::Page { path, title } => (path, title),
@@ -1329,7 +1333,7 @@ impl ReadService {
         };
         // Before the text is read, and before the held renders are asked: a hidden text is not held anywhere it is served from.
         // Whose text it is, is the one reader's to say: the change that last wrote the page at this block, not only this one.
-        if let Some(text) = self.hidden_text(wiki, view, block_id, &path)? {
+        if let Some(text) = self.hidden_text_within(wiki, view, block_id, &path, &budget)? {
             return Ok(AtOutcome::Hidden {
                 title: page_title,
                 change: Box::new(change),
@@ -1358,7 +1362,9 @@ impl ReadService {
                 // A held render is of a page and of the pages it included then: what moderation hides is asked again of each of them
                 // (a hide, and an unhide, are in force at once), through the same reader.
                 for included in &row.links.transcluded {
-                    if let Some(text) = self.hidden_text(wiki, view, block_id, included)? {
+                    if let Some(text) =
+                        self.hidden_text_within(wiki, view, block_id, included, &budget)?
+                    {
                         return Ok(AtOutcome::Hidden {
                             title: page_title,
                             change: Box::new(change),
@@ -1369,26 +1375,32 @@ impl ReadService {
                 (row, true)
             }
             None => {
-                let bytes =
-                    match self.file_at(wiki, view, block_id, &path, self.config.page_max_bytes)? {
-                        FileAt::Held(bytes) => bytes,
-                        // There was no such page then.
-                        FileAt::Missing => {
-                            return Ok(AtOutcome::PageMissing {
-                                title: page_title,
-                                change: Box::new(change),
-                            });
-                        }
-                        // It is over the size read.
-                        FileAt::TooLarge(refused) => return Err(self.storage_error(wiki, refused)),
-                        FileAt::Hidden(text) => {
-                            return Ok(AtOutcome::Hidden {
-                                title: page_title,
-                                change: Box::new(change),
-                                text,
-                            });
-                        }
-                    };
+                let bytes = match self.file_at(
+                    wiki,
+                    view,
+                    block_id,
+                    &path,
+                    self.config.page_max_bytes,
+                    &budget,
+                )? {
+                    FileAt::Held(bytes) => bytes,
+                    // There was no such page then.
+                    FileAt::Missing => {
+                        return Ok(AtOutcome::PageMissing {
+                            title: page_title,
+                            change: Box::new(change),
+                        });
+                    }
+                    // It is over the size read.
+                    FileAt::TooLarge(refused) => return Err(self.storage_error(wiki, refused)),
+                    FileAt::Hidden(text) => {
+                        return Ok(AtOutcome::Hidden {
+                            title: page_title,
+                            change: Box::new(change),
+                            text,
+                        });
+                    }
+                };
                 let text = String::from_utf8(bytes)
                     .map_err(|_| ReadError::PageUnreadable(super::PageProblem::NotUtf8))?;
                 let entry = IndexEntry {
@@ -1404,7 +1416,7 @@ impl ReadService {
                 // hidden is not included, and the permalink says that it is hidden, with that tombstone.
                 let hidden_include: RefCell<Option<Box<Mark>>> = RefCell::new(None);
                 let included = |e: &IndexEntry| {
-                    self.included_at(wiki, view, block_id, &e.path, &hidden_include)
+                    self.included_at(wiki, view, block_id, &e.path, &hidden_include, &budget)
                 };
                 let row = self.render_text(&index, &entry, presentation, &text, &included)?;
                 if let Some(text) = hidden_include.into_inner() {

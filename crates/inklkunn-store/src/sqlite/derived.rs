@@ -6,7 +6,7 @@ use rusqlite::{OptionalExtension, Row, TransactionBehavior, params};
 use super::{SqliteStore, backend};
 use crate::Result;
 use crate::derived::{
-    BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeAnchorRow,
+    Appended, BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeAnchorRow,
     KnowledgeClaimRow, KnowledgeInvalidRow, KnowledgeLinkRow, KnowledgeRelationRow, KnowledgeRows,
     KnowledgeSourceRow, LastWrite, LaterMove, LaterWrite, MAX_ABSENT_BLOCKS, MAX_LATER_MOVES,
     MAX_LATER_WRITES, MAX_MAYBE_WRITERS, MaybeWriter, PageKey, SearchDoc, SearchHit, SearchKind,
@@ -613,13 +613,27 @@ impl DerivedStore for SqliteStore {
         view: &str,
         blocks: &[BlockWrites],
         state: &WritesState,
-    ) -> Result<()> {
+        expected_generation: u64,
+    ) -> Result<Appended> {
         let as_i64 = |n: u64| i64::try_from(n).unwrap_or(i64::MAX);
         blocks.iter().try_for_each(BlockWrites::validate)?;
         self.with(|conn| {
             let tx = conn
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(backend)?;
+            // Read under the write lock a reset takes too: the index is the one the builder began with, or nothing is appended (the
+            // transaction ends unwritten).
+            let found: Option<i64> = tx
+                .query_row(
+                    "SELECT generation FROM write_generation WHERE wiki_id = ?1 AND view = ?2",
+                    params![wiki.as_str(), view],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(backend)?;
+            if found.and_then(|n| u64::try_from(n).ok()).unwrap_or(0) != expected_generation {
+                return Ok(Appended::Dropped);
+            }
             {
                 let mut block = tx
                     .prepare(
@@ -677,7 +691,8 @@ impl DerivedStore for SqliteStore {
                 ],
             )
             .map_err(backend)?;
-            tx.commit().map_err(backend)
+            tx.commit().map_err(backend)?;
+            Ok(Appended::Done)
         })
     }
 

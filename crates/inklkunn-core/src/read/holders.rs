@@ -140,8 +140,11 @@ impl ReadService {
         view: Option<&str>,
         block_id: &str,
     ) -> Result<LaterHolders, ReadError> {
+        // One request: every lookup below (the block's place, the later writers of each path, their texts) draws from the one budget
+        // (correction Q-3).
+        let budget = self.request_budget();
         // The index first: a block it does not reach (or that is no block of the view) is asked nothing else.
-        let parent = match self.indexed_parent(wiki, view, block_id)? {
+        let parent = match self.indexed_parent(wiki, view, block_id, &budget)? {
             ParentBlock::Unsettled => return Ok(LaterHolders::unsettled()),
             ParentBlock::First => None,
             ParentBlock::Block(parent) => Some(parent),
@@ -175,7 +178,8 @@ impl ReadService {
             if added.is_empty() {
                 continue;
             }
-            let later = self.later_writers(wiki, view, block_id, path, MAX_LATER_WRITES)?;
+            let later =
+                self.later_writers_within(wiki, view, block_id, path, MAX_LATER_WRITES, &budget)?;
             if !later.settled {
                 return Ok(LaterHolders::unsettled());
             }
@@ -185,15 +189,16 @@ impl ReadService {
             out.untraced_at_least |= later.untraced_at_least;
             out.moves_unfollowed |= later.moves_unfollowed;
             for writer in later.writers.iter().take(MAX_HOLDER_CHECKS) {
-                let text = match self.text_at(wiki, view, &writer.block, &writer.path) {
-                    Ok(text) => text,
-                    // A text that cannot be checked yet is one that was not looked at (and no hide is said of it).
-                    Err(ReadError::NotCheckedYet) => {
-                        out.unchecked += 1;
-                        continue;
-                    }
-                    Err(e) => return Err(e),
-                };
+                let text =
+                    match self.text_at_within(wiki, view, &writer.block, &writer.path, &budget) {
+                        Ok(text) => text,
+                        // A text that cannot be checked yet is one that was not looked at (and no hide is said of it).
+                        Err(ReadError::NotCheckedYet) => {
+                            out.unchecked += 1;
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    };
                 // A revision of the path the file was moved to is read at that path (the lines the change added are its own).
                 match text {
                     BlockText::Text(text) => {

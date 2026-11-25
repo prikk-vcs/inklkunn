@@ -40,7 +40,7 @@
 use inklkunn_prikk::{Point, StorageError};
 use inklkunn_store::WikiRecord;
 
-use super::writes::Authorship;
+use super::writes::{Authorship, RequestBudget};
 use super::{ReadError, ReadService, Tip};
 use crate::merge::{PageText, merge};
 use crate::tombstone::Mark;
@@ -113,7 +113,8 @@ pub(super) enum Unchecked {
 impl ReadService {
     /// The text of the file at `path` at the block `block_id`, **unless it is hidden**: the one function the text of a page
     /// at a block is read through (see the module's account). `view` is the view whose log orders the blocks (the default
-    /// view for `None`).
+    /// view for `None`). **One lookup, with the budget of one request for itself** (*per call*, correction Q-3): a request that reads
+    /// several texts hands them one budget (`text_at_within`).
     pub fn text_at(
         &self,
         wiki: &WikiRecord,
@@ -121,8 +122,27 @@ impl ReadService {
         block_id: &str,
         path: &str,
     ) -> Result<BlockText, ReadError> {
+        self.text_at_within(wiki, view, block_id, path, &self.request_budget())
+    }
+
+    /// [`ReadService::text_at`] drawing from the budget of the request that asks.
+    pub(super) fn text_at_within(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        block_id: &str,
+        path: &str,
+        budget: &RequestBudget,
+    ) -> Result<BlockText, ReadError> {
         Ok(
-            match self.file_at(wiki, view, block_id, path, self.config.page_max_bytes)? {
+            match self.file_at(
+                wiki,
+                view,
+                block_id,
+                path,
+                self.config.page_max_bytes,
+                budget,
+            )? {
                 FileAt::Held(bytes) => match String::from_utf8(bytes) {
                     Ok(text) => BlockText::Text(text),
                     Err(_) => BlockText::NotText,
@@ -143,9 +163,10 @@ impl ReadService {
         block_id: &str,
         path: &str,
         max: u64,
+        budget: &RequestBudget,
     ) -> Result<FileAt, ReadError> {
         // What is there and whose it is are two questions; the second is asked first, so that a hidden text is never read.
-        let unattributed = match self.authorship(wiki, view, block_id, path)? {
+        let unattributed = match self.authorship(wiki, view, block_id, path, budget)? {
             Authorship::Hidden(mark) => return Ok(FileAt::Hidden(mark)),
             Authorship::NothingHidden | Authorship::Shown { written: true } => false,
             // Nobody is recorded as having written the path: a text there cannot be attributed (and is not given).
@@ -286,7 +307,8 @@ impl ReadService {
     /// Is the text of the file at `path` at the block hidden, and by which hiding? `Ok(None)` when it is not. **A store that cannot
     /// be read is an error**, never *nothing hidden*, and so is a service that has no record of what moderation hides (correction
     /// L-8); a text that cannot be attributed is [`ReadError::NotCheckedYet`], never *not hidden* (see the account in
-    /// `read/writes.rs`).
+    /// `read/writes.rs`). **One lookup, with the budget of one request for itself** (*per call*, correction Q-3): a request that asks
+    /// for several hands them one budget (`hidden_text_within`).
     pub fn hidden_text(
         &self,
         wiki: &WikiRecord,
@@ -294,7 +316,19 @@ impl ReadService {
         block_id: &str,
         path: &str,
     ) -> Result<Option<Mark>, ReadError> {
-        Ok(match self.authorship(wiki, view, block_id, path)? {
+        self.hidden_text_within(wiki, view, block_id, path, &self.request_budget())
+    }
+
+    /// [`ReadService::hidden_text`] drawing from the budget of the request that asks.
+    pub(super) fn hidden_text_within(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        block_id: &str,
+        path: &str,
+        budget: &RequestBudget,
+    ) -> Result<Option<Mark>, ReadError> {
+        Ok(match self.authorship(wiki, view, block_id, path, budget)? {
             Authorship::NothingHidden | Authorship::Shown { written: true } => None,
             Authorship::Hidden(mark) => Some(*mark),
             // Nobody is recorded as having written the path: nothing is hidden if nothing is there, and a text that is there

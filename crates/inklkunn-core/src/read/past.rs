@@ -19,7 +19,7 @@ use inklkunn_store::{IndexEntry, WikiId, WikiRecord};
 
 use super::index::TitleIndex;
 use super::text::FileAt;
-use super::writes::{Authorship, Reading};
+use super::writes::{Authorship, Reading, RequestBudget};
 use super::{BlockPoint, ReadError, ReadService};
 use crate::knowledge::index::{HiddenFile, HiddenKind, KnowledgeIndex};
 use crate::knowledge::{ClaimId, SourceId, claim_path, source_path};
@@ -72,8 +72,16 @@ impl ReadService {
         block_id: &str,
         path: &str,
         hidden: &RefCell<Option<Box<Mark>>>,
+        budget: &RequestBudget,
     ) -> Result<Option<String>, ReadError> {
-        match self.file_at(wiki, view, block_id, path, self.config.page_max_bytes)? {
+        match self.file_at(
+            wiki,
+            view,
+            block_id,
+            path,
+            self.config.page_max_bytes,
+            budget,
+        )? {
             FileAt::Held(bytes) => Ok(String::from_utf8(bytes).ok()),
             FileAt::Missing => Ok(None),
             FileAt::TooLarge(refused) => Err(self.storage_error(wiki, refused)),
@@ -113,8 +121,9 @@ impl ReadService {
         wiki: &WikiRecord,
         at: &BlockPoint,
         whole: Arc<TitleIndex>,
+        budget: &RequestBudget,
     ) -> Result<Arc<TitleIndex>, ReadError> {
-        let reading = self.reading(wiki, Some(at.view()), at.block_id())?;
+        let reading = self.reading(wiki, Some(at.view()), at.block_id(), budget)?;
         if matches!(reading, Reading::NothingHidden) {
             return Ok(whole);
         }
@@ -182,8 +191,9 @@ impl ReadService {
         at: &BlockPoint,
         whole: Arc<KnowledgeIndex>,
         titles: Arc<TitleIndex>,
+        budget: &RequestBudget,
     ) -> Result<Arc<KnowledgeIndex>, ReadError> {
-        let reading = self.reading(wiki, Some(at.view()), at.block_id())?;
+        let reading = self.reading(wiki, Some(at.view()), at.block_id(), budget)?;
         if matches!(reading, Reading::NothingHidden) {
             return Ok(whole);
         }
@@ -214,7 +224,7 @@ impl ReadService {
         }
         // The ids of the pages whose text is hidden here: the entries of the filtered title index that say so, by what the whole
         // index read from them.
-        let filtered = self.titles_without_hidden(wiki, at, Arc::clone(&titles))?;
+        let filtered = self.titles_without_hidden(wiki, at, Arc::clone(&titles), budget)?;
         let hidden_pages: Vec<String> = titles
             .entries()
             .iter()

@@ -401,6 +401,17 @@ pub struct WritesState {
     pub genesis: bool,
 }
 
+/// What [`DerivedStore::append_writes`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "a build that was dropped under appended nothing, and the caller must not take the index for built"]
+pub enum Appended {
+    /// The blocks were added and the state moved.
+    Done,
+    /// The view's index was dropped since the generation the builder began under ([`DerivedStore::reset_writes`],
+    /// [`DerivedStore::clear`]): **nothing was appended**.
+    Dropped,
+}
+
 /// A block of a view's log, as the writes index names it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexedBlock {
@@ -554,13 +565,21 @@ pub trait DerivedStore: Send + Sync {
     /// Add blocks to `view`'s index **and move its state to `state`, in one step** (a reader sees all of it or none). `blocks` are
     /// in the order of their numbers and follow what the index has, or begin it; a block already there is kept as it is (two
     /// readers that build the same blocks agree, and the second changes nothing).
+    ///
+    /// **Only to the index the builder began with** (correction Q-2): `expected_generation` is the view's generation
+    /// ([`DerivedStore::writes_generation`]) the builder read before it read the log, and it is compared with the view's **inside the
+    /// step that appends** (the one transaction of the SQLite store, the one lock of the memory store), not before it. When they
+    /// differ the index was dropped under the builder, **nothing is appended** and [`Appended::Dropped`] says so: blocks added to an
+    /// index that was dropped would be the newest of a log with the oldest missing, under a floor and a `genesis` that belong to an
+    /// index that is gone.
     fn append_writes(
         &self,
         wiki: &WikiId,
         view: &str,
         blocks: &[BlockWrites],
         state: &WritesState,
-    ) -> Result<()>;
+        expected_generation: u64,
+    ) -> Result<Appended>;
     /// Drop `view`'s index of `wiki`: the next reader builds it again. **The view's generation moves** ([`DerivedStore::writes_generation`]),
     /// in the same step.
     fn reset_writes(&self, wiki: &WikiId, view: &str) -> Result<()>;

@@ -14,6 +14,7 @@ use inklkunn_prikk::{Point, StorageError};
 use inklkunn_store::{DerivedHeading, IndexEntry, WikiRecord};
 
 use super::text::FileAt;
+use super::writes::RequestBudget;
 use super::{PageProblem, ReadError, ReadService, SafeHtml, Tip};
 use crate::knowledge::{MAX_FILE_BYTES, Readability, Unreadable, readability};
 use crate::read::Presentation;
@@ -33,14 +34,22 @@ impl ReadService {
     /// then, or it is not text. A file larger than a page may be is an error (it could not be read), not a
     /// missing file. **A text that moderation hides is an error too** ([`PageProblem::Hidden`]), whichever block wrote it
     /// (RFC 006 D-8; INV-13): this reads through [`ReadService::text_at`] and gives none of it. A surface that says that the text
-    /// is hidden, rather than that it could not be read, asks [`ReadService::text_at`] itself.
+    /// is hidden, rather than that it could not be read, asks [`ReadService::text_at`] itself. **One lookup, with the budget of one
+    /// request for itself** (*per call*: the callers that read many files at a proposal's base call it for each, correction Q-3).
     pub fn source_at(
         &self,
         wiki: &WikiRecord,
         block_id: &str,
         path: &str,
     ) -> Result<Option<String>, ReadError> {
-        match self.file_at(wiki, None, block_id, path, self.config.page_max_bytes)? {
+        match self.file_at(
+            wiki,
+            None,
+            block_id,
+            path,
+            self.config.page_max_bytes,
+            &self.request_budget(),
+        )? {
             FileAt::Held(bytes) => Ok(String::from_utf8(bytes).ok()),
             FileAt::Missing => Ok(None),
             FileAt::TooLarge(refused) => Err(self.storage_error(wiki, refused)),
@@ -50,14 +59,33 @@ impl ReadService {
 
     /// [`ReadService::source_at`] for a surface that **says that the text is hidden** instead of failing: the text, or the
     /// hiding of the text (`Err`), and never both. What a proposal's page reads the text it was written against by: the text is
-    /// then said to be hidden, with its tombstone, and the change is shown without it.
+    /// then said to be hidden, with its tombstone, and the change is shown without it. **One lookup, with the budget of one request
+    /// for itself** (*per call*, correction Q-3).
     pub fn source_or_hidden(
         &self,
         wiki: &WikiRecord,
         block_id: &str,
         path: &str,
     ) -> Result<Result<Option<String>, Box<Mark>>, ReadError> {
-        match self.file_at(wiki, None, block_id, path, self.config.page_max_bytes)? {
+        self.source_or_hidden_within(wiki, block_id, path, &self.request_budget())
+    }
+
+    /// [`ReadService::source_or_hidden`] drawing from the budget of the request that asks.
+    pub(super) fn source_or_hidden_within(
+        &self,
+        wiki: &WikiRecord,
+        block_id: &str,
+        path: &str,
+        budget: &RequestBudget,
+    ) -> Result<Result<Option<String>, Box<Mark>>, ReadError> {
+        match self.file_at(
+            wiki,
+            None,
+            block_id,
+            path,
+            self.config.page_max_bytes,
+            budget,
+        )? {
             FileAt::Held(bytes) => Ok(Ok(String::from_utf8(bytes).ok())),
             FileAt::Missing => Ok(Ok(None)),
             FileAt::TooLarge(refused) => Err(self.storage_error(wiki, refused)),

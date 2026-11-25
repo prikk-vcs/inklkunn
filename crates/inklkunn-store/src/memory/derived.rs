@@ -5,9 +5,9 @@ use std::sync::PoisonError;
 
 use crate::Result;
 use crate::derived::{
-    BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeRows, LastWrite,
-    LaterMove, LaterWrite, MAX_ABSENT_BLOCKS, MAX_LATER_MOVES, MAX_LATER_WRITES, MAX_MAYBE_WRITERS,
-    MaybeWriter, PageKey, SearchDoc, SearchHit, WriteKind, Writers, WritesState,
+    Appended, BlockWrites, DerivedPage, DerivedStore, IndexEntry, IndexedBlock, KnowledgeRows,
+    LastWrite, LaterMove, LaterWrite, MAX_ABSENT_BLOCKS, MAX_LATER_MOVES, MAX_LATER_WRITES,
+    MAX_MAYBE_WRITERS, MaybeWriter, PageKey, SearchDoc, SearchHit, WriteKind, Writers, WritesState,
 };
 use crate::governance::{GovernanceSnapshot, GovernanceSnapshotStore};
 use crate::record::WikiId;
@@ -244,10 +244,16 @@ impl DerivedStore for MemoryStore {
         view: &str,
         blocks: &[BlockWrites],
         state: &WritesState,
-    ) -> Result<()> {
+        expected_generation: u64,
+    ) -> Result<Appended> {
         blocks.iter().try_for_each(BlockWrites::validate)?;
         let mut d = self.derived();
-        let index = d.writes.entry((wiki.clone(), view.to_owned())).or_default();
+        // Under the one lock a reset takes too: the index is the one the builder began with, or nothing is appended.
+        let key = (wiki.clone(), view.to_owned());
+        if d.generations.get(&key).copied().unwrap_or(0) != expected_generation {
+            return Ok(Appended::Dropped);
+        }
+        let index = d.writes.entry(key).or_default();
         for block in blocks {
             if index.blocks.contains_key(&block.number) {
                 continue;
@@ -275,7 +281,7 @@ impl DerivedStore for MemoryStore {
         {
             index.state = Some(state.clone());
         }
-        Ok(())
+        Ok(Appended::Done)
     }
 
     fn reset_writes(&self, wiki: &WikiId, view: &str) -> Result<()> {

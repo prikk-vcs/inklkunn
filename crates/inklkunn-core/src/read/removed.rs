@@ -167,9 +167,11 @@ impl ReadService {
         removed: &RemovedPage,
     ) -> Result<Restore, ReadError> {
         let (tip, removal, path) = (&removed.tip, &removed.removal, removed.path.as_str());
+        // One request: the plan's reads and the last text's share the one budget (correction Q-3).
+        let budget = self.request_budget();
         // Whether the rollback would merge over the tip is asked of the files (the verdict is all that comes back, never a text);
         // when it would and the text it would write is hidden, the way back is refused whole, naming the pages.
-        match self.plan_of(wiki, view, &removal.block_id)? {
+        match self.plan_of(wiki, view, &removal.block_id, &budget)? {
             Planned::Plan(plan) => {
                 let paths: Vec<String> = plan.files.iter().map(|f| f.path.clone()).collect();
                 if let Some(parent) = &removal.parent
@@ -200,14 +202,16 @@ impl ReadService {
                 removal.block_id
             ))));
         };
-        Ok(match self.text_at(wiki, view, parent, path)? {
-            BlockText::Text(_) => Restore::LastText {
-                from: parent.to_owned(),
+        Ok(
+            match self.text_at_within(wiki, view, parent, path, &budget)? {
+                BlockText::Text(_) => Restore::LastText {
+                    from: parent.to_owned(),
+                },
+                BlockText::Hidden(_) => Restore::TextHidden {
+                    titles: vec![path_to_title(path).unwrap_or_else(|| path.to_owned())],
+                },
+                BlockText::Missing | BlockText::NotText | BlockText::TooLarge => Restore::NotText,
             },
-            BlockText::Hidden(_) => Restore::TextHidden {
-                titles: vec![path_to_title(path).unwrap_or_else(|| path.to_owned())],
-            },
-            BlockText::Missing | BlockText::NotText | BlockText::TooLarge => Restore::NotText,
-        })
+        )
     }
 }

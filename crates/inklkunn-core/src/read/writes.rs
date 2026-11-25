@@ -64,11 +64,26 @@
 //!   an old version of a page answers with its text or its tombstone **without any reader having walked the history to make it**.
 //!   A step is bounded ([`BACKGROUND_STEP_SHOWS`] blocks that cost a process, [`BACKGROUND_STEP_TIME`]), holds the view's lock only
 //!   for itself, and is **resumable**: the index is derived and kept, so a restart, a failure or a shutdown loses nothing.
-//! - **By a request.** **A request's own part is bounded by time** ([`DEFAULT_REQUEST_BUDGET`], about a second, shared by every
-//!   view the request asks), with [`MAX_INDEXED_SHOWS`] blocks that cost a process as a hard backstop (blocks the service already
-//!   holds cost none): it indexes what it may and answers *not checked yet* for what it could not reach (**never the text**); the
-//!   requests after it, and the background, go on from where it stopped. A request always indexes at least the block it is
-//!   at when the budget is first looked at (it is never refused for time before it began).
+//! - **By a request.** **A request's own part is bounded by time** ([`DEFAULT_REQUEST_BUDGET`], about a second, **one budget for
+//!   the whole request** and every view it asks; correction Q-3), with [`MAX_INDEXED_SHOWS`] blocks that cost a process as a hard
+//!   backstop (blocks the service already holds cost none): it indexes what it may and answers *not checked yet* for what it could
+//!   not reach (**never the text**); the requests after it, and the background, go on from where it stopped. A request always
+//!   indexes at least the block it is at when the budget is first looked at (it is never refused for time before it began), and a
+//!   lookup of the same request that comes after the budget is spent builds nothing: it finds what is indexed and is answered
+//!   *not checked yet* for the rest, **without a `show`**.
+//!
+//!   **Which entries share one budget.** The budget is made once where the request enters the read service, and handed down:
+//!   [`ReadService::page_diff`] (both sides), [`ReadService::page_at`] (the page and every page it includes),
+//!   [`ReadService::rollback_plan`] and [`ReadService::way_back`] (every page's two texts), [`ReadService::later_holders`] (the
+//!   writers of every path and their texts), [`ReadService::attached_sources`] (the files of the one change it is asked about),
+//!   [`ReadService::rule_history`], and the two reads
+//!   of the indexes at a proposal's base ([`ReadService::title_index_at_base`], [`ReadService::knowledge_index_at_base`], which
+//!   ask the index once for both). **Every other public entry is one lookup and has the budget of one request for itself, per
+//!   call**: [`ReadService::text_at`], [`ReadService::hidden_text`], [`ReadService::source_at`], [`ReadService::source_or_hidden`],
+//!   [`ReadService::later_writers`], [`ReadService::warm_writes`]. A page that asks several of them in turn (a proposal's page, which
+//!   reads each file at the base through its own call) pays one budget for each, and the second finds the block the first
+//!   reached already indexed (an index is of blocks, and the base is one block): what a second call spends is spent on a block
+//!   the first did not reach.
 //!
 //! Reading a view's log further back than [`MAX_WINDOW`] blocks is not done: the oldest blocks of a longer history are unindexed,
 //! and a text written there is unattributed.
@@ -106,8 +121,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use inklkunn_store::{
-    BlockWrites, IndexedBlock, LastWrite, LaterWrite, MAX_LATER_WRITES, MAX_MAYBE_WRITERS,
-    PathWrite, StoreError, WikiId, WikiRecord, WriteKind, WritesState,
+    Appended, BlockWrites, IndexedBlock, LastWrite, LaterWrite, MAX_LATER_WRITES,
+    MAX_MAYBE_WRITERS, PathWrite, StoreError, WikiId, WikiRecord, WriteKind, WritesState,
 };
 
 use super::history::{Hold, MAX_WINDOW, Touch, TouchKind, Touches};
@@ -178,6 +193,23 @@ impl Budget {
     fn spent_one(&mut self) {
         self.fetched += 1;
         self.shows_left = self.shows_left.saturating_sub(1);
+    }
+}
+
+/// **The budget of one request** (correction Q-3): made **once**, where the request enters the read service
+/// ([`ReadService::request_budget`]), and drawn from by **every lookup the request makes** (a diff's two sides, a rollback's
+/// reads, a list of later holders, a page and the pages it includes). What the first lookup spends the second does not have: a
+/// lookup that finds it spent builds nothing and is answered *not checked yet* (**never the text**), as a lookup that ran out
+/// of it is. So a request's part in building the index is **one** [`DEFAULT_REQUEST_BUDGET`], not one for each thing it asks.
+///
+/// An entry that cannot be handed one (a public entry that is one lookup, or a caller that asks the service for many things in
+/// turn) makes its own for each call: **per lookup**, which the entry's doc says.
+pub(super) struct RequestBudget(Mutex<Budget>);
+
+impl RequestBudget {
+    /// Draw from the budget for one thing (one lookup, or one call of the builder).
+    pub(super) fn with<T>(&self, draw: impl FnOnce(&mut Budget) -> T) -> T {
+        draw(&mut self.0.lock().unwrap_or_else(PoisonError::into_inner))
     }
 }
 
@@ -420,15 +452,16 @@ impl ReadService {
         view: Option<&str>,
         block_id: &str,
         path: &str,
+        budget: &RequestBudget,
     ) -> Result<Authorship, ReadError> {
-        Ok(match self.reading(wiki, view, block_id)? {
+        Ok(match self.reading(wiki, view, block_id, budget)? {
             Reading::NothingHidden => Authorship::NothingHidden,
             Reading::Ready(ready) => self.authorship_in(wiki, &ready, path)?,
         })
     }
 
     /// **What a reader of many paths at one block asks once**: whether any change of the wiki has its content hidden (one query), and
-    /// the block's place in the view's index (built toward it within the bound of a call). [`ReadService::authorship_in`] then answers
+    /// the block's place in the view's index (built toward it within what is left of the request's `budget`). [`ReadService::authorship_in`] then answers
     /// for each path. **A service without the record of what moderation hides is an error** (correction L-8), and so is a block the
     /// index cannot place ([`ReadError::NotCheckedYet`]).
     pub(super) fn reading(
@@ -436,6 +469,7 @@ impl ReadService {
         wiki: &WikiRecord,
         view: Option<&str>,
         block_id: &str,
+        budget: &RequestBudget,
     ) -> Result<Reading, ReadError> {
         let Some(tombstones) = &self.tombstones else {
             return Err(ReadError::CouldNotBeReadNow(Cause::ModerationNotConfigured));
@@ -447,15 +481,11 @@ impl ReadService {
         {
             return Ok(Reading::NothingHidden);
         }
-        let mut budget = self.request_budget();
         // The index's generation is read inside, before the block is looked for in the view's index (before anything of the index is
         // read, and before it is built toward the block), and again after the rows (see the module's account).
-        let (view, at, generation) = match self.view_holding(
-            wiki,
-            view.unwrap_or(&wiki.default_view),
-            block_id,
-            &mut budget,
-        ) {
+        let (view, at, generation) = match budget.with(|budget| {
+            self.view_holding(wiki, view.unwrap_or(&wiki.default_view), block_id, budget)
+        }) {
             Err(ReadError::NotCheckedYet) => return Err(self.starved(wiki)),
             held => held?,
         };
@@ -640,7 +670,8 @@ impl ReadService {
         Ok(Authorship::Shown { written })
     }
 
-    /// The block of `view`'s index that is `block_id`, built toward when it is not there yet (within the bound of a call): `None`
+    /// The block of `view`'s index that is `block_id`, built toward when it is not there yet (within what is left of the request's
+    /// `budget`): `None`
     /// when the view's index does not hold it (it is not a block of the view's log, or the index has not reached it). A caller that
     /// must tell the two apart asks [`ReadService::locate`].
     fn indexed_through(
@@ -648,18 +679,13 @@ impl ReadService {
         wiki: &WikiRecord,
         view: &str,
         block_id: &str,
+        budget: &RequestBudget,
     ) -> Result<Option<IndexedBlock>, ReadError> {
         let mut unbounded = usize::MAX;
-        let mut budget = self.request_budget();
         Ok(
-            match self.locate(
-                wiki,
-                view,
-                block_id,
-                &mut unbounded,
-                Hold::Keep,
-                &mut budget,
-            )? {
+            match budget.with(|budget| {
+                self.locate(wiki, view, block_id, &mut unbounded, Hold::Keep, budget)
+            })? {
                 Located::At(at, _) => Some(at),
                 Located::NotInLog | Located::NotYet => None,
             },
@@ -761,7 +787,11 @@ impl ReadService {
         let tip = self.tip(wiki, Some(view))?;
         // The generation the build begins under: an index dropped while it builds (an administrator's refresh, in this process or
         // another) is not appended to, for what would be left is the newest blocks of a log with the oldest ones missing, under a
-        // state that says the index begins at the view's first block.
+        // state that says the index begins at the view's first block. **The store guarantees it, and nothing else does**: the generation
+        // goes into `append_writes`, which compares it with the view's inside the one step that appends (a transaction that takes the
+        // write lock, or the memory store's lock), so a drop at any moment of the build, up to the append, appends nothing (correction
+        // Q-2). There is no look at the generation before the append: it would only spare the store a call it refuses, and it could not
+        // be the guard.
         let mut generation = self
             .derived
             .writes_generation(&wiki.id, view)
@@ -841,14 +871,6 @@ impl ReadService {
         let Some(newest) = batch.last() else {
             return Ok(Reach::InLog);
         };
-        if self
-            .derived
-            .writes_generation(&wiki.id, view)
-            .map_err(failed)?
-            != generation
-        {
-            return Ok(Reach::InLog);
-        }
         let next = WritesState {
             head_number: newest.number,
             head_block: newest.block.clone(),
@@ -859,30 +881,50 @@ impl ReadService {
                 .as_ref()
                 .map_or_else(|| first_indexed.unwrap_or(false), |s| s.genesis),
         };
-        self.derived
-            .append_writes(&wiki.id, view, &batch, &next)
-            .map_err(failed)?;
+        match self
+            .derived
+            .append_writes(&wiki.id, view, &batch, &next, generation)
+            .map_err(failed)?
+        {
+            Appended::Done => {}
+            // Dropped since the build began: nothing was added, and the index is not built (a later reader builds it).
+            Appended::Dropped => return Ok(Reach::InLog),
+        }
         if budget.request {
             self.request_advances.fetch_add(1, Ordering::Relaxed);
         }
         Ok(Reach::InLog)
     }
 
-    /// **Build the default view's index toward its tip now**, within a request's budget ([`DEFAULT_REQUEST_BUDGET`]): what a hide
-    /// does when the server has no background build to ask ([`ReadService::warm_writes_after_hide`]), and what a test does to have
-    /// the index built. Nothing depends on it: a read that finds the index short of what it needs builds on, and answers *not checked
-    /// yet* for what it could not reach. `true` when the index reaches the view's tip.
+    /// **Build the default view's index toward its tip now**, within a request's budget ([`DEFAULT_REQUEST_BUDGET`]; one call is
+    /// one request, **per call**): what a hide does when the server has no background build to ask
+    /// ([`ReadService::warm_writes_after_hide`]), and what a test does to have the index built. Nothing depends on it: a read that
+    /// finds the index short of what it needs builds on, and answers *not checked yet* for what it could not reach. `true` when the
+    /// index reaches the view's tip.
     pub fn warm_writes(&self, wiki: &WikiRecord) -> Result<bool, ReadError> {
-        self.warm_writes_of(wiki, wiki.default_view.as_str())
+        self.warm_writes_of(wiki, wiki.default_view.as_str(), &self.request_budget())
     }
 
     /// [`ReadService::warm_writes`] for any view: what a list of **later** writers needs, because it is an answer only when the index
     /// reaches the view's tip (an index built until the block asked about knows nothing of the blocks after it).
-    pub(super) fn warm_writes_of(&self, wiki: &WikiRecord, view: &str) -> Result<bool, ReadError> {
-        let mut budget = self.request_budget();
+    pub(super) fn warm_writes_of(
+        &self,
+        wiki: &WikiRecord,
+        view: &str,
+        budget: &RequestBudget,
+    ) -> Result<bool, ReadError> {
+        budget.with(|budget| self.warm_writes_within(wiki, view, budget))
+    }
+
+    fn warm_writes_within(
+        &self,
+        wiki: &WikiRecord,
+        view: &str,
+        budget: &mut Budget,
+    ) -> Result<bool, ReadError> {
         let mut before = None;
         loop {
-            self.advance_writes(wiki, view, None, Hold::Keep, &mut budget)?;
+            self.advance_writes(wiki, view, None, Hold::Keep, budget)?;
             let tip = self.tip(wiki, Some(view))?;
             let state = self
                 .derived
@@ -905,16 +947,17 @@ impl ReadService {
 
     // ------------------------------------------------------------------------------------ the background build
 
-    /// A budget for the part a request has in building the index: [`DEFAULT_REQUEST_BUDGET`] (or what
-    /// [`ReadService::with_writes_budget`] gave) from now, over [`MAX_INDEXED_SHOWS`] blocks that cost a process.
-    pub(super) fn request_budget(&self) -> Budget {
-        Budget {
+    /// **The budget of one request** for the part it has in building the index: [`DEFAULT_REQUEST_BUDGET`] (or what
+    /// [`ReadService::with_writes_budget`] gave) from now, over [`MAX_INDEXED_SHOWS`] blocks that cost a process. Made where a request
+    /// enters the read service and handed to every lookup it makes ([`RequestBudget`]); never made inside a lookup that is one of many.
+    pub(super) fn request_budget(&self) -> RequestBudget {
+        RequestBudget(Mutex::new(Budget {
             until: Some((self.monotonic)() + self.writes_budget),
             clock: Arc::clone(&self.monotonic),
             shows_left: MAX_INDEXED_SHOWS,
             fetched: 0,
             request: true,
-        }
+        }))
     }
 
     /// A moderator's content hide was recorded: **the writes index is to be built** (correction P-5). With a background build
@@ -1042,9 +1085,10 @@ impl ReadService {
         wiki: &WikiRecord,
         view: Option<&str>,
         block_id: &str,
+        budget: &RequestBudget,
     ) -> Result<ParentBlock, ReadError> {
         let view = view.unwrap_or(&wiki.default_view);
-        let Some(at) = self.indexed_through(wiki, view, block_id)? else {
+        let Some(at) = self.indexed_through(wiki, view, block_id, budget)? else {
             return Ok(ParentBlock::Unsettled);
         };
         let Some(before) = at.number.checked_sub(1).filter(|n| *n > 0) else {
@@ -1079,6 +1123,10 @@ impl ReadService {
     /// - The changes after the block that **may have written** the path or any (an operation whose path was not resolved, a change too
     ///   large to list, a kind of change whose effect is not listed) cannot be told to have or not, and are returned as
     ///   [`LaterWriters::untraced`] for the moderation form to say so.
+    ///
+    /// **One call is one request, with a budget of its own** ([`DEFAULT_REQUEST_BUDGET`]): *per call*, whatever the caller asks next.
+    /// The one request that asks it for many paths ([`ReadService::later_holders`]) hands it the budget of the whole request
+    /// instead.
     pub fn later_writers(
         &self,
         wiki: &WikiRecord,
@@ -1087,9 +1135,22 @@ impl ReadService {
         path: &str,
         limit: usize,
     ) -> Result<LaterWriters, ReadError> {
+        self.later_writers_within(wiki, view, block_id, path, limit, &self.request_budget())
+    }
+
+    /// [`ReadService::later_writers`] drawing from the budget of the request that asks.
+    pub(super) fn later_writers_within(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        block_id: &str,
+        path: &str,
+        limit: usize,
+        budget: &RequestBudget,
+    ) -> Result<LaterWriters, ReadError> {
         let view = view.unwrap_or(&wiki.default_view);
-        let at = match self.indexed_through(wiki, view, block_id)? {
-            Some(at) if self.warm_writes_of(wiki, view)? => at,
+        let at = match self.indexed_through(wiki, view, block_id, budget)? {
+            Some(at) if self.warm_writes_of(wiki, view, budget)? => at,
             _ => {
                 return Ok(LaterWriters {
                     writers: Vec::new(),

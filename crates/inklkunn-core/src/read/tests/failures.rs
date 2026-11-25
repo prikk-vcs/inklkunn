@@ -324,7 +324,8 @@ impl DerivedStore for BrokenStore {
         _: &str,
         _: &[inklkunn_store::BlockWrites],
         _: &inklkunn_store::WritesState,
-    ) -> inklkunn_store::Result<()> {
+        _: u64,
+    ) -> inklkunn_store::Result<inklkunn_store::Appended> {
         Err(StoreError::Backend("down".into()))
     }
     fn reset_writes(&self, _: &WikiId, _: &str) -> inklkunn_store::Result<()> {

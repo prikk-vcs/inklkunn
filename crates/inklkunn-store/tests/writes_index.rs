@@ -6,11 +6,30 @@
 use std::path::PathBuf;
 
 use inklkunn_store::{
-    BlockWrites, DerivedStore, DisplayName, MAX_ABSENT_BLOCKS, MAX_MAYBE_WRITERS, MaybeWriter,
-    MemoryStore, NewWiki, PathWrite, Slug, SqliteStore, WikiId, WikiStore, WriteKind, WritesState,
+    Appended, BlockWrites, DerivedStore, DisplayName, MAX_ABSENT_BLOCKS, MAX_MAYBE_WRITERS,
+    MaybeWriter, MemoryStore, NewWiki, PathWrite, Slug, SqliteStore, WikiId, WikiStore, WriteKind,
+    WritesState,
 };
 
 const VIEW: &str = "heads/main";
+
+/// What the tests that build an index by hand do: append under the view's generation now, and say that it was appended.
+trait AppendNow: DerivedStore {
+    fn append_now(
+        &self,
+        wiki: &WikiId,
+        view: &str,
+        blocks: &[BlockWrites],
+        state: &WritesState,
+    ) -> inklkunn_store::Result<()> {
+        let generation = self.writes_generation(wiki, view)?;
+        let outcome = self.append_writes(wiki, view, blocks, state, generation)?;
+        assert_eq!(outcome, Appended::Done);
+        Ok(())
+    }
+}
+
+impl<T: DerivedStore + ?Sized> AppendNow for T {}
 
 fn wiki(store: &dyn WikiStore, slug: &str) -> WikiId {
     store
@@ -65,7 +84,7 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
 
     // 1 creates a and b; 2 edits a; 3 moves b to c (a pure rename); 4 removes a; 5 makes a again; 6 may have written anything.
     store
-        .append_writes(
+        .append_now(
             &w,
             VIEW,
             &[
@@ -172,7 +191,7 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
 
     // A block that may have written anything, and one that cannot be attributed, are listed for every path after the last certain row.
     store
-        .append_writes(
+        .append_now(
             &w,
             VIEW,
             &[
@@ -265,7 +284,7 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
 
     // A block already there keeps what it has (a second reader built the same), and the state only moves forward.
     store
-        .append_writes(
+        .append_now(
             &w,
             VIEW,
             &[block(2, vec![write("zzz", WriteKind::Wrote)])],
@@ -290,7 +309,7 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
         .collect();
     let head = many.last().map_or(0, |b| b.number);
     store
-        .append_writes(&w, VIEW, &many, &state(head, 1, true))
+        .append_now(&w, VIEW, &many, &state(head, 1, true))
         .unwrap();
     let crowded = store.last_writes(&w, VIEW, "a", head).unwrap();
     assert_eq!(crowded.maybes.len(), MAX_MAYBE_WRITERS);
@@ -316,7 +335,7 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
         })
         .collect();
     store
-        .append_writes(&w, VIEW, &moved, &state(base + 2, 1, true))
+        .append_now(&w, VIEW, &moved, &state(base + 2, 1, true))
         .unwrap();
     let listed: Vec<String> = store
         .later_moves(&w, VIEW, "moved", 0, 2)
@@ -328,7 +347,7 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
 
     // Dropping a view's index drops that view's alone; `clear` drops the wiki's, and counts each view once.
     store
-        .append_writes(
+        .append_now(
             &w,
             "heads/second",
             &[block(1, vec![write("a", WriteKind::Wrote)])],
@@ -336,7 +355,7 @@ fn invariants(store: &(impl DerivedStore + WikiStore)) {
         )
         .unwrap();
     store
-        .append_writes(
+        .append_now(
             &other,
             VIEW,
             &[block(1, vec![write("a", WriteKind::Wrote)])],
@@ -376,7 +395,7 @@ fn generations(store: &(impl DerivedStore + WikiStore)) {
     assert_eq!(at(&w, VIEW), 0, "a view never dropped is at 0");
     let built = |wiki: &WikiId, view: &str| {
         store
-            .append_writes(
+            .append_now(
                 wiki,
                 view,
                 &[block(1, vec![write("a", WriteKind::Wrote)])],
@@ -413,6 +432,78 @@ fn generations(store: &(impl DerivedStore + WikiStore)) {
 fn both_stores_move_the_generation_of_a_view_when_its_index_is_dropped_and_only_then() {
     generations(&MemoryStore::new());
     generations(&SqliteStore::open_in_memory().expect("open"));
+}
+
+/// **An append is to the index the builder began with, and the store says so** (correction Q-2): the generation the builder read is
+/// compared with the view's inside the step that appends. An index dropped between the two (by a reset, or by `clear`) is not
+/// appended to: **nothing is written, state included**, and the answer is [`Appended::Dropped`]. A drop of one view, or of another
+/// wiki's, is no reason to refuse.
+fn appends_only_to_the_index_the_builder_began_with(store: &(impl DerivedStore + WikiStore)) {
+    let w = wiki(store, "dropped");
+    let other = wiki(store, "elsewhere");
+    let blocks = |from: u64, to: u64| -> Vec<BlockWrites> {
+        (from..=to)
+            .map(|n| block(n, vec![write("a", WriteKind::Wrote)]))
+            .collect()
+    };
+    let append = |wiki: &WikiId, view: &str, from: u64, to: u64, generation: u64| {
+        store
+            .append_writes(
+                wiki,
+                view,
+                &blocks(from, to),
+                &state(to, from, from == 1),
+                generation,
+            )
+            .unwrap()
+    };
+    let generation = |wiki: &WikiId, view: &str| store.writes_generation(wiki, view).unwrap();
+
+    // Under the generation the view has, an append is made.
+    assert_eq!(append(&w, VIEW, 1, 2, 0), Appended::Done);
+    assert_eq!(
+        store.writes_state(&w, VIEW).unwrap(),
+        Some(state(2, 1, true))
+    );
+    // The builder read the generation, then the index was dropped, then it appended what it built from the log it read: refused,
+    // and nothing is left of what it brought (no block, no state).
+    store.reset_writes(&w, VIEW).unwrap();
+    assert_eq!(generation(&w, VIEW), 1);
+    assert_eq!(append(&w, VIEW, 3, 5, 0), Appended::Dropped);
+    assert_eq!(
+        store.writes_state(&w, VIEW).unwrap(),
+        None,
+        "no state under a floor of an index that is gone"
+    );
+    for n in 1..=5 {
+        assert!(
+            store.indexed_block_at(&w, VIEW, n).unwrap().is_none(),
+            "block {n} was not appended"
+        );
+    }
+    assert_eq!(generation(&w, VIEW), 1, "a refused append moves nothing");
+    // A builder that began after the drop appends.
+    assert_eq!(append(&w, VIEW, 1, 5, 1), Appended::Done);
+    assert_eq!(
+        store.writes_state(&w, VIEW).unwrap(),
+        Some(state(5, 1, true))
+    );
+    // `clear` drops it too.
+    store.clear(&w).unwrap();
+    assert_eq!(append(&w, VIEW, 6, 6, 1), Appended::Dropped);
+    assert_eq!(store.writes_state(&w, VIEW).unwrap(), None);
+    // Only the view that was dropped refuses: another view of the wiki, and another wiki's view, are at their own generations.
+    assert_eq!(append(&w, "heads/second", 1, 1, 0), Appended::Done);
+    assert_eq!(append(&other, VIEW, 1, 1, 0), Appended::Done);
+    // A generation that is not the view's (a builder of a later one cannot exist) is refused as well, rather than trusted.
+    assert_eq!(append(&other, VIEW, 2, 2, 7), Appended::Dropped);
+    assert!(store.indexed_block_at(&other, VIEW, 2).unwrap().is_none());
+}
+
+#[test]
+fn both_stores_refuse_an_append_to_an_index_that_was_dropped_since_the_builder_began() {
+    appends_only_to_the_index_the_builder_began_with(&MemoryStore::new());
+    appends_only_to_the_index_the_builder_began_with(&SqliteStore::open_in_memory().expect("open"));
 }
 
 /// **What is found not in a view's log is kept with the view's tip** (correction L-1): it holds while the view is at that tip, is
@@ -495,7 +586,7 @@ fn the_writes_index_persists_across_reopen_and_a_code_this_build_does_not_know_i
         let store = SqliteStore::open(&db).expect("open");
         let w = wiki(&store, "persisted");
         store
-            .append_writes(
+            .append_now(
                 &w,
                 VIEW,
                 &[block(1, vec![write("a", WriteKind::Wrote)])],
@@ -542,7 +633,7 @@ fn the_writes_index_persists_across_reopen_and_a_code_this_build_does_not_know_i
 fn refuses_what_is_not_a_row(store: &(impl DerivedStore + WikiStore)) {
     let w = wiki(store, "shape");
     store
-        .append_writes(
+        .append_now(
             &w,
             VIEW,
             &[block(1, vec![write("a", WriteKind::Wrote)])],
@@ -565,7 +656,14 @@ fn refuses_what_is_not_a_row(store: &(impl DerivedStore + WikiStore)) {
             ),
         ),
     ] {
-        let result = store.append_writes(&w, VIEW, &[block(2, vec![bad])], &state(2, 1, true));
+        let generation = store.writes_generation(&w, VIEW).unwrap();
+        let result = store.append_writes(
+            &w,
+            VIEW,
+            &[block(2, vec![bad])],
+            &state(2, 1, true),
+            generation,
+        );
         assert!(result.is_err(), "{what} is refused");
         assert_eq!(
             store.writes_state(&w, VIEW).unwrap(),
