@@ -473,3 +473,27 @@ fn a_file_system_that_cannot_move_without_replacing_says_so_in_words() {
         "an unrelated failure is not blamed on the file system: {other}"
     );
 }
+
+#[test]
+fn a_blocks_time_is_its_seal_then_an_imported_changes_own_then_when_it_was_first_seen() {
+    use super::history::{AtFrom, best_time};
+    // The order of X-2: what the service kept of the act, then the source's time (I-T3 fills it), then the first sight.
+    assert_eq!(
+        best_time(Some(1), Some(2), Some(3)),
+        Some((1, AtFrom::Sealed))
+    );
+    assert_eq!(best_time(None, Some(2), Some(3)), Some((2, AtFrom::Source)));
+    assert_eq!(best_time(None, None, Some(3)), Some((3, AtFrom::FirstSeen)));
+    assert_eq!(best_time(None, None, None), None);
+    // The words a record says them with.
+    assert_eq!(
+        [
+            AtFrom::Sealed,
+            AtFrom::Source,
+            AtFrom::FirstSeen,
+            AtFrom::Ordered
+        ]
+        .map(AtFrom::as_str),
+        ["sealed", "source", "first-seen", "ordered"]
+    );
+}
