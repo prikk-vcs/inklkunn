@@ -623,3 +623,51 @@ When prikk 0.59.0 is released, the re-baseline (RFC 010) must cover these, besid
   - The kill matrix's `LEAD` rows and K19's tests on 0.59.0 show it.
 - **prikk's 0.59.0 design rounds** (JSON consumers read; trust) send drafts before building. The architect answers them.
 
+
+## 0.5.0's R-0: M63, the crates made publishable (2026-11-25; binding)
+
+0.5.0's plan is authorized (`docs/releases/0.5.0-plan.md`, the owner, 2026-11-25). Its P-4 runs this now, before RFC
+007 is accepted. **It adds no feature**, and it is reviewed as a correction is.
+
+**What the architect found** (a dry run of `cargo publish --workspace` on the `0.4.0` tag):
+- **The blocker:** `inklkunn-prikk`, `inklkunn-auth`, `inklkunn-fetch` and `inklkunn-signer` list themselves as
+  dev-dependencies with `version = "0.4.0"`, and `inklkunn-signer` lists `inklkunn-core` the same way, which itself
+  depends on the signer. Cargo keeps a dev-dependency that has a version in the published manifest, so the first of
+  these cannot be published (`no matching package named inklkunn-prikk`).
+- **With only those five `version` keys removed, all nine crates package and verify.** The architect did not commit
+  that edit.
+- **No crate carries the licence's text.** Apache-2.0 §4(a) asks a redistributor to give it.
+
+**M63 — the crates can be published, and a rehearsal proves it.**
+- **(a)** Remove `version` from the five dev-dependencies above, so that cargo strips them when it packages.
+  - Keep `cargo deny check` green. If its wildcard rule refuses a path dev-dependency without a version, **say so in
+    the request**, with the narrowest change to `deny.toml` that allows exactly that. Do not loosen the rule for
+    normal dependencies.
+  - RELEASING.md's line about the version on every path dependency says which dependencies are the exception, and why.
+- **(b)** Each of the nine published crates carries the workspace's `LICENSE`, byte for byte. Use a copy or a symlink:
+  cargo packages a symlink's content.
+  - **Test:** a packaged crate contains `LICENSE` equal to the root's, for each of the nine. This is a `floor-check`
+    test over `cargo package --list`, or your better way.
+- **(c) `release.yml`:**
+  - **The rehearsal runs `cargo publish --workspace --dry-run --locked`** (package and verify, no upload), so a crate
+    that cannot be published fails the rehearsal, before any tag.
+  - **The tag run publishes with `cargo publish --workspace --locked`** (cargo orders the crates itself), instead of
+    the hand-kept list, unless you find a reason to keep the list. If you keep it, a test must hold it equal to the
+    dependency order.
+  - Without the token, the tag run still skips with its notice.
+  - `pin-check` keeps holding the shape: a rehearsal uploads nothing.
+- **(d)** `docs/RELEASING.md`'s crates paragraph says that the rehearsal packages and verifies every crate, and that
+  publishing needs the owner's `CARGO_REGISTRY_TOKEN` secret (0.5.0's P-4).
+- **Not in M63:**
+  - a README per crate;
+  - keywords and categories;
+  - publishing anything.
+
+  0.5.0's cut publishes.
+
+**The prikk 0.59.0 re-baseline** (the section above) **is assigned too, if prikk 0.59.0 is released during 0.5.0's
+cycle.** It is a request of its own, when it comes.
+
+Hand back as `010-maintenance-2026-11-m63-review-request.md`, with the whole workspace's numbers on 0.55.0 first,
+shimmed off, on 0.57.0 and on 0.58.0, and the output of `cargo publish --workspace --dry-run --locked` on your tree.
+One CHANGELOG entry goes under `## [Unreleased]`.
