@@ -166,9 +166,16 @@ async fn a_refusal_that_is_not_not_found_leaves_a_change_unchecked_and_its_text_
         }));
     let form = s.form(2, "en").await.body();
     assert!(
-        form.contains("too large to compare with the current text of the pages"),
+        form.contains("cannot be compared with the current pages, so its text cannot be hidden"),
         "{form}"
     );
+    // The Japanese says the same of both causes (Q-5): not *too large*.
+    let ja = s.form(2, "ja").await.body();
+    assert!(
+        ja.contains("現在のページと照らし合わせられないため、本文は非表示にできません"),
+        "{ja}"
+    );
+    assert!(!ja.contains("大きすぎて、ページの現在の本文"), "{ja}");
     let refused = s.hide(2, &[("part_content", "1")]).await;
     assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.body());
     s.w.fake.fail_stat(None);

@@ -3828,7 +3828,7 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "moderate.tip_unchecked",
-        "This change is too large to compare with the current text of the pages, so its text cannot be hidden. Its summary and its author can be hidden now.",
+        "This change cannot be compared with the current pages, so its text cannot be hidden. Its summary and author can.",
     ),
     msg(
         "moderate.tip_unresolved",
