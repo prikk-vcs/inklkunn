@@ -19,6 +19,9 @@ pub struct Spy {
     pub seen_calls: Mutex<Vec<usize>>,
     /// While set, an append to the writes index changes nothing and says the index was dropped.
     pub drop_appends: AtomicBool,
+    /// While set, every read of the writes index's generation says another number: an index dropped under every reader.
+    pub flap_generation: AtomicBool,
+    flaps: std::sync::atomic::AtomicU64,
 }
 
 impl Spy {
@@ -27,6 +30,8 @@ impl Spy {
             inner,
             seen_calls: Mutex::new(Vec::new()),
             drop_appends: AtomicBool::new(false),
+            flap_generation: AtomicBool::new(false),
+            flaps: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -116,7 +121,11 @@ impl DerivedStore for Spy {
     }
 
     fn writes_generation(&self, a0: &WikiId, a1: &str) -> inklkunn_store::Result<u64> {
-        self.inner.writes_generation(a0, a1)
+        let real = self.inner.writes_generation(a0, a1)?;
+        if self.flap_generation.load(Ordering::SeqCst) {
+            return Ok(real + 1 + self.flaps.fetch_add(1, Ordering::SeqCst));
+        }
+        Ok(real)
     }
 
     fn block_absent(

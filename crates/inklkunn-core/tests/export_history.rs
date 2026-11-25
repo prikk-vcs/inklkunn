@@ -1454,6 +1454,60 @@ fn an_index_that_does_not_move_at_all_is_given_up_on_after_a_few_tries_with_the_
 }
 
 #[test]
+fn a_text_the_reader_cannot_settle_though_the_index_is_at_the_tip_is_asked_a_few_times_and_then_withheld()
+ {
+    // The index is built to the tip, and then dropped under every reader that looks (a generation that is never the same twice):
+    // the text is not yet and not never, and no waiting settles it, so after a few asks the revision is withheld and said so.
+    let r = rig("flapping");
+    hide(&r, &b(2), &["content"]);
+    let stand = life();
+    let spy = Arc::new(derived_spy::Spy::over(r.store.clone()));
+    let reads = reads_with(&r, Arc::new(stand.clone()), spy.clone());
+    assert!(reads.warm_writes(&r.wiki).unwrap(), "the index is built");
+    spy.flap_generation
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let said = RefCell::new(Vec::new());
+    let mut say = |n: ExportNote| said.borrow_mut().push(n);
+    let done = export_ask(
+        &r,
+        Ask {
+            storage: &stand,
+            reads: &reads,
+            derived: &*spy,
+            cap: None,
+            chunk: None,
+        },
+        "bundle",
+        &mut say,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let said = said.into_inner();
+    // The two pages of b(0), b(1) and b(3) have a text; b(2) is hidden by the record of the hide and b(4) removes the page.
+    assert_eq!(done.revisions_withheld, 4);
+    let reasons: Vec<&str> = said
+        .iter()
+        .filter_map(|n| match n {
+            ExportNote::Withheld { reason, .. } => Some(*reason),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(reasons, ["no-writer-known"; 4]);
+    assert!(
+        said.iter()
+            .all(|n| !matches!(n, ExportNote::Waiting { .. }))
+    );
+    let files = files_of(&r.out.with_file_name("bundle"));
+    assert_eq!(
+        at(
+            records(&files, "~%50ort").get(1).unwrap(),
+            "/inklkunn/withheld"
+        ),
+        "no-writer-known"
+    );
+    assert!(!everything(&files).contains(WORDS_3));
+}
+
+#[test]
 fn an_index_that_cannot_be_built_fails_the_export_with_a_sentence_that_says_what_failed() {
     let blocks = late_page(6).blocks.len();
     // The repository fails at the very first block the index asks for: the text's own read says so.
