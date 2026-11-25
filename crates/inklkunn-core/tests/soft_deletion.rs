@@ -1133,8 +1133,7 @@ fn criterion_11_a_retired_claim_and_a_retired_source_stay_in_the_export() {
     .unwrap();
     signed(w.accept(&w.maintainer, &retire.id));
     let dest = w._tmp.0.join("bundle");
-    export_bundle(&*w.storage, &w.layout, &w.wiki, &dest, "0.0.0", now())
-        .unwrap_or_else(|e| panic!("{e}"));
+    export_bundle(&w, &dest, now()).unwrap_or_else(|e| panic!("{e}"));
     // Both files are in the bundle as the repository has them: a retirement removes nothing.
     for (path, words) in [
         (&a.claim_path, "The survey was withdrawn."),
@@ -1153,22 +1152,21 @@ fn criterion_11_a_retired_claim_and_a_retired_source_stay_in_the_export() {
 }
 
 /// The bundle of the wiki, as [`export_bundle_with`] writes it when it is given no records of the service's (the one function
-/// that exported without them ignored what moderation hides, and is the crate's unit tests' alone).
+/// that exported without them ignored what moderation hides, and is the crate's unit tests' alone). The text of each revision is
+/// read through the world's own reader.
 fn export_bundle(
-    storage: &dyn inklkunn_prikk::Storage,
-    layout: &inklkunn_store::RootLayout,
-    record: &inklkunn_store::WikiRecord,
+    w: &World,
     dest: &std::path::Path,
-    version: &str,
     now: i64,
 ) -> Result<inklkunn_core::export::Exported, inklkunn_core::export::ExportError> {
     inklkunn_core::export::export_bundle_with(
-        storage,
-        layout,
-        record,
+        &*w.storage,
+        &w.layout,
+        &w.wiki,
         dest,
-        version,
+        "0.0.0",
         now,
         &inklkunn_core::export::KnowledgeRecords::default(),
+        &mut inklkunn_core::export::HistoryInputs::new(&w.reads, &*w.store),
     )
 }

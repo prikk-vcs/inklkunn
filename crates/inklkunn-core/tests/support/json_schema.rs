@@ -9,7 +9,15 @@
 use serde_json::Value;
 
 /// Keywords that annotate and never constrain.
-const ANNOTATIONS: &[&str] = &["$schema", "$id", "title", "description", "$defs"];
+const ANNOTATIONS: &[&str] = &[
+    "$schema",
+    "$id",
+    "title",
+    "description",
+    "$defs",
+    "default",
+    "examples",
+];
 /// Keywords this checker applies.
 const APPLIED: &[&str] = &[
     "$ref",
@@ -23,6 +31,7 @@ const APPLIED: &[&str] = &[
     "minimum",
     "maximum",
     "pattern",
+    "minLength",
     "format",
 ];
 
@@ -46,7 +55,8 @@ fn type_matches(name: &str, v: &Value) -> bool {
     }
 }
 
-/// The one `pattern` the manifest schema has: the bundle layout version, such as `0.4`.
+/// The `pattern`s the schemas have: the bundle layout version, such as `0.4` (the manifest's), and a SHA-256 in lower-case hex
+/// (the history record's).
 fn pattern_matches(pattern: &str, s: &str) -> Option<bool> {
     if pattern == "^[0-9]+\\.[0-9]+$" {
         let digits = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
@@ -54,6 +64,8 @@ fn pattern_matches(pattern: &str, s: &str) -> Option<bool> {
             s.split_once('.')
                 .is_some_and(|(a, b)| digits(a) && digits(b)),
         )
+    } else if pattern == "^[0-9a-f]{64}$" {
+        Some(s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
     } else {
         None
     }
@@ -117,6 +129,11 @@ fn check(root: &Value, schema: &Value, inst: &Value, at: &str, out: &mut Vec<Str
         }
     }
     if let Some(s) = inst.as_str() {
+        if let Some(min) = map.get("minLength").and_then(Value::as_u64)
+            && (s.chars().count() as u64) < min
+        {
+            out.push(format!("{at}: is shorter than {min} characters"));
+        }
         if let Some(pattern) = map.get("pattern").and_then(Value::as_str) {
             match pattern_matches(pattern, s) {
                 Some(true) => {}

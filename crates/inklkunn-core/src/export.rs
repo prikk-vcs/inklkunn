@@ -4,11 +4,12 @@
 //! - **The files as stored**: every file of the default view's tip, byte for byte (`pages/`, `attachments/`,
 //!   `knowledge/`, `governance/`, `.prikkignore`), read from **one `extract` pinned to the tip's block id**, so the
 //!   bundle is one state and a write in between cannot mix two.
-//! - **`history/<page id>.jsonl`**, one line per change to the page, oldest first, from `history()` and `change()`:
-//!   the block, the operation, the kind of change and the **people of the message** (who proposed, who accepted,
-//!   and the service for an import or a system change) as the authors. A change to a path that is not a page of
-//!   the tip (a page since removed or renamed) has no file to belong to and is counted in the manifest's report,
-//!   not dropped silently.
+//! - **`history/<page id>.jsonl`**, one **wiki-commons history record** per revision of the page, oldest first (RFC 007 D-7;
+//!   XFER-7; the module [`history`](self::history) says what each carries): `rev` (the block's id), `parent`, `at`, `type`,
+//!   `author`, `summary`, **the page's full text** (`content` and its `sha256`, read through the one reader of a page's text
+//!   at a block) and inklkunn's own facts under one `inklkunn` key. A page since removed or renamed has its file too, by its
+//!   page id; a change to a path that is not a page (an attachment, a rule) has no file to belong to and is counted in the
+//!   manifest's report, not dropped silently.
 //! - **`extensions/inklkunn-knowledge/`** (RFC 005 part 2 D-11, D-12; the knowledge extension, declared in the manifest's
 //!   `extensions_used` as `inklkunn-knowledge`, version 1): what the knowledge layer keeps in the service's records and
 //!   not in the repository. `threads/<claim id>.jsonl` is one file per claim whose thread has comments, one line per
@@ -21,9 +22,9 @@
 //!   changes a claim: the bundle carries it beside the claim's file, not instead of it. All are listed in `SHA256SUMS`
 //!   like every other file. (Comments on proposals are not exported here.)
 //! - **What moderation hides is not in it** (RFC 006 D-13; [`Suppressions`]): an entry with a hidden part is marked
-//!   `suppressed` with its `reasons` and omits that part (a history line's `summary` or `authors`, a thread comment's `body`
-//!   or `author`), the manifest declares that the bundle carries such entries, and `users.yaml` lists a person only for what
-//!   is not hidden. An export with nothing hidden is the bundle it was before this existed, byte for byte.
+//!   `suppressed` with its `reasons` and omits that part (a history record's `content`, `summary` or `author`, a thread
+//!   comment's `body` or `author`), the manifest declares that the bundle carries such entries, and `users.yaml` lists a person
+//!   only for what is not hidden.
 //! - **`users.yaml`**: the accounts that appear in those messages and in those threads, with the names they had.
 //! - **`wiki-bundle.yaml`**: the manifest, with the fidelity, the real counts, the block it is as of, the
 //!   interwiki map and, in `checksums`, the name of the file below (wiki-commons' shape).
@@ -43,20 +44,21 @@ use std::path::{Path, PathBuf};
 
 use inklkunn_prikk::storage::Entry;
 use inklkunn_prikk::{ExtractBounds, Materialized, Point, Storage, StorageError};
-use inklkunn_signer::message::{Actor, Message};
+use inklkunn_signer::message::Actor;
 use inklkunn_store::{
     AcceptanceStore, AccountStore, ActStore, ClaimCommentRow, ClaimThreadStore, GovernanceStore,
-    ReasonCategory, RootLayout, ViewActOutcome, WikiId, WikiRecord,
+    RootLayout, ViewActOutcome, WikiId, WikiRecord,
 };
 use sha2::{Digest, Sha256};
 
 use crate::bundle::{self, ExportFacts, ManifestFacts, markdown_text, yaml_quote};
 use crate::knowledge::ClaimId;
-use crate::read::quoted_summary;
 use crate::read::scratch::{Extract, Partial, partial_name_too_long_by};
 
+mod history;
 mod suppression;
 
+pub use history::{ExportNote, HistoryInputs, INDEX_WAIT_ROUNDS, MAX_HISTORY_TEXT_BYTES};
 pub use suppression::{Suppressed, Suppressions};
 
 /// How many blocks of history an export reads (`log --limit`). A history longer than this is refused rather than
@@ -75,6 +77,14 @@ pub enum ExportError {
     Storage(StorageError),
     /// The history is longer than [`MAX_HISTORY_BLOCKS`].
     HistoryTooLong,
+    /// The pages' texts at their revisions, which the history carries whole, are more than [`MAX_HISTORY_TEXT_BYTES`].
+    HistoryTextTooLarge,
+    /// The index of who wrote each page's text did not settle in [`INDEX_WAIT_ROUNDS`] rounds: a text that cannot be told from a
+    /// hidden one is never written, and a revision is never left out.
+    IndexNotSettled {
+        /// The rounds the export waited.
+        rounds: usize,
+    },
     /// A file operation failed (what, and the kind of failure).
     Io(String),
 }
@@ -93,6 +103,14 @@ impl std::fmt::Display for ExportError {
             ExportError::HistoryTooLong => write!(
                 f,
                 "the history is longer than {MAX_HISTORY_BLOCKS} blocks; an export that lacked its oldest changes would be false, so none was made"
+            ),
+            ExportError::HistoryTextTooLarge => write!(
+                f,
+                "the pages' texts at their revisions are more than {MAX_HISTORY_TEXT_BYTES} bytes in all; an export that left revisions out would be false, so none was made"
+            ),
+            ExportError::IndexNotSettled { rounds } => write!(
+                f,
+                "the index of who wrote each page's text is not built yet (the export waited {rounds} rounds for it), so a text that moderation hides cannot be told from one it does not, and none was written; run the export again in a little while (a running server builds the index in the background)"
             ),
             ExportError::Io(what) => write!(f, "{what}"),
         }
@@ -469,149 +487,6 @@ fn person(role: &str, actor: &Actor) -> serde_json::Value {
     }
 }
 
-/// The history lines of the pages of a tip, from a view's blocks at or below `tip`, oldest first.
-struct Histories {
-    /// page id → its lines.
-    lines: BTreeMap<String, Vec<String>>,
-    /// Changes to paths that are not pages of the tip.
-    unattributed: usize,
-    /// Accounts seen in messages: id → the names they had, in order of first sight. **Only for what is not hidden:** a person
-    /// whose name moderation hides on a change is not remembered for it.
-    accounts: BTreeMap<String, Vec<String>>,
-    /// page id → how many of its lines have a part hidden.
-    suppressed: BTreeMap<String, usize>,
-}
-
-fn histories(
-    storage: &dyn Storage,
-    repo: &Path,
-    view: &str,
-    tip: &str,
-    page_ids: &HashMap<String, String>,
-    suppressions: &Suppressions,
-) -> Result<Histories, ExportError> {
-    let history = storage
-        .history(
-            repo,
-            &Point::View(view.to_owned()),
-            Some(MAX_HISTORY_BLOCKS),
-        )
-        .map_err(ExportError::Storage)?;
-    if history.blocks.len() as u64 >= MAX_HISTORY_BLOCKS {
-        return Err(ExportError::HistoryTooLong);
-    }
-    // Newest first; blocks newer than the tip (a write since the extraction) are not part of this bundle.
-    let from = history
-        .blocks
-        .iter()
-        .position(|b| b.block_id == tip)
-        .ok_or_else(|| {
-            ExportError::Io("the tip is not in the view's history (the view moved)".to_owned())
-        })?;
-    let mut out = Histories {
-        lines: BTreeMap::new(),
-        unattributed: 0,
-        accounts: BTreeMap::new(),
-        suppressed: BTreeMap::new(),
-    };
-    // The summaries now hidden of the changes already seen, with their reasons: what a rollback made before H-7 quoted (*Undo:
-    // {summary}*) is read against them (a rollback is newer than the change it undoes, so the oldest-first walk has it by then).
-    let mut hidden_summaries: Vec<(String, ReasonCategory)> = Vec::new();
-    for block in history.blocks.iter().skip(from).rev() {
-        let change = storage
-            .change(repo, &block.block_id)
-            .map_err(ExportError::Storage)?;
-        // The people and the summary of a change are one text for every page it touched: what is hidden of them is hidden
-        // for the whole block, and a person hidden here is not a person of this bundle for it.
-        let of_change = suppressions.of_change(&block.block_id);
-        for patch in &change.patches {
-            let message = block
-                .patch_messages
-                .iter()
-                .find(|m| m.patch_id == patch.patch_id)
-                .and_then(|m| Message::parse(&m.message).ok());
-            let (kind, summary, authors, source) = match &message {
-                Some(m) => {
-                    if let Some(reason) = of_change.summary {
-                        hidden_summaries.push((m.summary().as_str().to_owned(), reason));
-                    }
-                    // A hidden person is not a person of the bundle for this change (`users.yaml`).
-                    let named = if of_change.author.is_none() {
-                        vec![m.proposed_by(), m.accepted_by()]
-                    } else {
-                        Vec::new()
-                    };
-                    for a in named {
-                        if let Actor::Account { id, name } = a {
-                            let names = out.accounts.entry(id.as_str().to_owned()).or_default();
-                            if !names.iter().any(|n| n == name.as_str()) {
-                                names.push(name.as_str().to_owned());
-                            }
-                        }
-                    }
-                    (
-                        m.kind().as_str().to_owned(),
-                        m.summary().as_str().to_owned(),
-                        vec![
-                            person("proposer", m.proposed_by()),
-                            person("acceptor", m.accepted_by()),
-                        ],
-                        m.imported_from().map(|s| s.as_str().to_owned()),
-                    )
-                }
-                // A change not made by inklkunn's contract has no people to name; say so rather than guess.
-                None => (String::new(), String::new(), Vec::new(), None),
-            };
-            for op in &patch.operations {
-                for path in op.paths.iter().filter_map(|p| p.path.as_deref()) {
-                    let Some(id) = page_ids.get(path) else {
-                        out.unattributed += 1;
-                        continue;
-                    };
-                    let mut hidden = suppressions.of_revision(&block.block_id, path);
-                    // A summary that quotes a hidden one is hidden as it is (H-7): the old words are in the message for good.
-                    if hidden.summary.is_none() && summary.starts_with("Undo: ") {
-                        hidden.summary = hidden_summaries
-                            .iter()
-                            .find(|(words, _)| quoted_summary(&summary, words))
-                            .map(|(_, reason)| *reason);
-                    }
-                    let mut line = serde_json::json!({
-                        "block": block.block_id,
-                        "seq": block.update_seq,
-                        "operation": op.kind,
-                        "path": path,
-                        "kind": kind,
-                        "summary": summary,
-                        "authors": authors,
-                        "imported_from": source,
-                        "message_readable": message.is_some(),
-                    });
-                    // What is hidden is left out, not blanked, and the line says what and why (RFC 006 D-13). A page
-                    // revision's text is in no history line, so a hidden `content` is the marker alone.
-                    if let Some(members) = line.as_object_mut() {
-                        if hidden.summary.is_some() {
-                            members.remove("summary");
-                        }
-                        if hidden.author.is_some() {
-                            members.remove("authors");
-                        }
-                        hidden.mark(members);
-                    }
-                    if !hidden.is_empty() {
-                        *out.suppressed.entry(id.clone()).or_default() += 1;
-                    }
-                    out.lines
-                        .entry(id.clone())
-                        .or_default()
-                        .push(line.to_string());
-                }
-            }
-        }
-    }
-    Ok(out)
-}
-
 /// Export the wiki as a bundle directory `dest` (absolute; must not exist; its directory must). `now` is the
 /// time written in the manifest. The wiki's scratch directory is where the tip is extracted (and removed from). The
 /// bundle carries none of the service's records (claim threads, views), and its manifest says so in `fidelity.dropped`.
@@ -626,13 +501,26 @@ pub(crate) fn export_bundle(
     dest: &Path,
     inklkunn_version: &str,
     now: i64,
+    inputs: &mut HistoryInputs<'_>,
 ) -> Result<Exported, ExportError> {
-    export_bundle_inner(storage, layout, record, dest, inklkunn_version, now, None)
+    export_bundle_inner(
+        storage,
+        layout,
+        record,
+        dest,
+        inklkunn_version,
+        now,
+        None,
+        inputs,
+    )
 }
 
 /// Export the wiki as a bundle directory `dest` (as the tests' own `export_bundle` does), carrying these records in the bundle's
 /// knowledge extension ([`knowledge_records`] reads them): the claim threads, the views' creation records and **what moderation
-/// hides**, which the bundle then carries as tombstones and never as the hidden words (RFC 006 D-13).
+/// hides**, which the bundle then carries as tombstones and never as the hidden words (RFC 006 D-13). `inputs` is what the history
+/// records need besides the repository ([`HistoryInputs`]): the one reader of a page's text at a block, and the record of when each
+/// block was first seen.
+#[allow(clippy::too_many_arguments)]
 pub fn export_bundle_with(
     storage: &dyn Storage,
     layout: &RootLayout,
@@ -641,6 +529,7 @@ pub fn export_bundle_with(
     inklkunn_version: &str,
     now: i64,
     records: &KnowledgeRecords,
+    inputs: &mut HistoryInputs<'_>,
 ) -> Result<Exported, ExportError> {
     export_bundle_inner(
         storage,
@@ -650,9 +539,11 @@ pub fn export_bundle_with(
         inklkunn_version,
         now,
         Some(records),
+        inputs,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn export_bundle_inner(
     storage: &dyn Storage,
     layout: &RootLayout,
@@ -661,6 +552,7 @@ fn export_bundle_inner(
     inklkunn_version: &str,
     now: i64,
     records: Option<&KnowledgeRecords>,
+    inputs: &mut HistoryInputs<'_>,
 ) -> Result<Exported, ExportError> {
     if !dest.is_absolute() {
         return Err(ExportError::Destination(
@@ -738,6 +630,7 @@ fn export_bundle_inner(
         inklkunn_version,
         now,
         records,
+        inputs,
     )?;
     put_in_place(&partial.path(), dest)?;
     done.dir = dest.to_path_buf();
@@ -780,8 +673,9 @@ fn placement_error(errno: rustix::io::Errno) -> ExportError {
 
 /// May the history of the page id `id` be written as `history/<id>.jsonl`, given that `carried` pages of the tip
 /// carry that id? A page id is a plain value from a person's frontmatter: it names a file only when it is safe to,
-/// and only when exactly one page has it (a shared id cannot say whose history a file holds; an id no page of the
-/// tip carries belongs to a page since removed). The ids that are refused are counted, never dropped silently.
+/// and only when no more than one page of the tip has it (a shared id cannot say whose history a file holds; an id no page of
+/// the tip carries belongs to a page since removed or renamed, which has its history as the pages of the tip have theirs). The
+/// ids that are refused are counted, never dropped silently.
 fn history_file_allowed(id: &str, carried: usize) -> bool {
     let safe = !id.is_empty()
         && id.len() <= 128
@@ -789,7 +683,7 @@ fn history_file_allowed(id: &str, carried: usize) -> bool {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
         && !id.starts_with('.');
-    safe && carried == 1
+    safe && carried <= 1
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -806,6 +700,7 @@ fn build(
     inklkunn_version: &str,
     now: i64,
     records: Option<&KnowledgeRecords>,
+    inputs: &mut HistoryInputs<'_>,
 ) -> Result<Exported, ExportError> {
     let no_suppressions = Suppressions::default();
     let suppressions = records.map_or(&no_suppressions, |r| &r.suppressions);
@@ -854,7 +749,7 @@ fn build(
         .map_err(|e| io("the bundle directory could not be made", &e))?;
     let mut checksums: Vec<(String, String)> = Vec::new();
     let (mut pages, mut attachments, mut knowledge_files) = (0, 0, 0);
-    let mut page_ids: HashMap<String, String> = HashMap::new();
+    let mut page_ids: HashMap<String, Option<String>> = HashMap::new();
     for rel in files {
         // The manifest is rewritten; everything else is the file as stored.
         if rel == bundle::MANIFEST {
@@ -865,12 +760,13 @@ fn build(
         checksums.push((rel.clone(), hash));
         if rel.starts_with("pages/") && rel.ends_with(".md") {
             pages += 1;
-            if let Ok(text) = std::fs::read_to_string(&from)
-                && let Ok(meta) = inklkunn_markup::parse_metadata(&text)
-                && let Some(id) = meta.id
-            {
-                page_ids.insert(rel, id);
-            }
+            // The id the page's frontmatter gives it, if it has one (a page made in the editor has none: its history file is named
+            // by its path).
+            let id = std::fs::read_to_string(&from)
+                .ok()
+                .and_then(|text| inklkunn_markup::parse_metadata(&text).ok())
+                .and_then(|meta| meta.id);
+            page_ids.insert(rel, id);
         } else if rel.starts_with("attachments/")
             && !rel.ends_with(".keep")
             && !rel.ends_with(".meta.yaml")
@@ -881,22 +777,22 @@ fn build(
             knowledge_files += 1;
         }
     }
-    let h = histories(storage, repo, view, tip, &page_ids, suppressions)?;
+    let h = history::histories(
+        storage,
+        repo,
+        record,
+        view,
+        tip,
+        &page_ids,
+        suppressions,
+        now,
+        inputs,
+    )?;
     let mut suppressed_entries = 0;
     let mut history_entries = 0;
-    // How many pages carry each id: an id two pages share cannot say whose history a file holds.
-    let mut carriers: HashMap<&str, usize> = HashMap::new();
-    for id in page_ids.values() {
-        *carriers.entry(id.as_str()).or_default() += 1;
-    }
-    let mut histories_not_written = 0;
-    for (id, lines) in &h.lines {
-        let carried = carriers.get(id.as_str()).copied().unwrap_or(0);
-        if !history_file_allowed(id, carried) {
-            // Counted in the manifest, never dropped silently.
-            histories_not_written += carried;
-            continue;
-        }
+    // Pages whose file was not written are counted in the manifest, never dropped silently.
+    let histories_not_written = h.not_written;
+    for (id, lines) in &h.files {
         let mut text = lines.join("\n");
         text.push('\n');
         let rel = format!("history/{id}.jsonl");

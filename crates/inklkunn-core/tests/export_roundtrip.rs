@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use inklkunn_core::export::{ExportError, export_bundle_with};
+use inklkunn_core::export::{ExportError, HistoryInputs, export_bundle_with};
 use inklkunn_core::import::{ImportError, plan_folder, run_import, wiki_state};
 use inklkunn_core::message::{Actor, BlockId, Message, Summary};
-use inklkunn_core::read::ReadConfig;
+use inklkunn_core::read::{ReadConfig, ReadService};
 use inklkunn_core::{
     AcceptanceLedger, AcceptanceToken, Authorizer, CreatedWiki, ExpectedMessage, KeyAuthority,
     LeaseConfig, LedgerError, PreparedChange, PreparedFile, Signer, SignerConfig, StoreAuthz,
@@ -33,6 +33,8 @@ use sha2::{Digest, Sha256};
 
 #[path = "support/bundle_manifest.rs"]
 mod bundle_manifest;
+#[path = "support/history_record.rs"]
+mod history_record;
 #[path = "support/json_schema.rs"]
 mod json_schema;
 
@@ -368,6 +370,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         let out1 = dir_in(&w.tmp, "out1");
         let dir1 = out1.0.join("bundle");
         let done = export_bundle(
+            &w,
             &w.storage,
             &w.layout,
             &a.record,
@@ -422,25 +425,41 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
                 .mode();
             assert_eq!(mode & 0o077, 0, "{path} is readable by others");
         }
-        // History: one file per page id, authors from the messages' people.
+        // History: one file per page id, one wiki-commons history record per revision (RFC 007 D-7), the people from the
+        // messages, and each revision's full text.
         let home_history = json_lines(get(&one, "history/home-1.jsonl"));
         assert_eq!(home_history.len(), 2, "{home_history:#?}");
         let (first, second) = (home_history.first().unwrap(), home_history.get(1).unwrap());
-        assert_eq!(at(first, "/kind"), "import");
-        assert_eq!(at(first, "/authors/0/type"), "system");
+        assert_eq!(at(first, "/inklkunn/kind"), "import");
+        assert_eq!(at(first, "/author/kind"), "bot");
+        assert_eq!(at(first, "/type"), "create");
+        assert!(at(first, "/parent").is_null());
+        assert_eq!(at(first, "/content").as_str().unwrap(), HOME);
         assert!(
-            at(first, "/imported_from")
+            at(first, "/inklkunn/imported_from")
                 .as_str()
                 .unwrap()
                 .starts_with("folder sha256:")
         );
-        assert_eq!(at(second, "/kind"), "proposal");
-        assert_eq!(at(second, "/authors/0/name"), "Aiko Tanaka");
-        assert_eq!(at(second, "/authors/1/name"), "Ben (maintainer)");
-        assert_eq!(at(second, "/authors/0/role"), "proposer");
+        assert_eq!(at(second, "/inklkunn/kind"), "proposal");
+        assert_eq!(at(second, "/type"), "edit");
+        assert_eq!(at(second, "/parent"), at(first, "/rev"));
+        assert_eq!(at(second, "/author/name"), "Aiko Tanaka");
+        assert_eq!(at(second, "/inklkunn/accepted_by/name"), "Ben (maintainer)");
+        assert_eq!(at(second, "/inklkunn/proposed_by/type"), "account");
+        // The text at each revision is what the page was then, and the last is what the bundle's file is.
+        assert_eq!(
+            at(second, "/content").as_str().unwrap().as_bytes(),
+            get(&one, "pages/Home.md").as_slice()
+        );
         assert_eq!(json_lines(get(&one, "history/guide-1.jsonl")).len(), 2);
         assert_eq!(json_lines(get(&one, "history/deep-1.jsonl")).len(), 1);
         assert_eq!(done.histories, 4);
+        // Every record of every file is a history record by wiki-commons' schema, in order, with the digest of its text.
+        for (name, bytes) in one.iter().filter(|(k, _)| k.starts_with("history/")) {
+            let problems = history_record::file_violations(&json_lines(bytes));
+            assert!(problems.is_empty(), "{name}: {problems:#?}");
+        }
         let users = String::from_utf8(get(&one, "users.yaml").clone()).unwrap();
         assert!(
             users.contains("Aiko Tanaka") && users.contains("Ben (maintainer)"),
@@ -448,7 +467,8 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         );
         assert_eq!(done.users, 2);
         // The destination is never overwritten, and a failed export leaves nothing beside it.
-        let again = export_bundle(&w.storage, &w.layout, &a.record, &dir1, "0.0.0", 1).unwrap_err();
+        let again =
+            export_bundle(&w, &w.storage, &w.layout, &a.record, &dir1, "0.0.0", 1).unwrap_err();
         assert!(matches!(again, ExportError::Destination(_)), "{again}");
         let beside: Vec<_> = std::fs::read_dir(&out1.0).unwrap().collect();
         assert_eq!(beside.len(), 1, "{beside:?}");
@@ -481,6 +501,7 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
         let out2 = dir_in(&w.tmp, "out2");
         let dir2 = out2.0.join("bundle");
         export_bundle(
+            &w,
             &w.storage,
             &w.layout,
             &b.record,
@@ -546,13 +567,16 @@ fn export_import_export_agrees_on_text_links_metadata_and_history() {
             let lines = json_lines(get(&two, &name));
             assert!(!lines.is_empty(), "{name}");
             for l in &lines {
-                for key in ["block", "path", "operation", "kind", "authors", "summary"] {
+                for key in [
+                    "rev", "at", "type", "author", "summary", "content", "sha256",
+                ] {
                     assert!(l.get(key).is_some(), "{name}: no `{key}` in {l}");
                 }
+                assert!(l.pointer("/inklkunn/block").is_some(), "{name}: {l}");
             }
             let last = lines.last().unwrap();
-            assert_eq!(at(last, "/kind"), "import", "{name}");
-            assert_eq!(at(last, "/authors/0/type"), "system");
+            assert_eq!(at(last, "/inklkunn/kind"), "import", "{name}");
+            assert_eq!(at(last, "/inklkunn/proposed_by/type"), "system");
             // A's history of the same page ends at the same text.
             assert!(!json_lines(get(&one, &name)).is_empty());
         }
@@ -623,6 +647,7 @@ fn an_export_without_prikks_checkpoint_says_so_and_leaves_nothing() {
     let out = dir_in(&w.tmp, "out");
     let dest = out.0.join("bundle");
     let err = export_bundle(
+        &w,
         &NoCheckpoint(&w.storage),
         &w.layout,
         &a.record,
@@ -746,7 +771,7 @@ fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_sile
 
     let out = dir_in(&w.tmp, "out");
     let dest = out.0.join("bundle");
-    let done = export_bundle(&w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
+    let done = export_bundle(&w, &w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
         .unwrap_or_else(|e| panic!("{e}"));
     let files = files_of(&dest);
     // Bad: one page whose history has no file.
@@ -824,7 +849,7 @@ fn an_export_begins_by_sweeping_what_a_killed_one_left_and_touches_nothing_else(
     let live_extract = inklkunn_core::read::scratch::Extract::begin(&scratch).unwrap();
     std::fs::create_dir_all(live_extract.root().join("pages")).unwrap();
     std::fs::write(live_extract.root().join("pages/Mine.md"), "mine").unwrap();
-    export_bundle(&w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
+    export_bundle(&w, &w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
         .unwrap_or_else(|e| panic!("{e}"));
     for gone in [&killed_extraction, &killed_partial] {
         assert!(!gone.exists(), "{gone:?}: a killed export's was left");
@@ -901,6 +926,7 @@ fn an_empty_directory_made_at_the_destination_meanwhile_is_not_replaced() {
     let out = dir_in(&w.tmp, "out");
     let dest = out.0.join("bundle");
     let err = export_bundle(
+        &w,
         &Racer(&w.storage, dest.clone()),
         &w.layout,
         &a.record,
@@ -1067,6 +1093,7 @@ fn what_moderation_hides_of_a_real_revision_is_not_in_the_bundle_and_the_import_
         .unwrap();
         let out = dir_in(&w.tmp, "out");
         let dir = out.0.join("bundle");
+        let reads = reads_of(&w);
         export_bundle_with(
             &w.storage,
             &w.layout,
@@ -1075,6 +1102,7 @@ fn what_moderation_hides_of_a_real_revision_is_not_in_the_bundle_and_the_import_
             "0.0.0",
             1_700_000_200,
             &records,
+            &mut HistoryInputs::new(&reads, &*w.store),
         )
         .unwrap_or_else(|e| panic!("{e}"));
         let files = files_of(&dir);
@@ -1093,13 +1121,18 @@ fn what_moderation_hides_of_a_real_revision_is_not_in_the_bundle_and_the_import_
         // The change is still there, in its place, marked.
         let history = json_lines(get(&files, "history/home-1.jsonl"));
         let line = history.get(1).unwrap();
-        assert_eq!(at(line, "/kind"), "proposal");
+        assert_eq!(at(line, "/inklkunn/kind"), "proposal");
         assert_eq!(
             at(line, "/suppressed"),
             &serde_json::json!(["summary", "author"])
         );
         assert_eq!(at(line, "/reasons/summary"), "personal-data");
-        assert!(at(line, "/summary").is_null() && at(line, "/authors").is_null());
+        assert!(at(line, "/summary").is_null() && at(line, "/author").is_null());
+        assert!(at(line, "/inklkunn/proposed_by").is_null());
+        assert!(
+            at(line, "/content").is_string(),
+            "only summary and author are hidden"
+        );
         assert!(!at(history.first().unwrap(), "/summary").is_null());
         let users = String::from_utf8(get(&files, "users.yaml").clone()).unwrap();
         assert_eq!(users, "users: []\n");
@@ -1130,6 +1163,7 @@ fn what_moderation_hides_of_a_real_revision_is_not_in_the_bundle_and_the_import_
 /// The bundle of the wiki, as [`export_bundle_with`] writes it when it is given no records of the service's (the one function
 /// that exported without them ignored what moderation hides, and is the crate's unit tests' alone).
 fn export_bundle(
+    w: &World,
     storage: &dyn inklkunn_prikk::Storage,
     layout: &inklkunn_store::RootLayout,
     record: &inklkunn_store::WikiRecord,
@@ -1137,6 +1171,7 @@ fn export_bundle(
     version: &str,
     now: i64,
 ) -> Result<inklkunn_core::export::Exported, inklkunn_core::export::ExportError> {
+    let reads = reads_of(w);
     export_bundle_with(
         storage,
         layout,
@@ -1145,5 +1180,22 @@ fn export_bundle(
         version,
         now,
         &inklkunn_core::export::KnowledgeRecords::default(),
+        &mut HistoryInputs::new(&reads, &*w.store),
     )
+}
+
+/// The one reader of a page's text at a block, over the world's prikk and store: what the command line gives the export.
+fn reads_of(w: &World) -> ReadService {
+    ReadService::new(
+        Arc::new(w.storage.clone()),
+        w.store.clone(),
+        w.store.clone(),
+        w.layout.clone(),
+        ReadConfig::default(),
+        None,
+    )
+    .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+        w.store.clone(),
+        w.store.clone(),
+    )))
 }

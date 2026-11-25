@@ -8,10 +8,13 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use inklkunn_core::export::{
-    KnowledgeRecords, Suppressions, claim_discussions, export_bundle_with, knowledge_records,
+    HistoryInputs, KnowledgeRecords, Suppressions, claim_discussions, export_bundle_with,
+    knowledge_records,
 };
+use inklkunn_core::read::{ReadConfig, ReadService};
 use inklkunn_prikk::storage::{
     Change, Diff, Entry, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
 };
@@ -48,6 +51,7 @@ fn dir(tag: &str) -> Dir {
 }
 
 /// A repository that holds these files and one block.
+#[derive(Clone)]
 struct Stand {
     files: BTreeMap<String, String>,
 }
@@ -178,14 +182,14 @@ fn repository() -> Stand {
 struct Rig {
     _dir: Dir,
     layout: RootLayout,
-    store: MemoryStore,
+    store: Arc<MemoryStore>,
     wiki: WikiRecord,
     out: PathBuf,
 }
 
 fn rig(tag: &str) -> Rig {
     let d = dir(tag);
-    let store = MemoryStore::new();
+    let store = Arc::new(MemoryStore::new());
     let wiki = store
         .create(NewWiki::new(
             Slug::new("notes").unwrap(),
@@ -305,7 +309,7 @@ fn view_made(r: &Rig, name: &str, kind: ViewKind, by: &AccountId, at: i64, ended
 fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_changes_nothing_of_it()
  {
     let r = rig("threads");
-    let (ann, ben) = (person(&r.store, "Ann"), person(&r.store, "Ben"));
+    let (ann, ben) = (person(&*r.store, "Ann"), person(&*r.store, "Ben"));
     let first = say(
         &r,
         C1,
@@ -365,8 +369,10 @@ fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_c
         None,
     );
 
-    let records =
-        knowledge_records(&r.store, &r.store, &r.store, &r.store, &r.store, &r.wiki.id).unwrap();
+    let records = knowledge_records(
+        &*r.store, &*r.store, &*r.store, &*r.store, &*r.store, &r.wiki.id,
+    )
+    .unwrap();
     assert_eq!(
         records
             .threads
@@ -388,6 +394,7 @@ fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_c
     );
 
     let stand = repository();
+    let reads = reads_of(&r, &stand);
     let done = export_bundle_with(
         &stand,
         &r.layout,
@@ -396,6 +403,7 @@ fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_c
         "0.0.0",
         1_700_001_000,
         &records,
+        &mut HistoryInputs::new(&reads, &*r.store),
     )
     .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!((done.threads, done.views, done.knowledge_files), (2, 2, 2));
@@ -519,11 +527,14 @@ fn a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_c
 #[test]
 fn a_wiki_with_no_thread_and_no_view_carries_the_extension_only_for_its_knowledge_files() {
     let r = rig("none");
-    let records =
-        knowledge_records(&r.store, &r.store, &r.store, &r.store, &r.store, &r.wiki.id).unwrap();
+    let records = knowledge_records(
+        &*r.store, &*r.store, &*r.store, &*r.store, &*r.store, &r.wiki.id,
+    )
+    .unwrap();
     assert_eq!(records, KnowledgeRecords::default());
     // With claim files: `knowledge/` is exported as it is stored, and the manifest declares what gives it meaning.
     let stand = repository();
+    let reads = reads_of(&r, &stand);
     let done = export_bundle_with(
         &stand,
         &r.layout,
@@ -532,6 +543,7 @@ fn a_wiki_with_no_thread_and_no_view_carries_the_extension_only_for_its_knowledg
         "0.0.0",
         1_700_001_000,
         &records,
+        &mut HistoryInputs::new(&reads, &*r.store),
     )
     .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!((done.threads, done.views, done.knowledge_files), (0, 0, 2));
@@ -560,6 +572,7 @@ fn a_wiki_with_no_thread_and_no_view_carries_the_extension_only_for_its_knowledg
     };
     let again = dir("again");
     let plain = again.0.join("out");
+    let bare_reads = reads_of(&r, &bare);
     export_bundle_with(
         &bare,
         &r.layout,
@@ -568,6 +581,7 @@ fn a_wiki_with_no_thread_and_no_view_carries_the_extension_only_for_its_knowledg
         "0.0.0",
         1_700_001_000,
         &records,
+        &mut HistoryInputs::new(&bare_reads, &*r.store),
     )
     .unwrap_or_else(|e| panic!("{e}"));
     let bare_manifest = text(&files_of(&plain), "wiki-bundle.yaml");
@@ -596,7 +610,7 @@ fn an_export_leaves_a_directory_beside_its_destination_that_it_did_not_make_whol
         std::fs::write(dir.join("papers/thesis.txt"), "my files").expect("their file");
     }
     let stand = repository();
-    export_bundle(&stand, &r.layout, &r.wiki, &dest, "0.0.0", 1).unwrap_or_else(|e| panic!("{e}"));
+    export_bundle(&r, &stand, &dest, 1).unwrap_or_else(|e| panic!("{e}"));
     assert!(dest.join("wiki-bundle.yaml").is_file());
     for dir in &theirs {
         assert_eq!(
@@ -611,17 +625,17 @@ fn an_export_leaves_a_directory_beside_its_destination_that_it_did_not_make_whol
 fn the_names_of_the_people_are_the_names_they_have_and_a_person_the_service_lost_is_nameless_not_dropped()
  {
     let r = rig("names");
-    let ann = person(&r.store, "Ann");
+    let ann = person(&*r.store, "Ann");
     say(&r, C1, &ann, None, "Hello", 5);
     let discussions =
-        claim_discussions(&r.store, &r.store, &Suppressions::default(), &r.wiki.id).unwrap();
+        claim_discussions(&*r.store, &*r.store, &Suppressions::default(), &r.wiki.id).unwrap();
     let comment = discussions.first().unwrap().comments.first().unwrap();
     let author = comment.author.as_ref().unwrap();
     assert_eq!(author.id, ann.as_str());
     assert_eq!(author.name, "Ann");
     // Another store, where the account is not known: the comment is still carried, the name empty.
     let empty = MemoryStore::new();
-    let none = claim_discussions(&r.store, &empty, &Suppressions::default(), &r.wiki.id).unwrap();
+    let none = claim_discussions(&*r.store, &empty, &Suppressions::default(), &r.wiki.id).unwrap();
     assert_eq!(
         none.first()
             .unwrap()
@@ -636,23 +650,39 @@ fn the_names_of_the_people_are_the_names_they_have_and_a_person_the_service_lost
     );
 }
 
+/// The one reader of a page's text at a block, over the stand-in and the rig's store: what the command line gives the export.
+fn reads_of(r: &Rig, stand: &Stand) -> ReadService {
+    ReadService::new(
+        Arc::new(stand.clone()),
+        r.store.clone(),
+        r.store.clone(),
+        r.layout.clone(),
+        ReadConfig::default(),
+        None,
+    )
+    .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+        r.store.clone(),
+        r.store.clone(),
+    )))
+}
+
 /// The bundle of the wiki, as [`export_bundle_with`] writes it when it is given no records of the service's (the one function
 /// that exported without them ignored what moderation hides, and is the crate's unit tests' alone).
 fn export_bundle(
-    storage: &dyn inklkunn_prikk::Storage,
-    layout: &inklkunn_store::RootLayout,
-    record: &inklkunn_store::WikiRecord,
+    r: &Rig,
+    stand: &Stand,
     dest: &std::path::Path,
-    version: &str,
     now: i64,
 ) -> Result<inklkunn_core::export::Exported, inklkunn_core::export::ExportError> {
+    let reads = reads_of(r, stand);
     export_bundle_with(
-        storage,
-        layout,
-        record,
+        stand,
+        &r.layout,
+        &r.wiki,
         dest,
-        version,
+        "0.0.0",
         now,
-        &inklkunn_core::export::KnowledgeRecords::default(),
+        &KnowledgeRecords::default(),
+        &mut HistoryInputs::new(&reads, &*r.store),
     )
 }

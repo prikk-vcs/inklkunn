@@ -34,7 +34,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use inklkunn_core::export::is_checkpoint_not_recorded;
-use inklkunn_core::export::{ExportError, export_bundle_with, knowledge_records};
+use inklkunn_core::export::{
+    ExportError, ExportNote, HistoryInputs, export_bundle_with, knowledge_records,
+};
 use inklkunn_core::import::{ImportError, judge_knowledge, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::read::ReadService;
@@ -464,6 +466,7 @@ fn run(
             archive,
         } => export(
             settings,
+            get_env,
             now,
             wiki,
             bundle.as_deref(),
@@ -870,8 +873,47 @@ fn import_folder(
     }
 }
 
+/// One export of the bundle, saying on `out` what the history's records cost and when it waits (RFC 007 D-7): the number of
+/// revisions whose text is read, and each round spent waiting for the index of who wrote each page's text.
+#[allow(clippy::too_many_arguments)]
+fn export_bundle_once(
+    store: &Arc<SqliteStore>,
+    reads: &ReadService,
+    env: &Env,
+    record: &WikiRecord,
+    dest: &std::path::Path,
+    now: i64,
+    records: &inklkunn_core::export::KnowledgeRecords,
+    out: &mut dyn Write,
+) -> Result<inklkunn_core::export::Exported, ExportError> {
+    let mut say = |note: ExportNote| {
+        let _ = match note {
+            ExportNote::Revisions { revisions, pages } => writeln!(
+                out,
+                "reading the text of {revisions} revision(s) of {pages} page(s) for the history, one read each"
+            ),
+            ExportNote::Waiting { round, rounds } => writeln!(
+                out,
+                "waiting for the index of who wrote each page's text to be built (round {round} of {rounds})"
+            ),
+        };
+    };
+    let mut inputs = HistoryInputs::new(reads, &**store).saying(&mut say);
+    export_bundle_with(
+        &env.storage,
+        &env.layout,
+        record,
+        dest,
+        env!("CARGO_PKG_VERSION"),
+        now,
+        records,
+        &mut inputs,
+    )
+}
+
 fn export(
     settings: &Settings,
+    get_env: &dyn Fn(&str) -> Option<OsString>,
     now: i64,
     wiki: &str,
     bundle: Option<&str>,
@@ -882,9 +924,27 @@ fn export(
     // Destinations are resolved before anything is read or written.
     let bundle = bundle.map(absolute).transpose()?;
     let archive = archive.map(absolute).transpose()?;
+    // The limits the server reads under: a page's text is read at each revision under the same ones.
+    let read_config = ReadSettings::load(get_env)
+        .map_err(|e| e.to_string())?
+        .read_config();
     let store = Arc::new(existing_store(settings)?);
     let record = find_wiki(&store, wiki)?;
     let env = environment(settings, err)?;
+    // The one reader of a page's text at a block (RFC 006 D-8; INV-13), over the moderation records: what the history's records
+    // carry of a revision is what it gives and nothing else.
+    let reads = ReadService::new(
+        Arc::new(env.storage.clone()),
+        store.clone(),
+        store.clone(),
+        env.layout.clone(),
+        read_config,
+        None,
+    )
+    .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+        store.clone(),
+        store.clone(),
+    )));
     let resource = wiki_resource(&record);
     let trail = Trail { sink: &*store, now };
     let maintained = Maintained::over(
@@ -905,14 +965,8 @@ fn export(
     };
     if let Some(dest) = &bundle {
         trail.begin("wiki-export-bundle", &resource, "begun")?;
-        let mut result = export_bundle_with(
-            &env.storage,
-            &env.layout,
-            &record,
-            dest,
-            env!("CARGO_PKG_VERSION"),
-            now,
-            &records,
+        let mut result = export_bundle_once(
+            &store, &reads, &env, &record, dest, now, &records, &mut *out,
         );
         if matches!(result, Err(ExportError::CheckpointNotRecorded)) {
             // The record `extract` anchors on is missing (a prikk upgrade, a restore): bring it back, once.
@@ -922,14 +976,8 @@ fn export(
             );
             match refresh_checkpoint(&store, &maintained, &env.storage, &record, now) {
                 Ok(()) => {
-                    result = export_bundle_with(
-                        &env.storage,
-                        &env.layout,
-                        &record,
-                        dest,
-                        env!("CARGO_PKG_VERSION"),
-                        now,
-                        &records,
+                    result = export_bundle_once(
+                        &store, &reads, &env, &record, dest, now, &records, &mut *out,
                     );
                 }
                 Err(why) => failure = Some(why),
@@ -947,12 +995,12 @@ fn export(
                 );
                 let _ = writeln!(
                     out,
-                    "  history: {} page(s), {} line(s){}{}; users: {}",
+                    "  history: {} page(s), {} record(s) with their texts{}{}; users: {}",
                     done.histories,
                     done.history_entries,
                     if done.histories_not_written > 0 {
                         format!(
-                            "; {} page(s) have no history file (the page id cannot name a file or is shared)",
+                            "; {} page(s) have no history file (the page has no id, or its id cannot name a file or is shared)",
                             done.histories_not_written
                         )
                     } else {
@@ -960,7 +1008,7 @@ fn export(
                     },
                     if done.unattributed_changes > 0 {
                         format!(
-                            "; {} change(s) to paths that are no longer pages are in no history file",
+                            "; {} change(s) to paths that are not pages are in no history file",
                             done.unattributed_changes
                         )
                     } else {

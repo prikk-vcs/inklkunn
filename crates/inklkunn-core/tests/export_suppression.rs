@@ -2,22 +2,21 @@
 //!
 //! The repository is a stand-in that holds files in memory and a history of several blocks with real patch messages, so
 //! these run in both test runs (no prikk); the tombstones are planted in the store directly. **The frozen bundle**
-//! (`tests/fixtures/export-before-suppression/`) is what the export wrote for [`scenario`] before any of this existed: an
-//! export with no tombstones must still write exactly those bytes.
+//! (`tests/fixtures/export-before-suppression/`) is what the export writes for [`scenario`] when nothing is hidden: an export with
+//! no tombstones must write exactly those bytes. It was what the export wrote before suppression existed until I-T1 (RFC 007 D-7),
+//! which changed the shape of every history line (wiki-commons history records with the pages' texts, and the pages since removed
+//! have their files); the fixture was written again then, from the code, and the history lines of 0.4.0 are no longer in it.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use inklkunn_core::export::{Suppressions, export_bundle_with, knowledge_records};
+use inklkunn_core::export::{HistoryInputs, Suppressions, export_bundle_with, knowledge_records};
 use inklkunn_core::import::{Existing, plan_folder};
 use inklkunn_core::message::{Actor, BlockId, Message, Summary, SystemLabel};
-use inklkunn_core::read::ReadConfig;
-use inklkunn_prikk::storage::{
-    Change, Diff, Entry, FileMeta, History, HistoryBlock, Materialized, Operation, Patch,
-    PatchMessage, PathRef, Tree, Verification, Views,
-};
-use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
+use inklkunn_core::read::{ReadConfig, ReadService};
+use inklkunn_prikk::storage::{Change, HistoryBlock};
 use inklkunn_store::AcceptanceId;
 use inklkunn_store::acceptance::{
     AcceptanceOutcome, AcceptanceRecord, AcceptanceResult, AcceptanceStore, IntentRecord,
@@ -35,8 +34,14 @@ use sha2::{Digest, Sha256};
 
 #[path = "support/bundle_manifest.rs"]
 mod bundle_manifest;
+#[path = "support/history_record.rs"]
+mod history_record;
 #[path = "support/json_schema.rs"]
 mod json_schema;
+#[path = "support/stand.rs"]
+mod stand;
+
+use stand::{Stand, block};
 
 /// The blocks of the stand-in's history, oldest first.
 const B0: &str = "b10c000000000000000000000000000000000000000000000000000000000000";
@@ -73,165 +78,11 @@ fn dir(tag: &str) -> Dir {
     Dir(p)
 }
 
-/// A repository that holds these files and this history.
-struct Stand {
-    files: BTreeMap<String, String>,
-    /// Oldest first.
-    blocks: Vec<(HistoryBlock, Change)>,
-}
-
-impl Stand {
-    /// The tip: the newest block.
-    fn tip(&self) -> &str {
-        self.blocks.last().map_or(B3, |(b, _)| b.block_id.as_str())
-    }
-}
-
-fn unsupported<T>() -> Result<T, StorageError> {
-    Err(StorageError::Refused {
-        verb: "stand-in",
-        message: "the stand-in answers only what an export asks".to_owned(),
-        kind: None,
-        reason: None,
-    })
-}
-
-impl Storage for Stand {
-    fn views(&self, _: &Path) -> Result<Views, StorageError> {
-        unsupported()
-    }
-    fn all_views(&self, _: &Path) -> Result<Views, StorageError> {
-        unsupported()
-    }
-    fn tree(&self, _: &Path, point: &Point, _: Option<&str>) -> Result<Tree, StorageError> {
-        Ok(Tree {
-            schema_version: "tree-listing-v1".to_owned(),
-            point: point.to_string(),
-            target_block_id: self.tip().to_owned(),
-            prefix: None,
-            entries: self
-                .files
-                .iter()
-                .map(|(path, text)| Entry {
-                    path: path.clone(),
-                    kind: "file".to_owned(),
-                    encoding: None,
-                    mode: None,
-                    size: Some(text.len() as u64),
-                })
-                .collect(),
-        })
-    }
-    fn stat(&self, _: &Path, _: &Point, _: &str) -> Result<FileMeta, StorageError> {
-        unsupported()
-    }
-    fn read(&self, _: &Path, _: &Point, _: &str, _: u64) -> Result<Vec<u8>, StorageError> {
-        unsupported()
-    }
-    fn history(&self, _: &Path, view: &Point, _: Option<u64>) -> Result<History, StorageError> {
-        Ok(History {
-            schema_version: "log-report-v1".to_owned(),
-            view: view.to_string(),
-            blocks: self.blocks.iter().rev().map(|(b, _)| b.clone()).collect(),
-        })
-    }
-    fn change(&self, _: &Path, block: &str) -> Result<Change, StorageError> {
-        self.blocks
-            .iter()
-            .find(|(b, _)| b.block_id == block)
-            .map(|(_, c)| c.clone())
-            .ok_or(StorageError::Refused {
-                verb: "stand-in",
-                message: "no such block".to_owned(),
-                kind: None,
-                reason: None,
-            })
-    }
-    fn diff(&self, _: &Path, _: &Point, _: &Point, _: &[&str]) -> Result<Diff, StorageError> {
-        unsupported()
-    }
-    fn plan(&self, _: &Path, _: &Point) -> Result<Materialized, StorageError> {
-        unsupported()
-    }
-    fn materialize(
-        &self,
-        _: &Path,
-        point: &Point,
-        scratch: &Path,
-        name: &str,
-        _: ExtractBounds,
-    ) -> Result<Materialized, StorageError> {
-        let target = scratch.join(name);
-        std::fs::create_dir_all(&target).expect("target");
-        for (path, text) in &self.files {
-            let at = target.join(path);
-            std::fs::create_dir_all(at.parent().expect("a parent")).expect("dirs");
-            std::fs::write(at, text).expect("a file");
-        }
-        Ok(Materialized {
-            schema_version: "extract-report-v1".to_owned(),
-            point: point.to_string(),
-            point_kind: "block".to_owned(),
-            target_block_id: self.tip().to_owned(),
-            claim_parent_block_id: None,
-            provisional: false,
-            written: true,
-            file_count: self.files.len() as u64,
-            total_bytes: self.files.values().map(|t| t.len() as u64).sum(),
-            largest_file_bytes: 0,
-        })
-    }
-    fn verify(&self, _: &Path) -> Result<Verification, StorageError> {
-        unsupported()
-    }
-}
-
 fn account(id: &str, name: &str) -> Actor {
     Actor::Account {
         id: AccountId::parse(id).expect("an account id"),
         name: DisplayName::new(name).expect("a name"),
     }
-}
-
-fn block(
-    id: &str,
-    seq: u64,
-    patch: &str,
-    message: &Message,
-    ops: &[(&str, &str)],
-) -> (HistoryBlock, Change) {
-    (
-        HistoryBlock {
-            block_id: id.to_owned(),
-            ref_state_id: "a".repeat(64),
-            update_seq: seq,
-            kind: "Update".to_owned(),
-            rollback_block: false,
-            patch_count: 1,
-            patch_messages: vec![PatchMessage {
-                patch_id: patch.to_owned(),
-                message: message.to_text(),
-            }],
-            previous_ref_state_id: None,
-        },
-        Change {
-            schema_version: "show-report-v1".to_owned(),
-            patches: vec![Patch {
-                patch_id: patch.to_owned(),
-                queued: false,
-                operations: ops
-                    .iter()
-                    .map(|(kind, path)| Operation {
-                        kind: (*kind).to_owned(),
-                        paths: vec![PathRef {
-                            path: Some((*path).to_owned()),
-                            unresolved_node_id: None,
-                        }],
-                    })
-                    .collect(),
-            }],
-        },
-    )
 }
 
 fn summary(s: &str) -> Summary {
@@ -290,7 +141,7 @@ fn history() -> Vec<(HistoryBlock, Change)> {
     )
     .expect("a message");
     vec![
-        block(B0, 1, "a0", &b0, &[("add", "pages/Help.md")]),
+        block(B0, 1, "a0", &b0, &[("add", "pages/Gone.md")]),
         block(
             B1,
             2,
@@ -310,23 +161,20 @@ fn history() -> Vec<(HistoryBlock, Change)> {
 }
 
 fn stand() -> Stand {
-    Stand {
-        files: files(),
-        blocks: history(),
-    }
+    Stand::new(files(), history()).identified("pages/Gone.md", "gone-1")
 }
 
 struct Rig {
     _dir: Dir,
     layout: RootLayout,
-    store: MemoryStore,
+    store: Arc<MemoryStore>,
     wiki: WikiRecord,
     out: PathBuf,
 }
 
 fn rig(tag: &str) -> Rig {
     let d = dir(tag);
-    let store = MemoryStore::new();
+    let store = Arc::new(MemoryStore::new());
     let wiki = store
         .create(NewWiki::new(
             Slug::new("notes").unwrap(),
@@ -405,12 +253,42 @@ fn files_of(root: &Path) -> BTreeMap<String, Vec<u8>> {
 
 const NOW: i64 = 1_700_001_000;
 
+/// The one reader of a page's text at a block, over the stand-in and the rig's store (where the tombstones are planted): what the
+/// command line gives the export.
+fn reads_of(r: &Rig, stand: &Stand) -> ReadService {
+    ReadService::new(
+        Arc::new(stand.clone()),
+        r.store.clone(),
+        r.store.clone(),
+        r.layout.clone(),
+        ReadConfig::default(),
+        None,
+    )
+    .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+        r.store.clone(),
+        r.store.clone(),
+    )))
+}
+
 /// Export the scenario, as the command line does: the records read from the store, then the bundle.
 fn export(r: &Rig) -> BTreeMap<String, Vec<u8>> {
-    let records =
-        knowledge_records(&r.store, &r.store, &r.store, &r.store, &r.store, &r.wiki.id).unwrap();
-    export_bundle_with(&stand(), &r.layout, &r.wiki, &r.out, "0.0.0", NOW, &records)
-        .unwrap_or_else(|e| panic!("{e}"));
+    let records = knowledge_records(
+        &*r.store, &*r.store, &*r.store, &*r.store, &*r.store, &r.wiki.id,
+    )
+    .unwrap();
+    let stand = stand();
+    let reads = reads_of(r, &stand);
+    export_bundle_with(
+        &stand,
+        &r.layout,
+        &r.wiki,
+        &r.out,
+        "0.0.0",
+        NOW,
+        &records,
+        &mut HistoryInputs::new(&reads, &*r.store),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     files_of(&r.out)
 }
 
@@ -421,7 +299,7 @@ fn frozen() -> BTreeMap<String, Vec<u8>> {
 }
 
 #[test]
-fn an_export_with_no_tombstone_is_the_bundle_the_code_before_this_wrote_byte_for_byte() {
+fn an_export_with_no_tombstone_is_the_frozen_bundle_byte_for_byte() {
     let r = rig("frozen");
     threads(&r);
     let files = export(&r);
@@ -502,10 +380,7 @@ fn history_extended() -> Vec<(HistoryBlock, Change)> {
 }
 
 fn stand_extended() -> Stand {
-    Stand {
-        files: files(),
-        blocks: history_extended(),
-    }
+    Stand::new(files(), history_extended()).identified("pages/Gone.md", "gone-1")
 }
 
 /// The people of the extended wiki, and two comments more on the second claim: Quill's, who writes nowhere else, and Ann's.
@@ -739,11 +614,23 @@ fn accepted(r: &Rig, proposal: &str, proposer: &str, block_id: &str) {
 
 /// The wiki exported as the command line exports it, into `<tmp>/<name>`.
 fn export_as(r: &Rig, stand: &Stand, name: &str) -> BTreeMap<String, Vec<u8>> {
-    let records =
-        knowledge_records(&r.store, &r.store, &r.store, &r.store, &r.store, &r.wiki.id).unwrap();
+    let records = knowledge_records(
+        &*r.store, &*r.store, &*r.store, &*r.store, &*r.store, &r.wiki.id,
+    )
+    .unwrap();
     let out = r.out.with_file_name(name);
-    export_bundle_with(stand, &r.layout, &r.wiki, &out, "0.0.0", NOW, &records)
-        .unwrap_or_else(|e| panic!("{e}"));
+    let reads = reads_of(r, stand);
+    export_bundle_with(
+        stand,
+        &r.layout,
+        &r.wiki,
+        &out,
+        "0.0.0",
+        NOW,
+        &records,
+        &mut HistoryInputs::new(&reads, &*r.store),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     files_of(&out)
 }
 
@@ -776,7 +663,7 @@ fn json_lines(files: &BTreeMap<String, Vec<u8>>, path: &str) -> Vec<serde_json::
 fn line_of(files: &BTreeMap<String, Vec<u8>>, page: &str, block_id: &str) -> serde_json::Value {
     json_lines(files, &format!("history/{page}.jsonl"))
         .into_iter()
-        .find(|l| *at(l, "/block") == block_id)
+        .find(|l| *at(l, "/rev") == block_id)
         .unwrap_or_else(|| panic!("no line of {block_id} in the history of {page}"))
 }
 
@@ -826,12 +713,12 @@ fn the_bundle_is_whole(files: &BTreeMap<String, Vec<u8>>) {
 #[test]
 fn a_hidden_page_revision_is_marked_with_what_is_hidden_and_why_and_omits_only_that() {
     for (names, left_out) in [
-        (vec!["content"], vec![]),
+        (vec!["content"], vec!["content"]),
         (vec!["summary"], vec!["summary"]),
-        (vec!["author"], vec!["authors"]),
+        (vec!["author"], vec!["author"]),
         (
             vec!["content", "summary", "author"],
-            vec!["summary", "authors"],
+            vec!["summary", "author", "content"],
         ),
     ] {
         let r = rig("revision");
@@ -850,13 +737,14 @@ fn a_hidden_page_revision_is_marked_with_what_is_hidden_and_why_and_omits_only_t
             .map(|n| ((*n).to_owned(), "personal-data".into()))
             .collect();
         assert_eq!(*at(&line, "/reasons"), serde_json::Value::Object(reasons));
-        assert_eq!(*at(&line, "/block"), B3);
-        assert_eq!(*at(&line, "/seq"), 4);
-        assert_eq!(*at(&line, "/path"), "pages/One.md");
-        assert_eq!(*at(&line, "/operation"), "modify");
-        assert_eq!(*at(&line, "/kind"), "proposal");
+        assert_eq!(*at(&line, "/rev"), B3);
+        assert_eq!(*at(&line, "/inklkunn/block"), B3);
+        assert_eq!(*at(&line, "/inklkunn/seq"), 4);
+        assert_eq!(*at(&line, "/inklkunn/path"), "pages/One.md");
+        assert_eq!(*at(&line, "/type"), "edit");
+        assert_eq!(*at(&line, "/inklkunn/kind"), "proposal");
         // What is hidden is not in it, and what is not hidden still is.
-        for member in ["summary", "authors"] {
+        for member in ["summary", "author", "content"] {
             assert_eq!(
                 has_member(&line, member),
                 !left_out.contains(&member),
@@ -961,9 +849,9 @@ fn nothing_hidden_or_hiding_a_person_is_in_any_file_and_a_person_is_listed_only_
     assert!(text(&files, "users.yaml").contains("names: [\"Yuki Visible\"]"));
     assert!(all.contains("Yuki Visible") && all.contains(SUMMARY_B5) && all.contains(SUMMARY_B6));
     // Her hidden change names nobody; her visible one names her.
-    assert!(!has_member(&line_of(&files, "p2", B5), "authors"));
+    assert!(!has_member(&line_of(&files, "p2", B5), "author"));
     assert_eq!(
-        *at(&line_of(&files, "p1", B6), "/authors/0/name"),
+        *at(&line_of(&files, "p1", B6), "/author/name"),
         "Yuki Visible"
     );
     // What is left of the thread beside Quill's comment.
@@ -974,7 +862,10 @@ fn nothing_hidden_or_hiding_a_person_is_in_any_file_and_a_person_is_listed_only_
 #[test]
 fn the_summary_and_the_people_of_a_change_are_hidden_on_every_page_it_touched_and_its_text_on_the_page_named()
  {
-    // Zed's change touched both pages. A hide of the text of one page marks that page's line only.
+    // Zed's change touched both pages. A hide of the text of one page hides the change's text, as every surface does and as the one
+    // reader of a text at a block says (`Tombstones::of_change`: a surface cannot tell the pages apart without reading them): both
+    // pages' records are marked, with the reason of the hide. (Changed by I-T1: 0.4.0 marked the named page's line only, because
+    // no line carried a text; now the text is read through that reader, and the export cannot be finer than it is.)
     let r = extended("pages-content");
     plant(
         &r,
@@ -985,18 +876,28 @@ fn the_summary_and_the_people_of_a_change_are_hidden_on_every_page_it_touched_an
         ReasonCategory::Copyright,
     );
     let files = export_as(&r, &stand_extended(), "bundle");
-    assert_eq!(
-        *at(&line_of(&files, "p2", B4), "/suppressed"),
-        serde_json::json!(["content"])
-    );
-    assert!(!has_member(&line_of(&files, "p1", B4), "suppressed"));
+    for page in ["p1", "p2"] {
+        let line = line_of(&files, page, B4);
+        assert_eq!(
+            *at(&line, "/suppressed"),
+            serde_json::json!(["content"]),
+            "{page}: {line}"
+        );
+        assert_eq!(*at(&line, "/reasons/content"), "copyright", "{line}");
+        assert!(
+            !has_member(&line, "content") && !has_member(&line, "sha256"),
+            "{page}: {line}"
+        );
+    }
+    // The line of the same page before it, and the others, keep their text.
+    assert!(has_member(&line_of(&files, "p2", B1), "content"));
     assert!(
         everything(&files).contains(SUMMARY_B4),
         "the summary is not hidden"
     );
 
     // A hide of its summary or its author, on one page, is a hide of the change: its other page's line is marked too.
-    for (part, member) in [("summary", "summary"), ("author", "authors")] {
+    for (part, member) in [("summary", "summary"), ("author", "author")] {
         let r = extended("pages-change");
         plant(
             &r,
@@ -1054,10 +955,7 @@ fn stand_with_old_undos() -> (Stand, String, String) {
         &[("modify", "pages/Two.md")],
     ));
     (
-        Stand {
-            files: files(),
-            blocks,
-        },
+        Stand::new(files(), blocks).identified("pages/Gone.md", "gone-1"),
         undo_zed.to_owned(),
         undo_yuki.to_owned(),
     )
@@ -1120,7 +1018,7 @@ fn the_revision_of_an_accepted_proposal_is_the_revision_of_the_block_it_sealed()
         serde_json::json!(["summary", "author"])
     );
     assert_eq!(*at(&line, "/reasons/summary"), "spam");
-    assert!(!has_member(&line, "summary") && !has_member(&line, "authors"));
+    assert!(!has_member(&line, "summary") && !has_member(&line, "author"));
     assert!(!everything(&files).contains(SUMMARY_B3));
     // The content and the summary of a revision that was never the one accepted are something no bundle carries.
     let r = extended("proposal-unaccepted");
@@ -1164,7 +1062,7 @@ fn the_author_hidden_on_another_revision_of_an_accepted_proposal_is_hidden_on_it
     // Only the author: what the revision's content and summary hid is not what the change wrote.
     assert_eq!(*at(&line, "/suppressed"), serde_json::json!(["author"]));
     assert_eq!(*at(&line, "/reasons/author"), "harassment");
-    assert!(!has_member(&line, "authors"));
+    assert!(!has_member(&line, "author"));
     assert!(
         has_member(&line, "summary"),
         "the change's summary is shown"
@@ -1297,7 +1195,7 @@ fn an_unhide_of_one_hide_leaves_the_others_and_each_part_keeps_the_reason_it_was
         *at(&line, "/reasons"),
         serde_json::json!({"content": "personal-data"})
     );
-    assert!(has_member(&line, "authors"));
+    assert!(has_member(&line, "author"));
     unhide(&r, &content);
     let files = export_as(&r, &stand_extended(), "none");
     assert!(!has_member(&line_of(&files, "p1", B3), "suppressed"));

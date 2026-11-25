@@ -1059,3 +1059,94 @@ fn the_writes_index_on_a_long_history() {
         print_table(&version, &outcomes);
     }
 }
+
+// ------------------------------------------------------------------------------------ the export (RFC 007 D-7; I-T1)
+
+const BUNDLES: &str = "INKLKUNN_MEASURE_BUNDLES";
+
+/// **The export of a long history measured** (0.5.0's I-T1): `wiki export --bundle` on a copy of a built history, through the
+/// command line's own path (the real prikk behind the counting wrapper), with the time and the prikk calls by verb. Each revision's
+/// text is one read through the one reader of a page's text (`ReadService::text_at`), so the cost is the number of revisions
+/// times what one read costs on this prikk, plus, when a content hide is in force, the index of who wrote each page's text.
+///
+/// ```text
+/// PATH=$HOME/.pgtmp/rel-0.58.0/x:$PATH TMPDIR=<a directory on a disk, not a tmpfs> \
+///   INKLKUNN_MEASURE_SIZES=500,2000 INKLKUNN_MEASURE_FIXTURES=<the directory that keeps the built histories> \
+///   cargo test -p inklkunn --locked -- --ignored --nocapture the_export_on_a_long_history
+/// ```
+///
+/// - **plain**: nothing is hidden (the usual wiki): one read of a block's page per revision, and no index.
+/// - **hidden**: the middle edit's text is hidden by a moderator through the server, the server is stopped, and the export meets the
+///   index as the background build left it (the command line has no background build: it builds the rest itself, a round at a
+///   time, and says so).
+///
+/// `INKLKUNN_MEASURE_EXPORT_SCENARIOS` (default `plain,hidden`) picks them; `INKLKUNN_MEASURE_BUNDLES` names a directory to keep
+/// each bundle in (`<size>-<scenario>`), for the validator.
+#[test]
+#[ignore = "a measurement, not a check: run by hand (see the doc above)"]
+fn the_export_on_a_long_history() {
+    let sizes: Vec<usize> = env_or(SIZES, "500")
+        .split(',')
+        .map(|s| s.trim().parse().expect("a size"))
+        .collect();
+    let wanted = env_or("INKLKUNN_MEASURE_EXPORT_SCENARIOS", "plain,hidden");
+    let real = crate::keys::tests::prikk_probes::prikk_first()
+        .expect("the measurement needs a real prikk on PATH")
+        .into_os_string();
+    let version = prikk_version(&real);
+    println!("prikk: {version} ({})", real.to_string_lossy());
+    let fixtures = fixtures_dir();
+    println!(
+        "| blocks | scenario | revisions | wall s | prikk calls | cat | show | log | history bytes | what it said |"
+    );
+    for k in sizes {
+        let (data, built) = build_history(k, &fixtures, &version);
+        for scenario in ["plain", "hidden"] {
+            if !wanted.split(',').any(|w| w.trim() == scenario) {
+                continue;
+            }
+            let (world, counting, _) = copy_world(&format!("measure-export-{scenario}-{k}"), &data);
+            if scenario == "hidden" {
+                let running = Running::start(&world);
+                let mut maya = sign_in_as(&running, "maya", "Maya Maintainer");
+                hide_content(&mut maya, &counting, &built.middle.0);
+                running.stop();
+            }
+            counting.take();
+            let dest = world.tmp.0.join("bundle");
+            let started = Instant::now();
+            let (status, out, err) = world.cli(&[
+                "wiki",
+                "export",
+                "handbook",
+                "--bundle",
+                dest.to_str().unwrap(),
+            ]);
+            let seconds = started.elapsed().as_secs_f64();
+            let calls = counting.take();
+            assert_eq!(status, 0, "{err}\n{out}");
+            let history_bytes: u64 = std::fs::read_dir(dest.join("history"))
+                .unwrap()
+                .map(|e| e.unwrap().metadata().unwrap().len())
+                .sum();
+            let revisions = out
+                .lines()
+                .find_map(|l| l.strip_prefix("reading the text of "))
+                .and_then(|l| l.split(' ').next())
+                .unwrap_or("?");
+            let waits = out.lines().filter(|l| l.starts_with("waiting for")).count();
+            println!(
+                "| {k} | {scenario} | {revisions} | {seconds:.1} | {} | {} | {} | {} | {history_bytes} | {waits} wait line(s); {} |",
+                calls.total(),
+                calls.of("cat"),
+                calls.of("show"),
+                calls.of("log"),
+                calls.describe()
+            );
+            eprintln!("{out}");
+            if let Ok(keep) = std::env::var(BUNDLES) {
+                copy_tree(&dest, &PathBuf::from(keep).join(format!("{k}-{scenario}")));
+            }
+        }
+    }
+}

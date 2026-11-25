@@ -14,16 +14,18 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use inklkunn_core::export::export_bundle_with;
+use inklkunn_core::export::{HistoryInputs, export_bundle_with};
 use inklkunn_core::read::scratch::{Extract, sweep_leftovers, sweep_partials};
+use inklkunn_core::read::{ReadConfig, ReadService};
 use inklkunn_prikk::storage::{
     Change, Diff, Entry, FileMeta, History, HistoryBlock, Materialized, Tree, Verification, Views,
 };
 use inklkunn_prikk::{ExtractBounds, Point, Storage, StorageError};
 use inklkunn_signer::flock::{Acquired, try_exclusive};
-use inklkunn_store::{DisplayName, NewWiki, RootLayout, Slug, WikiId, WikiRecord};
+use inklkunn_store::{DisplayName, MemoryStore, NewWiki, RootLayout, Slug, WikiId, WikiRecord};
 
 /// Set in the child: the scratch directory it sweeps.
 const CHILD_SWEEPS: &str = "INKLKUNN_TEST_SWEEP_FROM_NAMESPACE";
@@ -369,6 +371,53 @@ fn an_export_beside_a_sweep_from_another_pid_namespace_keeps_its_directories_and
     assert_eq!(left, vec![DEST.to_owned()], "{left:?}");
 }
 
+/// A repository the one reader of a page's text is given when the export reads no text: the stand-in's one block has no
+/// operation, so nothing is asked of it.
+struct NoText;
+
+impl Storage for NoText {
+    fn views(&self, _: &Path) -> Result<Views, StorageError> {
+        unsupported()
+    }
+    fn all_views(&self, _: &Path) -> Result<Views, StorageError> {
+        unsupported()
+    }
+    fn tree(&self, _: &Path, _: &Point, _: Option<&str>) -> Result<Tree, StorageError> {
+        unsupported()
+    }
+    fn stat(&self, _: &Path, _: &Point, _: &str) -> Result<FileMeta, StorageError> {
+        unsupported()
+    }
+    fn read(&self, _: &Path, _: &Point, _: &str, _: u64) -> Result<Vec<u8>, StorageError> {
+        unsupported()
+    }
+    fn history(&self, _: &Path, _: &Point, _: Option<u64>) -> Result<History, StorageError> {
+        unsupported()
+    }
+    fn change(&self, _: &Path, _: &str) -> Result<Change, StorageError> {
+        unsupported()
+    }
+    fn diff(&self, _: &Path, _: &Point, _: &Point, _: &[&str]) -> Result<Diff, StorageError> {
+        unsupported()
+    }
+    fn plan(&self, _: &Path, _: &Point) -> Result<Materialized, StorageError> {
+        unsupported()
+    }
+    fn materialize(
+        &self,
+        _: &Path,
+        _: &Point,
+        _: &Path,
+        _: &str,
+        _: ExtractBounds,
+    ) -> Result<Materialized, StorageError> {
+        unsupported()
+    }
+    fn verify(&self, _: &Path) -> Result<Verification, StorageError> {
+        unsupported()
+    }
+}
+
 /// The bundle of the wiki, as [`export_bundle_with`] writes it when it is given no records of the service's (the one function
 /// that exported without them ignored what moderation hides, and is the crate's unit tests' alone).
 fn export_bundle(
@@ -379,6 +428,19 @@ fn export_bundle(
     version: &str,
     now: i64,
 ) -> Result<inklkunn_core::export::Exported, inklkunn_core::export::ExportError> {
+    let store = Arc::new(MemoryStore::new());
+    let reads = ReadService::new(
+        Arc::new(NoText),
+        store.clone(),
+        store.clone(),
+        layout.clone(),
+        ReadConfig::default(),
+        None,
+    )
+    .with_tombstones(Arc::new(inklkunn_core::tombstone::Tombstones::new(
+        store.clone(),
+        store.clone(),
+    )));
     export_bundle_with(
         storage,
         layout,
@@ -387,5 +449,6 @@ fn export_bundle(
         version,
         now,
         &inklkunn_core::export::KnowledgeRecords::default(),
+        &mut HistoryInputs::new(&reads, &*store),
     )
 }

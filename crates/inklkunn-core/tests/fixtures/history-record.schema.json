@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/kos-commons/wiki-commons/main/schemas/history-record.schema.json",
+  "title": "Portable history record",
+  "description": "One line of a history/<page-id>.jsonl file: a revision or event in a page's history. See XFER-7.",
+  "type": "object",
+  "required": ["rev", "at"],
+  "properties": {
+    "rev": {"type": "string", "minLength": 1},
+    "parent": {"type": ["string", "null"]},
+    "type": {"type": "string", "default": "edit", "examples": ["create", "edit", "rename", "delete", "restore", "revert", "upload", "protect", "merge", "fork", "review"]},
+    "at": {"type": "string", "format": "date-time"},
+    "author": {"$ref": "#/$defs/author"},
+    "contributors": {"type": "array", "items": {"$ref": "#/$defs/author"}},
+    "summary": {"type": "string"},
+    "minor": {"type": "boolean"},
+    "automated": {"type": "boolean"},
+    "content": {"type": "string", "description": "Complete page file (frontmatter and body) at this revision."},
+    "patch": {"type": "string", "description": "Unified diff from the parent's content."},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "size": {"type": "integer", "minimum": 0},
+    "from": {"type": "string"},
+    "to": {"type": "string"},
+    "reverts": {"type": "string"},
+    "restores": {"type": "string"},
+    "suppressed": {"type": "array", "items": {"type": "string", "enum": ["content", "author", "summary"]}},
+    "reason": {"type": "string"},
+    "suppressed_by": {"$ref": "#/$defs/author"},
+    "review": {"type": "object", "properties": {"state": {"type": "string"}, "by": {"type": "string"}}, "additionalProperties": true},
+    "assistance": {"type": "object", "properties": {"kind": {"type": "string"}, "tool": {"type": "string"}}, "additionalProperties": true},
+    "license": {"type": "string"}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "author": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": ["person", "bot", "group", "anonymous"]},
+        "url": {"type": "string", "format": "uri"},
+        "anonymous": {"type": "boolean"},
+        "label": {"type": "string", "description": "Public label for an anonymous or temporary account."}
+      },
+      "additionalProperties": true
+    }
+  }
+}

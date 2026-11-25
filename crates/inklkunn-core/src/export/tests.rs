@@ -10,6 +10,23 @@ use std::os::unix::fs::PermissionsExt as _;
 
 use super::*;
 
+/// What the history needs, over a storage that must not be reached: the one reader of a page's text and a store.
+fn reads_over_nothing() -> (
+    crate::read::ReadService,
+    std::sync::Arc<inklkunn_store::MemoryStore>,
+) {
+    let store = std::sync::Arc::new(inklkunn_store::MemoryStore::new());
+    let reads = crate::read::ReadService::new(
+        std::sync::Arc::new(Unreachable),
+        store.clone(),
+        store.clone(),
+        RootLayout::new(std::env::temp_dir().join("inklkunn-export-unreachable")),
+        crate::read::ReadConfig::default(),
+        None,
+    );
+    (reads, store)
+}
+
 /// A storage that must not be called: the rules under test refuse before any read.
 struct Unreachable;
 
@@ -80,12 +97,22 @@ fn a_destination_that_is_relative_exists_or_has_no_directory_is_refused_before_a
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::create_dir(tmp.join("taken")).unwrap();
     let layout = RootLayout::new(tmp.join("root"));
+    let (reads, derived) = reads_over_nothing();
     for (dest, needle) in [
         (PathBuf::from("rel/dir"), "absolute"),
         (tmp.join("taken"), "already exists"),
         (tmp.join("nowhere/out"), "directory does not exist"),
     ] {
-        let err = export_bundle(&Unreachable, &layout, &record(), &dest, "0.0.0", 1).unwrap_err();
+        let err = export_bundle(
+            &Unreachable,
+            &layout,
+            &record(),
+            &dest,
+            "0.0.0",
+            1,
+            &mut HistoryInputs::new(&reads, &*derived),
+        )
+        .unwrap_err();
         assert!(
             matches!(&err, ExportError::Destination(why) if why.contains(needle)),
             "{dest:?}: {err}"
@@ -236,6 +263,7 @@ fn a_tree_that_is_not_the_one_the_tip_lists_is_refused_and_nothing_is_written() 
     std::fs::write(extracted.join("pages/A.md"), "aaa").unwrap();
     std::fs::write(extracted.join("pages/B.md"), "bb").unwrap();
     let partial = tmp.join("partial");
+    let (reads, derived) = reads_over_nothing();
     let build_with = |report: &Materialized, listed: &[Entry]| {
         build(
             &Unreachable,
@@ -250,6 +278,7 @@ fn a_tree_that_is_not_the_one_the_tip_lists_is_refused_and_nothing_is_written() 
             "0.0.0",
             1,
             None,
+            &mut HistoryInputs::new(&reads, &*derived),
         )
     };
     let whole = listing(&[("pages/A.md", 3), ("pages/B.md", 2)]);
@@ -325,6 +354,7 @@ fn a_destination_name_too_long_for_its_partial_bundle_is_refused_with_the_bytes_
     let layout = RootLayout::new(tmp.join("root"));
     let name = "n".repeat(230);
     let over = crate::read::scratch::partial_name_too_long_by(&name).expect("too long");
+    let (reads, derived) = reads_over_nothing();
     let err = export_bundle(
         &Unreachable,
         &layout,
@@ -332,6 +362,7 @@ fn a_destination_name_too_long_for_its_partial_bundle_is_refused_with_the_bytes_
         &tmp.join(&name),
         "0.0.0",
         1,
+        &mut HistoryInputs::new(&reads, &*derived),
     )
     .unwrap_err();
     assert!(
@@ -380,15 +411,17 @@ fn a_taken_name_even_an_empty_directory_is_refused_and_a_free_one_gets_the_bundl
 }
 
 #[test]
-fn a_history_file_is_written_only_for_a_safe_id_that_exactly_one_page_carries() {
+fn a_history_file_is_written_only_for_a_safe_id_that_no_more_than_one_page_of_the_tip_carries() {
     // The shared-id branch (S2): two pages with one id cannot say whose history a file holds. The import no longer
     // brings such a pair in, but a repository written by prikk directly, or before the import's check, can hold one.
     assert!(history_file_allowed("good-1", 1));
     assert!(!history_file_allowed("twin-1", 2), "a shared id");
     assert!(!history_file_allowed("twin-1", 3), "an id shared by three");
+    // I-T1 (changed from 0.4.0, where `("gone-1", 0)` was refused): a page since removed or renamed has its history as a page of
+    // the tip has, by its last id, so an id no page of the tip carries names a file.
     assert!(
-        !history_file_allowed("gone-1", 0),
-        "an id no page of the tip carries"
+        history_file_allowed("gone-1", 0),
+        "an id no page of the tip carries belongs to a page since removed"
     );
     for unsafe_id in [
         "",

@@ -41,5 +41,5 @@ inklkunn:
   default_view: heads/main
   policy_bootstrap: default
   as_of_block: "b10c000000000000000000000000000000000000000000000000000000000003"
-  history_changes_without_a_page: 2
+  history_changes_without_a_page: 0
   histories_not_written: 0

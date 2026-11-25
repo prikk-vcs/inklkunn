@@ -101,7 +101,7 @@ impl Story {
         let history = bundle_lines(&files, "history/");
         let line = history
             .iter()
-            .find(|l| *member(l, "/block") == self.revision_block.as_str())
+            .find(|l| *member(l, "/rev") == self.revision_block.as_str())
             .unwrap_or_else(|| panic!("no history line of {}: {history:?}", self.revision_block));
         let names = ["content", "summary", "author"];
         self.t.saw(
@@ -119,8 +119,8 @@ impl Story {
             &line.to_string(),
         );
         self.t.saw(
-            line.get("summary").is_none() && line.get("authors").is_none(),
-            "the line has no summary and no authors: what is hidden is left out, not blanked",
+            line.get("summary").is_none() && line.get("author").is_none() && line.get("content").is_none(),
+            "the line has no summary, no author and no content: what is hidden is left out, not blanked",
             &line.to_string(),
         );
         // The hidden comment in the claim's thread: its place is kept, its body and its author are not.
@@ -168,7 +168,7 @@ impl Story {
             "no entry is marked hidden",
             &out,
         );
-        for mark in [REV_SUMMARY, NOTE_BODY, NOTE_AUTHOR] {
+        for mark in [REV_TEXT, REV_SUMMARY, NOTE_BODY, NOTE_AUTHOR] {
             self.t.saw(
                 files.iter().any(|(_, text)| text.contains(mark.needle)),
                 &format!(
