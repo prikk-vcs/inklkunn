@@ -20,6 +20,7 @@ mod knowledge;
 mod refusals;
 mod restricted;
 mod shapes;
+mod views;
 
 const HOME: &str =
     "---\ntitle: Home\n---\n\nFirst paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n";

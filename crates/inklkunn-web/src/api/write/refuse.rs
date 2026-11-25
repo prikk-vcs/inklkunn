@@ -123,6 +123,12 @@ impl Request {
                 Problem::new(Code::NotInThisState).named("state", state.as_str())
             }
             ProposalError::Invalid(why) => self.unacceptable(why),
+            // The acceptance's own problem for the same rule (`governance-invalid`, with the file and the rule), said in the
+            // caller's language as the pages say it: each fault once, and not the acceptance's note about a held proposal.
+            ProposalError::GovernanceInvalid(faults) => governance_problem(&faults).said(
+                "explanation",
+                crate::proposals::governance::fault_paragraphs(self.t, &faults).join(" "),
+            ),
             ProposalError::OwnedKeys(keys) => {
                 self.unacceptable_with("front-owned", words::owned_keys_text(self.t, &keys))
             }
@@ -336,7 +342,7 @@ pub(crate) fn acceptance_problem(failure: AcceptFailure, log: &dyn Fn(&str)) -> 
 
 /// `422 unacceptable`, `governance-invalid`: each refusal as the file's fixed name, the rule's stable name, the schema's field
 /// and the line (where it can be said), **never what the file said**.
-fn governance_problem(faults: &[Fault]) -> Problem {
+pub(crate) fn governance_problem(faults: &[Fault]) -> Problem {
     let refusals: Vec<_> = faults
         .iter()
         .map(|f| {

@@ -3,9 +3,10 @@
 //! nothing, and the keys only an administrator may change cannot be changed by an edit, a removal, a rename or a
 //! rollback plan.
 
-use inklkunn_store::{FileChange, ProposalState, Rename};
+use inklkunn_store::{FileChange, ProposalState, Rename, RevisionContent};
 
 use super::support::{Actor, Env, Kind, base, on_both};
+use crate::governance::{Fault, GovernanceFile};
 use crate::proposal::{Invalid, ProposalEdit, ProposalError};
 use crate::read::RollbackPlan;
 
@@ -1177,6 +1178,151 @@ fn a_change_to_the_rules_is_proposed_on_its_own_and_mixing_is_refused_by_name_at
                 .expect("revisions")
                 .len(),
             1
+        );
+    });
+}
+
+/// The refusal of a governance file in a view that is not the default one (C-3e), as the acceptance's own rule makes it.
+fn outside(file: Option<GovernanceFile>) -> Result<(), ProposalError> {
+    Err(ProposalError::GovernanceInvalid(vec![
+        Fault::outside_default_view(file),
+    ]))
+}
+
+#[test]
+fn a_governance_file_in_another_view_is_refused_when_a_proposal_is_saved_sent_and_revised() {
+    on_both(|e| {
+        e.bases.put_page("pages/A.md", "x\n");
+        let alt = Some("alternative");
+        let default = Some(e.wiki.default_view.as_str());
+        let page = || change("pages/A.md", Some("y\n"));
+        let policy = || change("governance/policy.yaml", Some("entry: none\n"));
+        let constitution = || change("governance/constitution.yaml", Some("entry: none\n"));
+        let removal = || change("governance/stale/x.txt", None);
+        let make = |view, files, sent| {
+            let who = &e.author.principal;
+            if sent {
+                e.service
+                    .create_and_submit(who, &e.wiki, view, proposal(files, vec![]))
+            } else {
+                e.service
+                    .create(who, &e.wiki, view, proposal(files, vec![]))
+            }
+            .map(|_| ())
+        };
+        let named = [
+            (policy as fn() -> FileChange, Some(GovernanceFile::Policy)),
+            (constitution, Some(GovernanceFile::Constitution)),
+            // A removal below `governance/` is the rules' place too, and is not one of the two files.
+            (removal, None),
+        ];
+        for (file, which) in named {
+            for sent in [false, true] {
+                // Drafted, and made already sent: refused in another view...
+                assert_eq!(
+                    make(alt, vec![file()], sent),
+                    outside(which),
+                    "created in another view (sent: {sent})"
+                );
+                // ...and accepted in the default view, spelt or left out (the control).
+                assert_eq!(
+                    make(default, vec![file()], sent),
+                    Ok(()),
+                    "default (sent: {sent})"
+                );
+                assert_eq!(
+                    make(None, vec![file()], sent),
+                    Ok(()),
+                    "unspelt (sent: {sent})"
+                );
+            }
+        }
+        // A page in another view is as it was, drafted and sent.
+        assert_eq!(make(alt, vec![page()], false), Ok(()));
+        assert_eq!(make(alt, vec![page()], true), Ok(()));
+        // The syntactic refusals still come first, by their own words.
+        assert_eq!(
+            make(alt, vec![page(), policy()], false),
+            invalid(Invalid::GovernanceMixed)
+        );
+        assert_eq!(
+            make(alt, vec![change("governance/x.md", Some("x\n"))], false),
+            invalid(Invalid::GovernancePath)
+        );
+
+        // A draft in another view is saved with a governance file: refused.
+        let who = &e.author.principal;
+        let draft = e
+            .service
+            .create(who, &e.wiki, alt, proposal(vec![page()], vec![]))
+            .expect("a draft in another view");
+        assert_eq!(
+            e.service
+                .save_draft(who, &e.wiki, &draft.id, proposal(vec![policy()], vec![]))
+                .map(|_| ()),
+            outside(Some(GovernanceFile::Policy)),
+            "a draft saved"
+        );
+        // Sent: a draft that holds a governance file all the same (written before the rule, or by another way) is refused when
+        // it is sent.
+        e.store
+            .save_draft(
+                &draft.id,
+                "A change",
+                &[],
+                &RevisionContent {
+                    base: e.bases.current(),
+                    files: vec![policy()],
+                    renames: vec![],
+                    minor: false,
+                    automated: false,
+                },
+                0,
+            )
+            .expect("the working copy is written");
+        assert_eq!(
+            e.service.submit(who, &e.wiki, &draft.id).map(|_| ()),
+            outside(Some(GovernanceFile::Policy)),
+            "a draft sent"
+        );
+        // Revised: a proposal held for review in another view is revised to name a governance file: refused, no revision made.
+        let held = e
+            .service
+            .create_and_submit(who, &e.wiki, alt, proposal(vec![page()], vec![]))
+            .expect("held in another view");
+        assert_eq!(
+            e.service
+                .revise(
+                    who,
+                    &e.wiki,
+                    &held.id,
+                    proposal(vec![constitution()], vec![])
+                )
+                .map(|_| ()),
+            outside(Some(GovernanceFile::Constitution)),
+            "a revision"
+        );
+        assert_eq!(
+            e.service
+                .revisions(who, &e.wiki, &held.id)
+                .expect("revisions")
+                .len(),
+            1
+        );
+        // In the default view the same revision is as it was.
+        let own = e
+            .service
+            .create_and_submit(who, &e.wiki, None, proposal(vec![page()], vec![]))
+            .expect("held");
+        assert!(
+            e.service
+                .revise(
+                    who,
+                    &e.wiki,
+                    &own.id,
+                    proposal(vec![constitution()], vec![])
+                )
+                .is_ok()
         );
     });
 }

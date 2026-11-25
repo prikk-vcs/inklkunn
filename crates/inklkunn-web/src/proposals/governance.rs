@@ -76,6 +76,15 @@ pub(crate) fn read_fault_text(t: T, fault: &ReadFault) -> String {
 /// The paragraphs of the page that says a change to the rules was refused before signing: each fault once, then that nothing
 /// was changed.
 pub(crate) fn invalid_paragraphs(t: T, faults: &[Fault]) -> Vec<String> {
+    let mut out = fault_paragraphs(t, faults);
+    out.push(t.get(Key::OutcomeNoteGovernanceInvalid));
+    out
+}
+
+/// Each fault of a change to the rules once, and nothing else: what a proposal that is saved, sent or revised is told when it
+/// touches `governance/` in a view that is not the default one (the acceptance's note, *held for review, accept again*, is not
+/// true of a draft).
+pub(crate) fn fault_paragraphs(t: T, faults: &[Fault]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for fault in faults {
         let said = fault_text(t, fault);
@@ -83,7 +92,6 @@ pub(crate) fn invalid_paragraphs(t: T, faults: &[Fault]) -> Vec<String> {
             out.push(said);
         }
     }
-    out.push(t.get(Key::OutcomeNoteGovernanceInvalid));
     out
 }
 

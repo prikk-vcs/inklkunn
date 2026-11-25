@@ -445,6 +445,9 @@ impl AcceptFailure {
             AcceptFailure::Proposal(ProposalError::Invalid(Invalid::GovernanceMixed)) => {
                 words::GOVERNANCE_MIXED
             }
+            AcceptFailure::Proposal(ProposalError::GovernanceInvalid(_)) => {
+                words::GOVERNANCE_INVALID
+            }
             AcceptFailure::Proposal(_)
             | AcceptFailure::InProgress { .. }
             | AcceptFailure::Unavailable(_)

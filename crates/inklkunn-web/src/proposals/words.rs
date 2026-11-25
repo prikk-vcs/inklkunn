@@ -224,6 +224,11 @@ pub(crate) fn refusal(t: T, error: &ProposalError) -> Option<Refusal> {
             Key::RefusedInvalidHeading,
             vec![invalid_text(t, *why)],
         ),
+        ProposalError::GovernanceInvalid(faults) => page(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Key::RefusedInvalidHeading,
+            super::governance::fault_paragraphs(t, faults),
+        ),
         ProposalError::OwnedKeys(keys) => page(
             StatusCode::UNPROCESSABLE_ENTITY,
             Key::RefusedInvalidHeading,
@@ -280,3 +285,6 @@ pub(crate) fn refusal(t: T, error: &ProposalError) -> Option<Refusal> {
         }),
     }
 }
+
+#[cfg(test)]
+mod tests;

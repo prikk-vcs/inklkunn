@@ -351,7 +351,7 @@ fn described(document: &Value, id: &str) -> String {
 #[test]
 fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_and_its_members_by_the_problem()
  {
-    use crate::api::write::refuse::{acceptance_problem, invalid_word};
+    use crate::api::write::refuse::{acceptance_problem, governance_problem, invalid_word};
     use inklkunn_core::AcceptFailure;
     use inklkunn_core::governance::{Fault, GovernanceFile, ReadFault, Refusal, Require, Target};
     use inklkunn_core::proposal::Invalid;
@@ -412,9 +412,16 @@ fn every_reason_the_rules_of_a_wiki_refuse_with_is_described_by_the_operation_an
             "acceptProposal does not describe `{reason}`"
         );
     }
+    // `governance-invalid` is the acceptance's word, said again at proposing for a governance file in another view (C-3e): the
+    // proposal service's own refusal, `ProposalError::GovernanceInvalid`, is told by the same problem.
+    let outside = governance_problem(&[Fault::outside_default_view(Some(GovernanceFile::Policy))])
+        .body(crate::catalog::T::new(crate::catalog::EN));
+    assert_eq!(outside["reason"], "governance-invalid");
+    assert_eq!(outside["refusals"][0]["rule"], "outside-default-view");
     let proposing = [
         invalid_word(Invalid::GovernancePath),
         invalid_word(Invalid::GovernanceMixed),
+        "governance-invalid",
     ];
     for id in [
         "createProposal",

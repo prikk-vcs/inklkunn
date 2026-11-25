@@ -32,8 +32,8 @@ use inklkunn_store::{
 
 use crate::authorize::{Action, Authorizer, Principal, Resource, RestrictionNotice, Standing};
 use crate::governance::{
-    ApprovalsWarning, GovernanceFile, ReadFault, Rules, approvals_warning, is_below_governance,
-    is_governance_path, mixes_rules_with_other_paths, only_governance_files,
+    ApprovalsWarning, Fault, GovernanceFile, ReadFault, Rules, approvals_warning,
+    is_below_governance, is_governance_path, mixes_rules_with_other_paths, only_governance_files,
 };
 use crate::knowledge::Readability;
 use crate::notify::Notifier;
@@ -359,6 +359,12 @@ pub enum ProposalError {
     },
     /// What was sent is not acceptable.
     Invalid(Invalid),
+    /// The proposal touches `governance/` in a view that is not the wiki's default view (RFC 006 D-1; threat model C-3e): the
+    /// rules of a wiki are changed in the default view only. Refused when a draft is saved, when it is sent and at each
+    /// revision, **by the rule the acceptance uses** ([`crate::governance::refuse_outside_default_view`]), and so told as the acceptance tells it
+    /// (`governance-invalid`, with the file and the rule `outside-default-view`). Holds the faults, as the acceptance's
+    /// `GovernanceInvalid` does.
+    GovernanceInvalid(Vec<Fault>),
     /// *Refused: (the named limit)* (D-11).
     Quota(QuotaRefusal),
     /// The edit adds, changes or removes keys only an administrator of the wiki may change (they are named);
@@ -406,6 +412,17 @@ impl std::fmt::Display for ProposalError {
                 write!(f, "`{op}` is not possible while the proposal is {state}")
             }
             ProposalError::Invalid(why) => write!(f, "not acceptable: {why:?}"),
+            ProposalError::GovernanceInvalid(faults) => {
+                write!(
+                    f,
+                    "refused: {} governance file(s) are not sound",
+                    faults.len()
+                )?;
+                for fault in faults {
+                    write!(f, "; {fault}")?;
+                }
+                Ok(())
+            }
             ProposalError::Quota(q) => write!(
                 f,
                 "refused: {} (allowed {}, now {}, asked {})",
@@ -1231,10 +1248,18 @@ impl ProposalService {
                 Action::Propose,
                 &Self::proposal_resource(wiki, &id),
             )?;
-            self.judge_submission(principal, wiki, &id, &edit.summary, &edit.sources, &content)?;
+            self.judge_submission(
+                principal,
+                wiki,
+                &view,
+                &id,
+                &edit.summary,
+                &edit.sources,
+                &content,
+            )?;
         } else {
             validate(&edit.summary, &edit.sources, &content, Finish::Draft)?;
-            self.judge_files(principal, wiki, &content)?;
+            self.judge_files(principal, wiki, &view, &content)?;
         }
         let state = next(None, ProposalOp::Create)?;
 
@@ -1334,7 +1359,7 @@ impl ProposalService {
         let base = Self::base_of(&edit, || Ok(current.base.clone()))?;
         let content = self.content_of(&edit, base);
         validate(&edit.summary, &edit.sources, &content, Finish::Draft)?;
-        self.judge_files(principal, wiki, &content)?;
+        self.judge_files(principal, wiki, &p.view, &content)?;
         let now = (self.clock)();
         self.proposals
             .save_draft(id, edit.summary.trim(), &edit.sources, &content, now)?;
@@ -1371,7 +1396,7 @@ impl ProposalService {
             .ok_or(ProposalError::Changed)?;
         let touched = touched_by(&draft);
         self.allow_pages(principal, wiki, &touched)?;
-        self.judge_submission(principal, wiki, id, &p.summary, &p.sources, &draft)?;
+        self.judge_submission(principal, wiki, &p.view, id, &p.summary, &p.sources, &draft)?;
         // The wiki-wide hourly limit counts what is *sent*, so it is asked here and not when a draft is opened;
         // in one critical section with the change, so that two sends cannot both find room for the last one.
         let _admission = self
@@ -1391,13 +1416,14 @@ impl ProposalService {
         &self,
         principal: &Principal,
         wiki: &WikiRecord,
+        view: &str,
         id: &ProposalId,
         summary: &str,
         sources: &[String],
         content: &RevisionContent,
     ) -> Result<()> {
         validate(summary, sources, content, Finish::Submit)?;
-        self.judge_files(principal, wiki, content)?;
+        self.judge_files(principal, wiki, view, content)?;
         self.judge_knowledge(principal, wiki, id, content)
     }
 
@@ -1439,7 +1465,7 @@ impl ProposalService {
         let base = Self::base_of(&edit, || Ok(previous.content.base.clone()))?;
         let content = self.content_of(&edit, base);
         validate(&edit.summary, &edit.sources, &content, Finish::Submit)?;
-        self.judge_files(principal, wiki, &content)?;
+        self.judge_files(principal, wiki, &p.view, &content)?;
         self.judge_knowledge(principal, wiki, id, &content)?;
         let now = (self.clock)();
         let change = ProposalChange {

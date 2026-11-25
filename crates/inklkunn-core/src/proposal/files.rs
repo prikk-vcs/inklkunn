@@ -25,6 +25,7 @@ use super::{
     Action, BaseError, BaseSource, Invalid, Principal, ProposalError, ProposalService, Resource,
     Result,
 };
+use crate::governance::{ViewPlace, refuse_outside_default_view};
 use crate::knowledge::check::{PageLookup, Pages};
 
 /// The top-level keys of a page's information block that only an administrator may change.
@@ -232,14 +233,26 @@ impl Pages for ProposedPages<'_> {
 }
 
 impl ProposalService {
-    /// Judge the files of `content` against the repository at its base: new paths (P4) and owned keys (P5). The
-    /// syntactic rule (every path is a page path) is [`super::validate`]'s, which needs no repository.
+    /// Judge the files of `content`, a proposal in `view`, against the repository at its base: a governance file in a view
+    /// that is not the default one (C-3e), new paths (P4) and owned keys (P5). The syntactic rule (every path is a page path)
+    /// is [`super::validate`]'s, which needs no repository.
+    ///
+    /// **The place of `governance/` is judged by the rule the acceptance uses** ([`refuse_outside_default_view`]), not by a
+    /// copy of it, and as the acceptance tells it (`governance-invalid`).
     pub(super) fn judge_files(
         &self,
         principal: &Principal,
         wiki: &WikiRecord,
+        view: &str,
         content: &RevisionContent,
     ) -> Result<()> {
+        let place = if view == wiki.default_view {
+            ViewPlace::Default
+        } else {
+            ViewPlace::Alternative
+        };
+        refuse_outside_default_view(super::touched_by(content), place)
+            .map_err(|fault| ProposalError::GovernanceInvalid(vec![fault]))?;
         if content.files.is_empty() && content.renames.is_empty() {
             return Ok(());
         }
