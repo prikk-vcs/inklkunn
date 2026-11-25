@@ -1,0 +1,42 @@
+format: portable-wiki-bundle
+version: '0.1'
+generator:
+  name: wiki-commons-tools
+  version: 0.4.0
+  url: https://github.com/kos-commons/wiki-commons
+exported_at: '2026-11-25T23:50:27Z'
+source:
+  name: Allotment Handbook
+  engine: bookstack
+  engine_version: v26.09.1
+  exported_at: '2026-10-04T00:00:00Z'
+lang: en
+visibility_default: public
+markup:
+  profile: portable-wiki-markdown/2
+  link_label_order: target-first
+  hierarchy_separator: /
+  native_hierarchy_separator: /
+  heading_anchor_algorithm: github
+  directives: []
+  html_subset: []
+  native_format: text/markdown; charset=UTF-8
+contents:
+  pages: 5
+  attachments: 2
+  history: false
+  discussions: false
+  users: false
+  structured: false
+fidelity:
+  level: 2
+  degraded:
+  - construct: books and chapters
+    how: represented as category pages with their children in subdirectories
+  - construct: HTML pages
+    count: 1
+    how: 'kept as HTML with format: text/html (Pandoc not available)'
+  dropped:
+  - construct: revision history
+    how: the Portable ZIP format carries none
+checksums: sha256sums.txt

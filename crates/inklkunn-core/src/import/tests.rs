@@ -260,6 +260,7 @@ fn a_component_over_255_bytes_and_a_path_over_1024_are_refused_by_prikks_caps_wi
         keys: HashMap::new(),
         ids: HashMap::new(),
         pages: Vec::new(),
+        bundle: None,
     };
     let long_name = format!("attachments/{}.bin", "x".repeat(256));
     // Both are refused before anything is opened, so any directory handle will do.
@@ -829,6 +830,7 @@ fn a_refusal_never_carries_a_byte_of_the_pages_text_and_every_reason_is_escaped(
         keys: HashMap::new(),
         ids: HashMap::new(),
         pages: Vec::new(),
+        bundle: None,
     };
     walk.refuse("n\u{1b}", "a\u{1b}[31mb\nc \u{202e}d it's \"q\"");
     let r = walk.plan.refused.first().unwrap();

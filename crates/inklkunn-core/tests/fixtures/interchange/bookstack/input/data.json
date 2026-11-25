@@ -1,0 +1,43 @@
+{
+  "instance": {"id": "inst-fixture", "version": "v26.09.1"},
+  "exported_at": "2026-10-04T00:00:00Z",
+  "book": {
+    "id": 8,
+    "name": "Allotment Handbook",
+    "description_html": "<p>How the plot is kept</p>",
+    "tags": [{"name": "garden", "value": ""}],
+    "chapters": [
+      {
+        "id": 2,
+        "name": "Sowing",
+        "priority": 1,
+        "description_html": "<p>Seeds and when to sow them</p>",
+        "pages": [
+          {
+            "id": 40,
+            "name": "Seed trays",
+            "priority": 1,
+            "markdown": "Fill the tray, press the seed in, and water gently. See [the calendar]([[bsexport:page:41]]) and the picture: ![tray]([[bsexport:image:22]]).\n\nThe sowing notes are in [the notes file]([[bsexport:attachment:55]]).\n",
+            "tags": [{"name": "status", "value": "draft"}],
+            "images": [{"id": 22, "name": "A seed tray", "file": "tray.png", "type": "gallery"}],
+            "attachments": [{"id": 55, "name": "Sowing notes", "file": "notes.txt"}]
+          },
+          {
+            "id": 41,
+            "name": "Calendar",
+            "priority": 2,
+            "html": "<h2>Spring</h2><p>Sow peas first. Back to <a href=\"[[bsexport:page:40]]\">Seed trays</a>.</p>"
+          }
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "id": 42,
+        "name": "Index",
+        "priority": 0,
+        "markdown": "Start with [[bsexport:chapter:2]] or the whole [[bsexport:book:8]].\n"
+      }
+    ]
+  }
+}

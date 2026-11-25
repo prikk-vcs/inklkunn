@@ -1,0 +1,41 @@
+format: portable-wiki-bundle
+version: '0.4'
+generator:
+  name: inklkunn
+  version: "0.4.0"
+source:
+  name: "Orchard Notes"
+  engine: inklkunn
+lang: en
+languages: [en]
+license: CC0-1.0
+visibility_default: public
+markup:
+  profile: portable-wiki-markdown/2
+  link_label_order: target-first
+  hierarchy_separator: /
+  heading_anchor_algorithm: github
+  pages_prefix: pages
+  directives: [toc, children]
+  html_subset: []
+contents:
+  pages: 3
+  attachments: 1
+  history: true
+  discussions: false
+  users: true
+  structured: false
+fidelity:
+  level: 3
+  degraded: []
+  dropped: []
+  note: native; nothing was converted
+exported_at: "2026-11-25T23:51:23Z"
+interwiki: {}
+checksums: SHA256SUMS
+inklkunn:
+  default_view: heads/main
+  policy_bootstrap: default
+  as_of_block: "d6829e5816e011e94ef48382dd552ee8982c03be21e79f7e8a6e2d2f4dcf7958"
+  history_changes_without_a_page: 7
+  histories_not_written: 0

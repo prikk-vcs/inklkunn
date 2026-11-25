@@ -1,0 +1,6 @@
+- id: mira
+  name: Mira
+  kind: person
+- id: jun
+  name: Jun
+  kind: person

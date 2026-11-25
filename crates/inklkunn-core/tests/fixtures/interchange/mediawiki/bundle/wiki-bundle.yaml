@@ -1,0 +1,47 @@
+format: portable-wiki-bundle
+version: '0.1'
+generator:
+  name: wiki-commons-tools
+  version: 0.4.0
+  url: https://github.com/kos-commons/wiki-commons
+exported_at: '2026-11-25T23:50:19Z'
+source:
+  name: Garden Notes
+  engine: mediawiki
+  url: https://garden.example.org/wiki
+  engine_version: MediaWiki 1.46.1
+lang: en
+visibility_default: public
+markup:
+  profile: portable-wiki-markdown/2
+  link_label_order: target-first
+  hierarchy_separator: /
+  native_hierarchy_separator: /
+  heading_anchor_algorithm: github
+  directives: []
+  html_subset: []
+  native_format: text/x-wiki
+contents:
+  pages: 4
+  attachments: 0
+  history: true
+  discussions: false
+  users: true
+  structured: false
+fidelity:
+  level: 3
+  degraded:
+  - construct: templates and parser functions
+    count: 0
+    how: kept as source in snapshot envelopes; not expanded
+  - construct: wikitext
+    how: converted with the built-in minimal converter; tables kept as source
+  dropped:
+  - construct: media files
+    how: 'XML dumps do not contain uploads; File: description pages are kept'
+  - construct: IP addresses of anonymous editors
+    how: replaced by stable pseudonyms
+checksums: sha256sums.txt
+namespaces:
+- Category
+- Talk

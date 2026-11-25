@@ -1,0 +1,132 @@
+<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.11/" version="0.11" xml:lang="en">
+  <siteinfo>
+    <sitename>Garden Notes</sitename>
+    <base>https://garden.example.org/wiki/Main_Page</base>
+    <generator>MediaWiki 1.46.1</generator>
+    <namespaces>
+      <namespace key="0" case="first-letter" />
+      <namespace key="1" case="first-letter">Talk</namespace>
+      <namespace key="14" case="first-letter">Category</namespace>
+    </namespaces>
+  </siteinfo>
+  <page>
+    <title>Composting</title>
+    <ns>0</ns>
+    <id>101</id>
+    <revision>
+      <id>1001</id>
+      <timestamp>2025-04-01T08:00:00Z</timestamp>
+      <contributor><username>Mira</username><id>11</id></contributor>
+      <comment>first draft</comment>
+      <origin>1001</origin>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">'''Composting''' turns kitchen scraps into soil.</text>
+      <sha1>a1</sha1>
+    </revision>
+    <revision>
+      <id>1002</id>
+      <parentid>1001</parentid>
+      <timestamp>2025-04-03T09:30:00Z</timestamp>
+      <contributor><ip>203.0.113.9</ip></contributor>
+      <minor />
+      <comment>fix a word</comment>
+      <origin>1002</origin>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">'''Composting''' turns kitchen scraps into rich soil.</text>
+      <sha1>a2</sha1>
+    </revision>
+    <revision>
+      <id>1003</id>
+      <parentid>1002</parentid>
+      <timestamp>2025-04-05T10:00:00Z</timestamp>
+      <contributor deleted="deleted" />
+      <comment>removed at the source</comment>
+      <origin>1003</origin>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve" deleted="deleted" />
+      <sha1>a3</sha1>
+    </revision>
+    <revision>
+      <id>1004</id>
+      <parentid>1003</parentid>
+      <timestamp>2025-04-09T12:15:00Z</timestamp>
+      <contributor><username>Jun</username><id>12</id></contributor>
+      <comment>add sections and links</comment>
+      <origin>1004</origin>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">== Overview ==
+'''Composting''' turns kitchen scraps into rich soil. See [[Worm bins]], [[Talk:Composting|the talk page]] and [[wikipedia:Compost]].
+== What goes in ==
+* vegetable peelings
+* coffee grounds
+[[Category:Soil]]</text>
+      <sha1>a4</sha1>
+    </revision>
+  </page>
+  <page>
+    <title>Worm bins</title>
+    <ns>0</ns>
+    <id>102</id>
+    <revision>
+      <id>1010</id>
+      <timestamp>2025-05-02T07:45:00Z</timestamp>
+      <contributor><username>Jun</username><id>12</id></contributor>
+      <comment>stub</comment>
+      <origin>1010</origin>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">A worm bin is a small box of worms. Back to [[Composting]].</text>
+      <sha1>b1</sha1>
+    </revision>
+    <revision>
+      <id>1011</id>
+      <parentid>1010</parentid>
+      <timestamp>2025-05-02T08:10:00Z</timestamp>
+      <contributor><username>Mira</username><id>11</id></contributor>
+      <comment>a second sentence</comment>
+      <origin>1011</origin>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">A worm bin is a small box of worms. Back to [[Composting]].
+
+Keep it damp, not wet.</text>
+      <sha1>b2</sha1>
+    </revision>
+  </page>
+  <page>
+    <title>Compost heap</title>
+    <ns>0</ns>
+    <id>103</id>
+    <redirect title="Composting" />
+    <revision>
+      <id>1020</id>
+      <timestamp>2025-05-10T11:00:00Z</timestamp>
+      <contributor><username>Mira</username><id>11</id></contributor>
+      <origin>1020</origin>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">#REDIRECT [[Composting]]</text>
+      <sha1>c1</sha1>
+    </revision>
+  </page>
+  <page>
+    <title>Talk:Composting</title>
+    <ns>1</ns>
+    <id>104</id>
+    <revision>
+      <id>1030</id>
+      <timestamp>2025-05-11T15:20:00Z</timestamp>
+      <contributor><username>Jun</username><id>12</id></contributor>
+      <comment>a question</comment>
+      <origin>1030</origin>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text xml:space="preserve">Should we say how long it takes?</text>
+      <sha1>d1</sha1>
+    </revision>
+  </page>
+</mediawiki>
