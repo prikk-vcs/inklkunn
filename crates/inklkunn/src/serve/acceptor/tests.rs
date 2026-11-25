@@ -282,14 +282,6 @@ fn placeholder() -> WikiRecord {
         .unwrap()
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
 /// What an HTTP answer came to.
 #[derive(Debug)]
 struct Reply {
@@ -352,7 +344,7 @@ impl Running {
     }
 
     fn start_on(settings: &Settings, tweak: impl FnOnce(&mut Services)) -> Running {
-        let (app, content) = (free_port(), free_port());
+        let (app, content) = crate::serve::test_ports::two_free_ports();
         let web = WebSettings {
             bind: format!("127.0.0.1:{app}"),
             app_origin: format!("http://localhost:{app}"),

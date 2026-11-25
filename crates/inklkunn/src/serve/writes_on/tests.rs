@@ -253,17 +253,9 @@ struct Running {
     services: Arc<inklkunn_web::Services>,
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
 impl Running {
     fn start(world: &World) -> Running {
-        let (app, content) = (free_port(), free_port());
+        let (app, content) = crate::serve::test_ports::two_free_ports();
         let web = WebSettings {
             bind: format!("127.0.0.1:{app}"),
             app_origin: format!("http://localhost:{app}"),

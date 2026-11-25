@@ -25,6 +25,8 @@ use crate::outbound;
 mod acceptor;
 mod follow_up;
 #[cfg(test)]
+mod test_ports;
+#[cfg(test)]
 mod writes_on;
 
 /// Everything `serve` checked and built, ready to bind.

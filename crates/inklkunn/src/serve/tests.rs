@@ -56,14 +56,6 @@ fn web(bind: &str, app: &str, content: &str) -> WebSettings {
     }
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
 #[test]
 fn a_refusal_names_the_setting_before_anything_is_opened() {
     let d = dir("refuse");
@@ -274,7 +266,7 @@ fn a_started_server_answers_over_a_socket_with_its_headers_and_stops_when_told()
         return;
     }
     let d = dir("socket");
-    let (app, content) = (free_port(), free_port());
+    let (app, content) = super::test_ports::two_free_ports();
     let s = settings(&d.0, true);
     let w = web(
         &format!("127.0.0.1:{app}"),

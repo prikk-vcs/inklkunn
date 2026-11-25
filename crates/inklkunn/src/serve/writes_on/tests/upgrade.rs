@@ -108,7 +108,7 @@ pub(super) struct OldServer {
 
 impl OldServer {
     pub(super) fn start(bin: &Path, world: &World) -> OldServer {
-        let (port, content_port) = (free_port(), free_port());
+        let (port, content_port) = crate::serve::test_ports::two_free_ports();
         let log = world.tmp.0.join("old-serve.log");
         let out = File::create(&log).unwrap();
         let mut child = Command::new(bin)
