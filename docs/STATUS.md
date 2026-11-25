@@ -789,9 +789,13 @@
   - **CI 45512105485 on `198bb2d`:** one test failed on its first attempt (two `free_port()` calls gave the same port: a
     test race, now P-8). It was green on the rerun of the failed job.
 
+- **2026-11-25 — the owner reviewed and accepted the Japanese changed since 2026-11-24**
+  (`.git-exclude/ja-review/0.4.0-messages-since-2026-11-24.md`). **Every Japanese message of 0.4.0 up to `b6d005f` is
+  now the owner's.** Anything the P round or the candidate adds or changes is listed for the owner at R-8, in the same
+  format, before the cut.
+
 ## Pending on the owner
 
-- **The Japanese messages changed after 2026-11-24** (`.git-exclude/ja-review/0.4.0-messages-since-2026-11-24.md`).
 - **The prikk letter** in `send/draft/` (2026-11-25), to send when convenient.
 - Next: the 0.4.0 cut, when the architect proposes it (target 2026-12-10).
 

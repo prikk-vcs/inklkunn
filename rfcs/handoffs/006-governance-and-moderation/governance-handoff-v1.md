@@ -408,3 +408,7 @@ It is a test race, not a product defect.
 - Take the second port while holding the first listener, or loop until the two differ.
 - Look for the same pattern in the other tests that take two ports.
 
+**The Japanese (2026-11-25):** the owner accepted the list of messages changed since 2026-11-24. Every message up to
+`b6d005f` is reviewed. **The P round and the candidate list any Japanese message they add or change** in their review
+requests (key, English, Japanese), so that the architect gives the owner the last list at R-8.
+
