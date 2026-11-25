@@ -900,6 +900,33 @@ fn a_block_no_view_holds_is_asked_of_the_views_a_request_may_ask_then_of_the_res
 }
 
 #[test]
+fn the_logs_of_the_views_a_request_looks_through_do_not_put_out_the_default_views_window() {
+    // P-2: the windows the server serves from are few (sixteen over all wikis and views); a request that looks for a block through
+    // `MAX_VIEWS_ASKED` other views reads a log for each, and those logs are not held, so the default view's window is still there.
+    let (r, _) = views_of(u64::try_from(MAX_VIEWS_ASKED + 4).unwrap());
+    let tip = r.service.tip(&r.w.wiki, None).expect("a tip");
+    r.service
+        .window_for(&r.w.wiki, &tip, 1)
+        .expect("the default view's window");
+    let (_, calls) = r.w.counted(|| r.service.window_for(&r.w.wiki, &tip, 1));
+    assert_eq!(calls.history, 0, "held now: {calls:?}");
+    // A block no view holds: the request asks the views one by one, a log read for each.
+    let nobody = "e".repeat(64);
+    let (looked, calls) = r.w.counted(|| r.text_of(&nobody, "pages/Foo.md"));
+    assert!(
+        matches!(looked, Err(ReadError::NotCheckedYet)),
+        "{looked:?}"
+    );
+    assert!(
+        calls.history >= u64::try_from(MAX_VIEWS_ASKED).unwrap(),
+        "the views were asked, each a log read: {calls:?}"
+    );
+    // The default view's window is still held: serving from it reads no log.
+    let (_, calls) = r.w.counted(|| r.service.window_for(&r.w.wiki, &tip, 1));
+    assert_eq!(calls.history, 0, "{calls:?}");
+}
+
+#[test]
 fn a_block_the_default_views_log_holds_and_the_index_has_not_reached_is_not_looked_for_elsewhere() {
     let r = rig(&[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))]);
     for i in 0..150 {

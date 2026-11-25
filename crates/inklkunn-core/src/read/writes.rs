@@ -97,7 +97,7 @@ use inklkunn_store::{
     PathWrite, StoreError, WikiId, WikiRecord, WriteKind, WritesState,
 };
 
-use super::history::{MAX_WINDOW, Touch, TouchKind, Touches};
+use super::history::{Hold, MAX_WINDOW, Touch, TouchKind, Touches};
 use super::{Cause, ReadError, ReadService};
 use crate::tombstone::Mark;
 
@@ -390,7 +390,7 @@ impl ReadService {
     ) -> Result<(String, IndexedBlock), ReadError> {
         // The view named is always asked: the bound is of the views looked through after it.
         let mut unbounded = usize::MAX;
-        match self.locate(wiki, view, block_id, &mut unbounded)? {
+        match self.locate(wiki, view, block_id, &mut unbounded, Hold::Keep)? {
             Located::At(at) => return Ok((view.to_owned(), at)),
             Located::NotYet => return Err(ReadError::NotCheckedYet),
             Located::NotInLog if view != wiki.default_view => return Err(ReadError::NotCheckedYet),
@@ -401,7 +401,8 @@ impl ReadService {
             if other == wiki.default_view {
                 continue;
             }
-            match self.locate(wiki, &other, block_id, &mut allowed) {
+            // The logs of the views asked in turn are read once and not held (P-2): they would put out the default view's.
+            match self.locate(wiki, &other, block_id, &mut allowed, Hold::Once) {
                 Ok(Located::At(at)) => return Ok((other, at)),
                 Ok(Located::NotInLog) => {}
                 // The block is in that view's log, and the index has not reached it; or no more views may be asked now.
@@ -550,23 +551,27 @@ impl ReadService {
         block_id: &str,
     ) -> Result<Option<IndexedBlock>, ReadError> {
         let mut unbounded = usize::MAX;
-        Ok(match self.locate(wiki, view, block_id, &mut unbounded)? {
-            Located::At(at) => Some(at),
-            Located::NotInLog | Located::NotYet => None,
-        })
+        Ok(
+            match self.locate(wiki, view, block_id, &mut unbounded, Hold::Keep)? {
+                Located::At(at) => Some(at),
+                Located::NotInLog | Located::NotYet => None,
+            },
+        )
     }
 
     /// **Where `block_id` is in `view`'s index**, and why not when it is not (correction L-1). What is already known costs a query
     /// or two and no process: the block held by the index, or the view found not to hold it **at the tip it has now**
     /// ([`inklkunn_store::DerivedStore::block_absent`]). What is not is **paid for out of `allowed`**, one for each view that has to be
     /// asked (built toward the block, within the bound of a call), and a view that cannot be paid for is [`Located::NotYet`]: the
-    /// request is not the one to ask it. A view found not to hold the block is **kept** as one, with its tip.
+    /// request is not the one to ask it. A view found not to hold the block is **kept** as one, with its tip. The log of the view is held for the next
+    /// requests only when `hold` says so (P-2).
     fn locate(
         &self,
         wiki: &WikiRecord,
         view: &str,
         block_id: &str,
         allowed: &mut usize,
+        hold: Hold,
     ) -> Result<Located, ReadError> {
         let failed = |e| self.writes_failed(e);
         if let Some(at) = self
@@ -588,7 +593,7 @@ impl ReadService {
             return Ok(Located::NotYet);
         };
         *allowed = left;
-        let held = self.advance_writes(wiki, view, Some(block_id))?;
+        let held = self.advance_writes(wiki, view, Some(block_id), hold)?;
         if let Some(at) = self
             .derived
             .indexed_block(&wiki.id, view, block_id)
@@ -618,13 +623,14 @@ impl ReadService {
     /// **Index the blocks of `view`'s log that the index does not hold, oldest first**, until the block `until` is in it (when one
     /// is named) or the bound of a call is reached: [`MAX_INDEXED_SHOWS`] blocks that cost a `show`. One reader builds at a time;
     /// the next finds what it built. An index that is not of the log read now (its newest block is not the log's block of that
-    /// number) is dropped and built again. **An error is prikk's or the store's**, never the index being unfinished. [`Reach::NotInLog`]
+    /// number) is dropped and built again; the logs it reads are held only when `hold` says so (P-2). **An error is prikk's or the store's**, never the index being unfinished. [`Reach::NotInLog`]
     /// says that the block asked for is not in the part of the view's log that is read.
     pub(super) fn advance_writes(
         &self,
         wiki: &WikiRecord,
         view: &str,
         until: Option<&str>,
+        hold: Hold,
     ) -> Result<Reach, ReadError> {
         let lock = self.writes_lock(&wiki.id, view);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
@@ -641,7 +647,7 @@ impl ReadService {
         let tip = self.tip(wiki, Some(view))?;
         let mut state = self.derived.writes_state(&wiki.id, view).map_err(failed)?;
         // The log, back to the newest block the index holds (the whole log, as far as it is read, for an index that has none).
-        let first = self.window_for(wiki, &tip, super::history::DEFAULT_WINDOW)?;
+        let first = self.window_held(wiki, &tip, super::history::DEFAULT_WINDOW, hold)?;
         let top = first.infos().first().map_or(0, |b| b.number);
         let need = match &state {
             Some(held) => usize::try_from(top.saturating_sub(held.head_number))
@@ -652,7 +658,7 @@ impl ReadService {
         let mut window = if first.is_complete() || first.infos().len() >= need {
             first
         } else {
-            self.window_for(wiki, &tip, need)?
+            self.window_held(wiki, &tip, need, hold)?
         };
         if let Some(held) = &state {
             let same = window
@@ -664,7 +670,7 @@ impl ReadService {
                 // Not the log this index was built from: begin again, from the whole log.
                 self.derived.reset_writes(&wiki.id, view).map_err(failed)?;
                 state = None;
-                window = self.window_for(wiki, &tip, MAX_WINDOW)?;
+                window = self.window_held(wiki, &tip, MAX_WINDOW, hold)?;
             }
         }
         let infos = window.infos();
@@ -736,7 +742,7 @@ impl ReadService {
     /// reaches the view's tip (an index built until the block asked about knows nothing of the blocks after it).
     pub(super) fn warm_writes_of(&self, wiki: &WikiRecord, view: &str) -> Result<bool, ReadError> {
         for _ in 0..MAX_WARM_ROUNDS {
-            self.advance_writes(wiki, view, None)?;
+            self.advance_writes(wiki, view, None, Hold::Keep)?;
             let tip = self.tip(wiki, Some(view))?;
             let state = self
                 .derived

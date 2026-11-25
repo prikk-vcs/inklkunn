@@ -827,6 +827,17 @@ pub(super) fn shape_diff(diff: &inklkunn_prikk::Diff, path: &str) -> DiffShape {
 
 // ------------------------------------------------------------------------------------ the service
 
+/// Whether a window read for a request is kept for the next ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Hold {
+    /// Kept: the logs a request reads again and again (a view's own).
+    Keep,
+    /// **Not kept**: the log of a view that was asked only because a block was looked for in it (the fallback of a block that the
+    /// default view's log does not hold, P-2). Sixteen such logs would put out the windows the server serves from. A window that is
+    /// held already still answers.
+    Once,
+}
+
 impl ReadService {
     /// The log of `tip`'s view, at least `need` blocks of it when it has them (and no more than
     /// [`MAX_WINDOW`]): the one held for this tip, else one `log` read and held.
@@ -835,6 +846,17 @@ impl ReadService {
         wiki: &WikiRecord,
         tip: &Tip,
         need: usize,
+    ) -> Result<Arc<Window>, ReadError> {
+        self.window_held(wiki, tip, need, Hold::Keep)
+    }
+
+    /// [`ReadService::window_for`], keeping a window it had to read only when `hold` says so.
+    pub(super) fn window_held(
+        &self,
+        wiki: &WikiRecord,
+        tip: &Tip,
+        need: usize,
+        hold: Hold,
     ) -> Result<Arc<Window>, ReadError> {
         let need = need.clamp(1, MAX_WINDOW);
         {
@@ -877,6 +899,9 @@ impl ReadService {
                 .collect(),
             blocks: infos_of(&log.blocks),
         });
+        if hold == Hold::Once {
+            return Ok(window);
+        }
         let mut held = self
             .history
             .windows
