@@ -429,3 +429,14 @@ Q-6 (binding, small, before the candidate):**
 Hand back as `0.4.0-readiness-q-review-request.md`. **R-7, the candidate,** follows its approval:
 `0.4.0-candidate-review-request.md`, with the version 0.4.0 and the CHANGELOG heading only.
 
+## The Q round reviewed: R-7, the candidate (2026-11-25)
+
+**Q-1 – Q-6: Approved** (`.git-exclude/reviewed/0.4.0-readiness-q-review-result.md`), and pushed. No further correction.
+**R-7 is assigned now**, as for 0.3.0 (`2c9c955`), and nothing else:
+- the workspace version and every intra-workspace path dependency's version become 0.4.0, and `Cargo.lock` follows;
+- the CHANGELOG: `## [0.4.0] — 2026-12-10` under an empty `## [Unreleased]` (the architect re-dates it at the cut if the
+  day differs);
+- a test that compares output with the 0.3.0 release's may mask the version, each named in the request;
+- gates as always, and any Japanese message added or changed listed (none is expected).
+
+Hand back as `0.4.0-candidate-review-request.md`. Then R-8 (the architect's) and R-9 (the owner's).
