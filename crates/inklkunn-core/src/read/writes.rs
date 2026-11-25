@@ -242,6 +242,46 @@ pub enum BackgroundStep {
     Failed(ReadError),
 }
 
+/// How [`ReadService::warm_writes_progress`] left the default view's index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Warmed {
+    /// The index reaches the view's tip.
+    AtTip,
+    /// It does not, and the call went on as far as its budget allowed: `advanced` says whether it moved at all. An index that did
+    /// not move may be being built by another process, or may not be buildable by this call.
+    Short {
+        /// The index holds more blocks than it did when the call began.
+        advanced: bool,
+    },
+}
+
+/// **Why a text can never be attributed** (RFC 006 J-1; I-T1 correction X-1): what the index says when it holds the block and still
+/// cannot name who wrote the text there. None of these is settled by waiting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unattributable {
+    /// The text passes through a block whose effect on the files is not listed (a prikk rollback, a merge, a repair).
+    OpaqueBlock,
+    /// More changes may have written the path than the index lists ([`MAX_MAYBE_WRITERS`]).
+    TooManyWriters,
+    /// The text was moved more often than [`MAX_RENAME_HOPS`] since it was written.
+    TooManyRenames,
+    /// The index holds no change that wrote the text and does not reach the view's first block (the log is longer than what is
+    /// read), or a move that has nothing before it.
+    NoWriterKnown,
+}
+
+impl Unattributable {
+    /// The word a bundle's record says it with (`inklkunn.withheld`).
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Unattributable::OpaqueBlock => "opaque-block",
+            Unattributable::TooManyWriters => "too-many-writers",
+            Unattributable::TooManyRenames => "too-many-renames",
+            Unattributable::NoWriterKnown => "no-writer-known",
+        }
+    }
+}
+
 /// What the index says of the text of a path at a block, for the reader.
 ///
 /// **A text that cannot be attributed is no outcome of this type**: it is the error [`ReadError::NotCheckedYet`], so that no
@@ -958,6 +998,115 @@ impl ReadService {
             fetched: 0,
             request: true,
         }))
+    }
+
+    /// **Build the default view's index toward its tip now, and say how it went** ([`ReadService::warm_writes`], with what a
+    /// caller that waits for the index needs to know): whether the index reaches the tip, and when it does not, whether this call
+    /// moved it. An export that waits for the index counts a round only when the index **moved** (I-T1 correction X-1): an index
+    /// that is at the tip and still cannot attribute a text is *never*, which no waiting settles.
+    pub fn warm_writes_progress(&self, wiki: &WikiRecord) -> Result<Warmed, ReadError> {
+        let view = wiki.default_view.as_str();
+        let head = || {
+            self.derived
+                .writes_state(&wiki.id, view)
+                .map(|state| state.map(|s| (s.head_number, s.head_block)))
+                .map_err(|e| self.writes_failed(e))
+        };
+        let before = head()?;
+        if self.warm_writes_of(wiki, view, &self.request_budget())? {
+            return Ok(Warmed::AtTip);
+        }
+        Ok(Warmed::Short {
+            advanced: head()? != before,
+        })
+    }
+
+    /// **Why the text of `path` at `block_id` can never be attributed, as the index of `view` (the default view for `None`) says**,
+    /// or `None` when the index does not say that: the text can be attributed, or the index does not reach the block yet (nothing is
+    /// built here, and nothing of prikk is read: **the index alone**). Meant for a caller that was answered
+    /// [`ReadError::NotCheckedYet`] by [`ReadService::text_at`] and has to tell *not yet* from *never* (I-T1 correction X-1): an
+    /// answer here is **final**, because the rows of the index up to a block never change.
+    ///
+    /// Nothing is hidden in a wiki in which no change has its content hidden, and then every text is attributed: `None`.
+    pub fn unattributable_reason(
+        &self,
+        wiki: &WikiRecord,
+        view: Option<&str>,
+        block_id: &str,
+        path: &str,
+    ) -> Result<Option<Unattributable>, ReadError> {
+        let view = view.unwrap_or(&wiki.default_view);
+        let Some(tombstones) = &self.tombstones else {
+            return Err(ReadError::CouldNotBeReadNow(Cause::ModerationNotConfigured));
+        };
+        if tombstones
+            .content_hide_in_force(&wiki.id)
+            .map_err(|e| self.tombstone_failed(e))?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let Some(at) = self
+            .derived
+            .indexed_block(&wiki.id, view, block_id)
+            .map_err(|e| self.writes_failed(e))?
+        else {
+            return Ok(None);
+        };
+        let Some(state) = self
+            .derived
+            .writes_state(&wiki.id, view)
+            .map_err(|e| self.writes_failed(e))?
+        else {
+            return Ok(None);
+        };
+        let (mut path, mut number) = (path.to_owned(), at.number);
+        // The walk of `authorship_of`, asking only what stops it for good.
+        for _ in 0..=MAX_RENAME_HOPS {
+            let writers = self
+                .derived
+                .last_writes(&wiki.id, view, &path, number)
+                .map_err(|e| self.writes_failed(e))?;
+            if writers.maybes.iter().any(|m| m.opaque) {
+                return Ok(Some(Unattributable::OpaqueBlock));
+            }
+            if writers.more {
+                return Ok(Some(Unattributable::TooManyWriters));
+            }
+            match writers.last {
+                Some(LastWrite {
+                    kind: WriteKind::Wrote | WriteKind::Deleted,
+                    ..
+                }) => return Ok(None),
+                Some(LastWrite {
+                    number: carried,
+                    kind: WriteKind::Carried { from },
+                }) => {
+                    let Some(before) = carried.checked_sub(1) else {
+                        return Ok(Some(Unattributable::NoWriterKnown));
+                    };
+                    path = from;
+                    number = before;
+                }
+                // Nothing wrote the path since the index begins: at the view's first block that is a settled answer, and anywhere
+                // else the path was written, if at all, before what the index knows.
+                None if state.genesis => return Ok(None),
+                None | Some(_) => return Ok(Some(Unattributable::NoWriterKnown)),
+            }
+        }
+        Ok(Some(Unattributable::TooManyRenames))
+    }
+
+    /// The newest event of the wiki's moderation log, as a token that changes whenever what is hidden can (a hide, an unhide, a
+    /// decision of an appeal), and only then; `None` for a log with no event. What a long read that must not carry a text hidden
+    /// while it ran compares at its start and at its end (I-T1 correction X-7).
+    pub fn moderation_head(&self, wiki: &WikiRecord) -> Result<Option<String>, ReadError> {
+        let Some(tombstones) = &self.tombstones else {
+            return Err(ReadError::CouldNotBeReadNow(Cause::ModerationNotConfigured));
+        };
+        tombstones
+            .newest_event(&wiki.id)
+            .map_err(|e| self.tombstone_failed(e))
     }
 
     /// A moderator's content hide was recorded: **the writes index is to be built** (correction P-5). With a background build

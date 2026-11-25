@@ -76,6 +76,12 @@ pub struct ExportFacts {
     /// `suppressed` (RFC 006 D-13). Above zero, the manifest declares it ([`manifest_with`]); zero writes nothing of it, so a
     /// bundle with nothing hidden is the manifest it always was.
     pub suppressed_entries: usize,
+    /// History records whose text is **withheld** because no index can attribute it (`inklkunn.withheld`): the manifest counts them
+    /// (`inklkunn.revisions_withheld`), always, zero included.
+    pub revisions_withheld: usize,
+    /// The history files whose records pass a block whose effect on the files is not listed (`inklkunn.after_untraced`), as paths
+    /// of the bundle: the manifest lists them (`inklkunn.histories_after_untraced`), always, an empty list included.
+    pub histories_after_untraced: Vec<String>,
 }
 
 /// `text` as portable Markdown that shows exactly that text and nothing else (RFC 005 part 2 D-11, amended): a fenced
@@ -244,6 +250,15 @@ pub fn manifest_with(record: &WikiRecord, inklkunn_version: &str, facts: &Manife
             "  histories_not_written: {}",
             e.histories_not_written
         ));
+        lines.push(format!("  revisions_withheld: {}", e.revisions_withheld));
+        if e.histories_after_untraced.is_empty() {
+            lines.push("  histories_after_untraced: []".to_owned());
+        } else {
+            lines.push("  histories_after_untraced:".to_owned());
+            for file in &e.histories_after_untraced {
+                lines.push(format!("    - {}", yaml_str(file)));
+            }
+        }
         if e.suppressed_entries > 0 {
             // The declaration of RFC 006 D-13, in inklkunn's own key (wiki-commons' schema allows members there, and a reader
             // that does not know it still finds the loss in `fidelity.dropped`).

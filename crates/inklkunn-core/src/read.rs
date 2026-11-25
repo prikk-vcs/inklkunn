@@ -155,7 +155,7 @@ pub use why::{
 pub use writes::{
     AskedFor, BACKGROUND_STEP_SHOWS, BACKGROUND_STEP_TIME, BackgroundStep, DEFAULT_REQUEST_BUDGET,
     LaterWriter, LaterWriters, MAX_BACKGROUND_VIEWS, MAX_FOLLOWED_MOVES, MAX_INDEXED_SHOWS,
-    MAX_RENAME_HOPS, Monotonic, WritesBackground,
+    MAX_RENAME_HOPS, Monotonic, Unattributable, Warmed, WritesBackground,
 };
 
 // The read API's reads (handoff 003 T8).

@@ -131,6 +131,9 @@ struct BlockHides {
 pub struct Suppressions {
     blocks: BTreeMap<String, BlockHides>,
     claim_comments: HashMap<String, Suppressed>,
+    /// The newest event of the moderation log when it was read (`None` for a log with no event): what an export compares with the
+    /// log's head again before it puts its bundle in place, so that a hide made while it ran is not carried (I-T1 correction X-7).
+    head: Option<String>,
 }
 
 impl Suppressions {
@@ -154,6 +157,8 @@ impl Suppressions {
                 break;
             }
         }
+        // Newest first: the head is the first event.
+        let head = log.first().map(|e| e.id.to_string());
         log.reverse();
         if log.is_empty() {
             return Ok(Self::default());
@@ -177,7 +182,10 @@ impl Suppressions {
                 )
             })
             .collect();
-        let mut out = Self::default();
+        let mut out = Self {
+            head,
+            ..Self::default()
+        };
         for (item, events) in by_item {
             let hidden = suppressed_now(&events);
             if hidden.is_empty() {
@@ -227,6 +235,12 @@ impl Suppressions {
     /// Is nothing hidden that a bundle could carry?
     pub fn is_empty(&self) -> bool {
         self.blocks.is_empty() && self.claim_comments.is_empty()
+    }
+
+    /// The newest event of the moderation log when these were read (`None`: the log had none). **What an export compares with the
+    /// log's head at its end**: a moderation act recorded since is one these do not carry (I-T1 correction X-7).
+    pub fn read_at_head(&self) -> Option<&str> {
+        self.head.as_deref()
     }
 
     /// What is hidden of the revision of the page at `path` that `block` made.

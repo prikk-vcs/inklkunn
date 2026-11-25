@@ -39,6 +39,8 @@ fn facts() -> ManifestFacts {
             knowledge_extension: true,
             records_read: true,
             suppressed_entries: 0,
+            revisions_withheld: 0,
+            histories_after_untraced: Vec::new(),
         }),
     }
 }

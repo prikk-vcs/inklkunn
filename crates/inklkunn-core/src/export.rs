@@ -46,8 +46,8 @@ use inklkunn_prikk::storage::Entry;
 use inklkunn_prikk::{ExtractBounds, Materialized, Point, Storage, StorageError};
 use inklkunn_signer::message::Actor;
 use inklkunn_store::{
-    AcceptanceStore, AccountStore, ActStore, ClaimCommentRow, ClaimThreadStore, GovernanceStore,
-    RootLayout, ViewActOutcome, WikiId, WikiRecord,
+    AcceptanceOutcome, AcceptanceStore, AccountStore, ActStore, ClaimCommentRow, ClaimThreadStore,
+    GovernanceStore, RootLayout, ViewActOutcome, WikiId, WikiRecord,
 };
 use sha2::{Digest, Sha256};
 
@@ -58,7 +58,10 @@ use crate::read::scratch::{Extract, Partial, partial_name_too_long_by};
 mod history;
 mod suppression;
 
-pub use history::{ExportNote, HistoryInputs, INDEX_WAIT_ROUNDS, MAX_HISTORY_TEXT_BYTES};
+pub use history::{
+    DEFAULT_ROUND_PAUSE, ExportNote, HistoryInputs, INDEX_STALL_ROUNDS, INDEX_WAIT_ROUNDS,
+    MAX_HISTORY_TEXT_BYTES,
+};
 pub use suppression::{Suppressed, Suppressions};
 
 /// How many blocks of history an export reads (`log --limit`). A history longer than this is refused rather than
@@ -79,12 +82,16 @@ pub enum ExportError {
     HistoryTooLong,
     /// The pages' texts at their revisions, which the history carries whole, are more than [`MAX_HISTORY_TEXT_BYTES`].
     HistoryTextTooLarge,
-    /// The index of who wrote each page's text did not settle in [`INDEX_WAIT_ROUNDS`] rounds: a text that cannot be told from a
-    /// hidden one is never written, and a revision is never left out.
+    /// The index of who wrote each page's text did not get far enough in [`INDEX_WAIT_ROUNDS`] rounds that moved it (or did not
+    /// move at all for [`INDEX_STALL_ROUNDS`] tries): *not yet*, which the sentence says. A text that cannot be told from a hidden one
+    /// is never written, and a revision is never left out. (A text no index can attribute is *never*, and is withheld instead.)
     IndexNotSettled {
-        /// The rounds the export waited.
+        /// The rounds the export waited in which the index moved.
         rounds: usize,
     },
+    /// A moderation act (a hide, an unhide, a decision of an appeal) was recorded while the export ran, so what it read of the
+    /// texts and of what is hidden may not be of one state: nothing was written (I-T1 correction X-7).
+    ModerationMoved,
     /// A file operation failed (what, and the kind of failure).
     Io(String),
 }
@@ -110,7 +117,11 @@ impl std::fmt::Display for ExportError {
             ),
             ExportError::IndexNotSettled { rounds } => write!(
                 f,
-                "the index of who wrote each page's text is not built yet (the export waited {rounds} rounds for it), so a text that moderation hides cannot be told from one it does not, and none was written; run the export again in a little while (a running server builds the index in the background)"
+                "the index of who wrote each page's text is not built yet (the export waited for it through {rounds} rounds in which it moved), so a text that moderation hides cannot be told from one it does not, and none was written; run the export again in a little while (a running server builds the index in the background, and what was built is kept)"
+            ),
+            ExportError::ModerationMoved => write!(
+                f,
+                "a moderation act was recorded during the export; run it again (nothing was written)"
             ),
             ExportError::Io(what) => write!(f, "{what}"),
         }
@@ -197,6 +208,9 @@ pub struct KnowledgeRecords {
     pub views: Vec<ViewCreation>,
     /// What moderation hides of the wiki's page revisions: the history lines are written without it.
     pub suppressions: Suppressions,
+    /// When each block this service made was sealed (block id → Unix seconds): the best time for a history record
+    /// (`inklkunn.at_from: "sealed"`), from the acceptances and the system acts ([`sealing_times`]).
+    pub sealed: BTreeMap<String, i64>,
 }
 
 /// The names accounts have, remembered for the people of one export.
@@ -311,6 +325,39 @@ pub fn view_creations(
     Ok(out)
 }
 
+/// **When each block this service made was sealed** (I-T1 correction X-2): the end of the acceptance that sealed it, or of the
+/// system act (an import, a creation, any change the service makes for itself). The store keeps one of these for every block
+/// inklkunn made, and for no block it did not (a block made by prikk directly, or by a service that is not this one's). A block
+/// whose act has no end, or ended otherwise than sealed, is not here.
+pub fn sealing_times(
+    acts: &dyn ActStore,
+    acceptances: &dyn AcceptanceStore,
+    wiki: &WikiId,
+) -> Result<BTreeMap<String, i64>, ExportError> {
+    let unreadable =
+        || ExportError::Io("the records of what was sealed could not be read".to_owned());
+    let mut out: BTreeMap<String, i64> = BTreeMap::new();
+    for sealed in acceptances
+        .sealed_acceptances(wiki)
+        .map_err(|_| unreadable())?
+    {
+        let entry = acceptances
+            .acceptance_entry(&sealed.acceptance.id)
+            .map_err(|_| unreadable())?;
+        if let Some(result) = entry.and_then(|e| e.result) {
+            out.insert(sealed.block_id, result.at);
+        }
+    }
+    for entry in acts.system_acts(wiki).map_err(|_| unreadable())? {
+        if let Some(end) = entry.end
+            && let AcceptanceOutcome::Sealed { block_id, .. } = end.outcome
+        {
+            out.insert(block_id, end.at);
+        }
+    }
+    Ok(out)
+}
+
 /// The service's records an export carries in the knowledge extension: the claim threads and the views' creation records,
 /// and what moderation hides ([`Suppressions::read`] reads every hide and unhide of the wiki, `acceptances` to find the
 /// block a proposal's accepted revision became). A hide that cannot be read fails the read: no export is made without it.
@@ -326,6 +373,7 @@ pub fn knowledge_records(
     Ok(KnowledgeRecords {
         threads: claim_discussions(threads, accounts, &suppressions, wiki)?,
         views: view_creations(acts, accounts, wiki)?,
+        sealed: sealing_times(acts, acceptances, wiki)?,
         suppressions,
     })
 }
@@ -361,6 +409,11 @@ pub struct Exported {
     /// Pages whose history file was not written because the page id in its frontmatter cannot name a file
     /// (unsafe) or belongs to more than one page (shared): the manifest says how many.
     pub histories_not_written: usize,
+    /// Revisions whose text is **withheld** because no index can attribute it (`inklkunn.withheld`): the manifest says how many.
+    pub revisions_withheld: usize,
+    /// History files whose records pass a block whose effect on the files is not listed (`inklkunn.after_untraced`): the
+    /// manifest lists them.
+    pub histories_after_untraced: usize,
 }
 
 fn io(what: &str, e: &std::io::Error) -> ExportError {
@@ -472,6 +525,39 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<String, ExportError> {
     Ok(hex(&Sha256::digest(bytes)))
 }
 
+/// Write `lines`, each followed by a line feed, as the new file `path` (mode 0600), **one line at a time**, returning the SHA-256 of
+/// what was written: the file's text is never held whole.
+fn write_lines(path: &Path, lines: impl Iterator<Item = String>) -> Result<String, ExportError> {
+    if let Some(parent) = path.parent() {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent)
+            .map_err(|e| io("a bundle directory could not be made", &e))?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|e| io("a bundle file could not be created", &e))?;
+    let mut out = std::io::BufWriter::new(file);
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+        out.write_all(line.as_bytes())
+            .and_then(|()| out.write_all(b"\n"))
+            .map_err(|e| io("a bundle file could not be written", &e))?;
+    }
+    let file = out
+        .into_inner()
+        .map_err(|e| io("a bundle file could not be written", e.error()))?;
+    file.sync_all()
+        .map_err(|e| io("a bundle file could not be made durable", &e))?;
+    Ok(hex(&hasher.finalize()))
+}
+
 /// A person in a history line.
 fn person(role: &str, actor: &Actor) -> serde_json::Value {
     match actor {
@@ -581,6 +667,15 @@ fn export_bundle_inner(
     }
     let repo = layout.repo_dir(&record.id);
     let view = record.default_view.as_str();
+    // The head of the moderation log at the start (X-7): where what is hidden was read, when it was read with the records, and now
+    // when it was not. It is read again before the bundle is put in place.
+    let hides_at_start = match records {
+        Some(r) => r.suppressions.read_at_head().map(str::to_owned),
+        None => inputs
+            .reads()
+            .moderation_head(record)
+            .map_err(moderation_unreadable)?,
+    };
     // One tip, by its block id.
     let tree = storage
         .tree(&repo, &Point::View(view.to_owned()), None)
@@ -632,9 +727,24 @@ fn export_bundle_inner(
         records,
         inputs,
     )?;
+    // A hide recorded while the export ran may be in the texts it read and not in what it read of what is hidden, or the other way
+    // round: it is not one state, so none is written (X-7).
+    let hides_at_end = inputs
+        .reads()
+        .moderation_head(record)
+        .map_err(moderation_unreadable)?;
+    if hides_at_end != hides_at_start {
+        return Err(ExportError::ModerationMoved);
+    }
     put_in_place(&partial.path(), dest)?;
     done.dir = dest.to_path_buf();
     Ok(done)
+}
+
+fn moderation_unreadable(e: crate::read::ReadError) -> ExportError {
+    ExportError::Io(format!(
+        "what moderation hides could not be read ({e}); nothing was written"
+    ))
 }
 
 /// Move the finished bundle `partial` to `dest`, which must not exist. One `renameat2(2)` with `RENAME_NOREPLACE`:
@@ -704,6 +814,8 @@ fn build(
 ) -> Result<Exported, ExportError> {
     let no_suppressions = Suppressions::default();
     let suppressions = records.map_or(&no_suppressions, |r| &r.suppressions);
+    let no_seals = BTreeMap::new();
+    let sealed = records.map_or(&no_seals, |r| &r.sealed);
     // The bundle is of the files the tip has: a tree with a file missing (or one more, or one of another size) is not that
     // tree, and a bundle of it, with checksums that match what it holds, would be a false statement about the wiki. The
     // witness is the listing of the tip's files, path by path with their sizes (the totals alone pass a missing file and an
@@ -785,6 +897,7 @@ fn build(
         tip,
         &page_ids,
         suppressions,
+        sealed,
         now,
         inputs,
     )?;
@@ -792,14 +905,22 @@ fn build(
     let mut history_entries = 0;
     // Pages whose file was not written are counted in the manifest, never dropped silently.
     let histories_not_written = h.not_written;
-    for (id, lines) in &h.files {
-        let mut text = lines.join("\n");
-        text.push('\n');
+    let revisions_withheld = h.withheld;
+    let after_untraced: Vec<String> = h
+        .after_untraced
+        .iter()
+        .map(|name| format!("history/{name}.jsonl"))
+        .collect();
+    // One file at a time: its lines are made, written and dropped in turn, and the whole of a file is never held as one text (X-8).
+    for (id, records) in h.files {
         let rel = format!("history/{id}.jsonl");
-        let hash = write_new(&partial.join(&rel), text.as_bytes())?;
+        let hash = write_lines(
+            &partial.join(&rel),
+            records.iter().map(history::Parts::line),
+        )?;
         checksums.push((rel, hash));
-        history_entries += lines.len();
-        suppressed_entries += h.suppressed.get(id).copied().unwrap_or(0);
+        history_entries += records.len();
+        suppressed_entries += h.suppressed.get(&id).copied().unwrap_or(0);
     }
     // The knowledge extension's records (RFC 005 part 2 D-11, D-12), not under `discussions/`: a claim's thread is not a
     // page's discussion. The people who wrote or created join the accounts of users.yaml.
@@ -915,6 +1036,8 @@ fn build(
                     || views_written > 0,
                 records_read: records.is_some(),
                 suppressed_entries,
+                revisions_withheld,
+                histories_after_untraced: after_untraced.clone(),
             }),
         },
     );
@@ -933,6 +1056,8 @@ fn build(
         suppressed: suppressed_entries,
         knowledge_files,
         histories_not_written,
+        revisions_withheld,
+        histories_after_untraced: after_untraced.len(),
     })
 }
 

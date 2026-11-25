@@ -167,6 +167,8 @@ fn a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_th
                 knowledge_extension: false,
                 records_read: true,
                 suppressed_entries: 0,
+                revisions_withheld: 0,
+                histories_after_untraced: Vec::new(),
             }),
         },
     );
@@ -206,6 +208,8 @@ fn an_export_that_was_not_given_the_services_records_says_so_in_the_manifest() {
             knowledge_extension: false,
             records_read,
             suppressed_entries: 0,
+            revisions_withheld: 0,
+            histories_after_untraced: Vec::new(),
         }),
     };
     let unread = bundle::manifest_with(&record(), "0.0.0", &facts(false));

@@ -896,6 +896,14 @@ fn export_bundle_once(
                 out,
                 "waiting for the index of who wrote each page's text to be built (round {round} of {rounds})"
             ),
+            ExportNote::Withheld {
+                block,
+                path,
+                reason,
+            } => writeln!(
+                out,
+                "withheld: the text of `{path}` at block {block} is not given ({reason}): no index can say whose it is, so it cannot be told from a text that moderation hides; its record says so"
+            ),
         };
     };
     let mut inputs = HistoryInputs::new(reads, &**store).saying(&mut say);
@@ -1017,6 +1025,20 @@ fn export(
                     },
                     done.users
                 );
+                if done.revisions_withheld > 0 {
+                    let _ = writeln!(
+                        out,
+                        "  withheld, not given (`inklkunn.withheld` in the record, and not moderation's): {} revision(s); the manifest counts them",
+                        done.revisions_withheld
+                    );
+                }
+                if done.histories_after_untraced > 0 {
+                    let _ = writeln!(
+                        out,
+                        "  {} history file(s) pass a change whose effect on the files is not listed (a rollback, a merge, a repair; `inklkunn.after_untraced`); the manifest lists them",
+                        done.histories_after_untraced
+                    );
+                }
                 if done.suppressed > 0 {
                     let _ = writeln!(
                         out,

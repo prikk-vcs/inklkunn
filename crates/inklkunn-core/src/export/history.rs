@@ -20,18 +20,28 @@
 //!   the hide was made (a page moved by a change that did not write it is hidden if the change that wrote it is);
 //! - inklkunn's own facts under **one** `inklkunn` key, which an importer may ignore: `block`, `seq`, `kind`, `path` (and
 //!   `from_path` for a rename), `proposed_by` and `accepted_by`, `imported_from`, `message_readable`, and `at_from`.
+//! - **`at`** is the best time this service has for the block, and **`inklkunn.at_from` says which** (prikk's log has no time):
+//!   `sealed` (the end of the acceptance, or of the system act, that made the block: the service keeps it for every block it
+//!   made), `source` (an imported change's own time, from its message: the hook is [`source_time`], which I-T3 fills), or
+//!   `first-seen` (when a surface first asked for the block, an upper bound, and never later than any later change's time; a block
+//!   no surface has asked for is recorded as seen now, and stays so: the same export of the same tip is the same bytes). **Within a
+//!   file `at` never decreases** (RFC 007 D-2 refuses an import that does): a record whose time would be before the one before it
+//!   takes that one's time, and says `ordered`.
+//! - **`inklkunn.withheld`**: a text that no index can attribute (it passes through a block whose effect is not listed, has more
+//!   possible writers than the index lists, or was moved more often than it follows) is **not given**: the record has no `content`
+//!   and no `sha256`, says the reason here (`opaque-block`, `too-many-writers`, `too-many-renames`, `no-writer-known`), and is
+//!   **not** `suppressed`, which is moderation's word. Later revisions of the page are whole when they can be attributed.
+//! - **`inklkunn.after_untraced`**: the block (an id) whose effect on the files is not listed (a prikk rollback, a merge, a repair)
+//!   that came between this record and the one before it in the file (the oldest of them): the page's chain may not be what its
+//!   records say there. No record is made up for it.
 //!
-//! **`at` is when this service first saw the block** ([`DerivedStore::first_seen`]), because prikk's log has no time and this is
-//! the only time every page of the service shows (the changes list, the feed and the API all say *first seen*). It is an upper
-//! bound on when the change was made, never a later time than any later change's, and the record says where it comes from
-//! (`inklkunn.at_from`). A block that no surface has asked for yet is recorded as seen now, as it would be by the changes
-//! list, and it stays so: the same export of the same tip is the same bytes.
-//!
-//! **What the index has not settled is waited for, and never guessed** (`ReadError::NotCheckedYet`): the export asks the index of
-//! who wrote each page to be built, for a few rounds and saying so, and then fails with a sentence. A bundle is never written with
-//! a gap, nor with a text that could not be told from a hidden one.
+//! **What the index has not settled is waited for, and never guessed**: a text the reader answers *not checked yet* is either not
+//! yet (the index is short of the tip: the export builds it, a round at a time, saying so, and a round counts only when the index
+//! moved) or never (the index holds the block and cannot attribute the text: nothing waits for that, and the revision is withheld).
+//! A bundle is never written with a gap, nor with a text that could not be told from a hidden one.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::time::Duration;
 
 use inklkunn_markup::path::path_to_title;
 use inklkunn_prikk::storage::{Change, HistoryBlock};
@@ -43,18 +53,31 @@ use sha2::{Digest, Sha256};
 use super::{
     ExportError, MAX_HISTORY_BLOCKS, Suppressed, Suppressions, hex, history_file_allowed, person,
 };
-use crate::read::{BlockText, ReadError, ReadService, quoted_summary};
+use crate::read::{BlockText, ReadError, ReadService, Unattributable, Warmed, quoted_summary};
 
-/// How many rounds the export waits for the index of who wrote each page's text, in all: each round is one request's part in
-/// building it (about a second), after which the text is asked for again.
+/// How many rounds the export waits for the index of who wrote each page's text, in all: **a round is one request's part in
+/// building it (about a second) that moved the index**, after which the text is asked for again. A round that did not move it is no
+/// round of these ([`INDEX_STALL_ROUNDS`]).
 pub const INDEX_WAIT_ROUNDS: usize = 30;
 
-/// The most bytes of page text one export holds before it writes them (every revision's full text is in a history line). A history
-/// larger than this is refused rather than cut short.
+/// How many times in a row the export asks for the index to be built and it does not move (another process may hold the build, or
+/// the store is slow) before it gives up with a sentence: the index is short of the tip, so this is *not yet*, said as such.
+pub const INDEX_STALL_ROUNDS: usize = 10;
+
+/// How often a text is asked for again once the index reaches the tip and the index does not say why the text cannot be attributed
+/// (a moment in which the index was being rebuilt under the reader): then the revision is withheld as `no-writer-known`.
+const SETTLED_RETRIES: usize = 3;
+
+/// The pause between two rounds of waiting for the index, unless [`HistoryInputs::pausing`] says another.
+pub const DEFAULT_ROUND_PAUSE: Duration = Duration::from_millis(100);
+
+/// The most history lines' bytes one export holds before it writes them, **as they are written** (the text of every revision is in
+/// its line, escaped: a text of control characters is six times its size). A history larger than this is refused rather than cut
+/// short.
 pub const MAX_HISTORY_TEXT_BYTES: u64 = 1 << 30;
 
 /// What an export says while it works (the command line prints it).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExportNote {
     /// The history is read to the end of the log: this many revisions of this many pages will be written, each with its text
     /// (one read of a block's page each).
@@ -71,6 +94,16 @@ pub enum ExportNote {
         /// The most rounds.
         rounds: usize,
     },
+    /// A revision's text is **not given**: no index can attribute it, so it cannot be told from a text that moderation hides
+    /// (I-T1 correction X-1). Its record says so (`inklkunn.withheld`).
+    Withheld {
+        /// The block.
+        block: String,
+        /// The page's path then.
+        path: String,
+        /// Why: the word the record carries.
+        reason: &'static str,
+    },
 }
 
 /// What the history of an export needs besides the repository: the one reader of a page's text at a block, and the record of when
@@ -80,6 +113,8 @@ pub struct HistoryInputs<'a> {
     derived: &'a dyn DerivedStore,
     notes: Option<&'a mut dyn FnMut(ExportNote)>,
     waited: usize,
+    pause: Duration,
+    cap: u64,
 }
 
 impl<'a> HistoryInputs<'a> {
@@ -90,6 +125,8 @@ impl<'a> HistoryInputs<'a> {
             derived,
             notes: None,
             waited: 0,
+            pause: DEFAULT_ROUND_PAUSE,
+            cap: MAX_HISTORY_TEXT_BYTES,
         }
     }
 
@@ -100,17 +137,38 @@ impl<'a> HistoryInputs<'a> {
         self
     }
 
+    /// The same, pausing `pause` between two rounds of waiting for the index ([`DEFAULT_ROUND_PAUSE`] otherwise).
+    #[must_use]
+    pub fn pausing(mut self, pause: Duration) -> Self {
+        self.pause = pause;
+        self
+    }
+
+    /// The same, refusing a history of more than `bytes` bytes as written ([`MAX_HISTORY_TEXT_BYTES`] otherwise). A smaller bound
+    /// is for a test; a larger one is no use, the bound is what one export holds in memory.
+    #[must_use]
+    pub fn holding_at_most(mut self, bytes: u64) -> Self {
+        self.cap = bytes.min(MAX_HISTORY_TEXT_BYTES);
+        self
+    }
+
     fn say(&mut self, note: ExportNote) {
         if let Some(notes) = self.notes.as_mut() {
             notes(note);
         }
     }
+
+    /// The read service this export reads texts through (and asks for moderation's head).
+    pub(super) fn reads(&self) -> &ReadService {
+        self.reads
+    }
 }
 
 /// What the history of an export came to.
 pub(super) struct Histories {
-    /// The lines of each history file, by page id.
-    pub(super) files: BTreeMap<String, Vec<String>>,
+    /// The records of each history file, by the file's name, in the order of the file. **Held until the file is written, one file at
+    /// a time** (X-8): `build` takes each out, writes it and drops it.
+    pub(super) files: BTreeMap<String, Vec<Parts>>,
     /// Changes to paths that are not pages (an attachment, a knowledge file, a rule), and operations prikk could not name a path
     /// for: they belong to no page's file.
     pub(super) unattributed: usize,
@@ -120,6 +178,10 @@ pub(super) struct Histories {
     pub(super) suppressed: BTreeMap<String, usize>,
     /// Pages with revisions whose file was not written (the id cannot name a file, two pages share it, or the page has none).
     pub(super) not_written: usize,
+    /// Revisions whose text was withheld because no index can attribute it (`inklkunn.withheld`).
+    pub(super) withheld: usize,
+    /// The names of the files whose records pass a block whose effect is not listed (`inklkunn.after_untraced`), in order.
+    pub(super) after_untraced: Vec<String>,
 }
 
 // ------------------------------------------------------------------------------------ following the pages
@@ -167,6 +229,9 @@ struct BlockState {
     effects: BTreeMap<usize, Effect>,
     /// Pages removed by this block, by the path they had: one removed and written again by the same block is one page.
     removed: BTreeMap<String, usize>,
+    /// Pages moved out of `pages/` by this block, by the path they were moved to: **moved back by the same block, the page is the
+    /// same page** (the writes index carries it the same way), not a removal and a new page. The page's own path before is kept.
+    parked: BTreeMap<String, (usize, String)>,
 }
 
 /// An operation of a block, as the history reads it (prikk's own names; `read/history.rs` classifies the same ones for the pages).
@@ -326,8 +391,20 @@ impl Tracker {
                         .collect()
                 };
                 if moves.is_empty() {
-                    // A file that was not a page, moved into the pages: the page is new.
-                    if is_page(&to) {
+                    if let Some((id, origin)) = state.parked.remove(&from) {
+                        if is_page(&to) {
+                            // A page this block moved out of the pages and now moves back (X-4): the same page, carried.
+                            state.removed.remove(&origin);
+                            if let Some(chain) = self.chains.get_mut(id) {
+                                chain.path = Some(to.clone());
+                            }
+                            self.alive.insert(to, id);
+                        } else {
+                            // Moved on, still out of the pages.
+                            state.parked.insert(to, (id, origin));
+                        }
+                    } else if is_page(&to) {
+                        // A file that was not a page, moved into the pages: the page is new.
                         self.born(state, &to, patch);
                     } else {
                         self.unattributed += 1;
@@ -342,10 +419,11 @@ impl Tracker {
                         }
                         self.alive.insert(b, id);
                     } else {
-                        // Moved out of the pages: it is no page now.
+                        // Moved out of the pages: it is no page now (unless this block moves it back).
                         if let Some(chain) = self.chains.get_mut(id) {
                             chain.path = None;
                         }
+                        state.parked.insert(b, (id, a.clone()));
                         state.removed.insert(a, id);
                     }
                 }
@@ -389,7 +467,9 @@ enum Text {
     /// The page's full text.
     Given(String),
     /// Moderation hides it (the reason is in the record's `hidden` part).
-    Withheld,
+    Hidden,
+    /// No index can attribute it, so it cannot be told from a text that moderation hides: **not given** (`inklkunn.withheld`).
+    Withheld(Unattributable),
 }
 
 fn unreadable(path: &str, block: &str, why: &str) -> ExportError {
@@ -398,37 +478,140 @@ fn unreadable(path: &str, block: &str, why: &str) -> ExportError {
     ))
 }
 
-/// The text of `path` at `block`, through the one reader. **A text that cannot be checked yet is waited for** (the index of who
-/// wrote each page is asked to be built, a round at a time, and the export says so), **and then the export fails**: it never
-/// guesses that a text is not hidden and never leaves a revision out.
+/// What reading a revision's text gave.
+enum Got {
+    /// The reader's answer.
+    Read(BlockText),
+    /// The reader cannot attribute the text and the index says it never will.
+    Never(Unattributable),
+}
+
+/// The text of `path` at `block`, through the one reader. **A text the reader cannot check yet is *not yet* or *never*, and the
+/// two are told apart** (I-T1 correction X-1):
+///
+/// - **never**: the index holds the block and says why it cannot attribute the text ([`ReadService::unattributable_reason`]): an
+///   opaque block, more possible writers than it lists, more renames than it follows. Nothing waits for that, and the text is
+///   **not given**; the caller withholds the revision, and goes on.
+/// - **not yet**: the index is short of the tip. It is built a round at a time, saying so; **a round counts only when the index
+///   moved** ([`INDEX_WAIT_ROUNDS`] of them in all), and there is a pause between rounds; an index that does not move at all is
+///   given up on after [`INDEX_STALL_ROUNDS`]. Then the export fails with a sentence that says the index is not built yet, **never a
+///   gap and never a guess**.
+///
+/// An index that cannot be built (prikk or the store failing) fails the export with a sentence that names what failed.
 fn read_text(
     inputs: &mut HistoryInputs<'_>,
     wiki: &WikiRecord,
     view: &str,
     block: &str,
     path: &str,
-) -> Result<BlockText, ExportError> {
+) -> Result<Got, ExportError> {
+    let (mut stalled, mut settled) = (0_usize, 0_usize);
     loop {
         match inputs.reads.text_at(wiki, Some(view), block, path) {
-            Ok(text) => return Ok(text),
-            Err(ReadError::NotCheckedYet) => {
-                if inputs.waited >= INDEX_WAIT_ROUNDS {
-                    return Err(ExportError::IndexNotSettled {
-                        rounds: INDEX_WAIT_ROUNDS,
-                    });
-                }
-                inputs.waited += 1;
-                inputs.say(ExportNote::Waiting {
-                    round: inputs.waited,
-                    rounds: INDEX_WAIT_ROUNDS,
-                });
-                inputs.reads.warm_writes(wiki).map_err(|e| {
-                    unreadable(path, block, &format!("the index could not be built: {e}"))
-                })?;
-            }
+            Ok(text) => return Ok(Got::Read(text)),
+            Err(ReadError::NotCheckedYet) => {}
             Err(e) => return Err(unreadable(path, block, &e.to_string())),
         }
+        // Never, if the index says why (a final answer: the rows up to a block never change).
+        match inputs
+            .reads
+            .unattributable_reason(wiki, Some(view), block, path)
+        {
+            Ok(Some(reason)) => return Ok(Got::Never(reason)),
+            Ok(None) => {}
+            Err(e) => {
+                return Err(unreadable(
+                    path,
+                    block,
+                    &format!("why it cannot be attributed could not be read: {e}"),
+                ));
+            }
+        }
+        // Not yet, or a moment in which the index was moved under the reader.
+        match inputs.reads.warm_writes_progress(wiki) {
+            Err(e) => {
+                return Err(ExportError::Io(format!(
+                    "the index of who wrote each page's text could not be built ({e}), so the text of `{path}` at block {block} cannot be told from one that moderation hides; nothing was written"
+                )));
+            }
+            Ok(Warmed::AtTip) => {
+                settled += 1;
+                if settled > SETTLED_RETRIES {
+                    return Ok(Got::Never(Unattributable::NoWriterKnown));
+                }
+            }
+            Ok(Warmed::Short { advanced }) => {
+                if advanced {
+                    if inputs.waited >= INDEX_WAIT_ROUNDS {
+                        return Err(ExportError::IndexNotSettled {
+                            rounds: INDEX_WAIT_ROUNDS,
+                        });
+                    }
+                    inputs.waited += 1;
+                    inputs.say(ExportNote::Waiting {
+                        round: inputs.waited,
+                        rounds: INDEX_WAIT_ROUNDS,
+                    });
+                } else {
+                    stalled += 1;
+                    if stalled > INDEX_STALL_ROUNDS {
+                        return Err(ExportError::IndexNotSettled {
+                            rounds: inputs.waited,
+                        });
+                    }
+                }
+                if !inputs.pause.is_zero() {
+                    std::thread::sleep(inputs.pause);
+                }
+            }
+        }
     }
+}
+
+// ------------------------------------------------------------------------------------ the time of a record
+
+/// Where a record's `at` comes from (`inklkunn.at_from`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AtFrom {
+    /// The end of the acceptance, or of the system act, that made the block.
+    Sealed,
+    /// The imported change's own time, from its message.
+    Source,
+    /// When a surface of the service first asked for the block (an upper bound).
+    FirstSeen,
+    /// The time of the record before it in the file, because the time it would have had is before that.
+    Ordered,
+}
+
+impl AtFrom {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            AtFrom::Sealed => "sealed",
+            AtFrom::Source => "source",
+            AtFrom::FirstSeen => "first-seen",
+            AtFrom::Ordered => "ordered",
+        }
+    }
+}
+
+/// **The time a message says its change was made at, for an imported change** (I-T1 correction X-2 (b); RFC 007 D-3). The message
+/// type has no such trailer yet: I-T3 adds it, and this is where it is read. Until then there is none, and a block is timed by its
+/// seal or by when it was first seen.
+pub(super) fn source_time(_message: &Message) -> Option<i64> {
+    None
+}
+
+/// **The best time for a block, in this order** (X-2): when its act sealed (the service keeps it for every block it made), then an
+/// imported change's own time, then when the block was first seen. `None` only when none is known.
+pub(super) fn best_time(
+    sealed: Option<i64>,
+    source: Option<i64>,
+    seen: Option<i64>,
+) -> Option<(i64, AtFrom)> {
+    sealed
+        .map(|at| (at, AtFrom::Sealed))
+        .or(source.map(|at| (at, AtFrom::Source)))
+        .or(seen.map(|at| (at, AtFrom::FirstSeen)))
 }
 
 // ------------------------------------------------------------------------------------ the records
@@ -454,7 +637,8 @@ fn path_file_name(path: &str) -> Option<String> {
     let title = path.strip_prefix("pages/")?.strip_suffix(".md")?;
     let mut name = String::from("~");
     for byte in title.bytes() {
-        if byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-') {
+        if byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
+        {
             name.push(char::from(byte));
         } else {
             name.push_str(&format!("%{byte:02X}"));
@@ -481,9 +665,10 @@ fn person_of(actor: &Actor) -> serde_json::Value {
     p
 }
 
-/// A record before it is linked to the one before it.
-struct Parts {
+/// A record, with what links it to the file it is in. **Held until its file is written** (X-8).
+pub(super) struct Parts {
     chain: usize,
+    /// The block's place in the log, oldest first.
     block: usize,
     rev: String,
     did: Did,
@@ -494,7 +679,12 @@ struct Parts {
     from: Option<String>,
     seq: u64,
     at: i64,
+    at_from: AtFrom,
     revert: bool,
+    /// The record before it in its file (`None` for the first), set when the file is made.
+    parent: Option<String>,
+    /// The oldest block whose effect is not listed between this record and the one before it (X-3), set when the file is made.
+    untraced: Option<String>,
 }
 
 impl Parts {
@@ -508,7 +698,17 @@ impl Parts {
         }
     }
 
-    fn json(&self, parent: Option<&str>) -> serde_json::Value {
+    /// This record's line, as it is written (no line feed).
+    pub(super) fn line(&self) -> String {
+        self.json().to_string()
+    }
+
+    /// Does the record carry a part moderation hides?
+    pub(super) fn is_hidden(&self) -> bool {
+        !self.hidden.is_empty()
+    }
+
+    fn json(&self) -> serde_json::Value {
         let mut inklkunn = serde_json::Map::new();
         inklkunn.insert("block".to_owned(), self.rev.clone().into());
         inklkunn.insert("seq".to_owned(), self.seq.into());
@@ -530,10 +730,16 @@ impl Parts {
                 .map_or(serde_json::Value::Null, |s| s.as_str().into()),
         );
         inklkunn.insert("message_readable".to_owned(), self.message.is_some().into());
-        inklkunn.insert("at_from".to_owned(), "first-seen".into());
+        inklkunn.insert("at_from".to_owned(), self.at_from.as_str().into());
+        if let Text::Withheld(reason) = &self.text {
+            inklkunn.insert("withheld".to_owned(), reason.as_str().into());
+        }
+        if let Some(block) = &self.untraced {
+            inklkunn.insert("after_untraced".to_owned(), block.clone().into());
+        }
         let mut line = serde_json::json!({
             "rev": self.rev,
-            "parent": parent,
+            "parent": self.parent,
             "at": inklkunn_store::record::rfc3339(self.at),
             "type": self.type_name(),
         });
@@ -573,8 +779,33 @@ impl Parts {
     }
 }
 
+/// How many blocks one write of `first_seen` records (X-6): a long export must not hold SQLite's write lock for longer than a running
+/// server waits for it (its `busy_timeout`).
+pub(super) const FIRST_SEEN_CHUNK: usize = 10_000;
+
+/// **A page removed and made again by one block, with the same id, is one page moved** (X-4): the removal and the creation of the
+/// block are one `rename` record, from the path the page had to the path it has, with the text of the new one. Where it is not
+/// the same block, they are two records.
+fn join_removal_and_creation(records: Vec<Parts>) -> Vec<Parts> {
+    let mut out: Vec<Parts> = Vec::with_capacity(records.len());
+    for mut record in records {
+        let joined = out
+            .last()
+            .is_some_and(|last| last.did == Did::Delete && last.block == record.block)
+            && record.did == Did::Create;
+        if joined && let Some(removal) = out.pop() {
+            record.did = Did::Rename;
+            record.from = Some(removal.path);
+            record.hidden = record.hidden.or(removal.hidden);
+        }
+        out.push(record);
+    }
+    out
+}
+
 /// The history of the pages of a log, for the export of the tip `tip` of `view`. `tip_pages` is every page of the tip by path, with
-/// the id its frontmatter gives it, if any (what names a file for a page that is still there).
+/// the id its frontmatter gives it, if any (what names a file for a page that is still there). `sealed` is the time each block
+/// that this service made was sealed at (block id → Unix seconds; [`super::sealing_times`]).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn histories(
     storage: &dyn Storage,
@@ -584,6 +815,7 @@ pub(super) fn histories(
     tip: &str,
     tip_pages: &HashMap<String, Option<String>>,
     suppressions: &Suppressions,
+    sealed: &BTreeMap<String, i64>,
     now: i64,
     inputs: &mut HistoryInputs<'_>,
 ) -> Result<Histories, ExportError> {
@@ -607,35 +839,17 @@ pub(super) fn histories(
         })?;
     let blocks: Vec<&HistoryBlock> = log.blocks.iter().skip(from).rev().collect();
 
-    // When each block was first seen, as an upper bound that never runs backwards: no change was made after the first sight of a
-    // change that came after it.
-    let ids: Vec<String> = blocks.iter().map(|b| b.block_id.clone()).collect();
-    let seen = inputs
-        .derived
-        .first_seen(&wiki.id, &ids, now)
-        .map_err(|_| {
-            ExportError::Io("when the service first saw each change could not be read".to_owned())
-        })?;
-    let mut floor = i64::MAX;
-    let mut times: Vec<i64> = seen
-        .iter()
-        .rev()
-        .map(|t| {
-            floor = floor.min(*t);
-            floor
-        })
-        .collect();
-    times.reverse();
-
-    // The pages and what each block did to them.
+    // The pages and what each block did to them. A block whose effect on the files its operations do not list (prikk's own rollback,
+    // a merge, a repair; the one reader of a text calls such a block opaque) is counted as a change that no page's file holds, and
+    // remembered: the records after it say so (X-3).
     let mut tracker = Tracker::default();
     let mut revisions: Vec<Revision> = Vec::new();
+    let mut opaque: Vec<usize> = Vec::new();
     let mut hidden_summaries: Vec<(String, ReasonCategory)> = Vec::new();
     for (place, block) in blocks.iter().enumerate() {
         if block.rollback_block || !matches!(block.kind.as_str(), "Root" | "Normal") {
-            // prikk's own rollback, a merge, a repair: what it did to the files is not in its operations (the one reader of a
-            // text calls such a block opaque), so it is counted as a change that no page's file holds.
             tracker.unattributed += 1;
+            opaque.push(place);
         }
         let change = storage
             .change(repo, &block.block_id)
@@ -703,12 +917,60 @@ pub(super) fn histories(
         pages: revisions
             .iter()
             .map(|r| r.chain)
-            .collect::<std::collections::BTreeSet<_>>()
+            .collect::<BTreeSet<_>>()
             .len(),
     });
 
+    // The time of each block (X-2): when its act sealed, then an imported change's own time, then when the service first saw it.
+    // Only a block with neither is asked of `first_seen` (which writes), and in chunks (X-6). A block's first-seen time is an
+    // upper bound that never runs past the time of any later block that is known, since no change was made after the first sight
+    // (or the seal) of a change that came after it.
+    let sealed_of = |place: usize| {
+        blocks
+            .get(place)
+            .and_then(|b| sealed.get(&b.block_id))
+            .copied()
+    };
+    let source_of = |message: &Option<Message>| message.as_ref().and_then(source_time);
+    let mut need: BTreeMap<usize, String> = BTreeMap::new();
+    for rev in &revisions {
+        if sealed_of(rev.block).is_none()
+            && source_of(&rev.message).is_none()
+            && let Some(block) = blocks.get(rev.block)
+        {
+            need.insert(rev.block, block.block_id.clone());
+        }
+    }
+    let need: Vec<(usize, String)> = need.into_iter().collect();
+    let mut seen_at: HashMap<usize, i64> = HashMap::new();
+    for chunk in need.chunks(FIRST_SEEN_CHUNK) {
+        let ids: Vec<String> = chunk.iter().map(|(_, id)| id.clone()).collect();
+        let seen = inputs
+            .derived
+            .first_seen(&wiki.id, &ids, now)
+            .map_err(|_| {
+                ExportError::Io(
+                    "when the service first saw each change could not be read".to_owned(),
+                )
+            })?;
+        for ((place, _), at) in chunk.iter().zip(seen) {
+            seen_at.insert(*place, at);
+        }
+    }
+    let mut floor = i64::MAX;
+    let mut floors: Vec<i64> = vec![i64::MAX; blocks.len()];
+    for place in (0..blocks.len()).rev() {
+        if let Some(at) = sealed_of(place).or_else(|| seen_at.get(&place).copied()) {
+            floor = floor.min(at);
+        }
+        if let Some(slot) = floors.get_mut(place) {
+            *slot = floor;
+        }
+    }
+
     // The text of each revision, through the one reader.
     let mut held_bytes = 0_u64;
+    let mut withheld = 0_usize;
     let mut parts: Vec<Parts> = Vec::with_capacity(revisions.len());
     for rev in revisions {
         let Some(block) = blocks.get(rev.block) else {
@@ -725,29 +987,38 @@ pub(super) fn histories(
             Text::None
         } else if hidden.content.is_some() {
             // Already hidden by the record of the hide: its text is not asked for at all.
-            Text::Withheld
+            Text::Hidden
         } else {
             match read_text(inputs, wiki, view, &block.block_id, &rev.path)? {
-                BlockText::Text(text) => Text::Given(text),
-                BlockText::Hidden(mark) => {
+                Got::Read(BlockText::Text(text)) => Text::Given(text),
+                Got::Read(BlockText::Hidden(mark)) => {
                     hidden.content = Some(mark.category);
-                    Text::Withheld
+                    Text::Hidden
                 }
-                BlockText::Missing => {
+                Got::Never(reason) => {
+                    withheld += 1;
+                    inputs.say(ExportNote::Withheld {
+                        block: block.block_id.clone(),
+                        path: rev.path.clone(),
+                        reason: reason.as_str(),
+                    });
+                    Text::Withheld(reason)
+                }
+                Got::Read(BlockText::Missing) => {
                     return Err(unreadable(
                         &rev.path,
                         &block.block_id,
                         "the page is not there",
                     ));
                 }
-                BlockText::NotText => {
+                Got::Read(BlockText::NotText) => {
                     return Err(unreadable(
                         &rev.path,
                         &block.block_id,
                         "it is not UTF-8 text",
                     ));
                 }
-                BlockText::TooLarge => {
+                Got::Read(BlockText::TooLarge) => {
                     return Err(unreadable(
                         &rev.path,
                         &block.block_id,
@@ -756,13 +1027,13 @@ pub(super) fn histories(
                 }
             }
         };
-        if let Text::Given(text) = &text {
-            held_bytes += text.len() as u64;
-            if held_bytes > MAX_HISTORY_TEXT_BYTES {
-                return Err(ExportError::HistoryTextTooLarge);
-            }
-        }
-        parts.push(Parts {
+        let (at, at_from) = best_time(
+            sealed_of(rev.block),
+            source_of(&rev.message),
+            floors.get(rev.block).copied().filter(|at| *at != i64::MAX),
+        )
+        .unwrap_or((now, AtFrom::FirstSeen));
+        let record = Parts {
             chain: rev.chain,
             block: rev.block,
             rev: block.block_id.clone(),
@@ -777,16 +1048,27 @@ pub(super) fn histories(
             path: rev.path,
             from: rev.from,
             seq: block.update_seq,
-            at: times.get(rev.block).copied().unwrap_or(now),
-        });
+            at,
+            at_from,
+            parent: None,
+            untraced: None,
+        };
+        // What is held is what will be written: the line as it is serialised, escapes counted (X-8).
+        if matches!(record.text, Text::Given(_)) {
+            held_bytes += record.line().len() as u64 + 1;
+            if held_bytes > inputs.cap {
+                return Err(ExportError::HistoryTextTooLarge);
+            }
+        }
+        parts.push(record);
     }
 
     // Which file each page's records go to: the page's own id, as its frontmatter has it (the tip's for a page that is still
     // there, the last readable revision's for one that is not), and **its path where it has none** (XFER-7: *named by the page's
     // `id`, or by its path when no identifier exists*; a page made in the wiki's own editor has no id). A page that comes back
     // with the same id or at the same path (a way back) is the same page, and its records are one file.
-    let mut by_chain: BTreeMap<usize, Vec<&Parts>> = BTreeMap::new();
-    for part in &parts {
+    let mut by_chain: BTreeMap<usize, Vec<Parts>> = BTreeMap::new();
+    for part in parts {
         by_chain.entry(part.chain).or_default().push(part);
     }
     let mut by_key: BTreeMap<Key, Vec<usize>> = BTreeMap::new();
@@ -818,6 +1100,8 @@ pub(super) fn histories(
         accounts: BTreeMap::new(),
         suppressed: BTreeMap::new(),
         not_written: 0,
+        withheld,
+        after_untraced: Vec::new(),
     };
     // How many pages of the tip carry each id: an id that two pages share cannot say whose history a file holds.
     let mut carriers: HashMap<&str, usize> = HashMap::new();
@@ -827,14 +1111,16 @@ pub(super) fn histories(
     for (key, mut chains) in by_key {
         chains.sort_by_key(|c| by_chain.get(c).and_then(|r| r.first()).map(|r| r.block));
         // One page at a time: a page that comes back begins after the one before it was removed, and none is there beside another.
+        // The one exception is a page removed and made again by one block, which is that page moved (X-4).
         let mut previous: Option<Option<usize>> = None;
         let mut one_page_at_a_time = true;
         for chain in &chains {
             let records = by_chain.get(chain).map_or(&[][..], Vec::as_slice);
-            let first = records.first().map(|r| r.block);
+            let first = records.first().map(|r| (r.block, r.did));
             match (previous, first) {
                 (None, _) => {}
-                (Some(Some(end)), Some(first)) if first > end => {}
+                (Some(Some(end)), Some((first, _))) if first > end => {}
+                (Some(Some(end)), Some((first, Did::Create))) if first == end => {}
                 _ => one_page_at_a_time = false,
             }
             previous = Some(match records.last() {
@@ -853,36 +1139,63 @@ pub(super) fn histories(
             out.not_written += chains.len();
             continue;
         };
-        let mut lines: Vec<String> = Vec::new();
-        let mut hidden_lines = 0;
-        let mut parent: Option<&str> = None;
+        let mut records: Vec<Parts> = Vec::new();
         for chain in &chains {
-            for record in by_chain.get(chain).map_or(&[][..], Vec::as_slice) {
-                lines.push(record.json(parent).to_string());
-                parent = Some(record.rev.as_str());
-                if !record.hidden.is_empty() {
-                    hidden_lines += 1;
+            records.extend(by_chain.remove(chain).unwrap_or_default());
+        }
+        let mut records = join_removal_and_creation(records);
+        // The links: each record's parent, a time that never runs backwards (a record whose time would be before the one before it
+        // takes that one's), and the block with no listed effect that lies between two records (the oldest, X-3).
+        let mut before: Option<(String, i64, usize)> = None;
+        let mut passes_untraced = false;
+        for record in &mut records {
+            if let Some((rev, at, _)) = &before {
+                record.parent = Some(rev.clone());
+                if record.at < *at {
+                    record.at = *at;
+                    record.at_from = AtFrom::Ordered;
                 }
-                // A person hidden here is not a person of the bundle for it.
-                if record.hidden.author.is_none()
-                    && let Some(message) = &record.message
-                {
-                    for actor in [message.proposed_by(), message.accepted_by()] {
-                        if let Actor::Account { id, name } = actor {
-                            let names = out.accounts.entry(id.as_str().to_owned()).or_default();
-                            if !names.iter().any(|n| n == name.as_str()) {
-                                names.push(name.as_str().to_owned());
-                            }
+            }
+            let lower = before.as_ref().map_or(0, |(_, _, place)| *place);
+            let between = opaque
+                .get(opaque.partition_point(|place| *place < lower))
+                .copied()
+                .filter(|place| *place < record.block);
+            if let Some(place) = between
+                && (before.is_some() || record.did != Did::Create)
+            {
+                record.untraced = blocks.get(place).map(|b| b.block_id.clone());
+                passes_untraced = true;
+            }
+            before = Some((record.rev.clone(), record.at, record.block));
+        }
+        if passes_untraced {
+            out.after_untraced.push(name.clone());
+        }
+        let mut hidden_lines = 0;
+        for record in &records {
+            if record.is_hidden() {
+                hidden_lines += 1;
+            }
+            // A person hidden here is not a person of the bundle for it.
+            if record.hidden.author.is_none()
+                && let Some(message) = &record.message
+            {
+                for actor in [message.proposed_by(), message.accepted_by()] {
+                    if let Actor::Account { id, name } = actor {
+                        let names = out.accounts.entry(id.as_str().to_owned()).or_default();
+                        if !names.iter().any(|n| n == name.as_str()) {
+                            names.push(name.as_str().to_owned());
                         }
                     }
                 }
             }
         }
         out.suppressed.insert(name.clone(), hidden_lines);
-        out.files.insert(name, lines);
+        out.files.insert(name, records);
     }
     // A page of the tip with no record at all (a log that never says how it came to be) has no history file either, and says so.
-    let followed: std::collections::BTreeSet<&str> = tracker
+    let followed: BTreeSet<&str> = tracker
         .chains
         .iter()
         .filter_map(|c| c.path.as_deref())

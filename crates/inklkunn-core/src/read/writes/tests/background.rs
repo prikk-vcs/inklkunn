@@ -13,7 +13,7 @@ use inklkunn_store::{DerivedStore, WikiRecord};
 use super::*;
 
 /// Blocks: 1 (the pages as first written), 2 ..= `n + 1` (an edit of Bar each), `n + 2` (Foo's secret, which is hidden).
-fn long(n: u64, adjust: impl FnOnce(ReadService) -> ReadService) -> Rig {
+pub(super) fn long(n: u64, adjust: impl FnOnce(ReadService) -> ReadService) -> Rig {
     let r = rig_with(
         &[("pages/Foo.md", &foo("x")), ("pages/Bar.md", &bar("y"))],
         adjust,
