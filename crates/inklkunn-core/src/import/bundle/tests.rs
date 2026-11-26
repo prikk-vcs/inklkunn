@@ -579,7 +579,7 @@ fn the_mediawiki_fixture_reports_its_history_people_suppressions_and_unmapped_pr
     let text = p.render();
     for needle in [
         "fidelity declared: level 3",
-        "7 revision(s) would be replayed, one block each (the cap is 500)",
+        "7 revision(s) would be replayed, one block each (the cap is 1000)",
         "declared by the importing admin",
         "wikipedia: 1 link(s)",
         "none is linked to an account of this server",

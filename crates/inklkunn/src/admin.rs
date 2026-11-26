@@ -158,7 +158,7 @@ impl Command {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Usage(pub String);
 
-pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|private]\n       \
+pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|internal|restricted]\n       \
 inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing] [--config <file>]\n       \
 inklkunn [--dev-unconfined] wiki import-bundle <new-wiki> <bundle-dir> --name <name> [--dry-run] [--bundle-license <spdx>] [--leave-out-incompatible] [--no-history] [--lang <tag>]... [--visibility public|internal|restricted] [--config <file>]\n       \
 inklkunn [--dev-unconfined] wiki discard-unfinished <wiki id> [--confirm <wiki id>]\n       \
@@ -772,7 +772,7 @@ fn create(
     new.languages = languages.to_vec();
     if let Some(v) = visibility {
         new.visibility = Visibility::parse(v)
-            .ok_or_else(|| format!("`{v}` is not a visibility (public or private)"))?;
+            .ok_or_else(|| format!("`{v}` is not a visibility (public, internal or restricted)"))?;
     }
     let env = environment(settings, err)?;
     make_private_directory(&settings.seed_dir).map_err(|e| {
@@ -1295,8 +1295,11 @@ fn discard_unfinished(
     })?;
     let store = existing_store(settings)?;
     let env = environment(settings, err)?;
+    // What is there is said only once it is known to be an unfinished creation: the mark, whether it is running and whether the
+    // record is stored are asked first, so a stored wiki's id is never called an unfinished creation (V-8).
+    inklkunn_core::check_unfinished_creation(&store, &env.layout, &wiki)
+        .map_err(|refusal| refusal.to_string())?;
     let repo = env.layout.repo_dir(&wiki);
-    // What there is, said first: a person decides on what is there.
     let _ = writeln!(
         out,
         "an unfinished creation of wiki {wiki}: its repository is {}",

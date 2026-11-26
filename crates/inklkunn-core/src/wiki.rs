@@ -697,6 +697,27 @@ pub fn discard_unfinished_creation(
     id: &WikiId,
     audit: &dyn SweepAudit,
 ) -> Result<Cleanup, DiscardRefusal> {
+    let mark = discardable(store, layout, id)?;
+    if let Err(why) = audit.before(id) {
+        audit.after(id, false);
+        return Ok(Cleanup::LeftBehind {
+            repo: layout.repo_dir(id),
+            error: format!("the audit trail did not take the act ({why}); nothing was removed"),
+        });
+    }
+    let cleanup = settle(mark, discard(layout, signer, id));
+    audit.after(id, cleanup == Cleanup::Removed);
+    Ok(cleanup)
+}
+
+/// The creation mark of `id` when `id` is an unfinished creation that a person may discard: its mark is there and dead, and the
+/// store has no record of it. **Every refusal of [`discard_unfinished_creation`] is decided here**, so that the question can be asked
+/// first ([`check_unfinished_creation`]) and nothing is described as an unfinished creation that is a wiki.
+fn discardable(
+    store: &dyn WikiStore,
+    layout: &RootLayout,
+    id: &WikiId,
+) -> Result<CreationMark, DiscardRefusal> {
     let found = find_unfinished(layout).map_err(|e| DiscardRefusal::Marks(e.to_string()))?;
     if found.live.contains(id) {
         return Err(DiscardRefusal::Alive);
@@ -709,16 +730,18 @@ pub fn discard_unfinished_creation(
         Err(StoreError::NotFound) => {}
         Err(e) => return Err(DiscardRefusal::StoreCannotSay(e.to_string())),
     }
-    if let Err(why) = audit.before(id) {
-        audit.after(id, false);
-        return Ok(Cleanup::LeftBehind {
-            repo: layout.repo_dir(id),
-            error: format!("the audit trail did not take the act ({why}); nothing was removed"),
-        });
-    }
-    let cleanup = settle(mark, discard(layout, signer, id));
-    audit.after(id, cleanup == Cleanup::Removed);
-    Ok(cleanup)
+    Ok(mark)
+}
+
+/// Would [`discard_unfinished_creation`] go ahead for `id`? It asks what that function asks (the mark, whether the creation is
+/// alive, whether the record is stored) and **removes nothing and writes nothing**: what `wiki discard-unfinished` says it found is
+/// said only after this answers.
+pub fn check_unfinished_creation(
+    store: &dyn WikiStore,
+    layout: &RootLayout,
+    id: &WikiId,
+) -> Result<(), DiscardRefusal> {
+    discardable(store, layout, id).map(drop)
 }
 
 /// Why the sweep must not remove the unfinished creation `id` (no record in the store), or `None` when it may.

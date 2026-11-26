@@ -341,7 +341,7 @@ fn a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere() {
         "fidelity found:    pages, attachments and history (7 revision(s) in 4 page(s)",
         "licence of the wiki: CC-BY-SA-4.0 (the bundle declares none; declared by the importing admin",
         "checksums: verified, every file against `sha256sums.txt` (9 file(s)",
-        "7 revision(s) would be replayed, one block each (the cap is 500)",
+        "7 revision(s) would be replayed, one block each (the cap is 1000)",
         "suppressions kept: 1 record(s) with their text hidden at the source",
         "people named: 3",
         "wikipedia: 1 link(s)",
@@ -866,7 +866,7 @@ fn the_two_caps_are_settings_that_a_file_sets_and_a_bad_value_names() {
     // The default, with the cap said in the report.
     let (status, out, err) = run.cli(&[], &argv);
     assert_eq!(status, 0, "{out}{err}");
-    assert!(out.contains("(the cap is 500)"), "{out}");
+    assert!(out.contains("(the cap is 1000)"), "{out}");
     // The environment, and the file, the environment first.
     let (status, out, _) = run.cli(&[("INKLKUNN_IMPORT_MAX_REVISIONS", "3")], &argv);
     assert_eq!(status, 0, "{out}");

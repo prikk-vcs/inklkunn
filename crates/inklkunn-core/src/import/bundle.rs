@@ -65,10 +65,10 @@ use crate::read::ReadConfig;
 use inklkunn_markup::path::title_to_path;
 use inklkunn_signer::{MAX_CHANGE_BYTES, MAX_CHANGE_FILES, check_change_path};
 
-/// The revision cap's default (`INKLKUNN_IMPORT_MAX_REVISIONS`). **Provisional**, from ledger PK-50's measurement of building a
-/// history through the signer (500 blocks: 154 s; 2,000 blocks: 1,438 s): 500 blocks are about 2½ minutes, and the cost per block
-/// grows with the log. The replay's own cost is measured in I-T3, where the architect sets the number.
-pub const DEFAULT_MAX_REVISIONS: u64 = 500;
+/// The revision cap's default (`INKLKUNN_IMPORT_MAX_REVISIONS`): **1,000**, the architect's decision on I-T3's measurement of the replay
+/// (500 blocks: 270 s; 2,000 blocks: 1,664 s on a loaded machine, the cost of a block growing with the log: ledger PK-50), which puts the
+/// cap at about nine minutes. A longer history is imported with `--no-history`, which the refusal names.
+pub const DEFAULT_MAX_REVISIONS: u64 = 1_000;
 
 /// The default cap on the bytes of `history/` (`INKLKUNN_IMPORT_MAX_HISTORY_MIB`): 256 MiB, a quarter of what an export holds at
 /// most. **Provisional** as the revision cap is.

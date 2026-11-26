@@ -1147,11 +1147,28 @@ pub(super) fn histories(
     for part in parts {
         by_chain.entry(part.chain).or_default().push(part);
     }
+    // How many pages of the tip carry each id: an id that two pages share cannot say whose history a file holds.
+    let mut carriers: HashMap<&str, usize> = HashMap::new();
+    for id in tip_pages.values().flatten() {
+        *carriers.entry(id.as_str()).or_default() += 1;
+    }
+    // A page whose id cannot name a file (a character a file name may not have, as `mw:101` has, or too long) or that another page
+    // shares is **named by its path, as a page with no id is** (the I-T2 review's V-11): its history is kept, one file to one page
+    // still, and an import reads the file's name as the path it codes.
+    let by_id_or_path = |id: &String, path: &str| {
+        let carried = carriers.get(id.as_str()).copied().unwrap_or(0);
+        if history_file_allowed(id, carried) {
+            Key::Id(id.clone())
+        } else {
+            Key::Path(path.to_owned())
+        }
+    };
     let mut by_key: BTreeMap<Key, Vec<usize>> = BTreeMap::new();
     for (chain, records) in &by_chain {
+        let last_path = records.last().map(|r| r.path.clone()).unwrap_or_default();
         let key = match tracker.chains.get(*chain).and_then(|c| c.path.as_deref()) {
             Some(path) => match tip_pages.get(path) {
-                Some(Some(id)) => Key::Id(id.clone()),
+                Some(Some(id)) => by_id_or_path(id, path),
                 _ => Key::Path(path.to_owned()),
             },
             None => records
@@ -1164,8 +1181,8 @@ pub(super) fn histories(
                     _ => None,
                 })
                 .map_or_else(
-                    || Key::Path(records.last().map(|r| r.path.clone()).unwrap_or_default()),
-                    Key::Id,
+                    || Key::Path(last_path.clone()),
+                    |id| by_id_or_path(&id, &last_path),
                 ),
         };
         by_key.entry(key).or_default().push(*chain);
@@ -1179,11 +1196,6 @@ pub(super) fn histories(
         withheld,
         after_untraced: Vec::new(),
     };
-    // How many pages of the tip carry each id: an id that two pages share cannot say whose history a file holds.
-    let mut carriers: HashMap<&str, usize> = HashMap::new();
-    for id in tip_pages.values().flatten() {
-        *carriers.entry(id.as_str()).or_default() += 1;
-    }
     for (key, mut chains) in by_key {
         chains.sort_by_key(|c| by_chain.get(c).and_then(|r| r.first()).map(|r| r.block));
         // One page at a time: a page that comes back begins after the one before it was removed, and none is there beside another.
@@ -1205,10 +1217,7 @@ pub(super) fn histories(
             });
         }
         let name = match &key {
-            Key::Id(id) => {
-                let carried = carriers.get(id.as_str()).copied().unwrap_or(0);
-                history_file_allowed(id, carried).then(|| id.clone())
-            }
+            Key::Id(id) => Some(id.clone()),
             Key::Path(path) => path_file_name(path),
         };
         let Some(name) = name.filter(|_| one_page_at_a_time) else {
