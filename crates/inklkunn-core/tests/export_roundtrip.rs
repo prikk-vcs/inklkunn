@@ -711,8 +711,16 @@ fn an_export_carries_the_interwiki_map_of_the_tip_it_is_of() {
     // No map yet.
     let before = dir_in(&w.tmp, "out-before");
     let dir = before.0.join("bundle");
-    export_bundle(&w, &w.storage, &w.layout, &a.record, &dir, "0.0.0", 1_700_000_000)
-        .unwrap_or_else(|e| panic!("{e}"));
+    export_bundle(
+        &w,
+        &w.storage,
+        &w.layout,
+        &a.record,
+        &dir,
+        "0.0.0",
+        1_700_000_000,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     let files = files_of(&dir);
     let manifest = String::from_utf8(get(&files, "wiki-bundle.yaml").clone()).unwrap();
     assert!(manifest.contains("interwiki: {}"), "{manifest}");
@@ -724,8 +732,16 @@ fn an_export_carries_the_interwiki_map_of_the_tip_it_is_of() {
     );
     let after = dir_in(&w.tmp, "out-after");
     let dir = after.0.join("bundle");
-    export_bundle(&w, &w.storage, &w.layout, &a.record, &dir, "0.0.0", 1_700_000_000)
-        .unwrap_or_else(|e| panic!("{e}"));
+    export_bundle(
+        &w,
+        &w.storage,
+        &w.layout,
+        &a.record,
+        &dir,
+        "0.0.0",
+        1_700_000_000,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     let files = files_of(&dir);
     // The checks of the manifest against wiki-commons' schema are the bundle's own, run here.
     bundle_checksums(&files);
@@ -739,7 +755,10 @@ fn an_export_carries_the_interwiki_map_of_the_tip_it_is_of() {
     assert!(!manifest.contains("interwiki: {}"), "{manifest}");
     // The file is in the bundle as every file of the tree is (the import reads the map from the manifest and leaves a wiki's own
     // rules to the wiki it makes), and the manifest says the same as the file.
-    assert!(get(&files, "governance/interwiki.yaml").starts_with(b"wikipedia: https://en.wikipedia.org/wiki/{title}\n"));
+    assert!(
+        get(&files, "governance/interwiki.yaml")
+            .starts_with(b"wikipedia: https://en.wikipedia.org/wiki/{title}\n")
+    );
 }
 
 #[test]

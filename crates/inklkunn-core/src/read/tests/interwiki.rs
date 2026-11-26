@@ -73,9 +73,20 @@ fn a_wiki_with_no_map_resolves_every_prefix_as_before() {
     let view = read_page(&w, "Home");
     assert!(!view.html.as_str().contains("wikilink-interwiki"));
     assert!(view.links.interwiki.is_empty());
-    assert!(view.links.dangling.iter().any(|t| t == "wp:Rust (language)"));
+    assert!(
+        view.links
+            .dangling
+            .iter()
+            .any(|t| t == "wp:Rust (language)")
+    );
     assert!(w.service.interwiki_of(&w.wiki, None).unwrap().is_empty());
-    assert!(w.service.title_index(&w.wiki, None).unwrap().interwiki().is_empty());
+    assert!(
+        w.service
+            .title_index(&w.wiki, None)
+            .unwrap()
+            .interwiki()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -92,7 +103,12 @@ fn the_map_is_of_the_state_so_a_change_to_it_changes_the_links_at_the_next_tip()
     // The map the state at the first block had is the one the index at that base has.
     let at = w
         .service
-        .title_index_at_base(&w.wiki, None, &crate::read::testing::state_id(2), &first_block)
+        .title_index_at_base(
+            &w.wiki,
+            None,
+            &crate::read::testing::state_id(2),
+            &first_block,
+        )
         .expect("the index at the first state");
     assert_eq!(
         at.interwiki().get("wp"),
@@ -123,9 +139,16 @@ fn an_index_the_derived_store_holds_stands_in_only_for_a_state_that_has_no_map()
     // A state with none: the stored row is used, with no extract and no map, as before.
     let bare = world();
     bare.service.title_index(&bare.wiki, None).expect("built");
-    let restarted = World::service_over(&bare.counting, &bare.store, &bare.layout, ReadConfig::default());
+    let restarted = World::service_over(
+        &bare.counting,
+        &bare.store,
+        &bare.layout,
+        ReadConfig::default(),
+    );
     let before = bare.counting.inner().materialized();
-    let index = restarted.title_index(&bare.wiki, None).expect("from the store");
+    let index = restarted
+        .title_index(&bare.wiki, None)
+        .expect("from the store");
     assert_eq!(bare.counting.inner().materialized(), before, "no extract");
     assert!(index.interwiki().is_empty());
 }
@@ -136,10 +159,11 @@ fn a_stale_page_of_a_state_that_has_a_map_still_asks_prikk_nothing() {
     put_map(&w, MAP);
     let fresh = read_page(&w, "Home");
     w.service.forget_wiki(&w.wiki);
-    w.fake().fail_views(Some(inklkunn_prikk::StorageError::Unavailable {
-        verb: "branch",
-        reason: inklkunn_prikk::Unavailable::Busy,
-    }));
+    w.fake()
+        .fail_views(Some(inklkunn_prikk::StorageError::Unavailable {
+            verb: "branch",
+            reason: inklkunn_prikk::Unavailable::Busy,
+        }));
     let (stale, calls) = w.counted(|| w.service.stale_page(&w.wiki, None, "Home", &Env::EN));
     let stale = stale.expect("the last tip's page, with its links as they were rendered");
     assert_eq!(stale.html, fresh.html);
@@ -149,10 +173,22 @@ fn a_stale_page_of_a_state_that_has_a_map_still_asks_prikk_nothing() {
 #[test]
 fn a_map_that_does_not_read_is_no_map_for_the_links_and_a_fault_for_the_rules() {
     for (text, refusal) in [
-        ("wp: http://en.wikipedia.org/wiki/{title}\n", Refusal::TemplateScheme),
-        ("wp: https://en.wikipedia.org/wiki/\n", Refusal::TemplatePlaceholder),
-        ("wp: &anchor https://en.wikipedia.org/wiki/{title}\n", Refusal::WrongShape),
-        ("bad_prefix: https://en.wikipedia.org/wiki/{title}\n", Refusal::UnknownKey),
+        (
+            "wp: http://en.wikipedia.org/wiki/{title}\n",
+            Refusal::TemplateScheme,
+        ),
+        (
+            "wp: https://en.wikipedia.org/wiki/\n",
+            Refusal::TemplatePlaceholder,
+        ),
+        (
+            "wp: &anchor https://en.wikipedia.org/wiki/{title}\n",
+            Refusal::WrongShape,
+        ),
+        (
+            "bad_prefix: https://en.wikipedia.org/wiki/{title}\n",
+            Refusal::UnknownKey,
+        ),
     ] {
         let w = world();
         put_map(&w, text);
@@ -167,7 +203,9 @@ fn a_map_that_does_not_read_is_no_map_for_the_links_and_a_fault_for_the_rules() 
         assert_eq!(fault.refusal(), refusal, "{text}");
         assert_eq!(fault.line(), Some(1));
         assert!(
-            fault.to_string().starts_with("governance/interwiki.yaml, line 1: "),
+            fault
+                .to_string()
+                .starts_with("governance/interwiki.yaml, line 1: "),
             "{fault}"
         );
         assert!(rules.block().is_some());
@@ -178,8 +216,10 @@ fn a_map_that_does_not_read_is_no_map_for_the_links_and_a_fault_for_the_rules() 
 fn a_directory_where_the_map_belongs_is_a_fault_and_never_the_defaults() {
     let w = world();
     put_map(&w, "x: https://example.org/{title}\n");
-    w.fake()
-        .set_files(&[("governance/interwiki.yaml/inner.txt".to_owned(), "x\n".to_owned())]);
+    w.fake().set_files(&[(
+        "governance/interwiki.yaml/inner.txt".to_owned(),
+        "x\n".to_owned(),
+    )]);
     w.fake().change_files(&[], &["governance/interwiki.yaml"]);
     w.service.forget_wiki(&w.wiki);
     let rules = w.service.rules_of(&w.wiki).expect("the rules");

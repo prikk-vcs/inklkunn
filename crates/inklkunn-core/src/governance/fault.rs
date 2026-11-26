@@ -280,7 +280,9 @@ impl Refusal {
             }
             Refusal::PrefixIsNamespace => "an interwiki prefix is one of the wiki's own namespaces",
             Refusal::TemplateScheme => "an interwiki template does not start with https://",
-            Refusal::TemplateHost => "an interwiki template has no host, or one that is not a host name",
+            Refusal::TemplateHost => {
+                "an interwiki template has no host, or one that is not a host name"
+            }
             Refusal::TemplateUserInfo => "an interwiki template names user information",
             Refusal::TemplatePlaceholder => {
                 "an interwiki template does not have exactly one {title}, in its path or its query"

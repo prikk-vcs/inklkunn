@@ -31,11 +31,9 @@ fn with(template: &str) -> String {
 
 #[test]
 fn a_sound_map_is_read_with_its_templates() {
-    let m = map(
-        "wikipedia: https://en.wikipedia.org/wiki/{title}\n\
+    let m = map("wikipedia: https://en.wikipedia.org/wiki/{title}\n\
          docs: \"https://example.org:8443/docs?page={title}&x=1#top\"\n\
-         a-1: https://sub.example.org/{title}\n",
-    );
+         a-1: https://sub.example.org/{title}\n");
     assert_eq!(m.len(), 3);
     assert_eq!(
         m.get("wikipedia"),
@@ -183,7 +181,10 @@ fn a_template_holds_only_the_characters_a_url_is_written_with() {
 
 #[test]
 fn a_template_longer_than_the_bound_is_refused() {
-    let long = format!("https://example.org/{}/{{title}}", "a".repeat(MAX_TEMPLATE_CHARS));
+    let long = format!(
+        "https://example.org/{}/{{title}}",
+        "a".repeat(MAX_TEMPLATE_CHARS)
+    );
     let f = refused(&with(&long));
     assert_eq!(f.refusal, Refusal::Bounds);
     assert_eq!(f.field, "template");
@@ -214,7 +215,14 @@ fn a_template_that_is_not_text_is_a_wrong_shape() {
 
 #[test]
 fn a_prefix_is_ascii_letters_digits_and_a_hyphen() {
-    for good in ["wp", "WP", "a-b", "9", "-", "x".repeat(MAX_PREFIX_CHARS).as_str()] {
+    for good in [
+        "wp",
+        "WP",
+        "a-b",
+        "9",
+        "-",
+        "x".repeat(MAX_PREFIX_CHARS).as_str(),
+    ] {
         map(&format!("\"{good}\": https://example.org/{{title}}\n"));
     }
     // A key that cannot be a prefix is a key the schema does not have.
@@ -230,7 +238,10 @@ fn a_prefix_is_ascii_letters_digits_and_a_hyphen() {
 
 #[test]
 fn a_prefix_longer_than_thirty_two_characters_is_refused() {
-    let f = refused(&format!("{}: https://example.org/{{title}}\n", "x".repeat(33)));
+    let f = refused(&format!(
+        "{}: https://example.org/{{title}}\n",
+        "x".repeat(33)
+    ));
     assert_eq!(f.refusal, Refusal::Bounds);
     assert_eq!(f.field, "prefix");
     assert_eq!(f.line, Some(1));
@@ -238,7 +249,13 @@ fn a_prefix_longer_than_thirty_two_characters_is_refused() {
 
 #[test]
 fn a_prefix_that_is_a_namespace_of_the_wiki_is_refused_whatever_the_case() {
-    let ns = namespaces(&["Help/Contents", "Talk:Foo", "Plain", "wiki/a/b", "Draft:Y/Z"]);
+    let ns = namespaces(&[
+        "Help/Contents",
+        "Talk:Foo",
+        "Plain",
+        "wiki/a/b",
+        "Draft:Y/Z",
+    ]);
     for prefix in ["Help", "help", "HELP", "Talk", "talk", "wiki", "Draft"] {
         let text = format!("{prefix}: https://example.org/{{title}}\n");
         let f = validate_interwiki(&text, &ns).expect_err(prefix);
@@ -247,8 +264,11 @@ fn a_prefix_that_is_a_namespace_of_the_wiki_is_refused_whatever_the_case() {
         assert_eq!(f.field, "prefix");
     }
     // A page title that is no namespace is no clash, and a prefix beside the namespaces is fine.
-    validate_interwiki("Plain: https://example.org/{title}\nother: https://o.example/{title}\n", &ns)
-        .unwrap();
+    validate_interwiki(
+        "Plain: https://example.org/{title}\nother: https://o.example/{title}\n",
+        &ns,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -263,7 +283,10 @@ fn the_namespaces_of_a_wiki_are_the_directories_and_the_colon_prefixes_of_its_ti
         "bad_prefix:Page",
         "/x",
     ]);
-    let want: BTreeSet<String> = ["guides", "help", "a"].iter().map(|s| (*s).to_owned()).collect();
+    let want: BTreeSet<String> = ["guides", "help", "a"]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
     assert_eq!(ns, want);
 }
 
@@ -309,9 +332,18 @@ fn text_outside_the_subset_a_forbidden_character_and_bytes_that_are_not_text_are
         ("- wp\n", Refusal::WrongShape),
         ("just words\n", Refusal::WrongShape),
         ("wp: \"https://example.org/{title}\n", Refusal::WrongShape),
-        ("wp: https://example.org/{title}\u{202e}\n", Refusal::ForbiddenCharacter),
-        ("wp: https://example.org/{title}\u{0}\n", Refusal::ForbiddenCharacter),
-        ("\u{feff}wp: https://example.org/{title}\n", Refusal::ForbiddenCharacter),
+        (
+            "wp: https://example.org/{title}\u{202e}\n",
+            Refusal::ForbiddenCharacter,
+        ),
+        (
+            "wp: https://example.org/{title}\u{0}\n",
+            Refusal::ForbiddenCharacter,
+        ),
+        (
+            "\u{feff}wp: https://example.org/{title}\n",
+            Refusal::ForbiddenCharacter,
+        ),
     ] {
         assert_eq!(refused(text).refusal, refusal, "{text:?}");
     }
@@ -344,7 +376,11 @@ fn a_file_that_cannot_be_read_in_the_repository_is_a_read_fault_that_names_the_f
     assert_eq!(fault.file(), GovernanceFile::Interwiki);
     assert_eq!(fault.refusal(), Refusal::TemplateScheme);
     assert_eq!(fault.line(), Some(1));
-    assert!(fault.to_string().starts_with("governance/interwiki.yaml, line 1: "));
+    assert!(
+        fault
+            .to_string()
+            .starts_with("governance/interwiki.yaml, line 1: ")
+    );
     assert_eq!(
         read_interwiki(&[0xc3, 0x28]).unwrap_err().refusal(),
         Refusal::NotText
@@ -353,7 +389,10 @@ fn a_file_that_cannot_be_read_in_the_repository_is_a_read_fault_that_names_the_f
 
 #[test]
 fn the_file_is_a_governance_file_and_a_change_to_it_is_a_policy_change() {
-    assert_eq!(GovernanceFile::Interwiki.path(), "governance/interwiki.yaml");
+    assert_eq!(
+        GovernanceFile::Interwiki.path(),
+        "governance/interwiki.yaml"
+    );
     assert_eq!(
         GovernanceFile::of_path("governance/interwiki.yaml"),
         Some(GovernanceFile::Interwiki)
@@ -382,7 +421,9 @@ fn the_file_is_a_governance_file_and_a_change_to_it_is_a_policy_change() {
         "governance/interwiki.yaml",
         "pages/Home.md"
     ]));
-    assert!(refuse_outside_default_view(["governance/interwiki.yaml"], ViewPlace::Alternative).is_err());
+    assert!(
+        refuse_outside_default_view(["governance/interwiki.yaml"], ViewPlace::Alternative).is_err()
+    );
     assert!(refuse_outside_default_view(["governance/interwiki.yaml"], ViewPlace::Default).is_ok());
     // What a policy change needs is what a change to the map needs.
     let c = Constitution::default();
@@ -410,7 +451,10 @@ fn an_import_leaves_out_each_prefix_that_fails_and_lists_it_with_the_rule() {
     let (accepted, left) = judge_interwiki(given, &ns);
     let kept: Vec<&str> = accepted.iter().map(|(p, _)| p).collect();
     assert_eq!(kept, ["docs", "wikipedia"]);
-    let said: Vec<(&str, Refusal)> = left.iter().map(|l| (l.prefix.as_str(), l.refusal)).collect();
+    let said: Vec<(&str, Refusal)> = left
+        .iter()
+        .map(|l| (l.prefix.as_str(), l.refusal))
+        .collect();
     assert_eq!(
         said,
         [
@@ -424,7 +468,10 @@ fn an_import_leaves_out_each_prefix_that_fails_and_lists_it_with_the_rule() {
         ]
     );
     // What was accepted reads back whole from the file the import writes.
-    assert_eq!(read_interwiki(accepted.to_yaml().as_bytes()).unwrap(), accepted);
+    assert_eq!(
+        read_interwiki(accepted.to_yaml().as_bytes()).unwrap(),
+        accepted
+    );
 }
 
 #[test]
@@ -439,7 +486,10 @@ fn an_import_takes_no_more_prefixes_than_a_file_may_hold() {
     assert_eq!(left.first().map(|l| l.prefix.as_str()), Some("p0256"));
     // The canonical text of a full map is within the file's bound.
     assert!(accepted.to_yaml().len() <= MAX_INTERWIKI_BYTES);
-    assert_eq!(read_interwiki(accepted.to_yaml().as_bytes()).unwrap(), accepted);
+    assert_eq!(
+        read_interwiki(accepted.to_yaml().as_bytes()).unwrap(),
+        accepted
+    );
 }
 
 #[test]

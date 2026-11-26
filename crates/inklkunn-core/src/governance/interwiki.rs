@@ -163,7 +163,11 @@ fn is_prefix(s: &str) -> bool {
 /// The rule a prefix breaks, or `None`: its characters (an [`UnknownKey`](Refusal::UnknownKey): the file's keys are the
 /// prefixes, so a key that is none is one the schema does not have), its length, and the clash with a namespace.
 fn prefix_rule(prefix: &str, namespaces: Option<&BTreeSet<String>>) -> Option<Refusal> {
-    if prefix.is_empty() || !prefix.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+    if prefix.is_empty()
+        || !prefix
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
         return Some(Refusal::UnknownKey);
     }
     if prefix.len() > MAX_PREFIX_CHARS {
@@ -181,10 +185,9 @@ fn template_rule(template: &str) -> Option<Refusal> {
     if template.chars().count() > MAX_TEMPLATE_CHARS {
         return Some(Refusal::Bounds);
     }
-    if !template
-        .bytes()
-        .all(|b| b.is_ascii_graphic() && !matches!(b, b'"' | b'<' | b'>' | b'\\' | b'^' | b'`' | b'|'))
-    {
+    if !template.bytes().all(|b| {
+        b.is_ascii_graphic() && !matches!(b, b'"' | b'<' | b'>' | b'\\' | b'^' | b'`' | b'|')
+    }) {
         return Some(Refusal::TemplateCharacter);
     }
     let Some(rest) = template.strip_prefix("https://") else {
@@ -225,7 +228,9 @@ fn host_rule(authority: &str) -> Option<Refusal> {
             && label.len() <= 63
             && !label.starts_with('-')
             && !label.ends_with('-')
-            && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
     };
     if host.is_empty() || host.len() > 253 || !host.split('.').all(label_ok) {
         return Some(Refusal::TemplateHost);

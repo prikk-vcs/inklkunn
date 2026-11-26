@@ -4557,10 +4557,7 @@ pub const CATALOG: &[Entry] = &[
         "policy.protections_self_note",
         "保護が承認を求めている場合、提案者本人が受け入れても条件を満たしません。Wiki が小さい間でも、メンテナーが一人だけなら、保護されたページの変更を自分で提案して自分で受け入れることはできません。",
     ),
-    msg(
-        "policy.interwiki_heading",
-        "Wiki 間リンクの対応表",
-    ),
+    msg("policy.interwiki_heading", "Wiki 間リンクの対応表"),
     msg(
         "policy.interwiki_intro",
         "ここにある接頭辞を付けたリンクは、ページのタイトルを入れた、示されたアドレスに移動します。ほかの接頭辞のリンクは、存在しないページへのリンクのままです。",

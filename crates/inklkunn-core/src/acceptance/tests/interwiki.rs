@@ -8,8 +8,8 @@ use inklkunn_store::{DecisionKind, ProposalState, Role};
 
 use super::super::testing::Rig;
 use super::*;
-use crate::proposal::Invalid;
 use crate::governance::Fault;
+use crate::proposal::Invalid;
 use crate::proposal::{ProposalEdit, ProposalError};
 
 const MAP: &str = "wikipedia: https://en.wikipedia.org/wiki/{title}\n";
@@ -115,7 +115,10 @@ fn the_constitutions_policy_change_rung_and_approvals_are_what_a_change_to_the_m
 
 #[test]
 fn a_maintainer_needs_the_policy_changes_approvals_for_the_map_too() {
-    let rig = ruled(&[("governance/constitution.yaml", "policy_change:\n  approvals: 1\n")]);
+    let rig = ruled(&[(
+        "governance/constitution.yaml",
+        "policy_change:\n  approvals: 1\n",
+    )]);
     let (maintainer, _, author, reviewer) = people(&rig);
     let p = rig.propose(&author, "The map", &[(PATH, Some(MAP))]);
     assert_eq!(
@@ -152,14 +155,20 @@ fn each_rule_of_the_file_is_refused_by_name_before_the_signer_is_asked() {
             "wp: https://example.org/{lang}/{title}\n",
             "template-placeholder",
         ),
-        ("wp: \"https://example.org/é{title}\"\n", "template-character"),
+        (
+            "wp: \"https://example.org/é{title}\"\n",
+            "template-character",
+        ),
         ("bad_prefix: https://example.org/{title}\n", "unknown-key"),
         (
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: https://example.org/{title}\n",
             "bounds",
         ),
         ("wp: 7\n", "wrong-shape"),
-        ("wp: https://a.example/{title}\nwp: https://b.example/{title}\n", "repeated-key"),
+        (
+            "wp: https://a.example/{title}\nwp: https://b.example/{title}\n",
+            "repeated-key",
+        ),
     ] {
         let rig = ruled(&[]);
         let failure = refusal_of(&rig, text);
@@ -177,7 +186,10 @@ fn each_rule_of_the_file_is_refused_by_name_before_the_signer_is_asked() {
 fn a_prefix_that_is_a_namespace_of_the_wiki_is_refused_at_acceptance() {
     let rig = ruled(&[]);
     rig.fake.set_files(&[
-        ("pages/Help/Contents.md".to_owned(), "# Contents\n".to_owned()),
+        (
+            "pages/Help/Contents.md".to_owned(),
+            "# Contents\n".to_owned(),
+        ),
         ("pages/Talk:Home.md".to_owned(), "# Talk\n".to_owned()),
     ]);
     rig.reads.forget_wiki(&rig.wiki);
@@ -187,14 +199,22 @@ fn a_prefix_that_is_a_namespace_of_the_wiki_is_refused_at_acceptance() {
     }
     // A prefix that is no namespace of this wiki is fine, and so is the same file in a wiki that has no such namespace.
     let (maintainer, _, author, _) = people(&rig);
-    let p = rig.propose(&author, "The map", &[(PATH, Some("docs: https://example.org/{title}\n"))]);
+    let p = rig.propose(
+        &author,
+        "The map",
+        &[(PATH, Some("docs: https://example.org/{title}\n"))],
+    );
     assert!(matches!(
         rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1),
         Ok(Accepted::Signed(_))
     ));
     let bare = ruled(&[]);
     let (maintainer, _, author, _) = people(&bare);
-    let p = bare.propose(&author, "The map", &[(PATH, Some("help: https://example.org/{title}\n"))]);
+    let p = bare.propose(
+        &author,
+        "The map",
+        &[(PATH, Some("help: https://example.org/{title}\n"))],
+    );
     assert!(matches!(
         bare.acceptor().accept(&maintainer, &bare.wiki, &p.id, 1),
         Ok(Accepted::Signed(_))
@@ -244,7 +264,10 @@ fn a_change_to_the_map_is_its_own_proposal_a_page_never_travels_with_it() {
 
 #[test]
 fn a_map_that_does_not_read_makes_every_write_refuse_naming_the_file_and_the_line() {
-    let rig = ruled(&[(PATH, "ok: https://example.org/{title}\nbad: http://example.org/{title}\n")]);
+    let rig = ruled(&[(
+        PATH,
+        "ok: https://example.org/{title}\nbad: http://example.org/{title}\n",
+    )]);
     let (maintainer, admin, author, _) = people(&rig);
     let text = super::super::testing::HOME.replace("One.", "Uno.");
     let edit = ProposalEdit {
@@ -264,7 +287,9 @@ fn a_map_that_does_not_read_makes_every_write_refuse_naming_the_file_and_the_lin
             panic!("{e:?}")
         };
         assert!(
-            fault.to_string().contains("governance/interwiki.yaml, line 2"),
+            fault
+                .to_string()
+                .contains("governance/interwiki.yaml, line 2"),
             "{fault}"
         );
     }

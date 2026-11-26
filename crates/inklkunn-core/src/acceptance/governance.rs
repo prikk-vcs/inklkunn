@@ -57,8 +57,8 @@ use super::{AcceptFailure, ProposalAcceptor};
 use crate::authorize::{Action, Principal};
 use crate::governance::{
     Fault, GovernanceChange, GovernanceFile, Requirement, Rules, ViewPlace, is_governance_path,
-    mixes_rules_with_other_paths, only_governance_files, refuse_outside_default_view,
-    namespaces_of_titles, refuse_unknown_files, validate_constitution_bytes,
+    mixes_rules_with_other_paths, namespaces_of_titles, only_governance_files,
+    refuse_outside_default_view, refuse_unknown_files, validate_constitution_bytes,
     validate_interwiki_bytes, validate_policy_bytes,
 };
 use crate::proposal::{Invalid, ProposalError};

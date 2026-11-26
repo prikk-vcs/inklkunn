@@ -9,8 +9,7 @@ use inklkunn_store::{FileChange, ProposalFilter, ProposalStore, Visibility, Wiki
 use super::*;
 
 const MAP_FILE: &str = "governance/interwiki.yaml";
-const MAP: &str =
-    "wikipedia: https://en.wikipedia.org/wiki/{title}\ndocs: \"https://example.org/docs?page={title}\"\n";
+const MAP: &str = "wikipedia: https://en.wikipedia.org/wiki/{title}\ndocs: \"https://example.org/docs?page={title}\"\n";
 
 /// A public wiki that holds the map, under the default rules.
 fn env_with_map(map: &str) -> Env {
@@ -34,7 +33,11 @@ fn principal(who: &inklkunn_store::AccountId) -> Principal {
 }
 
 /// A held proposal that writes `text` as the map (`None`: removes it), made by `who`.
-fn propose(e: &Env, who: &inklkunn_store::AccountId, text: Option<&str>) -> inklkunn_store::ProposalId {
+fn propose(
+    e: &Env,
+    who: &inklkunn_store::AccountId,
+    text: Option<&str>,
+) -> inklkunn_store::ProposalId {
     let p = principal(who);
     let wiki: &WikiRecord = &e.w.wiki;
     let edit = ProposalEdit {
@@ -45,7 +48,11 @@ fn propose(e: &Env, who: &inklkunn_store::AccountId, text: Option<&str>) -> inkl
         }],
         ..ProposalEdit::default()
     };
-    let draft = e.w.services.proposals.create(&p, wiki, None, edit).expect("a draft");
+    let draft =
+        e.w.services
+            .proposals
+            .create(&p, wiki, None, edit)
+            .expect("a draft");
     e.w.services
         .proposals
         .submit(&p, wiki, &draft.id)
@@ -71,7 +78,10 @@ async fn the_policy_page_lists_the_prefixes_and_where_they_lead_and_says_when_th
     }
     assert!(!main.contains("This wiki has no interwiki map."), "{main}");
     let ja = as_ja(&e, Some(&e.contributor), PAGE).await;
-    for want in ["Wiki 間リンクの対応表", "https://en.wikipedia.org/wiki/{title}"] {
+    for want in [
+        "Wiki 間リンクの対応表",
+        "https://en.wikipedia.org/wiki/{title}",
+    ] {
         assert!(main_of(&ja).contains(want), "{want}: {}", ja.body());
     }
     // A wiki with no map says so.
@@ -96,7 +106,8 @@ async fn a_map_that_cannot_be_read_is_named_by_its_file_and_line_and_is_not_list
 }
 
 #[tokio::test]
-async fn a_proposal_that_changes_the_map_says_each_prefix_added_removed_or_sent_elsewhere_and_what_accepting_it_takes() {
+async fn a_proposal_that_changes_the_map_says_each_prefix_added_removed_or_sent_elsewhere_and_what_accepting_it_takes()
+ {
     let e = env_with_map(MAP);
     let id = propose(
         &e,
@@ -118,7 +129,12 @@ async fn a_proposal_that_changes_the_map_says_each_prefix_added_removed_or_sent_
     ] {
         assert!(main.contains(want), "{want}: {main}");
     }
-    let ja = as_ja(&e, Some(&e.maintainer), &format!("/handbook/-/proposals/{id}")).await;
+    let ja = as_ja(
+        &e,
+        Some(&e.maintainer),
+        &format!("/handbook/-/proposals/{id}"),
+    )
+    .await;
     for want in [
         "Wiki 間リンクの接頭辞を追加: new → https://new.example/{title}",
         "Wiki 間リンクの接頭辞を削除: docs（移動先は https://example.org/docs?page={title} でした）",
@@ -129,13 +145,16 @@ async fn a_proposal_that_changes_the_map_says_each_prefix_added_removed_or_sent_
     let gone = propose(&e, &e.contributor, None);
     let main = main_of(&as_(&e, &e.maintainer, &format!("/handbook/-/proposals/{gone}")).await);
     assert!(
-        main.contains("Interwiki prefix removed: wikipedia (it led to https://en.wikipedia.org/wiki/{title})"),
+        main.contains(
+            "Interwiki prefix removed: wikipedia (it led to https://en.wikipedia.org/wiki/{title})"
+        ),
         "{main}"
     );
 }
 
 #[tokio::test]
-async fn the_repair_of_a_map_that_cannot_be_read_removes_it_and_back_to_the_defaults_leaves_a_sound_one() {
+async fn the_repair_of_a_map_that_cannot_be_read_removes_it_and_back_to_the_defaults_leaves_a_sound_one()
+ {
     // The form is for an admin, starts from the default rules, and sent unchanged takes the broken map away.
     let fault = ReadFault::from_stored(GovernanceFile::Interwiki, Some(1), Refusal::TemplateHost);
     let e = env_rules(Rules::faulted(Some(common::POLICY_BLOCK.to_owned()), fault));
@@ -182,7 +201,9 @@ async fn the_site_description_publishes_the_map_and_a_page_links_through_it() {
     );
     // A wiki with no map publishes an empty one, as it did.
     let none = env();
-    let body = as_(&none, &none.contributor, "/handbook/-/site.json").await.body();
+    let body = as_(&none, &none.contributor, "/handbook/-/site.json")
+        .await
+        .body();
     assert!(body.contains("\"interwiki\":{}"), "{body}");
     // The page: a mapped prefix is an external link and an unmapped one is a link to a page that is not there.
     let page = as_(&e, &e.contributor, "/handbook/Home").await.body();

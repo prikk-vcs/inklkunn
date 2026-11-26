@@ -4508,18 +4508,12 @@ pub const CATALOG: &[Entry] = &[
         "policy.protections_self_note",
         "Where a protection asks for a review, a proposal accepted by its own proposer does not meet it: while the wiki is small, a lone maintainer cannot both propose and accept a change to a protected page.",
     ),
-    msg(
-        "policy.interwiki_heading",
-        "Interwiki map",
-    ),
+    msg("policy.interwiki_heading", "Interwiki map"),
     msg(
         "policy.interwiki_intro",
         "A link written with one of these prefixes goes to the address shown, with the page title put in. A link with any other prefix stays a link to a page that does not exist.",
     ),
-    msg(
-        "policy.interwiki_none",
-        "This wiki has no interwiki map.",
-    ),
+    msg("policy.interwiki_none", "This wiki has no interwiki map."),
     msg(
         "policy.interwiki_unavailable",
         "The interwiki map could not be read now.",

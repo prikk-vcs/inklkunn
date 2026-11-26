@@ -1177,9 +1177,8 @@ impl ReadService {
         {
             self.store_failures.fetch_add(1, Ordering::Relaxed);
         }
-        let index = Arc::new(
-            TitleIndex::new(tip.state_id().to_owned(), entries).with_interwiki(interwiki),
-        );
+        let index =
+            Arc::new(TitleIndex::new(tip.state_id().to_owned(), entries).with_interwiki(interwiki));
         self.remember(&wiki.id, &index);
         self.forget_the_past(wiki);
         Ok(index)
