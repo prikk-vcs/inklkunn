@@ -171,6 +171,11 @@ async fn surface_proposal_page() {
 #[tokio::test]
 async fn surface_proposal_comments() {
     let e = env().await;
+    // The API's list of the proposal's comments gives the comment's body before it is hidden.
+    let api = format!("/handbook/-/api/v1/proposals/{}/comments", e.open);
+    let before = read(&e, &api, None).await;
+    assert_eq!(before.status, StatusCode::OK, "{}", before.body());
+    assert!(before.body().contains("ZEBRACOMMENT"), "{}", before.body());
     let item = comment_item(&e.open, &e.comment);
     let a = hide(&e, &borrowed(&item), &["part_content", "part_author"], "").await;
     assert_eq!(a.status, StatusCode::OK, "{}", a.body());
@@ -180,11 +185,46 @@ async fn surface_proposal_comments() {
         .await
         .body();
     assert!(body.contains("This comment is hidden."), "{body}");
+    // The API's list is the same thread: the comment is its tombstone, with no body, for every reader and the moderator too.
+    shows_the_tombstone(&e, &api, "\"tombstones\"").await;
+    for who in viewers(&e) {
+        let a = read(&e, &api, who.as_ref()).await;
+        let list = serde_json::from_str::<serde_json::Value>(&a.body()).unwrap();
+        let hidden = list
+            .pointer("/items")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|items| {
+                items
+                    .iter()
+                    .find(|i| i.pointer("/id").and_then(|v| v.as_str()) == Some(e.comment.as_str()))
+            })
+            .unwrap_or_else(|| panic!("{who:?}: the comment is not listed: {}", a.body()));
+        assert_eq!(
+            hidden.pointer("/body"),
+            Some(&serde_json::json!("")),
+            "{who:?}"
+        );
+        assert_eq!(
+            hidden.pointer("/hidden"),
+            Some(&serde_json::json!(["content", "author"])),
+            "{who:?}"
+        );
+        assert_eq!(
+            hidden.pointer("/tombstone/category"),
+            Some(&serde_json::json!("personal-data")),
+            "{who:?}"
+        );
+    }
 }
 
 #[tokio::test]
 async fn surface_proposal_list() {
     let e = env().await;
+    // Before the hide, the API's list and the feed carry the summary: what the test then finds gone was there.
+    let before = read(&e, "/handbook/-/api/v1/proposals", None).await.body();
+    assert!(before.contains("ZEBRASUMMARY"), "{before}");
+    let before = read(&e, "/handbook/-/proposals.atom", None).await.body();
+    assert!(before.contains("ZEBRASUMMARY"), "{before}");
     let item = proposal_item(&e.accepted, 1);
     let a = hide(&e, &borrowed(&item), &["part_summary", "part_author"], "").await;
     assert_eq!(a.status, StatusCode::OK, "{}", a.body());
@@ -202,6 +242,52 @@ async fn surface_proposal_list() {
     let list = read(&e, "/handbook/-/proposals", None).await.body();
     assert!(list.contains("(summary hidden)"), "{list}");
     assert!(list.contains("(hidden)"), "{list}");
+    // The same list asked of the API, and the feed of what was opened and decided (RFC 007 D-9): the summary is an empty one with
+    // its tombstone (the feed says the words of the page), and no author is named, for every reader and the moderator too.
+    for who in viewers(&e) {
+        let a = read(&e, "/handbook/-/api/v1/proposals", who.as_ref()).await;
+        assert_eq!(a.status, StatusCode::OK, "{who:?}: {}", a.body());
+        nothing_hidden_in(&a, "the API's list");
+        let list = serde_json::from_str::<serde_json::Value>(&a.body()).unwrap();
+        let hidden = list
+            .pointer("/items")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|items| {
+                items.iter().find(|i| {
+                    i.pointer("/id").and_then(|v| v.as_str())
+                        == Some(e.accepted.to_string().as_str())
+                })
+            })
+            .unwrap_or_else(|| panic!("{who:?}: the proposal is not listed: {}", a.body()));
+        assert_eq!(
+            hidden.pointer("/summary"),
+            Some(&serde_json::json!("")),
+            "{who:?}"
+        );
+        assert_eq!(
+            hidden.pointer("/sources"),
+            Some(&serde_json::json!([])),
+            "{who:?}"
+        );
+        assert_eq!(
+            hidden.pointer("/hidden"),
+            Some(&serde_json::json!(["summary", "author"])),
+            "{who:?}"
+        );
+        let feed = read(&e, "/handbook/-/proposals.atom", who.as_ref()).await;
+        assert_eq!(feed.status, StatusCode::OK, "{who:?}: {}", feed.body());
+        nothing_hidden_in(&feed, "the feed");
+        assert!(
+            feed.body().contains("(summary hidden)"),
+            "{who:?}: {}",
+            feed.body()
+        );
+        assert!(
+            feed.body().contains("Proposed by (hidden)"),
+            "{who:?}: {}",
+            feed.body()
+        );
+    }
 }
 
 #[tokio::test]
