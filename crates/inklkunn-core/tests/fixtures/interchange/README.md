@@ -71,6 +71,4 @@ $B --dev-unconfined wiki import-folder orchard $I/input-3 --replace-existing
 $B --dev-unconfined wiki export orchard --bundle $I/bundle   # the destination must not exist
 ```
 
-It was exported by the tree at the I-T2 commits, **before the corrections X-1 – X-9 to the export** (`sha256sums.txt` as the
-checksums file's name, `at` from the sealing time): **the architect regenerates `inklkunn/bundle/` after those land**, with the
-commands above, and the tests that read it (they read counts and rules, and what the manifest names) keep passing.
+It was exported by the tree after the corrections X-1 – X-9 to the export (2026-11-26: `sha256sums.txt` as the checksums file's name, `at` from the sealing time, `inklkunn.withheld` and `after_untraced` where they apply), and the tests that read it (counts, rules, and what the manifest names) pass on it.

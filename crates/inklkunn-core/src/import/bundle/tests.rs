@@ -674,22 +674,22 @@ fn inklkunns_own_export_is_read_and_its_pages_end_where_their_last_revision_does
 fn the_checksums_are_the_file_the_manifest_names_and_never_a_fixed_name() {
     let d = copy_of("sums-name", "inklkunn/bundle");
     // The manifest names another file: that one is read.
-    std::fs::rename(d.0.join("SHA256SUMS"), d.0.join("sums.txt")).unwrap();
+    std::fs::rename(d.0.join("sha256sums.txt"), d.0.join("sums.txt")).unwrap();
     let manifest_path = d.0.join("wiki-bundle.yaml");
     let m = std::fs::read_to_string(&manifest_path).unwrap();
     std::fs::write(
         &manifest_path,
-        m.replace("checksums: SHA256SUMS", "checksums: sums.txt"),
+        m.replace("checksums: sha256sums.txt", "checksums: sums.txt"),
     )
     .unwrap();
     let p = plan(&d.0);
     assert_importable(&p);
     assert!(matches!(&p.report.checksums, Checksums::Verified { file, .. } if file == "sums.txt"));
     // A file by the old name that the manifest does not name is a file the checksums do not name.
-    put(&d.0, "SHA256SUMS", b"anything");
-    assert_refused(&plan(&d.0), "SHA256SUMS", "does not name it");
+    put(&d.0, "sha256sums.txt", b"anything");
+    assert_refused(&plan(&d.0), "sha256sums.txt", "does not name it");
     // Without the key, no file of checksums is read at all, and it is said.
-    std::fs::write(&manifest_path, m.replace("checksums: SHA256SUMS\n", "")).unwrap();
+    std::fs::write(&manifest_path, m.replace("checksums: sha256sums.txt\n", "")).unwrap();
     let p = plan(&d.0);
     assert_importable(&p);
     assert_eq!(p.report.checksums, Checksums::None);

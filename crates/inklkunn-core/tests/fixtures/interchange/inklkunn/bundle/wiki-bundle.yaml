@@ -30,12 +30,14 @@ fidelity:
   degraded: []
   dropped: []
   note: native; nothing was converted
-exported_at: "2026-11-25T23:51:23Z"
+exported_at: "2026-11-26T00:24:41Z"
 interwiki: {}
-checksums: SHA256SUMS
+checksums: sha256sums.txt
 inklkunn:
   default_view: heads/main
   policy_bootstrap: default
-  as_of_block: "d6829e5816e011e94ef48382dd552ee8982c03be21e79f7e8a6e2d2f4dcf7958"
+  as_of_block: "07719d1af4e7cd9f3666b70454888fd5b27b3da734d8331065aceeb68995b850"
   history_changes_without_a_page: 7
   histories_not_written: 0
+  revisions_withheld: 0
+  histories_after_untraced: []
