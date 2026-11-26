@@ -331,3 +331,44 @@ fn the_map_is_judged_against_the_titles_of_every_page_the_replay_writes_a_moved_
         left_out(&p)
     );
 }
+
+#[test]
+fn a_page_titled_in_a_mapped_prefix_is_never_written_beside_the_prefix_the_prefix_is_left_out() {
+    // The rule is symmetric (correction W-5): a wiki never has a page `GH:Notes` and a map with `gh`. An import judges it as acceptance
+    // does, by the same definition of a namespace and without regard to case, and it keeps the page: the bundle's prefix is the one left
+    // out, named, and the links that used it are reported missing as for any prefix the wiki lacks.
+    let d = dir("iw-symmetric");
+    manifest(
+        &d.0,
+        &[
+            "license: CC-BY-SA-4.0",
+            "checksums: sha256sums.txt",
+            "interwiki:",
+            "  gh: https://github.com/org/repo/wiki/{title}",
+            "  fine: https://fine.example.org/{title}",
+        ],
+    );
+    let path = inklkunn_markup::path::title_to_path("GH:Notes").unwrap();
+    put(
+        &d.0,
+        &path,
+        b"---\nid: notes\ntitle: GH:Notes\n---\n\nNotes.\n",
+    );
+    seal(&d.0);
+    let p = plan(&d.0);
+    assert_importable(&p);
+    let names: Vec<&str> = p.interwiki.iter().map(|(k, _)| k).collect();
+    assert_eq!(names, vec!["fine"], "{}", p.render());
+    assert_eq!(
+        left_out(&p),
+        vec![("gh".to_owned(), Rule::PrefixIsNamespace.name())]
+    );
+    // The map that results and the page that is written never meet the rule in the other direction.
+    let kept = p
+        .interwiki
+        .iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()));
+    let (map, left) = crate::governance::judge_interwiki(kept, &Default::default());
+    assert!(left.is_empty());
+    assert!(map.takes_namespace_of("GH:Notes").is_none());
+}
