@@ -47,6 +47,7 @@ use super::*;
 mod bookstack;
 mod claims;
 mod kill;
+mod kill_real;
 mod mediawiki;
 mod refusals;
 mod roundtrip;
