@@ -41,6 +41,8 @@ use super::*;
 
 mod bookstack;
 mod mediawiki;
+mod roundtrip;
+mod sha;
 
 const FIXTURES: &str = "../inklkunn-core/tests/fixtures/interchange";
 
@@ -343,6 +345,7 @@ fn the_interchange_works_end_to_end_on_a_real_prikk() {
 
     p.a_mediawiki_dump_comes_in_with_its_history();
     p.a_bookstack_export_comes_in();
+    p.a_round_trip();
 
     let steps = p.t.steps;
     p.t.say(format!("\n== end of the transcript: {steps} steps"));
