@@ -171,7 +171,7 @@ fn sent_window(store: &(impl ProposalStore + WikiStore + AccountStore)) {
     }
 
     // A window is the first `limit` of the whole; nothing at zero.
-    assert_eq!(sent_ids(store, &w, None, None, 3), whole[..3]);
+    assert_eq!(sent_ids(store, &w, None, None, 3), whole.get(..3).unwrap());
     assert!(sent_ids(store, &w, None, None, 0).is_empty());
 
     // Walked by the place the page before ended: each once, in order, whatever a page's size.
@@ -210,7 +210,7 @@ fn sent_window(store: &(impl ProposalStore + WikiStore + AccountStore)) {
     // The place is the time and the id, not the state: a state that moved leaves it where it was.
     assert_eq!(
         sent_ids(store, &w, Some(ProposalState::Accepted), None, 100),
-        [w.old.clone()]
+        std::slice::from_ref(&w.old)
     );
 }
 
@@ -247,11 +247,11 @@ fn event_window(store: &(impl ProposalStore + WikiStore + AccountStore)) {
     // The window is the newest events by their own time: the decision of the oldest proposal is the newest event.
     assert_eq!(
         event_ids(&store.proposal_events(&w.wiki, 2).unwrap()),
-        whole[..2]
+        whole.get(..2).unwrap()
     );
     assert_eq!(
         event_ids(&store.proposal_events(&w.wiki, 4).unwrap()),
-        whole[..4],
+        whole.get(..4).unwrap(),
         "the window cuts between the two events of a proposal as it cuts anywhere"
     );
     assert!(store.proposal_events(&w.wiki, 0).unwrap().is_empty());
@@ -291,12 +291,12 @@ fn comment_window(store: &(impl ProposalStore + WikiStore + AccountStore)) {
     );
     assert_eq!(
         ids(store.comments_after(&p.id, None, None, 2).unwrap()),
-        all[..2]
+        all.get(..2).unwrap()
     );
     let after = all.get(1).unwrap();
     assert_eq!(
         ids(store.comments_after(&p.id, None, Some(after), 2).unwrap()),
-        all[2..4]
+        all.get(2..4).unwrap()
     );
     let last = all.last().unwrap();
     assert!(

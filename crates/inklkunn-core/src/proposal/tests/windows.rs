@@ -403,7 +403,11 @@ fn pages_over_a_cursor_reproduce_the_whole_order_with_proposals_sent_in_one_seco
             .into_iter()
             .map(|p| p.id)
             .collect();
-        assert_eq!(rest, whole[4..], "{kind:?}: the place does not move");
+        assert_eq!(
+            rest,
+            whole.get(4..).unwrap(),
+            "{kind:?}: the place does not move"
+        );
         let held_rest: Vec<ProposalId> = e
             .service
             .list_sent(
@@ -417,7 +421,9 @@ fn pages_over_a_cursor_reproduce_the_whole_order_with_proposals_sent_in_one_seco
             .into_iter()
             .map(|p| p.id)
             .collect();
-        let expected: Vec<ProposalId> = whole[4..]
+        let expected: Vec<ProposalId> = whole
+            .get(4..)
+            .unwrap()
             .iter()
             .filter(|id| **id != decided)
             .cloned()
