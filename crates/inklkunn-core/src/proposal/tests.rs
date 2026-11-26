@@ -22,3 +22,4 @@ mod support;
 mod validation;
 mod walk;
 mod windows;
+mod windows_hidden;

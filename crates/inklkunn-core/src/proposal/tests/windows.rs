@@ -321,7 +321,7 @@ fn a_page_of_a_threads_comments_reads_the_page_and_not_the_thread() {
         // Walked 100 at a time, the thread comes back whole and in order; a place of no comment of it is none.
         let mut walked: Vec<CommentId> = Vec::new();
         let mut after: Option<CommentId> = None;
-        loop {
+        for _ in 0..50 {
             let page = service
                 .comments_page(anyone, &e.wiki, &p.id, after.as_ref(), 100)
                 .unwrap()
@@ -372,7 +372,7 @@ fn pages_over_a_cursor_reproduce_the_whole_order_with_proposals_sent_in_one_seco
         for size in [1_usize, 2, 4, 5] {
             let mut walked: Vec<ProposalId> = Vec::new();
             let mut after: Option<(i64, ProposalId)> = None;
-            loop {
+            for _ in 0..50 {
                 let page = e
                     .service
                     .list_sent(anyone, &e.wiki, None, after.as_ref(), size)

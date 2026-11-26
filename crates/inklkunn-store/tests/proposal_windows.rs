@@ -178,7 +178,7 @@ fn sent_window(store: &(impl ProposalStore + WikiStore + AccountStore)) {
     for size in 1..=4_usize {
         let mut walked: Vec<ProposalId> = Vec::new();
         let mut after: Option<(i64, ProposalId)> = None;
-        loop {
+        for _ in 0..50 {
             let page = store
                 .proposals_sent(
                     &w.wiki,
