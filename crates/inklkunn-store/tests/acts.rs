@@ -491,3 +491,83 @@ fn a_version_10_database_is_migrated_to_11_keeping_its_records_and_only_once() {
     drop(SqliteStore::open(&fresh).expect("fresh"));
     assert_eq!(names(&db), names(&fresh));
 }
+
+/// RFC 007 D-1 (the replay of an import): a wiki's record and every act of its history are one transaction, on both stores.
+fn a_history_is_stored_whole_or_not_at_all(store: &(impl ActStore + WikiStore)) {
+    let record = new_record("imported");
+    let acts: Vec<(SystemActRecord, SystemActEnd)> = [
+        SystemActKind::System,
+        SystemActKind::Import,
+        SystemActKind::Import,
+    ]
+    .iter()
+    .enumerate()
+    .map(|(n, kind)| {
+        let begin = act(&record.id, *kind, 10 + n as i64);
+        let end = ended(&begin);
+        (begin, end)
+    })
+    .collect();
+    // A history with a foreign act, a foreign end or a repeated act: refused, and nothing is written.
+    let foreign = act(&WikiId::new(), SystemActKind::Import, 1);
+    let mut with_foreign = acts.clone();
+    with_foreign.push((foreign.clone(), ended(&foreign)));
+    assert!(matches!(
+        store.insert_wiki_with_acts(record.clone(), &with_foreign),
+        Err(StoreError::Backend(_))
+    ));
+    let mut with_stranger_end = acts.clone();
+    if let Some(last) = with_stranger_end.last_mut() {
+        last.1 = ended(&act(&record.id, SystemActKind::Import, 1));
+    }
+    assert!(matches!(
+        store.insert_wiki_with_acts(record.clone(), &with_stranger_end),
+        Err(StoreError::Backend(_))
+    ));
+    let mut twice = acts.clone();
+    twice.push(acts[1].clone());
+    assert_eq!(
+        store.insert_wiki_with_acts(record.clone(), &twice),
+        Err(StoreError::AlreadyRecorded)
+    );
+    for refused in [&with_foreign, &with_stranger_end, &twice] {
+        let _ = refused;
+        assert_eq!(store.get(&record.id), Err(StoreError::NotFound));
+        assert_eq!(store.by_slug(&record.slug), Err(StoreError::NotFound));
+        assert!(store.system_acts(&record.id).unwrap().is_empty());
+    }
+    // The whole history: the record and the acts, in the order they were made.
+    assert_eq!(
+        store.insert_wiki_with_acts(record.clone(), &acts).unwrap(),
+        record
+    );
+    assert_eq!(store.get(&record.id).unwrap(), record);
+    let stored = store.system_acts(&record.id).unwrap();
+    assert_eq!(stored.len(), 3);
+    for (n, (begin, end)) in acts.iter().enumerate() {
+        assert_eq!(&nth(&stored, n).act, begin);
+        assert_eq!(nth(&stored, n).end.as_ref(), Some(end));
+    }
+    // A slug that is taken: nothing of the second history is written.
+    let clash = new_record("imported");
+    let clash_acts = vec![{
+        let begin = act(&clash.id, SystemActKind::Import, 20);
+        let end = ended(&begin);
+        (begin, end)
+    }];
+    assert_eq!(
+        store.insert_wiki_with_acts(clash.clone(), &clash_acts),
+        Err(StoreError::SlugTaken("imported".to_owned()))
+    );
+    assert!(store.system_acts(&clash.id).unwrap().is_empty());
+}
+
+#[test]
+fn the_memory_store_stores_a_wiki_with_its_whole_history_or_nothing() {
+    a_history_is_stored_whole_or_not_at_all(&MemoryStore::new());
+}
+
+#[test]
+fn the_sqlite_store_stores_a_wiki_with_its_whole_history_or_nothing() {
+    a_history_is_stored_whole_or_not_at_all(&SqliteStore::open_in_memory().expect("open"));
+}

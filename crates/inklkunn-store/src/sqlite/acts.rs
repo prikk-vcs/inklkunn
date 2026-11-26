@@ -298,6 +298,35 @@ impl ActStore for SqliteStore {
         })
     }
 
+    fn insert_wiki_with_acts(
+        &self,
+        record: WikiRecord,
+        acts: &[(SystemActRecord, SystemActEnd)],
+    ) -> Result<WikiRecord> {
+        if acts
+            .iter()
+            .any(|(begin, end)| begin.wiki != record.id || end.act != begin.id)
+        {
+            return Err(StoreError::Backend(
+                "an act of the history is not of this wiki".to_owned(),
+            ));
+        }
+        self.with(|conn| {
+            // One transaction: the wiki's row, and the start and the end of every act. Dropping it on any refusal rolls all
+            // of it back.
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(backend)?;
+            insert_wiki_row(&tx, &record)?;
+            for (begin, end) in acts {
+                insert_act_row(&tx, begin)?;
+                insert_act_end_row(&tx, end)?;
+            }
+            tx.commit().map_err(backend)?;
+            Ok(record)
+        })
+    }
+
     fn open_system_act(&self, id: &SystemActId) -> Result<Option<SystemActRecord>> {
         self.with(|conn| {
             let found = conn

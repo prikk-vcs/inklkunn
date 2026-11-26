@@ -210,6 +210,13 @@ fn record_of(value: &serde_json::Value) -> Result<Record, String> {
     let mut r = Record::default();
     match obj.get("rev") {
         Some(serde_json::Value::String(s)) if !s.is_empty() && s.chars().count() <= 256 => {
+            // A `rev` is recorded in the change's message as a trailer: one line, no space at either end.
+            if s.chars().any(inklkunn_store::record::is_line_or_control) || s.trim() != s {
+                return Err(
+                    "has a `rev` that is not one line (no control character, no space at either end)"
+                        .to_owned(),
+                );
+            }
             r.rev = s.clone();
         }
         _ => return Err("has no `rev` of text from 1 to 256 characters".to_owned()),
@@ -419,11 +426,127 @@ enum Text {
     Gone,
 }
 
+/// What one record did to a page's text, as [`Walker::step`] says it.
+pub(super) struct Stepped {
+    /// What the replay does with the record.
+    pub(super) step: Step,
+    /// The page's complete text after the record, when it is a text step: the caller holds it only as long as it needs it.
+    pub(super) text: Option<String>,
+    /// The licence the text's frontmatter declares, when it does.
+    pub(super) licence: Option<String>,
+}
+
+/// One page's text as its records go by, in the file's order: **the one place that says what a record does to it**, so that the
+/// plan that judges and the replay that writes cannot differ. `content` is the text; a `patch` is applied to the text before it and
+/// its `sha256` must be the result's.
+pub(super) struct Walker {
+    text: Text,
+}
+
+impl Walker {
+    pub(super) fn new() -> Self {
+        Walker {
+            text: Text::Nothing,
+        }
+    }
+
+    /// The digest of the text after the last record that gave one, when the walk has it.
+    pub(super) fn last_digest(&self) -> Option<Digest> {
+        match &self.text {
+            Text::Known(t) => Some(Sha256::digest(t.as_bytes()).into()),
+            _ => None,
+        }
+    }
+
+    /// Take the next record. `Err` is a rule (never a value) that the record breaks.
+    pub(super) fn step(&mut self, r: &Record, page_cap: u64) -> Result<Stepped, String> {
+        let hides_content = r.suppressed.contains(&Part::Content);
+        let withheld = r.withheld.is_some();
+        let mut licence = None;
+        let mut text_out = None;
+        let step = match r.kind.as_str() {
+            _ if hides_content => {
+                self.text = Text::Unknown;
+                Step::NotReplayed(Skipped::SuppressedContent)
+            }
+            _ if withheld => {
+                self.text = Text::Unknown;
+                Step::NotReplayed(Skipped::Withheld(r.withheld.clone().unwrap_or_default()))
+            }
+            "rename" => match (&r.from, &r.to) {
+                (Some(from), Some(to)) if !from.is_empty() && !to.is_empty() => Step::Rename {
+                    from: from.clone(),
+                    to: to.clone(),
+                },
+                _ => return Err("is a rename without a `from` and a `to`".to_owned()),
+            },
+            "delete" => {
+                self.text = Text::Gone;
+                Step::Delete
+            }
+            "create" | "edit" | "restore" | "revert" => {
+                let next = match (&r.content, &r.patch) {
+                    (Some(content), _) => Some(content.clone()),
+                    (None, Some(patch)) => {
+                        if r.sha256.is_none() {
+                            return Err(
+                                "has a `patch` and no `sha256` to check the result against"
+                                    .to_owned(),
+                            );
+                        }
+                        let Text::Known(old) = &self.text else {
+                            return Err(
+                                "has a `patch` and no text before it to apply it to".to_owned()
+                            );
+                        };
+                        Some(
+                            patch::apply(old, patch)
+                                .map_err(|rule| format!("has a `patch` that {rule}"))?,
+                        )
+                    }
+                    (None, None) => None,
+                };
+                match next {
+                    None => {
+                        self.text = Text::Unknown;
+                        Step::NotReplayed(Skipped::NoText)
+                    }
+                    Some(next) => {
+                        let bytes = next.len() as u64;
+                        if bytes > page_cap {
+                            return Err(format!(
+                                "has a text larger than the {} KiB cap of a page",
+                                page_cap >> 10
+                            ));
+                        }
+                        let sha256: Digest = Sha256::digest(next.as_bytes()).into();
+                        if let Some(declared) = r.sha256
+                            && declared != sha256
+                        {
+                            return Err("has a `sha256` that is not the text's".to_owned());
+                        }
+                        licence = inspect_page_text(&next)?;
+                        text_out = Some(next.clone());
+                        self.text = Text::Known(next);
+                        Step::Text { sha256, bytes }
+                    }
+                }
+            }
+            other => Step::NotReplayed(Skipped::Type(other.to_owned())),
+        };
+        Ok(Stepped {
+            step,
+            text: text_out,
+            licence,
+        })
+    }
+}
+
 /// Judge one page's records as a history: the order, each text, each digest. `Err` is a refusal as `(rev, rule)`: the page is named
 /// by the caller, the rule never repeats a value.
 pub fn judge(records: &[Record], page_cap: u64) -> Result<Judged, (Option<String>, String)> {
     let mut judged = Judged::default();
-    let mut text = Text::Nothing;
+    let mut walker = Walker::new();
     let mut before: Option<&Record> = None;
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for r in records {
@@ -471,77 +594,11 @@ pub fn judge(records: &[Record], page_cap: u64) -> Result<Judged, (Option<String
             .copied()
             .filter(|p| *p != Part::Content)
             .collect();
-        let step = match r.kind.as_str() {
-            _ if hides_content => {
-                text = Text::Unknown;
-                Step::NotReplayed(Skipped::SuppressedContent)
-            }
-            _ if withheld => {
-                text = Text::Unknown;
-                Step::NotReplayed(Skipped::Withheld(r.withheld.clone().unwrap_or_default()))
-            }
-            "rename" => match (&r.from, &r.to) {
-                (Some(from), Some(to)) if !from.is_empty() && !to.is_empty() => Step::Rename {
-                    from: from.clone(),
-                    to: to.clone(),
-                },
-                _ => return Err(refuse("is a rename without a `from` and a `to`")),
-            },
-            "delete" => {
-                text = Text::Gone;
-                Step::Delete
-            }
-            "create" | "edit" | "restore" | "revert" => {
-                let next = match (&r.content, &r.patch) {
-                    (Some(content), _) => Some(content.clone()),
-                    (None, Some(patch)) => {
-                        if r.sha256.is_none() {
-                            return Err(refuse(
-                                "has a `patch` and no `sha256` to check the result against",
-                            ));
-                        }
-                        let Text::Known(old) = &text else {
-                            return Err(refuse(
-                                "has a `patch` and no text before it to apply it to",
-                            ));
-                        };
-                        Some(
-                            patch::apply(old, patch)
-                                .map_err(|rule| refuse(&format!("has a `patch` that {rule}")))?,
-                        )
-                    }
-                    (None, None) => None,
-                };
-                match next {
-                    None => {
-                        text = Text::Unknown;
-                        Step::NotReplayed(Skipped::NoText)
-                    }
-                    Some(next) => {
-                        let bytes = next.len() as u64;
-                        if bytes > page_cap {
-                            return Err(refuse(&format!(
-                                "has a text larger than the {} KiB cap of a page",
-                                page_cap >> 10
-                            )));
-                        }
-                        let sha256: Digest = Sha256::digest(next.as_bytes()).into();
-                        if let Some(declared) = r.sha256
-                            && declared != sha256
-                        {
-                            return Err(refuse("has a `sha256` that is not the text's"));
-                        }
-                        let meta = inspect_page_text(&next).map_err(|why| refuse(&why))?;
-                        if let Some(licence) = meta {
-                            note_licence(&mut judged, licence, &r.rev);
-                        }
-                        text = Text::Known(next);
-                        Step::Text { sha256, bytes }
-                    }
-                }
-            }
-            other => Step::NotReplayed(Skipped::Type(other.to_owned())),
-        };
+        let stepped = walker.step(r, page_cap).map_err(|rule| refuse(&rule))?;
+        if let Some(licence) = stepped.licence {
+            note_licence(&mut judged, licence, &r.rev);
+        }
+        let step = stepped.step;
         if let Some(licence) = &r.license {
             note_licence(&mut judged, licence.clone(), &r.rev);
         }
@@ -563,10 +620,7 @@ pub fn judge(records: &[Record], page_cap: u64) -> Result<Judged, (Option<String
             path: r.path.clone(),
         });
     }
-    judged.last_text = match &text {
-        Text::Known(t) => Some(Sha256::digest(t.as_bytes()).into()),
-        _ => None,
-    };
+    judged.last_text = walker.last_digest();
     Ok(judged)
 }
 

@@ -97,9 +97,22 @@ impl Default for BundleOptions {
     }
 }
 
+/// A history file as the plan found it: where it is, the inode, and the digest of the bytes the plan judged. **The replay reads
+/// it again** (the plan keeps no text), from a fresh handle on the same directories, and goes on only if what it reads is the
+/// file the plan judged: the same inode, the same size, the same digest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistorySource {
+    path: std::path::PathBuf,
+    identity: super::Identity,
+    size: u64,
+    digest: Digest,
+}
+
 /// One page's judged history.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageHistory {
+    /// Where the file was read from, to read it again for the replay.
+    pub(super) source: HistorySource,
     /// The history file, relative to the bundle (`history/<name>.jsonl`).
     pub file: String,
     /// The page's path in the bundle's files, when the page is there (a page removed since has a history and no file).
@@ -124,6 +137,11 @@ pub struct BundlePlan {
     /// The order of the replay: `(history, revision)` indexes, revisions of all pages merged by `at` as instants, ties in the
     /// path order of the page, then the file's order. The same bundle always gives the same order.
     pub schedule: Vec<(usize, usize)>,
+    /// The paths of the pages that come in with the first change: those with no history to replay (a level 2 bundle's, or those
+    /// whose records give no text), at the text of the bundle's files. The attachments and knowledge files come in with it too.
+    pub first_pages: Vec<String>,
+    /// The paths of the pages whose file at the end differs from their last replayed revision: the change at the end writes them.
+    pub final_pages: Vec<String>,
 }
 
 impl BundlePlan {
@@ -189,6 +207,8 @@ pub(super) struct Gathered {
     history_cap: u64,
     history_bytes: u64,
     history_over: bool,
+    /// The history files read whole: where, which inode, how large, which digest.
+    history_sources: BTreeMap<String, HistorySource>,
     files: BTreeMap<String, Seen>,
     pages: BTreeMap<String, PageFacts>,
     sidecars: BTreeMap<String, Vec<u8>>,
@@ -233,7 +253,13 @@ impl Gathered {
     }
 
     /// A file that is no content: read whole when the plan reads it, hashed when checksums are to be verified.
-    fn other(&mut self, rel: &str, size: u64, file: File) -> Result<(), String> {
+    fn other(
+        &mut self,
+        rel: &str,
+        found: (&Path, super::Identity),
+        size: u64,
+        file: File,
+    ) -> Result<(), String> {
         let (bytes, digest) = match self.role(rel) {
             Role::Whole(cap) => {
                 let bytes = read_all(file, cap)?;
@@ -250,6 +276,15 @@ impl Gathered {
                 let bytes = read_all(file, self.history_cap)?;
                 self.history_bytes += bytes.len() as u64;
                 let digest = sha256(&bytes);
+                self.history_sources.insert(
+                    rel.to_owned(),
+                    HistorySource {
+                        path: found.0.to_path_buf(),
+                        identity: found.1,
+                        size: bytes.len() as u64,
+                        digest,
+                    },
+                );
                 (Some(bytes), Some(digest))
             }
             Role::Other if self.verify => (None, Some(hash_all(file, MAX_OTHER_BYTES)?)),
@@ -328,7 +363,7 @@ impl Gathered {
 impl Walk<'_> {
     /// A file of the bundle that is not content: opened and examined as every file of the walk is, then inventoried
     /// ([`Gathered::other`]).
-    pub(super) fn other_file(&mut self, parent: &OwnedFd, name: &OsStr, rel: &str) {
+    pub(super) fn other_file(&mut self, parent: &OwnedFd, name: &OsStr, source: &Path, rel: &str) {
         let opened = match open_regular(parent, name) {
             Ok(o) => o,
             Err(why) => {
@@ -354,7 +389,7 @@ impl Walk<'_> {
         let Some(gathered) = self.bundle.as_mut() else {
             return;
         };
-        if let Err(why) = gathered.other(rel, size, opened.file) {
+        if let Err(why) = gathered.other(rel, (source, opened.identity), size, opened.file) {
             self.refuse(rel, why);
         }
     }
@@ -595,6 +630,8 @@ pub fn plan_bundle(
                 report: BundleReport::default(),
                 histories: Vec::new(),
                 schedule: Vec::new(),
+                first_pages: Vec::new(),
+                final_pages: Vec::new(),
             });
         }
     };
@@ -914,7 +951,15 @@ fn judge(
             // A page that is not among the bundle's files (removed since): its revisions' licences count under the file's name.
             history_licences.insert(rel.clone(), judged.licences.clone());
         }
+        let Some(source) = gathered.history_sources.get(rel).cloned() else {
+            refusals.push(refusal(
+                rel,
+                "was read and its place was not kept (the plan could not read it again for the replay)",
+            ));
+            continue;
+        };
         histories.push(PageHistory {
+            source,
             file: rel.clone(),
             page,
             revisions: judged.revisions,
@@ -1240,6 +1285,7 @@ fn finish(
         .map(|f| f.path.clone())
         .collect();
     let mut first_change: Vec<String> = Vec::new();
+    let mut final_paths: Vec<String> = Vec::new();
     for path in &kept_pages {
         let has_history = replayed_pages.contains(path) && !options.no_history;
         if !has_history {
@@ -1254,6 +1300,7 @@ fn finish(
         let final_sha = gathered.pages.get(path).map(|p| p.sha256);
         if last.is_none() || last != final_sha {
             report.final_state_pages.push(shown(path));
+            final_paths.push(path.clone());
         }
     }
     report.pages = kept_pages.len();
@@ -1448,6 +1495,8 @@ fn finish(
         report,
         histories,
         schedule,
+        first_pages: first_change,
+        final_pages: final_paths,
     }
 }
 

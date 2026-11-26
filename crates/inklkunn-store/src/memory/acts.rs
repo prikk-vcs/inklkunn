@@ -153,6 +153,43 @@ impl ActStore for MemoryStore {
         Ok(record)
     }
 
+    fn insert_wiki_with_acts(
+        &self,
+        record: WikiRecord,
+        acts: &[(SystemActRecord, SystemActEnd)],
+    ) -> Result<WikiRecord> {
+        if acts
+            .iter()
+            .any(|(begin, end)| begin.wiki != record.id || end.act != begin.id)
+        {
+            return Err(StoreError::Backend(
+                "an act of the history is not of this wiki".to_owned(),
+            ));
+        }
+        let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut d = self.acts_lock();
+        if records.iter().any(|r| r.id == record.id) {
+            return Err(StoreError::IdTaken(record.id.to_string()));
+        }
+        if records.iter().any(|r| r.slug == record.slug) {
+            return Err(StoreError::SlugTaken(record.slug.to_string()));
+        }
+        // Checked before anything is pushed, so a refusal leaves nothing.
+        let mut seen: Vec<&SystemActId> = Vec::new();
+        for (begin, _) in acts {
+            if d.acts.iter().any(|a| a.id == begin.id) || seen.contains(&&begin.id) {
+                return Err(StoreError::AlreadyRecorded);
+            }
+            seen.push(&begin.id);
+        }
+        records.push(record.clone());
+        for (begin, end) in acts {
+            d.acts.push(begin.clone());
+            d.ends.push(end.clone());
+        }
+        Ok(record)
+    }
+
     fn begin_recovery_act(&self, act: &RecoveryActRecord) -> Result<()> {
         if act.plan.len() > MAX_RECOVERY_PLAN_BYTES {
             return Err(StoreError::Backend(format!(

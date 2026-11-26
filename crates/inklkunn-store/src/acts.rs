@@ -293,6 +293,22 @@ pub trait ActStore: Send + Sync {
         end: &SystemActEnd,
     ) -> Result<WikiRecord>;
 
+    /// Store a new wiki's record **and** the sealed system acts of its whole history in one transaction (RFC 007 D-1, the replay
+    /// of an import): the acts in the order they were made, each with its end. **Either all of it is there afterwards or none
+    /// of it**, so a wiki that an import made is never seen with half its history recorded. Every act must be of this record
+    /// (`begin.wiki == record.id`, `end.act == begin.id`, otherwise [`Backend`](crate::StoreError::Backend)); the refusals of
+    /// [`insert_wiki_with_creation_act`](ActStore::insert_wiki_with_creation_act) apply, and nothing is written then. A store
+    /// that cannot do this says so, and a service over it cannot import a bundle.
+    fn insert_wiki_with_acts(
+        &self,
+        _record: WikiRecord,
+        _acts: &[(SystemActRecord, SystemActEnd)],
+    ) -> Result<WikiRecord> {
+        Err(crate::StoreError::Backend(
+            "this store cannot store a wiki together with the acts of its history".to_owned(),
+        ))
+    }
+
     /// Start a recovery act: its plan, written before the signer is asked to do any of it (RFC 004 D-7). The wiki
     /// must be there; the id must be new ([`AlreadyRecorded`](crate::StoreError::AlreadyRecorded) otherwise); a
     /// plan longer than [`MAX_RECOVERY_PLAN_BYTES`] is refused ([`Backend`](crate::StoreError::Backend), nothing

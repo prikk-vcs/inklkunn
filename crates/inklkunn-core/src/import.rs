@@ -891,7 +891,7 @@ impl Walk<'_> {
         // A bundle's own files (its manifest, `users.yaml`, `history/`, whatever it carries that is not content) are not
         // repository paths: they are inventoried, read when the plan needs them, and judged by the bundle plan.
         if self.bundle.as_ref().is_some_and(|g| !g.is_content(rel)) {
-            self.other_file(parent, name, rel);
+            self.other_file(parent, name, source, rel);
             return;
         }
         // Then the signer's rule, which is the one that would refuse it at the end.

@@ -290,6 +290,86 @@ pub fn create_wiki_observed(
     authority: &KeyAuthority,
     observe: &dyn Fn(CreationStep),
 ) -> Result<CreatedWiki, CreateWikiError> {
+    let started = begin_creation(
+        store,
+        layout,
+        signer,
+        new,
+        inklkunn_version,
+        authority,
+        observe,
+    )?;
+    let Started {
+        mut record,
+        id,
+        mark,
+        repo,
+        sealed,
+    } = started;
+    // 8. Verification: a fresh repository that does not verify is not a wiki.
+    if let Err(error) = verify_repository(storage, &repo) {
+        return Err(error.with_cleanup(settle(mark, discard(layout, signer, &id))));
+    }
+    observe(CreationStep::Verified);
+    record.verification = Verification {
+        state: VerificationState::Verified,
+        at: Some(inklkunn_store::record::now_secs()),
+    };
+    // 9. The record and the first change's act, last and together: one transaction, so a kill leaves both or
+    //    neither. A lost slug race is reported as the slug being taken, and the attempt removed.
+    let message = creation_message(&record);
+    let (begin, end) = act::entries(
+        &record,
+        &message,
+        &sealed.block_id,
+        sealed.patch_ids.first().map_or("", String::as_str),
+        inklkunn_store::record::now_secs(),
+    );
+    let record = match acts.insert_wiki_with_creation_act(record, &begin, &end) {
+        Ok(r) => r,
+        Err(e) => {
+            settle(mark, discard(layout, signer, &id));
+            return Err(CreateWikiError::Store(e));
+        }
+    };
+    observe(CreationStep::Stored);
+    // 10. The mark goes last. One that cannot be removed is harmless: the record and the act exist, so the sweep
+    //     removes the mark and nothing else.
+    let _ = mark.finish();
+    Ok(CreatedWiki {
+        record,
+        repo,
+        first_block_id: sealed.block_id,
+    })
+}
+
+/// A creation that has sealed its first block and holds its mark: what [`begin_creation`] hands on, to be verified and stored
+/// ([`create_wiki_observed`]) or to be extended with a history first (`import-bundle`, RFC 007 D-1). **The record is not stored.**
+pub(crate) struct Started {
+    /// The record, with its key ids; not stored, and not yet verified.
+    pub(crate) record: WikiRecord,
+    /// Its id.
+    pub(crate) id: WikiId,
+    /// The creation's mark, held.
+    pub(crate) mark: CreationMark,
+    /// The repository directory.
+    pub(crate) repo: PathBuf,
+    /// The first block.
+    pub(crate) sealed: inklkunn_signer::SealedIds,
+}
+
+/// Steps 1 – 7 of a creation: the slug is checked, the record built, **the mark held**, the directories made, the repository and
+/// its keys created, the bundle files written and the first change sealed. Each step is observed after it completes. A failure
+/// removes what the attempt made, as it always did.
+pub(crate) fn begin_creation(
+    store: &dyn WikiStore,
+    layout: &RootLayout,
+    signer: &dyn RepositoryBootstrap,
+    new: NewWiki,
+    inklkunn_version: &str,
+    authority: &KeyAuthority,
+    observe: &dyn Fn(CreationStep),
+) -> Result<Started, CreateWikiError> {
     // 1. A taken slug is refused before anything touches the disk (the insert at the end is the guarantee
     //    against a race; this is the early, cheap answer).
     match store.by_slug(&new.slug) {
@@ -356,53 +436,46 @@ pub fn create_wiki_observed(
         }
     };
     observe(CreationStep::Sealed);
-    // 8. Verification: a fresh repository that does not verify is not a wiki.
-    let verification = match storage.verify(&repo) {
-        Ok(v) => v,
-        Err(e) => {
-            return Err(CreateWikiError::Verification {
-                error: Some(Box::new(e)),
-                cleanup: settle(mark, discard(layout, signer, &id)),
-            });
-        }
-    };
-    if !verification.verdict.ok {
-        return Err(CreateWikiError::Verification {
-            error: None,
-            cleanup: settle(mark, discard(layout, signer, &id)),
-        });
-    }
-    observe(CreationStep::Verified);
-    record.verification = Verification {
-        state: VerificationState::Verified,
-        at: Some(inklkunn_store::record::now_secs()),
-    };
-    // 9. The record and the first change's act, last and together: one transaction, so a kill leaves both or
-    //    neither. A lost slug race is reported as the slug being taken, and the attempt removed.
-    let message = creation_message(&record);
-    let (begin, end) = act::entries(
-        &record,
-        &message,
-        &sealed.block_id,
-        sealed.patch_ids.first().map_or("", String::as_str),
-        inklkunn_store::record::now_secs(),
-    );
-    let record = match acts.insert_wiki_with_creation_act(record, &begin, &end) {
-        Ok(r) => r,
-        Err(e) => {
-            settle(mark, discard(layout, signer, &id));
-            return Err(CreateWikiError::Store(e));
-        }
-    };
-    observe(CreationStep::Stored);
-    // 10. The mark goes last. One that cannot be removed is harmless: the record and the act exist, so the sweep
-    //     removes the mark and nothing else.
-    let _ = mark.finish();
-    Ok(CreatedWiki {
+    Ok(Started {
         record,
+        id,
+        mark,
         repo,
-        first_block_id: sealed.block_id,
+        sealed,
     })
+}
+
+/// Why a repository did not verify, before the cleanup is known ([`VerifyFault::with_cleanup`] completes it).
+pub(crate) enum VerifyFault {
+    /// Verification could not run.
+    Could(Box<StorageError>),
+    /// It ran and the repository does not verify.
+    Failed,
+}
+
+impl VerifyFault {
+    /// The creation's error, with what became of the directories.
+    pub(crate) fn with_cleanup(self, cleanup: Cleanup) -> CreateWikiError {
+        match self {
+            VerifyFault::Could(e) => CreateWikiError::Verification {
+                error: Some(e),
+                cleanup,
+            },
+            VerifyFault::Failed => CreateWikiError::Verification {
+                error: None,
+                cleanup,
+            },
+        }
+    }
+}
+
+/// Step 8: a repository that does not verify is not a wiki.
+pub(crate) fn verify_repository(storage: &dyn Storage, repo: &Path) -> Result<(), VerifyFault> {
+    match storage.verify(repo) {
+        Ok(v) if v.verdict.ok => Ok(()),
+        Ok(_) => Err(VerifyFault::Failed),
+        Err(e) => Err(VerifyFault::Could(Box::new(e))),
+    }
 }
 
 /// What a start-up sweep did (see [`sweep_unfinished_creations`]).
