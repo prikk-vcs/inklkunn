@@ -81,6 +81,19 @@ pub(super) fn binary_0_3_0() -> Option<PathBuf> {
     Some(found)
 }
 
+/// The commit the 0.4.0 release was built from (its `build-info.txt`; the asset's checksum is the one `ci.yml` and
+/// `release.yml` record).
+pub(super) const COMMIT_0_4_0: &str = "162f0cc485e5458c83a2cd24d66ded5fa6271230";
+
+/// The first `inklkunn` on `PATH` that is the 0.4.0 release. With none it prints the line CI fails on.
+pub(super) fn binary_0_4_0() -> Option<PathBuf> {
+    let Some(found) = find_release("0.4.0", COMMIT_0_4_0) else {
+        println!("skipping: inklkunn 0.4.0 not found");
+        return None;
+    };
+    Some(found)
+}
+
 /// An earlier release's binary, run as the operator runs it; (status, stdout, stderr).
 pub(super) fn old_cli(bin: &Path, world: &World, args: &[&str]) -> (i32, String, String) {
     let out = Command::new(bin)

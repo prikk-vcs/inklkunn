@@ -1411,3 +1411,4 @@ mod measure;
 mod readiness;
 mod upgrade;
 mod upgrade_0_3_0;
+mod upgrade_0_4_0;
