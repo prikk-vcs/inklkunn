@@ -20,14 +20,14 @@
 //! *refused: the named limit*, the proposal states) and none carries prikk's text or a page's path. The words
 //! themselves arrive with the pages that show them (handoff 004 T3).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use inklkunn_store::{
     AcceptanceStore, AccountId, AccountStore, Anchor, Base, CommentId, CommentRecord, DecisionId,
-    DecisionKind, DecisionRecord, FileChange, ProposalChange, ProposalFilter, ProposalId,
-    ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition, Rename,
-    RevisionContent, RevisionRecord, Role, RoleStore, StoreError, Visibility, WikiRecord,
+    DecisionKind, DecisionRecord, FileChange, ProposalChange, ProposalEvent, ProposalFilter,
+    ProposalId, ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition,
+    Rename, RevisionContent, RevisionRecord, Role, RoleStore, StoreError, Visibility, WikiRecord,
 };
 
 use crate::authorize::{Action, Authorizer, Principal, Resource, RestrictionNotice, Standing};
@@ -48,6 +48,7 @@ pub mod quota;
 pub mod rollback;
 
 pub use claim_thread::NewClaimComment;
+pub use hidden::CommentsPage;
 pub use machine::{Illegal, TRANSITIONS};
 pub use metrics::{
     ClaimFigures, Metrics, Period, REVIEW_RECORD_NOTE, REVIEW_RECORD_SCHEMA, Ratio,
@@ -1964,33 +1965,56 @@ impl ProposalService {
             },
         )?;
         let viewer = viewer_of(principal);
-        let filter = ProposalFilter {
-            states: Some(
-                ProposalState::ALL
-                    .into_iter()
-                    .filter(|s| *s != ProposalState::Draft && state.is_none_or(|only| only == *s))
-                    .collect(),
-            ),
-            author: None,
-        };
-        let mut sent: Vec<(i64, ProposalRecord)> = self
-            .proposals
-            .proposals(&wiki.id, &filter, viewer)?
+        // The store reads the window and nothing else: the conditions, the order and the limit are its own (a draft is not
+        // sent, so not in it, whoever asks). Only the page's records pass through `shown`.
+        self.proposals
+            .proposals_sent(&wiki.id, state, after.map(|(at, id)| (*at, id)), limit)?
             .into_iter()
-            // A record that was never sent is a draft whatever its state says: it is not listed.
-            .filter_map(|record| record.submitted_at.map(|at| (at, record)))
-            .filter(|(at, record)| {
-                record.state != ProposalState::Draft
-                    && after.is_none_or(|(after_at, after_id)| {
-                        (*at, record.id.to_string()) < (*after_at, after_id.to_string())
-                    })
-            })
-            .collect();
-        sent.sort_by_key(|(at, record)| std::cmp::Reverse((*at, record.id.to_string())));
-        sent.into_iter()
-            .take(limit)
-            .map(|(_, record)| self.shown(wiki, viewer, record))
+            .map(|record| self.shown(wiki, viewer, record))
             .collect()
+    }
+
+    /// The newest `limit` **events** of the wiki's proposals that were sent for review, newest first, for a surface that lists
+    /// what happened (RFC 007 D-9: the feed).
+    ///
+    /// * **An event** is a proposal being *opened* (sent for review, at the moment it was first sent) or *decided* (accepted,
+    ///   declined, withdrawn or superseded, at the moment it ended). A proposal has one or two; a draft that was never sent
+    ///   has none, whatever became of it, and a draft is never in the answer, not even its author's own.
+    /// * The events are chosen **by the time of the event**, not by when their proposal was sent: a decision made now on a
+    ///   proposal sent long ago is among the newest, above the openings of proposals sent since but before the decision.
+    /// * The order is the time, newest first, then the proposal's id, and of one proposal's two events at one moment the
+    ///   opening first. A proposal with both events in the window is given with each.
+    /// * The proposals are those [`ProposalService::list_sent`] gives, as everyone who may read the wiki sees them, and what
+    ///   moderation hides is hidden: and only for the proposals of the window, so the cost is the window's.
+    pub fn list_events(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        limit: usize,
+    ) -> Result<Vec<ProposalEvent>> {
+        self.allow(
+            principal,
+            Action::Read,
+            &Resource::Wiki {
+                wiki: wiki.id.clone(),
+            },
+        )?;
+        let viewer = viewer_of(principal);
+        let mut shown: HashMap<ProposalId, ProposalRecord> = HashMap::new();
+        let mut events = self.proposals.proposal_events(&wiki.id, limit)?;
+        for event in &mut events {
+            // A proposal with two events in the window is read once.
+            let record = match shown.get(&event.proposal.id) {
+                Some(record) => record.clone(),
+                None => {
+                    let record = self.shown(wiki, viewer, event.proposal.clone())?;
+                    shown.insert(record.id.clone(), record.clone());
+                    record
+                }
+            };
+            event.proposal = record;
+        }
+        Ok(events)
     }
 
     /// The draft's working copy, for its author to resume.

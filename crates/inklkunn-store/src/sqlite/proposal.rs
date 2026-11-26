@@ -9,9 +9,9 @@ use serde::de::DeserializeOwned;
 use super::{SqliteStore, backend};
 use crate::access::Role;
 use crate::proposal::{
-    Anchor, CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalFilter,
-    ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
-    RevisionFlags, RevisionRecord, held_shape,
+    Anchor, CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalEvent,
+    ProposalEventKind, ProposalFilter, ProposalOp, ProposalRecord, ProposalState, ProposalStore,
+    ProposalTransition, RevisionContent, RevisionFlags, RevisionRecord, held_shape,
 };
 use crate::record::{AcceptanceId, AccountId, CommentId, DecisionId, ProposalId, WikiId};
 use crate::review::{ClaimOutcome, ClaimReview};
@@ -49,6 +49,11 @@ pub(super) fn write_refusal(e: rusqlite::Error) -> StoreError {
         return StoreError::AlreadyRecorded;
     }
     backend(e)
+}
+
+/// A window's size as SQLite's `LIMIT` takes it.
+fn limit_of(limit: usize) -> i64 {
+    i64::try_from(limit).unwrap_or(i64::MAX)
 }
 
 pub(super) fn count(n: i64) -> u64 {
@@ -640,6 +645,133 @@ impl ProposalStore for SqliteStore {
                 .filter(|p| filter.states.as_ref().is_none_or(|s| s.contains(&p.state)))
                 .filter(|p| filter.author.as_ref().is_none_or(|a| *a == p.author))
                 .collect())
+        })
+    }
+
+    fn proposals_sent(
+        &self,
+        wiki: &WikiId,
+        state: Option<ProposalState>,
+        after: Option<(i64, &ProposalId)>,
+        limit: usize,
+    ) -> Result<Vec<ProposalRecord>> {
+        self.with(|conn| {
+            // Every condition, the order and the limit are the statement's: only the window's rows are read. The wiki's
+            // rows are found through `proposals_wiki`, as for every read of the wiki's proposals.
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT {PROPOSAL_COLUMNS} FROM proposals \
+                     WHERE wiki_id = ?1 AND submitted_at IS NOT NULL AND state <> 'draft' \
+                       AND (?2 IS NULL OR state = ?2) \
+                       AND (?3 IS NULL OR (submitted_at, id) < (?3, ?4)) \
+                     ORDER BY submitted_at DESC, id DESC LIMIT ?5"
+                ))
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(
+                    params![
+                        wiki.as_str(),
+                        state.map(ProposalState::as_str),
+                        after.map(|(at, _)| at),
+                        after.map(|(_, id)| id.as_str()),
+                        limit_of(limit),
+                    ],
+                    row_to_proposal,
+                )
+                .map_err(backend)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|_| unreadable("proposal"))
+        })
+    }
+
+    fn proposal_events(&self, wiki: &WikiId, limit: usize) -> Result<Vec<ProposalEvent>> {
+        // The states in which a sent proposal has ended, by their stored names (constants, not input).
+        let ended = ProposalState::ALL
+            .into_iter()
+            .filter(|s| !s.is_open())
+            .map(|s| format!("'{}'", s.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.with(|conn| {
+            // The two kinds of event are one statement, ordered and cut together: `kind` is 1 for an opening and 0 for a
+            // decision, so that of one proposal's two events at one moment the opening comes first.
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT {PROPOSAL_COLUMNS}, kind, at FROM ( \
+                       SELECT {PROPOSAL_COLUMNS}, 1 AS kind, submitted_at AS at FROM proposals \
+                         WHERE wiki_id = ?1 AND submitted_at IS NOT NULL AND state <> 'draft' \
+                       UNION ALL \
+                       SELECT {PROPOSAL_COLUMNS}, 0 AS kind, closed_at AS at FROM proposals \
+                         WHERE wiki_id = ?1 AND submitted_at IS NOT NULL AND closed_at IS NOT NULL \
+                           AND state IN ({ended}) \
+                     ) ORDER BY at DESC, id DESC, kind DESC LIMIT ?2"
+                ))
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(params![wiki.as_str(), limit_of(limit)], |row| {
+                    let proposal = row_to_proposal(row)?;
+                    let kind: i64 = row.get(12)?;
+                    Ok(ProposalEvent {
+                        kind: if kind == 1 {
+                            ProposalEventKind::Opened
+                        } else {
+                            ProposalEventKind::Decided
+                        },
+                        at: row.get(13)?,
+                        proposal,
+                    })
+                })
+                .map_err(backend)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|_| unreadable("proposal"))
+        })
+    }
+
+    fn comments_after(
+        &self,
+        id: &ProposalId,
+        viewer: Option<&AccountId>,
+        after: Option<&CommentId>,
+        limit: usize,
+    ) -> Result<Option<Vec<CommentRecord>>> {
+        self.with(|conn| {
+            // The place the window starts after: the cursor's own `seq`, which is only ever one of this proposal's comments.
+            let place: Option<i64> = match after {
+                None => Some(0),
+                Some(last) => conn
+                    .query_row(
+                        "SELECT seq FROM proposal_comments WHERE id = ?1 AND proposal_id = ?2",
+                        params![last.as_str(), id.as_str()],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(backend)?,
+            };
+            let Some(place) = place else {
+                return Ok(None);
+            };
+            let mut stmt = conn
+                .prepare(
+                    "SELECT c.id, c.proposal_id, c.revision, c.author, c.parent, c.body, c.anchor, \
+                     c.created_at FROM proposal_comments c JOIN proposals p ON p.id = c.proposal_id \
+                     WHERE c.proposal_id = ?1 AND (p.submitted_at IS NOT NULL OR p.author = ?2) \
+                       AND c.seq > ?3 ORDER BY c.seq LIMIT ?4",
+                )
+                .map_err(backend)?;
+            let rows = stmt
+                .query_map(
+                    params![
+                        id.as_str(),
+                        viewer.map(AccountId::as_str),
+                        place,
+                        limit_of(limit)
+                    ],
+                    row_to_comment,
+                )
+                .map_err(backend)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map(Some)
+                .map_err(|_| unreadable("comment"))
         })
     }
 

@@ -12,12 +12,22 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use inklkunn_store::{
-    ClaimThreadPage, CommentId, ProposalId, ProposalRecord, StoreError, WikiRecord,
+    ClaimThreadPage, CommentId, CommentRecord, ProposalId, ProposalRecord, StoreError, WikiRecord,
 };
 
 use super::{ProposalError, ProposalService, Result};
 use crate::authorize::Principal;
 use crate::tombstone::{Hidden, ProposalHidden, Tombstones, Unreadable};
+
+/// A window of a proposal's comments, as a surface may have them: a hidden comment's body is already gone, and `marks` says
+/// which comments have something hidden and why ([`ProposalService::comment_marks`]'s answer, for these comments only).
+#[derive(Debug, Clone)]
+pub struct CommentsPage {
+    /// The comments, oldest first.
+    pub comments: Vec<CommentRecord>,
+    /// What is hidden of each comment of the window that has something hidden.
+    pub marks: HashMap<CommentId, Hidden>,
+}
 
 pub(super) fn unreadable(e: Unreadable) -> ProposalError {
     ProposalError::Store(StoreError::Backend(e.0))
@@ -150,6 +160,40 @@ impl ProposalService {
             }
         }
         Ok(out)
+    }
+
+    /// A window of the proposal's comments, oldest first, **as [`ProposalService::comments`] gives them with the marks of
+    /// [`ProposalService::comment_marks`]**, for the comments of the window alone: at most `limit` comments after the comment
+    /// `after` (from the first, for `None`). `Ok(None)` when `after` is no comment of this proposal. The cost (the reads, and
+    /// what moderation is asked) is the window's, never the thread's.
+    pub fn comments_page(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        id: &ProposalId,
+        after: Option<&CommentId>,
+        limit: usize,
+    ) -> Result<Option<CommentsPage>> {
+        let viewer = self.readable(principal, wiki, id)?;
+        self.load(wiki, id, viewer)?;
+        let Some(mut comments) = self.proposals.comments_after(id, viewer, after, limit)? else {
+            return Ok(None);
+        };
+        let mut marks = HashMap::new();
+        if let Some(tombstones) = &self.tombstones {
+            for comment in &mut comments {
+                let hidden = tombstones
+                    .proposal_comment(&wiki.id, &comment.id)
+                    .map_err(unreadable)?;
+                if hidden.content().is_some() {
+                    comment.body.clear();
+                }
+                if hidden.is_hidden() {
+                    marks.insert(comment.id.clone(), hidden);
+                }
+            }
+        }
+        Ok(Some(CommentsPage { comments, marks }))
     }
 
     /// What is hidden of each comment of a page of a claim's thread (the body, or the author), for the comments that have

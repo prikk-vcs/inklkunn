@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::sync::{MutexGuard, PoisonError};
 
 use crate::proposal::{
-    CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalFilter, ProposalOp,
-    ProposalRecord, ProposalState, ProposalStore, ProposalTransition, RevisionContent,
-    RevisionFlags, RevisionRecord, held_shape,
+    CommentRecord, DecisionKind, DecisionRecord, ProposalChange, ProposalEvent, ProposalEventKind,
+    ProposalFilter, ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition,
+    RevisionContent, RevisionFlags, RevisionRecord, held_shape,
 };
-use crate::record::{AcceptanceId, AccountId, DecisionId, ProposalId, WikiId};
+use crate::record::{AcceptanceId, AccountId, CommentId, DecisionId, ProposalId, WikiId};
 use crate::review::{ClaimOutcome, ClaimReview};
 use crate::{Result, StoreError};
 
@@ -443,6 +443,87 @@ impl ProposalStore for MemoryStore {
             .filter(|p| filter.author.as_ref().is_none_or(|a| *a == p.author))
             .cloned()
             .collect())
+    }
+
+    fn proposals_sent(
+        &self,
+        wiki: &WikiId,
+        state: Option<ProposalState>,
+        after: Option<(i64, &ProposalId)>,
+        limit: usize,
+    ) -> Result<Vec<ProposalRecord>> {
+        let d = self.proposals_lock();
+        let mut sent: Vec<(i64, &ProposalRecord)> = d
+            .proposals
+            .iter()
+            .filter(|p| p.wiki == *wiki && p.state != ProposalState::Draft)
+            .filter(|p| state.is_none_or(|only| only == p.state))
+            .filter_map(|p| p.submitted_at.map(|at| (at, p)))
+            .filter(|(at, p)| {
+                after.is_none_or(|(after_at, after_id)| {
+                    (*at, p.id.as_str()) < (after_at, after_id.as_str())
+                })
+            })
+            .collect();
+        sent.sort_by_key(|(at, p)| std::cmp::Reverse((*at, p.id.as_str())));
+        Ok(sent
+            .into_iter()
+            .take(limit)
+            .map(|(_, p)| p.clone())
+            .collect())
+    }
+
+    fn proposal_events(&self, wiki: &WikiId, limit: usize) -> Result<Vec<ProposalEvent>> {
+        let d = self.proposals_lock();
+        let mut events: Vec<(i64, &ProposalRecord, ProposalEventKind)> = Vec::new();
+        for p in d
+            .proposals
+            .iter()
+            .filter(|p| p.wiki == *wiki && p.state != ProposalState::Draft)
+        {
+            let Some(sent) = p.submitted_at else {
+                continue;
+            };
+            events.push((sent, p, ProposalEventKind::Opened));
+            if let (Some(closed), false) = (p.closed_at, p.state.is_open()) {
+                events.push((closed, p, ProposalEventKind::Decided));
+            }
+        }
+        // Newest first; the id breaks a tie, and of one proposal's two events at one moment the opening comes first.
+        events.sort_by_key(|(at, p, kind)| {
+            std::cmp::Reverse((*at, p.id.as_str(), *kind == ProposalEventKind::Opened))
+        });
+        Ok(events
+            .into_iter()
+            .take(limit)
+            .map(|(at, p, kind)| ProposalEvent {
+                kind,
+                at,
+                proposal: p.clone(),
+            })
+            .collect())
+    }
+
+    fn comments_after(
+        &self,
+        id: &ProposalId,
+        viewer: Option<&AccountId>,
+        after: Option<&CommentId>,
+        limit: usize,
+    ) -> Result<Option<Vec<CommentRecord>>> {
+        let d = self.proposals_lock();
+        let visible = d.visible(id, viewer).is_some();
+        let mut own = d.comments.iter().filter(|c| c.proposal == *id);
+        if let Some(last) = after {
+            // The cursor is a comment of this proposal, or it is nothing.
+            if !own.by_ref().any(|c| c.id == *last) {
+                return Ok(None);
+            }
+        }
+        if !visible {
+            return Ok(Some(Vec::new()));
+        }
+        Ok(Some(own.take(limit).cloned().collect()))
     }
 
     fn draft(

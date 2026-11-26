@@ -477,6 +477,28 @@ pub struct ProposalFilter {
     pub author: Option<AccountId>,
 }
 
+/// What happened to a proposal that was sent for review, for a list of happenings (the feed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProposalEventKind {
+    /// The proposal was sent for review ([`ProposalRecord::submitted_at`]).
+    Opened,
+    /// The proposal ended: accepted, declined, withdrawn or superseded ([`ProposalRecord::closed_at`]).
+    Decided,
+}
+
+/// One **event** of a proposal that was sent for review: it was opened (at the moment it was first sent), or it was decided
+/// (at the moment it ended). A proposal that is open has the one; one that ended has both. A proposal that was never sent has
+/// none, whatever became of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProposalEvent {
+    /// Which of the two it is.
+    pub kind: ProposalEventKind,
+    /// When it happened: the proposal's `submitted_at` for an opening, its `closed_at` for a decision.
+    pub at: i64,
+    /// The proposal, as it is now.
+    pub proposal: ProposalRecord,
+}
+
 /// The proposal records. Every implementation passes the same invariant tests (`tests/proposals.rs`).
 ///
 /// Every operation that writes is **atomic**: it lands whole or changes nothing. The errors are the plain
@@ -530,6 +552,52 @@ pub trait ProposalStore: Send + Sync {
         filter: &ProposalFilter,
         viewer: Option<&AccountId>,
     ) -> Result<Vec<ProposalRecord>>;
+
+    /// A window of the wiki's proposals **that were sent for review**, newest sent first: the proposals whose
+    /// `submitted_at` is set and whose state is not [`ProposalState::Draft`], **to everyone alike** (a draft is not in it, not
+    /// even its author's own; [`proposals`](ProposalStore::proposals) is the read that gives an author their drafts).
+    ///
+    /// * The order is `(submitted_at, id)` descending (the id, compared as its text, breaks a tie between two proposals sent
+    ///   in the same second), so a proposal's place does not move when its state changes.
+    /// * `state` keeps only that state (`Some(Draft)` is therefore empty).
+    /// * `after` is the place the page before ended: only proposals **strictly after it in that order** are given.
+    /// * At most `limit` records are read and given: **the cost is the window's**, never the wiki's.
+    fn proposals_sent(
+        &self,
+        _wiki: &WikiId,
+        _state: Option<ProposalState>,
+        _after: Option<(i64, &ProposalId)>,
+        _limit: usize,
+    ) -> Result<Vec<ProposalRecord>> {
+        Err(crate::StoreError::Backend(
+            "this store does not list a window of the proposals that were sent".to_owned(),
+        ))
+    }
+
+    /// The newest `limit` **events** ([`ProposalEvent`]) of the wiki's proposals that were sent for review, newest first, in
+    /// one read: an event is a proposal's opening (at `submitted_at`) or its decision (at `closed_at`, for one that ended),
+    /// so a recent decision on an old proposal is among them. The order is `(at, id)` descending and, for the two events of
+    /// one proposal at one moment, the opening first. A draft that was never sent has no event, whatever became of it.
+    fn proposal_events(&self, _wiki: &WikiId, _limit: usize) -> Result<Vec<ProposalEvent>> {
+        Err(crate::StoreError::Backend(
+            "this store does not list the events of the proposals".to_owned(),
+        ))
+    }
+
+    /// A window of a proposal's comments, oldest first, as [`comments`](ProposalStore::comments) gives them (empty for a
+    /// proposal the viewer may not see): the comments **after** `after` (all of them from the start, for `None`), at most
+    /// `limit`. `Ok(None)` when `after` is not a comment of this proposal. The cost is the window's.
+    fn comments_after(
+        &self,
+        _id: &ProposalId,
+        _viewer: Option<&AccountId>,
+        _after: Option<&CommentId>,
+        _limit: usize,
+    ) -> Result<Option<Vec<CommentRecord>>> {
+        Err(crate::StoreError::Backend(
+            "this store does not list a window of the comments".to_owned(),
+        ))
+    }
 
     /// The draft's working copy; `None` once it was submitted, or for anyone but the author.
     fn draft(&self, id: &ProposalId, viewer: Option<&AccountId>)

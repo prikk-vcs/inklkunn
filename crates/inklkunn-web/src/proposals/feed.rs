@@ -10,15 +10,17 @@
 //!   tombstone's words and a hidden author is not named, in the entry's title, its text and its address's text, and nothing of
 //!   a hidden text is anywhere in the feed.
 //!
-//! **Bounded:** the feed looks at the newest [`LOOKED_AT`] proposals sent and lists the newest [`ENTRIES`] events among them
-//! (each proposal is at most two). The time of an entry is the time of the event itself (when it was sent, when it closed), not
-//! when the feed was drawn.
+//! **Bounded, and by the time of the event:** the feed lists the newest [`ENTRIES`] events of the wiki's proposals
+//! ([`ProposalService::list_events`](inklkunn_core::proposal::ProposalService::list_events)), the store choosing them in one
+//! read, so the cost is the feed's and not the wiki's, and **a decision made now on a proposal sent long ago is there**, above
+//! the openings that are older than it. The time of an entry is the time of the event itself (when it was sent, when it
+//! closed), not when the feed was drawn.
 
 use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use inklkunn_store::ProposalRecord;
+use inklkunn_store::{ProposalEvent, ProposalEventKind};
 
 use super::{Ctx, serve};
 use crate::catalog::{Key, T};
@@ -27,14 +29,12 @@ use crate::pages::{Page, PageState};
 use crate::proposals::{list::named, paths, words};
 use crate::wiki::{generic_not_found, services_of, with_retry_after};
 
-/// How many proposals, newest sent first, the feed reads.
-pub(crate) const LOOKED_AT: usize = 100;
-
-/// How many events the feed lists.
+/// How many events the feed lists: the size of the window the store is asked for.
 pub(crate) const ENTRIES: usize = 50;
 
-/// One event of a proposal, with when it happened.
-fn events(t: T, ctx: &Ctx, state: &PageState, p: &ProposalRecord) -> Vec<(i64, Entry)> {
+/// The entry of one event of a proposal, with when it happened.
+fn entry_of(t: T, ctx: &Ctx, state: &PageState, event: &ProposalEvent) -> (i64, Entry) {
+    let p = &event.proposal;
     let (summary, author) = named(ctx, t, p);
     let wiki = &ctx.wiki;
     let href = state
@@ -44,7 +44,8 @@ fn events(t: T, ctx: &Ctx, state: &PageState, p: &ProposalRecord) -> Vec<(i64, E
         .msg(Key::FeedProposalBy)
         .with("author", author.as_str())
         .text();
-    let entry = |at: i64, kind: &str, title: String, categories: Vec<&'static str>| Entry {
+    let at = event.at;
+    let entry = |kind: &str, title: String, categories: Vec<&'static str>| Entry {
         id: format!("urn:inklkunn:{}:proposal:{}:{kind}", wiki.id, p.id),
         title,
         updated: at,
@@ -54,35 +55,24 @@ fn events(t: T, ctx: &Ctx, state: &PageState, p: &ProposalRecord) -> Vec<(i64, E
         summary: Some(by.clone()),
         categories,
     };
-    let mut out = Vec::new();
-    if let Some(sent) = p.submitted_at {
-        out.push((
-            sent,
-            entry(
-                sent,
-                "opened",
-                t.msg(Key::FeedProposalOpened)
-                    .with("summary", summary.as_str())
-                    .text(),
-                vec!["opened"],
-            ),
-        ));
-    }
-    if let (Some(closed), true) = (p.closed_at, !p.state.is_open()) {
-        out.push((
-            closed,
-            entry(
-                closed,
-                "closed",
-                t.msg(Key::FeedProposalDecided)
-                    .with("state", t.get(words::state_label(p.state)))
-                    .with("summary", summary.as_str())
-                    .text(),
-                vec!["decided", p.state.as_str()],
-            ),
-        ));
-    }
-    out
+    let entry = match event.kind {
+        ProposalEventKind::Opened => entry(
+            "opened",
+            t.msg(Key::FeedProposalOpened)
+                .with("summary", summary.as_str())
+                .text(),
+            vec!["opened"],
+        ),
+        ProposalEventKind::Decided => entry(
+            "closed",
+            t.msg(Key::FeedProposalDecided)
+                .with("state", t.get(words::state_label(p.state)))
+                .with("summary", summary.as_str())
+                .text(),
+            vec!["decided", p.state.as_str()],
+        ),
+    };
+    (at, entry)
 }
 
 /// `GET /{slug}/-/proposals.atom`.
@@ -100,11 +90,11 @@ pub(crate) async fn atom(
             return generic_not_found(page);
         };
         let t = page.t();
-        let found =
-            ctx.services
-                .proposals
-                .list_sent(&ctx.principal, &ctx.wiki, None, None, LOOKED_AT);
-        let records = match found {
+        let found = ctx
+            .services
+            .proposals
+            .list_events(&ctx.principal, &ctx.wiki, ENTRIES);
+        let events = match found {
             Ok(records) => records,
             // A proposal that is absent and one that may not be seen are the page's one answer.
             Err(
@@ -120,12 +110,11 @@ pub(crate) async fn atom(
                 ));
             }
         };
-        let mut all: Vec<(i64, Entry)> = records
+        // The store gave them newest first (the time, then the proposal's id, the opening before the decision).
+        let all: Vec<(i64, Entry)> = events
             .iter()
-            .flat_map(|p| events(t, &ctx, &state, p))
+            .map(|event| entry_of(t, &ctx, &state, event))
             .collect();
-        all.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.id.cmp(&a.1.id)));
-        all.truncate(ENTRIES);
         let wiki = &ctx.wiki;
         let name = wiki.display_name.as_str();
         let base = format!("/{}", wiki.slug);

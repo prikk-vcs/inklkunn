@@ -87,8 +87,9 @@ pub use invitation::{InvitationRecord, InvitationStore, InvitationUse};
 pub use memory::MemoryStore;
 pub use proposal::{
     Anchor, Base, CommentRecord, DecisionKind, DecisionRecord, FileChange, ProposalChange,
-    ProposalFilter, ProposalOp, ProposalRecord, ProposalState, ProposalStore, ProposalTransition,
-    Quote, Rename, RevisionContent, RevisionFlags, RevisionRecord,
+    ProposalEvent, ProposalEventKind, ProposalFilter, ProposalOp, ProposalRecord, ProposalState,
+    ProposalStore, ProposalTransition, Quote, Rename, RevisionContent, RevisionFlags,
+    RevisionRecord,
 };
 pub use record::{
     AcceptanceId, AccountId, AppealId, Attempt, Checkpoint, CommentId, DecisionId, DisplayName,

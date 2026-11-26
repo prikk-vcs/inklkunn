@@ -3,8 +3,7 @@
 //! **They show what the same person's pages show**, by reading what the pages read:
 //! * the start is every endpoint's ([`serve`]): a wiki that is absent and one the caller may not read are one `not-found`,
 //!   before anything else is asked;
-//! * a proposal is read through the proposal service's own reads (`list_sent`, `get`, `revisions`, `hidden_of`, `comments`,
-//!   `comment_marks`), the ones the proposal's page and the list call, so the rule of whom a proposal is shown to
+//! * a proposal is read through the proposal service's own reads (`list_sent`, `get`, `revisions`, `hidden_of`, `comments_page`), the ones the proposal's page and the list call, so the rule of whom a proposal is shown to
 //!   (`authorize()`: *read*; a draft to its author alone) is theirs and none is written here a second time;
 //! * **no draft is listed, not even the caller's own** (the list holds what was sent for review), and a comment of a draft is
 //!   its author's alone, as the proposal is;
@@ -147,27 +146,18 @@ pub(crate) async fn comments(
             };
             let limit = limit_of(params);
             let service = &services.proposals;
-            // What the service gives is what the proposal's page draws the thread from: a hidden comment's body is already
-            // gone, and the marks say why.
-            let all = service
-                .comments(&ctx.principal, wiki, &id)
-                .map_err(|error| refused(services, wiki, &error))?;
-            let marks = service
-                .comment_marks(&ctx.principal, wiki, &id)
-                .map_err(|error| refused(services, wiki, &error))?;
-            let start = match &after {
-                None => 0,
-                // Comments are never removed, so the place of the last one of the page before is always there; one that
-                // is not is not a cursor of this list.
-                Some(last) => {
-                    all.iter()
-                        .position(|comment| comment.id == *last)
-                        .ok_or_else(|| Problem::new(Code::InvalidCursor))?
-                        + 1
-                }
-            };
-            let page: Vec<_> = all.iter().skip(start).take(limit).collect();
-            let more = all.len() > start + page.len();
+            // The window and its marks are what the proposal's page draws the thread from (a hidden comment's body is already
+            // gone, and the marks say why), read for the window's comments alone; one more than a page, to know whether the
+            // thread goes on.
+            let found = service
+                .comments_page(&ctx.principal, wiki, &id, after.as_ref(), limit + 1)
+                .map_err(|error| refused(services, wiki, &error))?
+                // A place that is no comment of this thread is not a cursor of this list (comments are never removed).
+                .ok_or_else(|| Problem::new(Code::InvalidCursor))?;
+            let marks = found.marks;
+            let mut page = found.comments;
+            let more = page.len() > limit;
+            page.truncate(limit);
             let items: Vec<Value> = page
                 .iter()
                 .map(|comment| {
