@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | **v0.5, 2026-11-26** (0.5.0: RFC 007, interchange: T-5 rewritten with C-5a – C-5h, C-15g, C-15h, C-17k, INV-13's surfaces, RR-17). Before it: **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15, RR-16; the tests of §7 are named at 0.4.0's readiness: §7.5, 2026-11-25). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
+| Version | **v0.5, 2026-11-26** (0.5.0: RFC 007, interchange: T-5 rewritten with C-5a – C-5h, C-15g, C-15h, C-17k, INV-13's surfaces, RR-17; the tests of §7 are named at 0.5.0's readiness: §7.6, 2026-11-27). Before it: **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15, RR-16; the tests of §7 are named at 0.4.0's readiness: §7.5, 2026-11-25). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -911,3 +911,112 @@ it. **A GAP line says what no test covers**; nothing beyond the named tests is c
 - `core/src/acceptance/tests/governance.rs::the_repair_does_not_open_the_wiki_to_anything_but_the_rules` : repair limited to rules
 - GAP: the two obstacles named by the readiness gap (a protection naming `governance/`, a lowered limit) are [S] only; the [P] hatch tests do not plant them. Note the design choice the lowered-limit test records: the hatch lifts approvals and the rung, not the limit on the content.
 
+### 7.6 Verification record (2026-11-27, 0.5.0 readiness R-5; re-verified at R-6)
+
+The items v0.5 (0.5.0, RFC 007) adds: C-5a – C-5h (T-5 rewritten), C-15g, C-15h, C-17k, INV-13's new surfaces and RR-17.
+The acceptance criteria's half of the map is kept with the readiness review.
+- **Written by the dev team** (the readiness map, Part B).
+- **Re-verified by the architect:**
+  - every test named below (167 across the whole map) was found by its name in its file in the tree at `30f94ea`;
+  - the gates ran on that tree;
+  - every GAP line is kept as written.
+- A file is named from `crates/` without the `inklkunn-` prefix, and `[P]` marks a real prikk.
+- **A GAP line says what no test covers**, and nothing beyond the named tests is claimed.
+
+- **C-5a** checksums verified strictly when present (every file against the file the manifest names, and every file the import reads that it does not name); their absence said; a directory only, no link followed; dry run first, bounded; admin's act.
+  - `core/src/import/bundle/tests.rs::checksums_that_are_present_are_verified_for_every_file_and_a_lie_a_gap_and_a_stranger_each_refuse_by_name` : lie, gap, stranger, every kind of file hashed; `none in the bundle` said
+  - `core/src/import/bundle/tests.rs::the_checksums_are_the_file_the_manifest_names_and_never_a_fixed_name` : the manifest's name is read, no fixed name
+  - `core/src/import/bundle/tests.rs::a_hostile_walk_is_refused_by_the_folder_imports_rules_for_the_files_a_bundle_shares_with_it` : symlinks, hard links, reserved names, path caps
+  - `core/src/import/bundle/tests.rs::the_plan_reads_and_judges_and_writes_nothing_at_all` and `bin/src/admin/bundle_tests.rs::a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere` : dry run writes nothing
+  - `bin/src/admin/bundle_tests.rs::import_bundle_parses_with_create_options_and_its_own_and_has_no_way_to_skip_checksums_or_change_the_licence` : no flag skips checksums
+  - `bin/src/admin/tests/import_bundle_tests.rs::a_run_makes_the_wiki_with_its_history_one_block_a_revision_and_audits_it` : [P] one audited act of the operator's CLI
+  - `core/tests/import_replay.rs::a_mediawiki_dump_comes_in_with_its_history_every_revision_a_block_and_the_pages_end_as_the_bundle_has_them` : [P] a run with checksums: every block's notice says `Verified`
+  - `core/src/import/bundle/tests/corrections.rs::the_bundles_identity_is_the_checksums_files_digest_or_a_digest_of_the_files_read` : V-6
+  - GAP: nothing asserts the absence of an import route on the web (gap 12); the walk is the folder import's (shared), proven here only through the bundle's own refusals.
+- **C-5b** a prikk archive import never adopts carried keys. **Unchanged by 0.5.0** (no archive import is added; a bundle carries no key input: only pages, attachments, sidecars, history, `users.yaml`, the manifest are read).
+  - `core/src/import/bundle/tests.rs::what_the_bundle_says_that_this_build_does_not_know_is_kept_in_the_report_and_never_read` : an unknown key or field is reported and never read
+  - `core/tests/import_interwiki.rs::a_bundles_own_policy_and_constitution_are_never_written_by_an_import` : [P] a bundle's own `governance/policy.yaml`, `constitution.yaml`, `interwiki.yaml` are never written: only the map from the manifest
+  - `core/tests/import_replay.rs::a_mediawiki_dump_comes_in_with_its_history_every_revision_a_block_and_the_pages_end_as_the_bundle_has_them` : [P] every block is the wiki's own system act, signed with the wiki's keys (`verify` ok)
+  - GAP: no new test of an archive import; nothing in 0.5.0 changes it.
+- **C-5c** imported content goes through the same sanitizer and path mapping as a proposal, at every revision, and arrives as the wiki's own changes; the author and time are data, never a signature or trust label; never linked to a local account; the report is the plan, before anything is written.
+  - `core/src/import/bundle/tests.rs::every_revision_text_is_judged_as_a_page_is_by_its_frontmatter_and_the_page_cap` : every revision
+  - `core/src/import/bundle/tests/corrections.rs::two_paths_that_differ_only_in_case_are_refused_when_held_at_the_same_moment` : the path mapping's case rule over lifetimes
+  - `core/tests/import_replay_history.rs::each_kind_of_record_does_what_the_plan_said_and_the_sources_facts_are_the_messages` : [P] the wiki's change, the source's facts as typed trailers
+  - `web/tests/imported_history/main.rs::a_source_name_is_text_and_is_never_linked_to_an_account_even_one_of_the_same_name_or_one_with_markup` : no link, no match
+  - `web/tests/imported_history/main.rs::an_imported_revision_says_who_wrote_it_in_the_wiki_it_came_from_and_when_and_the_page_says_where_it_came_from` : nothing says "Made by"; no trust label
+  - `bin/src/admin/bundle_tests.rs::a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere` : the report before a run
+- **C-5d** a bundle's history is a claim: `at`, author, licence, `rev` recorded as the imported wiki's and never shown as inklkunn's facts; within a page its file's order is its history.
+  - `core/src/import/bundle/tests.rs::a_history_files_own_order_is_its_history_and_times_are_compared_as_instants` : wrong `parent`, repeated `rev`, `at` out of order, instants
+  - `bin/src/admin/bundle_tests.rs::every_refusal_of_the_criterion_is_named_the_same_on_a_dry_run_and_on_a_run_and_nothing_is_written` : the `order` and `time-order` cases through the command
+  - `core/src/import/bundle/tests/corrections.rs::a_time_after_the_year_9999_is_refused_in_the_plan_and_the_last_second_of_it_is_not` : V-5
+  - `core/src/import/bundle/tests/corrections.rs::two_histories_that_hold_one_path_at_overlapping_times_are_refused_naming_both` : V-7
+  - `bin/src/admin/tests/import_bundle_tests.rs::an_exported_wiki_imported_and_exported_again_keeps_its_times_as_the_sources_and_its_authors_as_names` : [P] the time is recorded `at_from: source`, never the wiki's own act time
+  - `web/tests/imported_history/main.rs::an_imported_revision_says_who_wrote_it_in_the_wiki_it_came_from_and_when_and_the_page_says_where_it_came_from` : the source's date is labelled *originally*, the import's day is in the notice only
+- **C-5e** bounds: revision cap (set from measurement), page cap at every revision, bytes of `history/`, record fields by type; cost stated before the run; nothing fetched, no converter run.
+  - `core/src/import/bundle/tests.rs::a_bundle_over_the_revision_cap_is_refused_with_the_count_the_cap_and_the_way_on` : the cap and the history-bytes cap
+  - `core/src/import/bundle/tests/corrections.rs::the_revision_cap_is_applied_before_any_patch_is_applied` : V-3, the count is the whole answer
+  - `core/src/import/bundle/tests/corrections.rs::a_planted_history_over_the_cap_is_refused_in_the_time_it_takes_to_read_it` : V-3, 20,000 records, under 5 s
+  - `core/src/import/bundle/tests/corrections.rs::the_bytes_the_patches_of_a_bundle_handle_are_bounded_apart_from_the_revision_cap` : V-3, the bytes patches handle
+  - `core/src/import/bundle/tests.rs::every_revision_text_is_judged_as_a_page_is_by_its_frontmatter_and_the_page_cap` : page cap at every revision
+  - `core/src/import/bundle/tests.rs::what_the_bundle_says_that_this_build_does_not_know_is_kept_in_the_report_and_never_read` : record fields by their types, a known field of the wrong type refuses
+  - `core/src/import/bundle/tests.rs::the_replays_estimate_is_the_fit_to_the_two_measurements` and `bin/src/admin/bundle_tests.rs::a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere` : the estimate and *one block each (the cap is 1000)* said before the run
+  - `tools/boundary-check/tests/gates.rs::only_the_driver_the_signer_and_the_fetcher_spawn_a_process` and `tools/boundary-check/tests/gates.rs::only_the_fetch_crate_names_curl` : the import code cannot start a converter or fetch a URL (structural; no hostile-URL fixture)
+- **C-5f** no half-history is ever served; the wiki appears only when complete; a killed import's leftovers are reported by the sweep and removed only by `wiki discard-unfinished`, refused for any wiki ever stored.
+  - `core/tests/import_replay.rs::an_import_stopped_after_any_step_leaves_nothing_a_reader_can_reach_and_what_the_sweep_keeps_a_person_discards` : [P] every step
+  - `core/tests/import_replay.rs::a_mediawiki_dump_comes_in_with_its_history_every_revision_a_block_and_the_pages_end_as_the_bundle_has_them` : [P] invisible at every step before `Stored`
+  - `core/tests/import_replay_history.rs::a_file_that_changed_since_the_plan_fails_the_import_in_the_middle_and_nothing_of_it_remains` : [P] a survived failure leaves nothing
+  - `bin/src/admin/tests/import_bundle_tests.rs::discard_unfinished_asks_for_the_id_again_removes_exactly_what_the_start_would_not_and_is_audited` : [P] the person's act, audited
+  - `bin/src/admin/tests/import_bundle_tests.rs::discard_unfinished_checks_the_mark_and_the_store_before_it_says_what_it_found` : [P] refused for a stored wiki
+  - `core/tests/import_replay_history.rs::a_creation_that_is_alive_is_not_discarded_and_an_import_counts_for_no_participation` : [P] refused while alive
+  - `store/tests/acts.rs::the_sqlite_store_stores_a_wiki_with_its_whole_history_or_nothing` : one transaction
+  - GAP: gap 6 (no real `SIGKILL` in the replay; a panic stands in for it at every step).
+- **C-5g** checksums show integrity, not authorship.
+  - `web/tests/imported_history/main.rs::an_imported_revision_says_who_wrote_it_in_the_wiki_it_came_from_and_when_and_the_page_says_where_it_came_from` : the notice words (*the files of the bundle were checked against its checksums*) say what was checked and claim no author
+  - GAP: gap 11: no operator document and no test says it in words; the threat model alone.
+- **C-5h** a licence is never relabelled; the wiki takes the bundle's (or the one the admin declares, said); an incompatible licence refuses.
+  - `core/src/import/bundle/tests.rs::the_wiki_takes_the_bundles_licence_and_never_another` : a different licence given is refused
+  - `core/src/import/bundle/tests.rs::a_page_whose_licence_the_wiki_cannot_take_refuses_and_leaving_out_leaves_exactly_it_out` : a page
+  - `core/src/import/bundle/tests.rs::an_old_revision_under_a_licence_the_wiki_cannot_take_makes_its_page_incompatible_too` : an old revision
+  - `core/src/import/bundle/tests.rs::an_attachment_whose_sidecar_licence_the_wiki_cannot_take_refuses_and_goes_with_its_sidecar_when_left_out` : an attachment's sidecar
+  - `core/src/import/bundle/tests/corrections.rs::the_history_of_a_removed_page_is_judged_for_its_licences_as_a_pages_is` : V-1
+  - `core/tests/import_replay_history.rs::files_with_no_history_come_in_as_one_change_with_their_sidecars_and_a_level_two_bundle_has_no_other` : [P] a page's and an attachment's own licence is kept as written
+  - `core/tests/import_replay.rs::a_mediawiki_dump_comes_in_with_its_history_every_revision_a_block_and_the_pages_end_as_the_bundle_has_them` : [P] the notice's licence word is *declared by the importing admin* when the bundle had none
+  - `web/tests/imported_history/main.rs::an_imported_revision_says_who_wrote_it_in_the_wiki_it_came_from_and_when_and_the_page_says_where_it_came_from` : the page says who declared it
+- **C-15g** an imported history's people are permanent: the dry run says how many people the history names; SECURITY.md says it; an e-mail address in `users.yaml` refuses.
+  - `core/src/import/bundle/tests.rs::the_mediawiki_fixture_reports_its_history_people_suppressions_and_unmapped_prefix` : `people.total` 3, `none is linked to an account`
+  - `bin/src/admin/bundle_tests.rs::a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere` : the dry run prints `people named: 3`
+  - `core/src/import/bundle/tests.rs::an_address_in_users_yaml_refuses_naming_the_entry_and_never_repeating_the_address` : the refusal
+  - GAP: gap 10: SECURITY.md does not say it; the report's *stay in the repository's history for good* (`report.rs:461`) is asserted by no test.
+- **C-15h** the export reads every revision's text through the one reader (`text_at`), so a hidden revision is `suppressed: [content]` with no text, and an export never has a gap where the index has not settled.
+  - `core/tests/export_history.rs::a_hidden_revision_has_no_text_and_the_next_revisions_text_is_whole` : the record
+  - `core/tests/export_history.rs::an_index_that_is_only_short_is_waited_for_a_round_at_a_time_and_then_the_text_is_given` : waits only while the index is short
+  - `core/tests/export_history.rs::an_index_that_keeps_moving_for_more_rounds_than_the_export_waits_is_not_yet_and_nothing_is_written` : never written with a gap
+  - `core/tests/export_history.rs::a_text_no_index_can_attribute_is_withheld_with_its_reason_not_waited_for_and_the_export_goes_on` : a text no index attributes is withheld, never given
+  - `core/tests/export_history.rs::an_index_that_cannot_be_built_fails_the_export_with_a_sentence_that_says_what_failed` : fails with a sentence
+  - `core/tests/export_history.rs::a_text_the_reader_cannot_settle_though_the_index_is_at_the_tip_is_asked_a_few_times_and_then_withheld` : the reader's own `unchecked`
+  - `bin/src/serve/writes_on/tests/readiness.rs::governance_and_moderation_work_end_to_end_on_a_real_prikk` : [P] a real export while a revision's text is hidden
+- **C-17k** the interwiki map is a governance file: the policy-change rung, validated at acceptance, `https:` with a host, no user information, `{title}` only in the path or the query; links external (`rel="nofollow ugc"`); an imported map judged the same.
+  - `core/src/acceptance/tests/interwiki.rs::each_rule_of_the_file_is_refused_by_name_before_the_signer_is_asked` : the rules at acceptance
+  - `core/src/acceptance/tests/interwiki.rs::a_maintainer_accepts_a_sound_map_at_the_policy_change_rung_under_the_default_constitution` : the policy-change rung (maintainer by default)
+  - `core/src/acceptance/tests/interwiki.rs::the_constitutions_policy_change_rung_and_approvals_are_what_a_change_to_the_map_needs` : the constitution's rung and approvals are the map's
+  - `core/src/governance/tests/interwiki.rs::the_file_is_a_governance_file_and_a_change_to_it_is_a_policy_change` : the validator's own statement
+  - `core/src/read/tests/interwiki.rs::a_mapped_prefix_is_an_external_link_with_the_title_percent_encoded` : external, `nofollow ugc`
+  - `core/src/import/bundle/tests/interwiki.rs::a_template_that_fails_is_left_out_and_named_the_import_goes_on_and_its_links_are_missing_again` : an imported map is judged the same
+  - `core/src/governance/tests/interwiki.rs::the_same_judgement_serves_the_file_and_the_import` : one judgement for file and import
+  - `core/src/import/tests/interwiki.rs::the_maps_path_is_the_exact_string_every_other_spelling_of_it_is_refused` : W-8, an import writes that one path
+  - `core/tests/import_interwiki.rs::a_bundles_own_policy_and_constitution_are_never_written_by_an_import` : [P] an import writes no other governance file
+  - `bin/src/serve/writes_on/tests/policy.rs::an_interwiki_map_changed_through_the_form_is_accepted_and_the_policy_page_the_form_and_the_site_follow_it` : [P] through the form
+  - GAP: a broken map refusing writes on a real prikk (gap 7).
+- **INV-13 (v0.5 surfaces)** the export's revision `content`, `listProposals`' summaries, `listProposalComments`, the proposals feed.
+  - export `content`: `core/tests/export_history.rs::a_hidden_revision_has_no_text_and_the_next_revisions_text_is_whole`; `core/tests/export_suppression.rs::nothing_hidden_or_hiding_a_person_is_in_any_file_and_a_person_is_listed_only_for_what_is_not_hidden`; [P] `bin/src/serve/writes_on/tests/readiness.rs::governance_and_moderation_work_end_to_end_on_a_real_prikk`
+  - `listProposalComments`: `web/tests/tombstones/surfaces.rs::surface_proposal_comments`
+  - `listProposals` and the feed: `web/tests/tombstones/surfaces.rs::surface_proposal_list`; `web/tests/api/write/feed.rs::the_feed_says_when_each_proposal_was_opened_and_decided_the_same_to_every_reader_and_never_a_draft`
+  - the gate: `web/tests/tombstones/gate.rs::every_surface_has_its_test_in_the_surfaces_file` and `web/tests/tombstones/gate.rs::every_guarded_route_is_a_surface_shows_none_or_is_the_one_reveal`
+  - same-reader comparison (D-9): `web/tests/api/write/lists.rs::the_list_holds_what_the_proposals_page_holds_for_each_reader_and_never_a_draft`; restricted: `web/tests/api/write/lists.rs::a_restricted_wiki_is_absent_to_both_lists_and_the_feed_for_whoever_may_not_read_it`
+  - GAP: the export has no row in `SURFACES`; the three new addresses are [S] only (gap 4). RE.
+- **RR-17** a history longer than the cap cannot be imported with its history; it is said, and `--no-history` is the way on.
+  - `core/src/import/bundle/tests.rs::a_bundle_over_the_revision_cap_is_refused_with_the_count_the_cap_and_the_way_on` : count, cap, `--no-history`
+  - `bin/src/admin/bundle_tests.rs::leaving_out_and_no_history_are_the_ways_on_and_the_run_still_writes_nothing` : the refusal names `--no-history`, and taking it imports
+  - `core/tests/import_replay_history.rs::no_history_imports_the_pages_as_they_are_in_one_change_and_a_bundle_over_the_cap_has_that_way_on` : [P] taken, on a real prikk
+  - `bin/src/admin/bundle_tests.rs::the_two_caps_are_settings_that_a_file_sets_and_a_bad_value_names` : default 1000; the cap is a setting
+  - GAP: nothing asserts RR-17's last sentence (the cap moves only on a measurement; prikk 0.60.0's `show` fix is re-measured at its re-baseline); it is a rule of the cycle (gap 9).

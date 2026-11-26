@@ -295,3 +295,23 @@ standard reads `%2E%2E` as `..`.
 
 Hand back as `0.5.0-readiness-review-request.md`. Then R-6 (the architect's review), R-7 (the candidate: the version,
 the CHANGELOG heading **and `wiki-commons.yaml`'s `subject.version`**), R-8, R-9.
+
+## Readiness reviewed (R-6): the Z round, then the candidate (2026-11-27)
+
+**R-5: Approved, with R-6's one correction round** (`.git-exclude/reviewed/0.5.0-readiness-review-result.md`). The
+threat model's §7.6 is written from the map. **Z-1 – Z-5 (binding):**
+- **Z-1 (Medium):** a wiki with claims round-trips. Knowledge files go into the change at the end, after the history.
+  What only a curation sets is not imported, said with the count. INV-11 is unchanged.
+- **Z-2:** a real `SIGKILL` of a running `wiki import-bundle`, then the sweep, `discard-unfinished`, and a second
+  import.
+- **Z-3:** no web or API route imports, discards or creates a wiki (route enumeration).
+- **Z-4:** the release notes say that attachments are not yet served, and where an imported page says it is imported.
+- **Z-5:** a doc comment's pronoun.
+
+Hand back as `0.5.0-readiness-corrections-review-request.md`. **Then R-7, the candidate:**
+- the version 0.5.0;
+- `## [0.5.0] — 2026-12-15` under an empty `## [Unreleased]`;
+- `wiki-commons.yaml`'s `subject.version`;
+- any comparison mask, named;
+
+and nothing else, as `0.5.0-candidate-review-request.md`.
