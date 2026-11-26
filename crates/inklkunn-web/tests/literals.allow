@@ -144,7 +144,7 @@ exact :: history.rs :: name :: a placeholder name of a catalog message
 exact :: history.rs :: date :: a placeholder name of a catalog message
 exact :: history.rs :: summary :: a placeholder name of a catalog message
 exact :: history.rs :: address :: a placeholder name of a catalog message
-exact :: history.rs :: source :: a placeholder name of a catalog message
+exact :: history.rs :: origin :: a placeholder name of a catalog message
 exact :: history.rs :: number :: a placeholder name of a catalog message
 exact :: history.rs :: title :: a placeholder name of a catalog message
 exact :: history.rs :: page :: a placeholder name of a catalog message

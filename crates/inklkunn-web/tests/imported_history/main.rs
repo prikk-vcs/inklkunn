@@ -102,7 +102,7 @@ fn main_of(body: &str) -> &str {
 }
 
 #[tokio::test]
-async fn an_imported_revision_says_who_wrote_it_at_the_source_and_when_and_the_page_says_where_it_came_from()
+async fn an_imported_revision_says_who_wrote_it_in_the_wiki_it_came_from_and_when_and_the_page_says_where_it_came_from()
  {
     let w = world(&replayed(
         "Ada Lovelace",
@@ -112,9 +112,9 @@ async fn an_imported_revision_says_who_wrote_it_at_the_source_and_when_and_the_p
     let (status, body) = get(&w, "/handbook/-/history/Home", None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let main = main_of(&body);
-    // The row: the source's author as a name at the source, the source's date labelled originally, the source's summary.
+    // The row: the author as a name in the wiki it was imported from, its date labelled originally, its summary.
     assert!(
-        main.contains("Imported. Originally by Ada Lovelace (a name at the source), 2009-02-13 23:31 UTC (originally): Fix the table"),
+        main.contains("Imported. Originally by Ada Lovelace (a name in the wiki it was imported from), 2009-02-13 23:31 UTC (originally): Fix the table"),
         "{main}"
     );
     // Not the wiki's: nothing of the row says the wiki service made it, and no person signed it.
@@ -149,7 +149,7 @@ async fn an_imported_revision_says_who_wrote_it_at_the_source_and_when_and_the_p
     let (_, body) = get(&w, "/handbook/-/history/Home", ja).await;
     let main = main_of(&body);
     assert!(
-        main.contains("インポートされた変更。元の作成者: Ada Lovelace（出典での名前）、2009-02-13 23:31 UTC（元の日時）: Fix the table"),
+        main.contains("インポートされた変更。元の作成者: Ada Lovelace（インポート元での名前）、2009-02-13 23:31 UTC（元の日時）: Fix the table"),
         "{main}"
     );
     assert!(
@@ -228,8 +228,7 @@ async fn a_source_name_is_text_and_is_never_linked_to_an_account_even_one_of_the
 }
 
 #[tokio::test]
-async fn what_the_source_hid_is_said_hidden_at_the_source_and_a_plain_import_has_no_notice_of_a_bundle()
- {
+async fn what_the_imported_wiki_hid_is_said_hidden_and_a_plain_import_has_no_notice_of_a_bundle() {
     // A summary the source hid.
     let w = world(&replayed(
         "Ada Lovelace",
@@ -238,13 +237,14 @@ async fn what_the_source_hid_is_said_hidden_at_the_source_and_a_plain_import_has
     ));
     let (_, body) = get(&w, "/handbook/-/history/Home", None).await;
     assert!(
-        main_of(&body).contains("2009-02-13 23:31 UTC (originally): hidden at the source"),
+        main_of(&body)
+            .contains("2009-02-13 23:31 UTC (originally): hidden in the wiki it was imported from"),
         "{}",
         main_of(&body)
     );
     let (_, body) = get(&w, "/handbook/-/history/Home", Some("inklkunn_lang=ja")).await;
     assert!(
-        main_of(&body).contains("出典で非表示"),
+        main_of(&body).contains("インポート元で非表示"),
         "{}",
         main_of(&body)
     );
