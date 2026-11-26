@@ -49,7 +49,7 @@ use inklkunn_store::{
 use super::{Cause, ReadError, ReadService, Tip};
 use crate::authorize::{RulesSource, SourceError};
 use crate::governance::{
-    Constitution, GovernanceFile, PlatformLimits, Policy, ReadFault, Refusal, Rules,
+    Constitution, GovernanceFile, Interwiki, PlatformLimits, Policy, ReadFault, Refusal, Rules,
     read_constitution, read_interwiki, read_policy,
 };
 
@@ -340,7 +340,7 @@ impl ReadService {
             match read {
                 Read::Constitution(c) => snapshot.constitution = Some(c.to_yaml()),
                 Read::Policy(p) => snapshot.policy = Some(p.to_yaml()),
-                Read::Interwiki => {}
+                Read::Interwiki(_) => {}
             }
         }
         if snapshot.fault.is_some() {
@@ -444,10 +444,27 @@ impl ReadService {
         Ok(match file {
             GovernanceFile::Constitution => read_constitution(&bytes).map(Read::Constitution),
             GovernanceFile::Policy => read_policy(&bytes).map(Read::Policy),
-            // The map is judged here (a file that cannot be read makes the wiki refuse writes) and kept nowhere: it is read
-            // again, from the state a page is shown at, by `ReadService::interwiki_at`.
-            GovernanceFile::Interwiki => read_interwiki(&bytes).map(|_| Read::Interwiki),
+            // The map is judged here (a file that cannot be read makes the wiki refuse writes) and kept nowhere by the rules: it
+            // is read again, once per default tip, by `ReadService::interwiki`, through [`ReadService::interwiki_file_at`].
+            GovernanceFile::Interwiki => read_interwiki(&bytes).map(Read::Interwiki),
         })
+    }
+
+    /// The interwiki map at `entry`, an ordinary file of `governance/interwiki.yaml` at `point`: **the one place the map's bytes
+    /// are read**, through the reader of the governance files. An empty map for a file that is too large or does not read (the
+    /// rules' loader reports it); an error for a repository that could not be asked.
+    pub(super) fn interwiki_file_at(
+        &self,
+        wiki: &WikiRecord,
+        point: &Point,
+        entry: &Entry,
+    ) -> Result<Interwiki, ReadError> {
+        Ok(
+            match self.read_governance_file(wiki, point, GovernanceFile::Interwiki, entry)? {
+                Ok(Read::Interwiki(map)) => map,
+                _ => Interwiki::empty(),
+            },
+        )
     }
 
     /// Walk back from the tip through the default view's newest [`WALK_BLOCKS`] blocks, one block at a time, until a block that
@@ -596,7 +613,7 @@ enum Read {
     Constitution(Constitution),
     Policy(Policy),
     /// The interwiki map read whole. The snapshot keeps none of it (RFC 007 D-8; no stored row changes for it).
-    Interwiki,
+    Interwiki(Interwiki),
 }
 
 /// The fault as the derived row keeps it: the file, the line and the rule's stable name.

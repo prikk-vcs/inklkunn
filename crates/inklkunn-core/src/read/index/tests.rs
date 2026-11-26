@@ -386,7 +386,7 @@ fn the_index_is_by_path_without_duplicates_and_answers_by_path() {
     assert_eq!(paths, ["pages/A.md", "pages/B.md"]);
     assert_eq!(ix.entry("pages/B.md").map(|e| e.title.as_str()), Some("B"));
     assert_eq!(ix.entry("pages/C.md"), None);
-    assert_eq!(ix.resolver().pages().len(), 2);
+    assert_eq!(ix.resolver_pages().len(), 2);
 }
 
 // ------------------------------------------------------------------------------------ the interwiki map of a tree
@@ -405,13 +405,13 @@ fn the_map_of_a_tree_is_its_governance_interwiki_file_when_that_is_an_ordinary_s
     assert_eq!(map.get("wp"), Some("https://en.wikipedia.org/wiki/{title}"));
     // The index it is given to resolves with it.
     let index = TitleIndex::new("s", vec![entry("pages/Home.md", "Home")]).with_interwiki(map);
-    let hit = index.resolver().resolve("wp:Rust", None);
+    let hit = index.resolve("wp:Rust", None);
     assert_eq!(hit.via, Via::Interwiki);
     assert_eq!(
         hit.url.as_deref(),
         Some("https://en.wikipedia.org/wiki/Rust")
     );
-    assert_eq!(index.resolver().resolve("zz:Rust", None).via, Via::Dangling);
+    assert_eq!(index.resolve("zz:Rust", None).via, Via::Dangling);
 }
 
 #[test]

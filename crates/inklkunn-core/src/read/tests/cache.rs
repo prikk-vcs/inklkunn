@@ -329,7 +329,7 @@ fn the_cache_holds_the_present_and_the_past_is_dropped_when_a_tip_moves() {
                 tip,
                 path,
                 lang: "en",
-                presentation: &cache_presentation(&Env::EN),
+                presentation: &cache_presentation(&Env::EN, &crate::governance::Interwiki::empty()),
             })
             .unwrap()
     };

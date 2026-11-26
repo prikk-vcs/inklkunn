@@ -28,6 +28,7 @@ use inklkunn_markup::{Page, Via, nfc_trim, normalize};
 use inklkunn_store::{IndexEntry, WikiRecord};
 
 use super::index::{MAX_REDIRECT_HOPS, TitleIndex};
+use crate::governance::Interwiki;
 use super::{ReadError, ReadService};
 
 /// The most links read from one page.
@@ -129,6 +130,9 @@ pub struct RedirectIssue {
 #[derive(Debug)]
 pub struct LinkGraph {
     tip: String,
+    /// The interwiki map the links were resolved with (an interwiki link is no edge and no wanted page, and a prefix the map lacks
+    /// is a wanted page): the graph is of a state **and a map** (correction W-4).
+    interwiki: Arc<Interwiki>,
     pages: Vec<GraphPage>,
     /// Page path → the pages that link to it.
     inbound: HashMap<String, Vec<Backlink>>,
@@ -146,6 +150,12 @@ impl LinkGraph {
     /// Every page.
     pub fn pages(&self) -> &[GraphPage] {
         &self.pages
+    }
+
+    /// Was this graph built with `map`: the interwiki map its links were resolved with? A graph held for a state is used only for
+    /// the map it was built with.
+    fn resolved_with(&self, map: &Interwiki) -> bool {
+        *self.interwiki == *map
     }
 
     /// The pages that link to the page at `path`, in path order.
@@ -227,7 +237,7 @@ impl LinkGraph {
             let lines: Vec<&str> = text.lines().collect();
             for link in page.scan.links.iter().take(MAX_LINKS_PER_PAGE) {
                 let target = nfc_trim(&link.target);
-                let resolution = index.resolver().resolve(&target, Some(&entry.path));
+                let resolution = index.resolve(&target, Some(&entry.path));
                 let context = lines
                     .get(link.line.saturating_sub(1))
                     .map(|l| shorten(l))
@@ -290,7 +300,7 @@ impl LinkGraph {
             let Some(target) = entry.redirect.as_deref() else {
                 continue;
             };
-            let resolution = index.resolver().resolve(target, Some(&entry.path));
+            let resolution = index.resolve(target, Some(&entry.path));
             let Some(to) = resolution
                 .path
                 .as_deref()
@@ -351,6 +361,7 @@ impl LinkGraph {
             .sort_by(|a, b| (&a.entry.title, &a.entry.path).cmp(&(&b.entry.title, &b.entry.path)));
         LinkGraph {
             tip: index.tip().to_owned(),
+            interwiki: index.shared_interwiki(),
             pages,
             inbound,
             wanted,
@@ -398,7 +409,7 @@ fn redirect_issue(index: &TitleIndex, entry: &IndexEntry) -> Option<RedirectIssu
         kind,
     };
     while let Some(target) = at.redirect.as_deref() {
-        let resolution = index.resolver().resolve(target, Some(&at.path));
+        let resolution = index.resolve(target, Some(&at.path));
         let next = match resolution.via {
             Via::Dangling | Via::Interwiki | Via::SamePage => None,
             _ => resolution.path.as_deref().and_then(|p| index.entry(p)),
@@ -429,12 +440,12 @@ impl ReadService {
     ) -> Result<Arc<LinkGraph>, ReadError> {
         let tip = self.tip(wiki, view)?;
         let index = self.index_at(wiki, &tip)?;
-        if let Some(graph) = self.remembered_graph(wiki, tip.state_id()) {
+        if let Some(graph) = self.remembered_graph(wiki, tip.state_id(), index.interwiki()) {
             return Ok(graph);
         }
         let lock = self.build_lock(&wiki.id);
         let _building = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(graph) = self.remembered_graph(wiki, tip.state_id()) {
+        if let Some(graph) = self.remembered_graph(wiki, tip.state_id(), index.interwiki()) {
             return Ok(graph);
         }
         let max = self.config.page_max_bytes;
@@ -448,12 +459,17 @@ impl ReadService {
         Ok(graph)
     }
 
-    fn remembered_graph(&self, wiki: &WikiRecord, tip: &str) -> Option<Arc<LinkGraph>> {
+    fn remembered_graph(
+        &self,
+        wiki: &WikiRecord,
+        tip: &str,
+        map: &Interwiki,
+    ) -> Option<Arc<LinkGraph>> {
         self.graphs
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .iter()
-            .find(|(w, g)| *w == wiki.id && g.tip() == tip)
+            .find(|(w, g)| *w == wiki.id && g.tip() == tip && g.resolved_with(map))
             .map(|(_, g)| Arc::clone(g))
     }
 }

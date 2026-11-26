@@ -104,9 +104,30 @@ impl Interwiki {
         self.map.is_empty()
     }
 
-    /// The map as the resolver takes it ([`inklkunn_markup::Index::interwiki`]).
+    /// The map as the resolver takes it ([`inklkunn_markup::Index::resolve_with`]), without a copy.
+    pub fn as_map(&self) -> &BTreeMap<String, String> {
+        &self.map
+    }
+
+    /// The map as the resolver's own field takes it ([`inklkunn_markup::Index::interwiki`]).
     pub fn to_map(&self) -> BTreeMap<String, String> {
         self.map.clone()
+    }
+
+    /// A short name for this map's content (the first 16 hex digits of the SHA-256 of [`Interwiki::to_yaml`]): two maps with the
+    /// same prefixes and templates have the same one. For a key under which something resolved with the map is kept; empty for an
+    /// empty map.
+    pub fn fingerprint(&self) -> String {
+        use sha2::{Digest, Sha256};
+        if self.map.is_empty() {
+            return String::new();
+        }
+        let digest = Sha256::digest(self.to_yaml().as_bytes());
+        digest
+            .iter()
+            .take(8)
+            .map(|b| format!("{b:02x}"))
+            .collect()
     }
 
     /// The canonical text of the file: every template quoted, in prefix order. Reading it back gives the map again.

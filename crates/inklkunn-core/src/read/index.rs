@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::sync::Arc;
 
 use inklkunn_markup::path::{PAGES_DIR, path_to_title};
 use inklkunn_markup::{Index, PageEntry, Via, frontmatter, nfc_trim, parse_metadata};
@@ -71,7 +72,8 @@ impl std::error::Error for TreeError {}
 
 /// The interwiki map of an extracted tree: `<root>/governance/interwiki.yaml` when it is an ordinary file of at most
 /// [`MAX_INTERWIKI_BYTES`] that reads, **else an empty map** (a link then stays dangling, which is what reading a wiki whose map
-/// cannot be read does; the fault is the rules' to report, and every write refuses while it stands).
+/// cannot be read does; the fault is the rules' to report, and every write refuses while it stands). For a tree that is the
+/// **default view's tip** (an export's); the read path asks [`ReadService::interwiki`](super::ReadService::interwiki).
 pub fn interwiki_in_tree(root: &Path) -> Interwiki {
     let path = root.join(crate::governance::INTERWIKI_PATH);
     let ordinary = std::fs::symlink_metadata(&path)
@@ -292,18 +294,23 @@ pub enum RedirectProblem {
     TooLong,
 }
 
-/// The pages of one tip, ready to answer.
-#[derive(Debug)]
+/// The pages of one tip, ready to answer, **and the interwiki map its links are resolved with** (which is not the tip's).
+///
+/// **Cheap to clone**: the pages are shared, so that a cached index of a state can be given the wiki's map of the moment
+/// ([`TitleIndex::with_interwiki`], [`TitleIndex::with_shared_interwiki`]) without copying them.
+#[derive(Debug, Clone)]
 pub struct TitleIndex {
     tip: String,
-    entries: Vec<IndexEntry>,
-    by_path: HashMap<String, usize>,
-    resolver: Index,
-    interwiki: Interwiki,
+    entries: Arc<Vec<IndexEntry>>,
+    by_path: Arc<HashMap<String, usize>>,
+    /// The pages, for the resolver. **Its own interwiki map is always empty**: the map is [`TitleIndex::interwiki`], applied by
+    /// [`TitleIndex::resolve`], so that a map never has to be copied into the pages it is used with.
+    resolver: Arc<Index>,
+    interwiki: Arc<Interwiki>,
 }
 
 impl TitleIndex {
-    /// The index of `entries` at the tip `tip`. The entries are taken in path order (the order the stores
+    /// The index of `entries` at the tip `tip`, with no interwiki map. The entries are taken in path order (the order the stores
     /// give them), which is the order candidates are listed in and the first of several equal matches is
     /// chosen in.
     pub fn new(tip: impl Into<String>, mut entries: Vec<IndexEntry>) -> Self {
@@ -322,25 +329,37 @@ impl TitleIndex {
         }
         TitleIndex {
             tip: tip.into(),
-            entries,
-            by_path,
-            resolver,
-            interwiki: Interwiki::empty(),
+            entries: Arc::new(entries),
+            by_path: Arc::new(by_path),
+            resolver: Arc::new(resolver),
+            interwiki: Arc::new(Interwiki::empty()),
         }
     }
 
-    /// The same index **with the interwiki map of its state** (RFC 007 D-8): a link whose prefix the map has resolves as an
-    /// external link, and a prefix it lacks stays dangling, as it was. The map is the state's own `governance/interwiki.yaml`
-    /// ([`interwiki_in_tree`], [`ReadService::interwiki_at`](super::ReadService)): nothing else changes in what the index answers.
+    /// The same pages **with this interwiki map** (RFC 007 D-8; correction W-4): a link whose prefix the map has resolves as an
+    /// external link, and a prefix it lacks stays dangling, as it was. **The map is the wiki's, not the state's**: the one of the
+    /// default view's tip, for every view and every state ([`ReadService::interwiki`](super::ReadService::interwiki)); this does
+    /// not say where it came from, and an index that was not given one has none. Nothing else changes in what the index answers.
     #[must_use]
-    pub fn with_interwiki(mut self, map: Interwiki) -> Self {
-        self.resolver.interwiki = map.to_map();
+    pub fn with_interwiki(self, map: Interwiki) -> Self {
+        self.with_shared_interwiki(Arc::new(map))
+    }
+
+    /// [`TitleIndex::with_interwiki`] with a map that is already shared (what the service holds for the default tip), so that
+    /// applying it costs no copy of the map.
+    #[must_use]
+    pub fn with_shared_interwiki(mut self, map: Arc<Interwiki>) -> Self {
         self.interwiki = map;
         self
     }
 
-    /// The interwiki map the links of this state are resolved with (empty when the state has none, or its file cannot be read:
-    /// reading goes on, and the wiki refuses writes until the file is repaired).
+    /// The map this index resolves links with, shared (empty when none was given).
+    pub fn shared_interwiki(&self) -> Arc<Interwiki> {
+        Arc::clone(&self.interwiki)
+    }
+
+    /// The interwiki map the links of this index are resolved with (empty when none was given: the wiki has no map, or its file
+    /// cannot be read, and reading goes on while the wiki refuses writes until the file is repaired).
     pub fn interwiki(&self) -> &Interwiki {
         &self.interwiki
     }
@@ -360,15 +379,21 @@ impl TitleIndex {
         self.by_path.get(path).and_then(|i| self.entries.get(*i))
     }
 
-    /// The resolver links are resolved with (MKUP-5), over these pages.
-    pub fn resolver(&self) -> &Index {
-        &self.resolver
+    /// Resolve `target` as written in a link on `from_path` (MKUP-5), over these pages and **with this index's interwiki map**.
+    pub fn resolve(&self, target: &str, from_path: Option<&str>) -> inklkunn_markup::Resolution {
+        self.resolver
+            .resolve_with(self.interwiki.as_map(), target, from_path)
+    }
+
+    /// The pages the resolver knows, in the order of [`TitleIndex::entries`].
+    pub fn resolver_pages(&self) -> &[PageEntry] {
+        self.resolver.pages()
     }
 
     /// Where `requested` leads: the page, through an alias or a redirect when it is one, or why not.
     pub fn lookup(&self, requested: &str) -> Lookup {
         let requested = nfc_trim(requested);
-        let first = self.resolver.resolve(&requested, None);
+        let first = self.resolve(&requested, None);
         let via = first.via;
         let mut at = match self.resolved_entry(&first) {
             Ok(Some(e)) => e,
@@ -379,7 +404,7 @@ impl TitleIndex {
         let mut redirected = via == Via::Alias;
         let mut seen = vec![at.path.as_str()];
         while let Some(target) = at.redirect.as_deref() {
-            let r = self.resolver.resolve(target, Some(&at.path));
+            let r = self.resolve(target, Some(&at.path));
             let next = match self.resolved_entry(&r) {
                 Ok(Some(e)) => e,
                 Ok(None) | Err(_) => {

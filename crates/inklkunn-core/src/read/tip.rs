@@ -143,6 +143,10 @@ pub(super) trait Place {
     fn state_id(&self) -> &str;
     /// The block.
     fn block_id(&self) -> &str;
+    /// The tip this place is, when it is one (a place that is any other block is none).
+    fn as_tip(&self) -> Option<&Tip> {
+        None
+    }
 }
 
 impl Place for Tip {
@@ -151,6 +155,9 @@ impl Place for Tip {
     }
     fn block_id(&self) -> &str {
         &self.block_id
+    }
+    fn as_tip(&self) -> Option<&Tip> {
+        Some(self)
     }
 }
 

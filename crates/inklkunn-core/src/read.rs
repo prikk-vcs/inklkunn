@@ -398,11 +398,19 @@ pub const HEADING_ID_PREFIX: &str = "h-";
 
 /// What the derived cache keys a page by besides its tip, path and language: the surface's own presentation
 /// key and the render options this service draws with, so a row drawn another way is never read back.
-fn cache_presentation(presentation: &dyn Presentation) -> String {
-    format!(
+///
+/// **And the interwiki map the links were resolved with** (correction W-4): the map is the wiki's, not the state's, so a row of a
+/// state that did not move is another row when the map did. A wiki with no map adds nothing, so its rows are the ones it had.
+fn cache_presentation(presentation: &dyn Presentation, interwiki: &Interwiki) -> String {
+    let mut key = format!(
         "{}|d{HEADING_DEMOTION}|i{HEADING_ID_PREFIX}",
         presentation.key()
-    )
+    );
+    if !interwiki.is_empty() {
+        key.push_str("|m");
+        key.push_str(&interwiki.fingerprint());
+    }
+    key
 }
 
 /// The most title indexes kept in memory at once, over all wikis: a bound, since a title index is a few
@@ -429,6 +437,9 @@ pub struct ReadService {
     /// was refused at and when: asked again within the hold of a tip, the answer is the same one, and prikk
     /// is not spawned for every page request while the operator fixes it.
     refused_builds: Mutex<HashMap<WikiId, (Instant, String, ReadError)>>,
+    /// The wiki's interwiki map and the default view's state it was read at (correction W-4): **one map per wiki**, the one of the
+    /// default view's tip, applied to every index whatever view or state it is of.
+    interwiki_maps: Mutex<HashMap<WikiId, (String, Arc<Interwiki>)>>,
     /// The link graph of a tip, built on demand from one extract (backlinks and the health views), newest last.
     graphs: Mutex<Vec<(WikiId, Arc<LinkGraph>)>>,
     /// The knowledge index of a tip (RFC 005 part 2 D-6), newest last: built in the same pass over the same extract
@@ -499,6 +510,7 @@ impl ReadService {
             indexes: Mutex::new(Vec::new()),
             builds: Mutex::new(HashMap::new()),
             refused_builds: Mutex::new(HashMap::new()),
+            interwiki_maps: Mutex::new(HashMap::new()),
             graphs: Mutex::new(Vec::new()),
             knowledge: Mutex::new(Vec::new()),
             block_pages: Mutex::new(HashMap::new()),
@@ -732,6 +744,10 @@ impl ReadService {
     pub fn clear_derived(&self, wiki: &WikiRecord) -> Result<u64, ReadError> {
         self.forget_wiki(wiki);
         self.rules.clear(&wiki.id);
+        self.interwiki_maps
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&wiki.id);
         self.derived
             .clear(&wiki.id)
             .map_err(|e| ReadError::CouldNotBeReadNow(Cause::Store(e)))
@@ -955,7 +971,7 @@ impl ReadService {
                 _ => PageProblem::Frontmatter("the frontmatter is not readable".to_owned()),
             }));
         }
-        let presentation_key = cache_presentation(presentation);
+        let presentation_key = cache_presentation(presentation, index.interwiki());
         let key = PageKey {
             wiki: &wiki.id,
             tip: tip.state_id(),
@@ -1007,17 +1023,22 @@ impl ReadService {
         title_to_path(title).ok()?;
         let view = view.unwrap_or(&wiki.default_view);
         let state_id = self.tips.last_known(&wiki.id, view)?;
-        // The stored row's pages, whatever the state's map is: a lookup of a title never reads it, and the page is the cached one.
+        // The stored row's pages, with **the map this process last had for the wiki** (it asks prikk nothing, so it cannot ask for the
+        // default tip's: a page cached under another map is not found, and there is no stale page for it).
         let index = self
             .remembered(&wiki.id, &state_id)
             .or_else(|| self.stored_pages(wiki, &state_id).map(Arc::new))?;
+        let index = index
+            .as_ref()
+            .clone()
+            .with_shared_interwiki(self.last_known_interwiki(&wiki.id));
         let Lookup::Found(found) = index.lookup(title) else {
             return None;
         };
         if found.entry.problem.is_some() {
             return None;
         }
-        let presentation_key = cache_presentation(presentation);
+        let presentation_key = cache_presentation(presentation, index.interwiki());
         let key = PageKey {
             wiki: &wiki.id,
             tip: &state_id,
@@ -1134,7 +1155,28 @@ impl ReadService {
 
     // ------------------------------------------------------------------------------------ the index
 
+    /// The title index of the state `tip` names, **with the wiki's interwiki map** (correction W-4): the pages are those of the
+    /// state (from memory, else the derived store, else built from one extract) and the map is the one of the default view's tip,
+    /// read once per default tip ([`ReadService::interwiki`]) and put on a copy of the index that shares its pages. So an
+    /// alternative view, a permalink and a page resolve `[[gh:…]]` the same way, and an index held in memory never holds a map that
+    /// the default tip has since replaced.
     fn index_at(&self, wiki: &WikiRecord, tip: &impl Place) -> Result<Arc<TitleIndex>, ReadError> {
+        let pages = self.pages_index_at(wiki, tip)?;
+        // The default view's own tip is the tip the map is read at: no second ask for it. Any other place asks for the default tip.
+        let map = match tip.as_tip().filter(|t| t.view() == wiki.default_view) {
+            Some(default_tip) => self.interwiki_at(wiki, default_tip)?,
+            None => self.interwiki(wiki)?,
+        };
+        Ok(Arc::new(pages.as_ref().clone().with_shared_interwiki(map)))
+    }
+
+    /// The pages of the state `tip` names, with no map: what is held and stored. **Never handed out as an index**: it resolves
+    /// no interwiki link.
+    fn pages_index_at(
+        &self,
+        wiki: &WikiRecord,
+        tip: &impl Place,
+    ) -> Result<Arc<TitleIndex>, ReadError> {
         if let Some(index) = self.remembered(&wiki.id, tip.state_id()) {
             return Ok(index);
         }
@@ -1153,7 +1195,7 @@ impl ReadService {
         if let Some(refusal) = self.recently_refused(&wiki.id, tip.state_id()) {
             return Err(refusal);
         }
-        let (entries, knowledge, interwiki) = match self.build_entries(wiki, tip) {
+        let (entries, knowledge, in_tree) = match self.build_entries(wiki, tip) {
             Ok(built) => built,
             Err(e) => {
                 self.note_refusal(&wiki.id, tip.state_id(), &e);
@@ -1164,6 +1206,11 @@ impl ReadService {
         // knowledge views and never a page: it is asked for again, and refused again, by `knowledge_index`.
         if let Some(rows) = knowledge {
             self.keep_knowledge(wiki, tip, rows);
+        }
+        // The extract of the default view's tip holds the wiki's map: kept, so that the one extract answers it too and no listing of
+        // `governance/` is asked for (the map of any other place is the default tip's, never the extract's).
+        if let Some(default_tip) = tip.as_tip().filter(|t| t.view() == wiki.default_view) {
+            self.hold_interwiki(&wiki.id, default_tip.state_id(), in_tree);
         }
         if self
             .derived
@@ -1177,8 +1224,7 @@ impl ReadService {
         {
             self.store_failures.fetch_add(1, Ordering::Relaxed);
         }
-        let index =
-            Arc::new(TitleIndex::new(tip.state_id().to_owned(), entries).with_interwiki(interwiki));
+        let index = Arc::new(TitleIndex::new(tip.state_id().to_owned(), entries));
         self.remember(&wiki.id, &index);
         self.forget_the_past(wiki);
         Ok(index)
@@ -1230,15 +1276,10 @@ impl ReadService {
         held.drain(..excess);
     }
 
-    /// The index the derived store has for the tip, put in memory. A store that cannot answer is a miss.
-    ///
-    /// The stored row holds the pages and not the interwiki map (RFC 007 D-8): it serves a state that has none, and a state that
-    /// has one (or whose listing cannot be asked for) is a miss, built again from its extract, which reads the file.
+    /// The index the derived store has for the tip, put in memory. A store that cannot answer is a miss. **The row serves every
+    /// state**: it holds the pages, and the interwiki map is the wiki's and is applied beside it ([`ReadService::index_at`]).
     fn stored_index(&self, wiki: &WikiRecord, tip: &impl Place) -> Option<Arc<TitleIndex>> {
         let pages = self.stored_pages(wiki, tip.state_id())?;
-        if !matches!(self.has_interwiki_at(wiki, tip.block_id()), Ok(false)) {
-            return None;
-        }
         let index = Arc::new(pages);
         self.remember(&wiki.id, &index);
         Some(index)
@@ -1282,7 +1323,8 @@ impl ReadService {
     }
 
     /// One `extract` of the tip into the wiki's scratch directory, read, and the directory removed: the title
-    /// index's entries and, from the same tree, the knowledge index's rows (`None` when they could not be read).
+    /// index's entries and, from the same tree, the knowledge index's rows (`None` when they could not be read) and the interwiki map
+    /// the tree has (**the map of this tree, which is the wiki's only when the tree is the default view's tip**).
     fn build_entries(
         &self,
         wiki: &WikiRecord,

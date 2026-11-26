@@ -131,7 +131,7 @@ impl<'a> PageLinks<'a> {
 impl RenderLinks for PageLinks<'_> {
     fn link(&self, link: &Link) -> LinkHref {
         let target = nfc_trim(&link.target);
-        let resolution = self.index.resolver().resolve(&target, Some(self.from_path));
+        let resolution = self.index.resolve(&target, Some(self.from_path));
         let mut seen = self.seen.borrow_mut();
         match resolution.via {
             Via::Interwiki => {

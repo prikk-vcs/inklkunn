@@ -21,6 +21,7 @@ use super::index::TitleIndex;
 use super::text::FileAt;
 use super::writes::{Authorship, Reading, RequestBudget};
 use super::{BlockPoint, ReadError, ReadService};
+use crate::governance::Interwiki;
 use crate::knowledge::index::{HiddenFile, HiddenKind, KnowledgeIndex};
 use crate::knowledge::{ClaimId, SourceId, claim_path, source_path};
 use crate::tombstone::Mark;
@@ -134,8 +135,13 @@ impl ReadService {
             at.block_id().to_owned(),
             self.newest_moderation_event(wiki)?,
         );
+        // What is held has no map; the wiki's map of the moment is put on it (correction W-4).
         if let Some(held) = self.titles_filtered.get(&key) {
-            return Ok(held);
+            return Ok(Arc::new(
+                held.as_ref()
+                    .clone()
+                    .with_shared_interwiki(whole.shared_interwiki()),
+            ));
         }
         #[cfg(test)]
         self.titles_filter_runs
@@ -159,17 +165,19 @@ impl ReadService {
                 entries.push(entry.clone());
             }
         }
-        let filtered = if changed {
-            // The state's own map goes on: a page at a base is read with the links it had.
-            Arc::new(
-                TitleIndex::new(whole.tip().to_owned(), entries)
-                    .with_interwiki(whole.interwiki().clone()),
-            )
+        // Held **without the map** (the wiki's, which a map change at the default tip replaces under a key that did not move), and
+        // given back with the map `whole` has.
+        let bare = Arc::new(if changed {
+            TitleIndex::new(whole.tip().to_owned(), entries)
         } else {
-            whole
-        };
-        self.titles_filtered.keep(key, Arc::clone(&filtered));
-        Ok(filtered)
+            whole.as_ref().clone().with_interwiki(Interwiki::empty())
+        });
+        self.titles_filtered.keep(key, Arc::clone(&bare));
+        Ok(Arc::new(
+            bare.as_ref()
+                .clone()
+                .with_shared_interwiki(whole.shared_interwiki()),
+        ))
     }
 
     /// The newest event of the wiki's moderation log: what a held answer about what is hidden is keyed by.

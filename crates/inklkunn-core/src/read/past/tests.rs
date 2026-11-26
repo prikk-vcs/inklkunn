@@ -148,8 +148,31 @@ fn the_title_index_at_a_base_keeps_the_interwiki_map_of_its_state_when_a_page_is
     );
     assert_eq!(filtered.interwiki(), whole.interwiki());
     assert_eq!(
-        filtered.resolver().resolve("wp:Rust", None).via,
+        filtered.resolve("wp:Rust", None).via,
         inklkunn_markup::Via::Interwiki
+    );
+    // The map is the wiki's and not the state's (correction W-4): the filtered index is held for the base and the hides, and a map
+    // change at the default tip is on it the next time it is served, though nothing it is held under moved.
+    r.w.fake().set(
+        "governance/interwiki.yaml",
+        "wp: https://de.wikipedia.org/wiki/{title}\n",
+    ); // 4
+    r.service.forget_wiki(&r.w.wiki);
+    let later = titles_at_3(&r);
+    assert_eq!(
+        later
+            .entry("pages/One.md")
+            .and_then(|e| e.problem.as_deref()),
+        Some(HIDDEN_PROBLEM),
+        "still the filtered index"
+    );
+    assert_eq!(
+        later.interwiki().get("wp"),
+        Some("https://de.wikipedia.org/wiki/{title}")
+    );
+    assert_eq!(
+        later.resolve("wp:Rust", None).url.as_deref(),
+        Some("https://de.wikipedia.org/wiki/Rust")
     );
 }
 

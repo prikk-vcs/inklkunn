@@ -1446,7 +1446,7 @@ impl ReadService {
             "{}|{block_id}|{path}|{}|{}|{}",
             wiki.id,
             presentation.lang(),
-            super::cache_presentation(presentation),
+            super::cache_presentation(presentation, index.interwiki()),
             index.tip()
         );
         let held = self
