@@ -479,3 +479,49 @@ fn no_history_imports_the_pages_as_they_are_in_one_change_and_a_bundle_over_the_
         );
     }
 }
+
+#[test]
+fn a_page_the_replay_made_that_the_bundle_does_not_have_is_removed_by_the_change_at_the_end() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let d = dir_in(&std::env::temp_dir(), "final-remove");
+    put(
+        &d.0,
+        "wiki-bundle.yaml",
+        "format: portable-wiki-bundle\nversion: '0.4'\nlicense: CC0-1.0\n",
+    );
+    put(&d.0, "pages/Kept.md", &text("Kept", "kept", "k"));
+    // The page the bundle's files do not have: its history ends with a text, not a removal.
+    let eps = record(
+        "e1",
+        None,
+        "create",
+        "2020-01-01T00:00:00Z",
+        serde_json::json!({"content": text("Eps", "eps", "e"), "inklkunn": {"path": "pages/Eps.md"}}),
+    );
+    put(&d.0, "history/eps.jsonl", &(eps + "\n"));
+    // The page the bundle has differs from its last revision: the change at the end writes it.
+    let kept = record(
+        "k1",
+        None,
+        "create",
+        "2020-01-02T00:00:00Z",
+        serde_json::json!({"content": text("Kept", "kept", "older")}),
+    );
+    put(&d.0, "history/kept.jsonl", &(kept + "\n"));
+    let plan = plan_of(&d.0, None);
+    let w = world("final-remove-wiki");
+    let done = run(&w, &plan, "finalremove", "CC0-1.0", &|_| {}).expect("imported");
+    assert_eq!(done.revisions, 2);
+    assert_eq!(
+        (done.final_changes, done.final_written, done.final_removed),
+        (1, 1, 1)
+    );
+    assert!(!done.repo.join("pages/Eps.md").exists());
+    assert_eq!(
+        read_text(&done.repo.join("pages/Kept.md")),
+        text("Kept", "kept", "k")
+    );
+}
