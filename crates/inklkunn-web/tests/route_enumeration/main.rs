@@ -110,7 +110,7 @@ async fn every_guarded_route_answers_a_restricted_wiki_exactly_as_one_that_is_no
                 // The form that proposes a change to the rules (RFC 006 D-4; handoff G-T7) is a proposal.
                 || entry.path == "/{slug}/-/policy/edit"
                 || (entry.path.starts_with("/{slug}/-/api/v1/proposals")
-                    && entry.methods == ["POST"]);
+                    && entry.methods.contains(&"POST"));
             // A view's creation is its own action (RFC 005 part 2 D-9; handoff 005 K-T8).
             let creates_a_view = entry.path == "/{slug}/-/views/new";
             // A comment in a claim's own discussion is made with the action a comment on a proposal is (RFC 005 part 2

@@ -32,6 +32,7 @@ mod across;
 mod governance_api;
 mod knowledge_api;
 mod past;
+mod proposals_api;
 
 /// The addresses under the API's prefixes that are *not* endpoints: they answer the generic not-found problem,
 /// so a mistyped endpoint is never taken for a page title. The OpenAPI document does not list them.
@@ -44,6 +45,7 @@ pub(super) fn all() -> Vec<Endpoint> {
         path: doc.path,
         methods: &["GET", "HEAD"],
         doc: Some(doc),
+        also_reads: None,
         guard,
         handler,
     };
@@ -52,15 +54,25 @@ pub(super) fn all() -> Vec<Endpoint> {
         path: doc.path,
         methods: &["POST"],
         doc: Some(doc),
+        also_reads: None,
         guard: doc
             .write
             .map_or(Guard::Action(Action::Read), |w| Guard::Action(w.action)),
         handler,
     };
+    // A write whose address also takes a `GET` (the list of what it makes): one entry, `GET`, `HEAD` and `POST`, guarded by
+    // the write's action as the registry's one guard for the address; the `GET` begins as every read does, with the wiki's
+    // read check, and the document says `read` of it.
+    let written_and_listed = |doc: &'static Doc, listing: &'static Doc, handler| Endpoint {
+        methods: &["GET", "HEAD", "POST"],
+        also_reads: Some(listing),
+        ..written(doc, handler)
+    };
     let unlisted = |path, handler| Endpoint {
         path,
         methods: &["GET", "HEAD"],
         doc: None,
+        also_reads: None,
         guard: Guard::Public {
             reason: "an address under the API that is not an endpoint: it reads nothing and answers every caller the same not-found problem",
         },
@@ -106,12 +118,20 @@ pub(super) fn all() -> Vec<Endpoint> {
             get(governance_api::my_appeals)
         }),
         // --- the write API (handoff 004 T7)
-        written(&describe::CREATE_PROPOSAL, || post(propose::create)),
+        written_and_listed(
+            &describe::CREATE_PROPOSAL,
+            &describe::LIST_PROPOSALS,
+            || get(proposals_api::list).post(propose::create),
+        ),
         documented(&describe::GET_PROPOSAL, read, || get(propose::get)),
         written(&describe::SAVE_DRAFT, || post(propose::save_draft)),
         written(&describe::SUBMIT_DRAFT, || post(propose::submit_draft)),
         written(&describe::REVISE, || post(propose::revise)),
-        written(&describe::COMMENT, || post(decide::comment)),
+        written_and_listed(
+            &describe::COMMENT,
+            &describe::LIST_PROPOSAL_COMMENTS,
+            || get(proposals_api::comments).post(decide::comment),
+        ),
         written(&describe::DECIDE, || post(decide::decide)),
         written(&describe::ACCEPT, || post(decide::accept)),
         written(&describe::DECLINE, || post(decide::decline)),

@@ -37,7 +37,7 @@ fn tag(id: &ProposalId, revision: u32) -> String {
 }
 
 /// A comment as JSON.
-fn comment_json(comment: &CommentRecord) -> Value {
+pub(super) fn comment_json(comment: &CommentRecord) -> Value {
     json!({
         "id": comment.id.to_string(),
         "revision": comment.revision,

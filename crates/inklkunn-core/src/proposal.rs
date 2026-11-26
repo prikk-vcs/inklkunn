@@ -1937,6 +1937,62 @@ impl ProposalService {
             .collect()
     }
 
+    /// One page of the wiki's proposals **that were sent for review**, newest sent first, for a surface that lists them to
+    /// everyone who may read the wiki (RFC 007 D-9: the API's list and the feed).
+    ///
+    /// * **Never a draft, not even the caller's own**: a draft is its author's working copy (`list` gives the caller their own
+    ///   beside the rest, for the page that shows them under their own heading), so the list does not depend on who asks, only
+    ///   on whether they may read the wiki.
+    /// * `state` narrows to one state (a draft is none the list can ask for); `after` is the place the page before ended, the
+    ///   moment a proposal was first sent and its id, so that a proposal that changes state meanwhile does not move the place;
+    ///   a page is at most `limit` proposals.
+    /// * What moderation hides is hidden as in every other read ([`ProposalService::list`]): and only for the proposals of the
+    ///   page, so the cost is the page's.
+    pub fn list_sent(
+        &self,
+        principal: &Principal,
+        wiki: &WikiRecord,
+        state: Option<ProposalState>,
+        after: Option<&(i64, ProposalId)>,
+        limit: usize,
+    ) -> Result<Vec<ProposalRecord>> {
+        self.allow(
+            principal,
+            Action::Read,
+            &Resource::Wiki {
+                wiki: wiki.id.clone(),
+            },
+        )?;
+        let viewer = viewer_of(principal);
+        let filter = ProposalFilter {
+            states: Some(
+                ProposalState::ALL
+                    .into_iter()
+                    .filter(|s| *s != ProposalState::Draft && state.is_none_or(|only| only == *s))
+                    .collect(),
+            ),
+            author: None,
+        };
+        let mut sent: Vec<(i64, ProposalRecord)> = self
+            .proposals
+            .proposals(&wiki.id, &filter, viewer)?
+            .into_iter()
+            // A record that was never sent is a draft whatever its state says: it is not listed.
+            .filter_map(|record| record.submitted_at.map(|at| (at, record)))
+            .filter(|(at, record)| {
+                record.state != ProposalState::Draft
+                    && after.is_none_or(|(after_at, after_id)| {
+                        (*at, record.id.to_string()) < (*after_at, after_id.to_string())
+                    })
+            })
+            .collect();
+        sent.sort_by_key(|(at, record)| std::cmp::Reverse((*at, record.id.to_string())));
+        sent.into_iter()
+            .take(limit)
+            .map(|(_, record)| self.shown(wiki, viewer, record))
+            .collect()
+    }
+
     /// The draft's working copy, for its author to resume.
     pub fn draft(
         &self,

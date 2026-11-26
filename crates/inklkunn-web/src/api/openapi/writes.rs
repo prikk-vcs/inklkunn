@@ -3,7 +3,7 @@
 
 use serde_json::{Map, Value, json};
 
-use super::shapes::{closed, object, request, schema_ref};
+use super::shapes::{closed, object, request, schema_ref, with_hidden};
 
 /// The schemas, by name.
 pub(super) fn schemas() -> Map<String, Value> {
@@ -12,7 +12,7 @@ pub(super) fn schemas() -> Map<String, Value> {
         "enum": ["draft", "held-for-review", "needs-revision", "accepted", "declined", "withdrawn", "superseded"],
         "description": "Where the proposal is in its life.",
     });
-    let proposal = object(
+    let proposal = with_hidden(object(
         "A proposal. Its `etag` is what the next write on it names in `If-Match` (the `ETag` header says the same): it is made from the proposal's id and its latest revision, so it changes with a new revision and not with a decision.",
         json!({
             "id": {"type": "string", "description": "The proposal's id."},
@@ -42,7 +42,7 @@ pub(super) fn schemas() -> Map<String, Value> {
             },
         }),
         &["acceptance"],
-    );
+    ));
     // Exactly one of `path` and `title`, and `text` always: the two shapes are the alternatives.
     let file = json!({
         "description": "One page of a proposal: a page that exists, named by its `path`, or a page that does not exist yet, named by its `title`. `text` is always there.",
@@ -173,8 +173,8 @@ pub(super) fn schemas() -> Map<String, Value> {
             {"decision": "request-changes", "body": "Please name the source."},
         ]),
     );
-    let comment = object(
-        "A comment as recorded.",
+    let comment = with_hidden(object(
+        "A comment as recorded. In the list of a proposal's comments, a comment that moderation hides has an empty `body` and the members that say which parts are hidden, and why (`hidden`, `tombstone`, `tombstones`).",
         json!({
             "id": {"type": "string"},
             "revision": {"type": "integer", "description": "The revision that was the latest."},
@@ -184,7 +184,7 @@ pub(super) fn schemas() -> Map<String, Value> {
             "created_at": {"type": "integer"},
         }),
         &[],
-    );
+    ));
     let decision = object(
         "A decision as recorded.",
         json!({

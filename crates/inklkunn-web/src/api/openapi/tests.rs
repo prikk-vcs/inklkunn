@@ -19,7 +19,7 @@ impl At for Value {
 }
 
 fn docs() -> Vec<&'static Doc> {
-    endpoints::all().iter().filter_map(|e| e.doc).collect()
+    endpoints::all().iter().flat_map(Endpoint::docs).collect()
 }
 
 fn real_table() -> RouteTable {
@@ -159,31 +159,45 @@ fn every_operation_carries_the_guard_the_registry_declares() {
     let table = real_table();
     let document = document(&table, &docs()).unwrap();
     for (path, item) in document.at("/paths").as_object().unwrap() {
-        // One method per path: a read is a `get` guarded by `read`, a write a `post` guarded by its action.
+        // A read is a `get` guarded by `read`, a write a `post` guarded by its action. An address has one of each method, and
+        // the two that list what they make (the proposals, a proposal's comments) have both.
         let methods: Vec<&String> = item.as_object().unwrap().keys().collect();
-        let [method] = methods.as_slice() else {
-            panic!("{path}: one method a path, not {methods:?}");
-        };
-        let op = &item.at(&format!("/{method}"));
-        let action = op.get("x-inklkunn-action").and_then(Value::as_str);
-        let public = op.get("x-inklkunn-public").and_then(Value::as_str);
-        match (method.as_str(), action, public) {
-            ("get", Some("read"), None) => {}
-            ("get", None, Some(reason)) => {
-                assert_eq!(path, super::super::OPENAPI_PATH);
-                assert!(reason.len() >= 16);
+        assert!(
+            matches!(methods.as_slice(), [_] | [_, _]),
+            "{path}: {methods:?}"
+        );
+        if methods.len() == 2 {
+            assert!(
+                [
+                    "/{slug}/-/api/v1/proposals",
+                    "/{slug}/-/api/v1/proposals/{id}/comments"
+                ]
+                .contains(&path.as_str()),
+                "{path}: a read and a write on one address: {methods:?}"
+            );
+        }
+        for method in methods {
+            let op = &item.at(&format!("/{method}"));
+            let action = op.get("x-inklkunn-action").and_then(Value::as_str);
+            let public = op.get("x-inklkunn-public").and_then(Value::as_str);
+            match (method.as_str(), action, public) {
+                ("get", Some("read"), None) => {}
+                ("get", None, Some(reason)) => {
+                    assert_eq!(path, super::super::OPENAPI_PATH);
+                    assert!(reason.len() >= 16);
+                }
+                ("post", Some("propose" | "comment" | "review" | "accept"), None) => {
+                    assert!(
+                        op.get("security").is_some(),
+                        "{path}: a write names its security"
+                    );
+                    assert!(
+                        op.get("requestBody").is_some(),
+                        "{path}: a write has a body"
+                    );
+                }
+                other => panic!("{path}: {other:?}"),
             }
-            ("post", Some("propose" | "comment" | "review" | "accept"), None) => {
-                assert!(
-                    op.get("security").is_some(),
-                    "{path}: a write names its security"
-                );
-                assert!(
-                    op.get("requestBody").is_some(),
-                    "{path}: a write has a body"
-                );
-            }
-            other => panic!("{path}: {other:?}"),
         }
     }
 }
@@ -216,9 +230,8 @@ fn a_write_describes_the_csrf_token_a_cookie_client_must_send() {
     );
     let mut writes = 0;
     for (path, item) in document.at("/paths").as_object().unwrap() {
-        let Some(post) = item.get("post") else {
-            // A read has no CSRF token to send and no alternative to a bearer token's.
-            let get = item.at("/get");
+        // A read has no CSRF token to send and no alternative to a bearer token's (on an address that also takes a write too).
+        if let Some(get) = item.get("get") {
             let names: Vec<&str> = get
                 .at("/parameters")
                 .as_array()
@@ -227,6 +240,9 @@ fn a_write_describes_the_csrf_token_a_cookie_client_must_send() {
                 .filter_map(|p| p.get("name").and_then(Value::as_str))
                 .collect();
             assert!(!names.contains(&CSRF_HEADER_NAME), "{path}");
+            assert!(get.get("security").is_none(), "{path}");
+        }
+        let Some(post) = item.get("post") else {
             continue;
         };
         writes += 1;

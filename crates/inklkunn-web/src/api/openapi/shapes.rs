@@ -70,6 +70,42 @@ fn with(base: &Value, description: &str, extra: Value) -> Value {
     object(description, Value::Object(properties), &[])
 }
 
+/// The three members an answer carries when moderation hides something of what it describes (RFC 006 D-8; RFC 007 D-9): which
+/// parts, the newest hiding, and every hiding in force. They are absent when nothing is hidden. **A tombstone never names a person
+/// and never carries the moderator's note.**
+pub(super) fn hidden_members() -> Value {
+    let why = json!({
+        "category": {"type": "string", "description": "Why, in the closed set of reasons."},
+        "rung": {"type": "string", "description": "The role that hid it."},
+        "at": {"type": "integer", "description": "When, in Unix seconds."},
+    });
+    let one = |description: &str| {
+        let mut properties = why.clone();
+        if let Some(map) = properties.as_object_mut() {
+            map.insert(
+                "hidden".to_owned(),
+                json!({"type": "array", "items": {"type": "string", "enum": ["content", "summary", "author"]}, "description": "Which parts this hiding covers."}),
+            );
+        }
+        object(description, properties, &["hidden"])
+    };
+    json!({
+        "hidden": {"type": "array", "items": {"type": "string", "enum": ["content", "summary", "author"]}, "description": "Only when moderation hides something of it: the parts hidden. What is hidden is not given to any caller; this says that it is, and why, in its place."},
+        "tombstone": one("Only when moderation hides something of it: the newest hiding."),
+        "tombstones": {"type": "array", "items": one("One hiding in force, with the parts it covers."), "description": "Only when moderation hides something of it: every hiding in force."},
+    })
+}
+
+/// `schema` with [`hidden_members`] among its properties (never among the required ones).
+pub(super) fn with_hidden(mut schema: Value) -> Value {
+    if let Some(Value::Object(properties)) = schema.get_mut("properties")
+        && let Value::Object(more) = hidden_members()
+    {
+        properties.extend(more);
+    }
+    schema
+}
+
 /// The schemas, by name.
 pub(super) fn schemas() -> Map<String, Value> {
     let tip = schema_ref("Tip");

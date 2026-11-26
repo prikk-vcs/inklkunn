@@ -1940,16 +1940,28 @@ async fn every_answer_of_the_write_api_is_of_the_shape_the_document_promises() {
 async fn a_write_endpoint_answers_a_method_it_does_not_take_with_a_problem_and_allow() {
     let c = cast();
     for uri in [
-        format!("{API}/proposals/{}/comments", ProposalId::new()),
         format!("{API}/proposals/{}/acceptances", ProposalId::new()),
+        format!("{API}/proposals/{}/declines", ProposalId::new()),
     ] {
         let a = super::send(&c.w, Method::GET, &uri, &[]).await;
         assert_eq!(a.status, 405, "{uri}");
         assert_eq!(problem_type(&a), urn("method-not-allowed"));
         assert_eq!(a.header("allow"), Some("POST"));
     }
-    let a = super::send(&c.w, Method::DELETE, &format!("{API}/proposals"), &[]).await;
-    assert_eq!(a.status, 405);
+    // The two addresses that also list what they make (RFC 007 D-9) take `GET` and `POST`, and nothing else.
+    for uri in [
+        format!("{API}/proposals"),
+        format!("{API}/proposals/{}/comments", ProposalId::new()),
+    ] {
+        let a = super::send(&c.w, Method::DELETE, &uri, &[]).await;
+        assert_eq!(a.status, 405, "{uri}");
+        assert_eq!(problem_type(&a), urn("method-not-allowed"));
+        let allow = a.header("allow").unwrap_or_default().to_owned();
+        for method in ["GET", "HEAD", "POST"] {
+            assert!(allow.contains(method), "{uri}: {allow}");
+        }
+        assert!(!allow.contains("DELETE"), "{uri}: {allow}");
+    }
 }
 
 #[tokio::test]

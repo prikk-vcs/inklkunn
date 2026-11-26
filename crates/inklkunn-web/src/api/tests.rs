@@ -57,7 +57,21 @@ fn every_endpoint_declares_a_guard_and_a_documented_one_names_its_path() {
             (Guard::Action(action), Some(write)) => {
                 assert_eq!(action, write.action, "{}", endpoint.path);
                 assert_ne!(action, Action::Read, "{}", endpoint.path);
-                assert_eq!(endpoint.methods, ["POST"], "{}", endpoint.path);
+                // A write takes `POST`; one whose address also lists what it makes takes `GET` too, and the read it is is
+                // described (and guarded by `read`) as its own.
+                match endpoint.also_reads {
+                    None => assert_eq!(endpoint.methods, ["POST"], "{}", endpoint.path),
+                    Some(listing) => {
+                        assert_eq!(
+                            endpoint.methods,
+                            ["GET", "HEAD", "POST"],
+                            "{}",
+                            endpoint.path
+                        );
+                        assert_eq!(listing.path, endpoint.path);
+                        assert!(listing.write.is_none(), "{}", endpoint.path);
+                    }
+                }
             }
             (Guard::Public { reason }, None) => assert!(reason.len() >= 16, "{}", endpoint.path),
             (Guard::Public { .. }, Some(_)) => {
@@ -82,7 +96,8 @@ fn every_endpoint_declares_a_guard_and_a_documented_one_names_its_path() {
 
 #[test]
 fn operation_ids_are_unique_and_every_path_begins_under_a_reserved_prefix() {
-    let docs: Vec<_> = endpoints().into_iter().filter_map(|e| e.doc).collect();
+    let all = endpoints();
+    let docs: Vec<_> = all.iter().flat_map(Endpoint::docs).collect();
     let mut ids: Vec<&str> = docs.iter().map(|d| d.operation_id).collect();
     ids.sort_unstable();
     let before = ids.len();

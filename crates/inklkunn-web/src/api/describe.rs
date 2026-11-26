@@ -516,3 +516,6 @@ pub(crate) use governance_api::*;
 
 mod knowledge_api;
 pub(crate) use knowledge_api::*;
+
+mod proposals_api;
+pub(crate) use proposals_api::*;

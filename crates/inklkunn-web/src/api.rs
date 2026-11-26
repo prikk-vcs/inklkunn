@@ -96,6 +96,11 @@ pub(crate) struct Endpoint {
     /// What the endpoint is, for the description. `None` for the two catch-alls that answer the not-found
     /// problem for an address under the API that is not an endpoint.
     pub doc: Option<&'static describe::Doc>,
+    /// The description of the `GET` that shares this address with the write it describes (`doc`): the address names a
+    /// collection and the method says what is done to it (`GET /proposals` lists, `POST /proposals` opens one). The route
+    /// registry has one entry for the address, guarded by the write's action, and the document gives each method its own
+    /// operation, the read guarded by `read`. `None` for every other endpoint.
+    pub also_reads: Option<&'static describe::Doc>,
     /// The check that guards it.
     pub guard: Guard,
     /// The handler, as the router takes it.
@@ -105,6 +110,13 @@ pub(crate) struct Endpoint {
 /// Every endpoint of the API, in documentation order.
 pub(crate) fn endpoints() -> Vec<Endpoint> {
     endpoints::all()
+}
+
+impl Endpoint {
+    /// The descriptions of everything the endpoint does: the operation, and the read that shares its address.
+    pub(crate) fn docs(&self) -> impl Iterator<Item = &'static describe::Doc> {
+        self.doc.into_iter().chain(self.also_reads)
+    }
 }
 
 /// Is `path` an address of the API (documented or not)?

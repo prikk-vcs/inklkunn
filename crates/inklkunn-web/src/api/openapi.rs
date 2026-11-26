@@ -17,7 +17,7 @@ use super::describe::{
     Answer, Base, Doc, EVERY_ENDPOINT, EVERY_WRITE, Kind, Param, SIZES, Write, path_param,
 };
 use super::problem::Code;
-use super::{PROBLEM_MEDIA_TYPE, SITE_PREFIX, WIKI_PREFIX, endpoints};
+use super::{Endpoint, PROBLEM_MEDIA_TYPE, SITE_PREFIX, WIKI_PREFIX, endpoints};
 use crate::catalog::{EN, T};
 
 /// The document and the route table disagree.
@@ -29,6 +29,8 @@ pub(crate) enum Drift {
     NoRoute(String),
     /// A route of the API that is not guarded by `Action::Read` and is not a public route with a reason.
     Unguarded(String),
+    /// Two descriptions of one method of one route.
+    Doubled(String),
 }
 
 impl std::fmt::Display for Drift {
@@ -37,6 +39,7 @@ impl std::fmt::Display for Drift {
             Drift::Undocumented(p) => write!(f, "the route {p} has no description"),
             Drift::NoRoute(p) => write!(f, "the description of {p} has no route"),
             Drift::Unguarded(p) => write!(f, "the route {p} has no guard of the read action"),
+            Drift::Doubled(p) => write!(f, "the route {p} has two descriptions of one method"),
         }
     }
 }
@@ -205,7 +208,20 @@ fn operation(doc: &Doc, path: &str, guard: Guard) -> Value {
 
     let mut responses: BTreeMap<String, Value> = BTreeMap::new();
     let success = doc.write.map_or(200, |w| w.success);
-    responses.insert(success.to_string(), success_response(doc.answer, doc.write));
+    let mut answered = success_response(doc.answer, doc.write);
+    // A list that is walked by a cursor says where the next page is in a header too (RFC 8288), beside the body's `next_cursor`.
+    if doc.query.iter().any(|p| p.name == "cursor")
+        && let Some(Value::Object(headers)) = answered.get_mut("headers")
+    {
+        headers.insert(
+            "Link".to_owned(),
+            json!({
+                "description": "Every answer has a `Link` to this description (`rel=\"service-desc\"`). A page of a list that goes on has a second one, `rel=\"next\"`: the address of the next page, which is this request with its `cursor` set to the body's `next_cursor`. The last page has none.",
+                "schema": {"type": "string"},
+            }),
+        );
+    }
+    responses.insert(success.to_string(), answered);
     if doc.write.is_none() {
         responses.insert(
             "304".to_owned(),
@@ -419,6 +435,7 @@ fn components() -> Value {
         map.extend(writes::schemas());
         map.extend(knowledge_api::schemas());
         map.extend(governance_api::schemas());
+        map.extend(proposals_api::schemas());
     }
     json!({
         "schemas": schemas,
@@ -494,20 +511,45 @@ pub(crate) fn document(table: &RouteTable, docs: &[&'static Doc]) -> Result<Valu
         if listed.contains(&entry.path) {
             continue;
         }
-        let doc = docs
+        // An address has the descriptions of what it does: one, or a write and the read of what it makes (the collection of
+        // proposals is listed and opened at one address).
+        let here: Vec<&'static Doc> = docs
             .iter()
-            .find(|d| d.path == entry.path)
-            .ok_or_else(|| Drift::Undocumented(entry.path.to_owned()))?;
-        // A read is guarded by `Read` (or says why it is public); a write by the action its description names.
-        let method = match (doc.write, entry.guard) {
-            (None, Guard::Action(inklkunn_core::Action::Read) | Guard::Public { .. }) => "get",
-            (Some(write), Guard::Action(action)) if action == write.action => "post",
-            _ => return Err(Drift::Unguarded(entry.path.to_owned())),
-        };
-        paths.insert(
-            openapi_path(entry.path),
-            json!({method: operation(doc, entry.path, entry.guard)}),
-        );
+            .copied()
+            .filter(|d| d.path == entry.path)
+            .collect();
+        if here.is_empty() {
+            return Err(Drift::Undocumented(entry.path.to_owned()));
+        }
+        let mut operations = Map::new();
+        for doc in &here {
+            // A read is guarded by `Read` (or says why it is public); a write by the action its description names. A read
+            // that shares its address with a write is guarded, as the registry has one guard for an address, by that write's
+            // action, and is `read` itself: the document says what each method needs.
+            let shares = |action| {
+                here.iter()
+                    .any(|d| d.write.is_some_and(|w| w.action == action))
+            };
+            let (method, guard) = match (doc.write, entry.guard) {
+                (None, Guard::Action(inklkunn_core::Action::Read) | Guard::Public { .. }) => {
+                    ("get", entry.guard)
+                }
+                (None, Guard::Action(action)) if shares(action) => {
+                    ("get", Guard::Action(inklkunn_core::Action::Read))
+                }
+                (Some(write), Guard::Action(action)) if action == write.action => {
+                    ("post", entry.guard)
+                }
+                _ => return Err(Drift::Unguarded(entry.path.to_owned())),
+            };
+            if operations
+                .insert(method.to_owned(), operation(doc, entry.path, guard))
+                .is_some()
+            {
+                return Err(Drift::Doubled(entry.path.to_owned()));
+            }
+        }
+        paths.insert(openapi_path(entry.path), Value::Object(operations));
     }
     if let Some(doc) = docs.iter().find(|d| table.find(d.path).is_none()) {
         return Err(Drift::NoRoute(doc.path.to_owned()));
@@ -546,7 +588,7 @@ pub(crate) fn served() -> Result<&'static [u8], super::problem::Problem> {
         .get_or_init(|| {
             let table = crate::routes::application_table().ok()?;
             let all = endpoints::all();
-            let docs: Vec<&'static Doc> = all.iter().filter_map(|e| e.doc).collect();
+            let docs: Vec<&'static Doc> = all.iter().flat_map(Endpoint::docs).collect();
             let value = document(&table, &docs).ok()?;
             serde_json::to_vec(&value).ok()
         })
@@ -556,6 +598,7 @@ pub(crate) fn served() -> Result<&'static [u8], super::problem::Problem> {
 
 mod governance_api;
 mod knowledge_api;
+mod proposals_api;
 mod shapes;
 mod writes;
 

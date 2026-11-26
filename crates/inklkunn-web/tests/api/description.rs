@@ -539,7 +539,17 @@ fn every_endpoint_is_in_the_route_registry_with_its_action() {
                 assert_eq!(entry.methods, ["GET", "HEAD"], "{}", entry.path);
             }
             Guard::Action(action) => {
-                assert_eq!(entry.methods, ["POST"], "{}", entry.path);
+                // (The two addresses that also list what the write makes take `GET` and `HEAD` too: RFC 007 D-9.)
+                let lists = [
+                    "/{slug}/-/api/v1/proposals",
+                    "/{slug}/-/api/v1/proposals/{id}/comments",
+                ]
+                .contains(&entry.path);
+                if lists {
+                    assert_eq!(entry.methods, ["GET", "HEAD", "POST"], "{}", entry.path);
+                } else {
+                    assert_eq!(entry.methods, ["POST"], "{}", entry.path);
+                }
                 assert!(
                     [
                         Action::Propose,
