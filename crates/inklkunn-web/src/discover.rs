@@ -294,8 +294,19 @@ pub(crate) async fn site_description(
     let Ok(Path(slug)) = slug else {
         return no_document(&page);
     };
-    let Some((_, wiki)) = resolve(&state, headers, slug).await else {
+    let Some((services, wiki)) = resolve(&state, headers, slug).await else {
         return no_document(&page);
+    };
+    // The wiki's interwiki map (RFC 007 D-8) is the one its links are resolved with, at the tip. A map that cannot be asked for
+    // is no document, never an empty one: a tool would take *none* for the answer.
+    let for_work = wiki.clone();
+    let interwiki = blocking(move || services.read.interwiki_of(&for_work, None)).await;
+    let Some(Ok(interwiki)) = interwiki else {
+        return pages::plain(
+            StatusCode::SERVICE_UNAVAILABLE,
+            page.t().lang(),
+            page.get(Key::UnavailableBody),
+        );
     };
     let origins = &state.origins;
     let base = format!("/{}", wiki.slug);
@@ -336,7 +347,11 @@ pub(crate) async fn site_description(
             json_string(&origins.app(&format!("{base}/-/sitemap.xml")))
         );
     }
-    doc.push_str("\"interwiki\":{}}");
+    let map: Vec<String> = interwiki
+        .iter()
+        .map(|(prefix, template)| format!("{}:{}", json_string(prefix), json_string(template)))
+        .collect();
+    let _ = write!(doc, "\"interwiki\":{{{}}}}}", map.join(","));
     document("application/json; charset=utf-8", doc)
 }
 

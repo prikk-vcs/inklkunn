@@ -1029,7 +1029,12 @@ fn build(
                 attachments,
                 exported_at: now,
                 tip: tip.to_owned(),
-                interwiki: Vec::new(),
+                // The wiki's own map, as the tip being exported has it (RFC 007 D-8): the same file the links of this state
+                // were resolved with.
+                interwiki: crate::read::interwiki_in_tree(extracted)
+                    .iter()
+                    .map(|(prefix, template)| (prefix.to_owned(), template.to_owned()))
+                    .collect(),
                 unattributed_changes: h.unattributed,
                 histories_not_written,
                 knowledge_extension: knowledge_files > 0
