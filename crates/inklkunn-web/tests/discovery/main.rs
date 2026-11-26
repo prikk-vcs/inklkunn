@@ -251,6 +251,7 @@ async fn a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is
         "<link rel=\"alternate\" href=\"http://localhost:8080/handbook/-/changes.atom\" type=\"application/atom+xml\" title=\"Recent changes to The Handbook\">",
         "<link rel=\"describedby\" href=\"http://localhost:8080/handbook/-/describe/Home\" type=\"application/ld+json\">",
         "<link rel=\"describedby\" href=\"http://localhost:8080/handbook/-/site.json\" type=\"application/json\">",
+        "<link rel=\"service-desc\" href=\"http://localhost:8080/-/api/v1/openapi.json\" type=\"application/vnd.oai.openapi+json;version=3.1.0\">",
         "<link rel=\"version-history\" href=\"http://localhost:8080/handbook/-/history/Home\">",
         "<link rel=\"bookmark\" href=\"http://localhost:8080/handbook/-/at/",
     ] {
@@ -272,6 +273,10 @@ async fn a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is
     );
     assert!(!about_head.contains("text/markdown"));
     assert!(!about_head.contains("version-history"));
+    // The description of the API is the wiki's, not a page's: every page of the wiki says where it is.
+    assert!(about_head.contains(
+        "<link rel=\"service-desc\" href=\"http://localhost:8080/-/api/v1/openapi.json\" type=\"application/vnd.oai.openapi+json;version=3.1.0\">"
+    ));
     // A page in another view is its own canonical address.
     let in_view = get(&w, "/handbook/~main/Home").await.body();
     assert!(
@@ -468,6 +473,20 @@ async fn the_site_description_names_what_the_wiki_offers() {
     assert_eq!(
         text(doc.get("engine").unwrap(), "name").as_deref(),
         Some("inklkunn")
+    );
+    // It names the OpenAPI document, and the address it names is that document (RFC 007 D-9).
+    let described = text(&doc, "describedby").expect("a describedby");
+    assert_eq!(described, "http://localhost:8080/-/api/v1/openapi.json");
+    let api = get(&w, described.strip_prefix("http://localhost:8080").unwrap()).await;
+    assert_eq!(api.status, 200);
+    assert_eq!(
+        api.header("content-type"),
+        Some("application/vnd.oai.openapi+json;version=3.1.0")
+    );
+    assert!(
+        api.body().contains("\"openapi\":\"3.1.0\""),
+        "{}",
+        api.body()
     );
 }
 

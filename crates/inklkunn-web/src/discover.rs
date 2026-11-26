@@ -159,6 +159,13 @@ impl Page {
             Some("application/json"),
             None,
         );
+        // The description of the API (RFC 8631 `service-desc`; RFC 007 D-9): the OpenAPI document, one for the whole site.
+        link(
+            "service-desc",
+            origins.app(crate::api::OPENAPI_PATH),
+            Some(crate::api::OPENAPI_MEDIA_TYPE),
+            None,
+        );
         if let Subject::Page { title, block, .. } = &subject {
             let enc = encode_title(title);
             link(
@@ -304,6 +311,11 @@ pub(crate) async fn site_description(
         doc,
         "\"engine\":{{\"name\":\"inklkunn\",\"version\":{}}},",
         json_string(env!("CARGO_PKG_VERSION"))
+    );
+    let _ = write!(
+        doc,
+        "\"describedby\":{},",
+        json_string(&origins.app(crate::api::OPENAPI_PATH))
     );
     let _ = write!(doc, "\"lang\":{},", json_list(&wiki.languages));
     let _ = write!(
