@@ -33,6 +33,7 @@ mod counts;
 mod failures;
 mod flags;
 mod history;
+mod interwiki;
 mod pinned;
 mod preview;
 mod removed;
