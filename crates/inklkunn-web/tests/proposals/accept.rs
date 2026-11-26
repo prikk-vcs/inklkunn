@@ -441,6 +441,40 @@ fn cases() -> Vec<Case> {
             ],
         },
         Case {
+            name: "the rules of the wiki: the interwiki map is not acceptable",
+            answer: || {
+                Err(AcceptFailure::GovernanceInvalid(vec![
+                    Fault {
+                        line: Some(2),
+                        ..Fault::at(
+                            GovernanceFile::Interwiki,
+                            GovernanceRefusal::TemplateUserInfo,
+                            "template",
+                        )
+                    },
+                    Fault {
+                        line: Some(3),
+                        ..Fault::at(
+                            GovernanceFile::Interwiki,
+                            GovernanceRefusal::PrefixIsNamespace,
+                            "prefix",
+                        )
+                    },
+                ]))
+            },
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            english: &[
+                "governance/interwiki.yaml, line 2: An address template of the interwiki map names a user (user@host), which a link may not carry.",
+                "governance/interwiki.yaml, line 3: A prefix of the interwiki map is how the titles of some pages of this wiki begin (such as Help/ or Help:), so a link with it could mean two things.",
+                "Nothing was changed, and the proposal is still held for review.",
+            ],
+            japanese: &[
+                "governance/interwiki.yaml の 2 行目: Wiki 間リンクの対応表のアドレスのテンプレートに、ユーザー名（user@host）があります。リンクには含められません。",
+                "governance/interwiki.yaml の 3 行目: Wiki 間リンクの対応表の接頭辞が、この Wiki の一部のページのタイトルの先頭（Help/ や Help: など）と同じです。",
+                "何も変更しておらず、提案はレビュー待ちで保持されたままです。",
+            ],
+        },
+        Case {
             name: "the rules of the wiki: the constitution asks a higher role",
             answer: || Err(AcceptFailure::GovernanceRung(Role::Admin)),
             status: StatusCode::FORBIDDEN,
@@ -557,7 +591,7 @@ fn cases() -> Vec<Case> {
                 "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml, policy.yaml or interwiki.yaml cannot change a page or anything else.",
             ],
             japanese: &[
-                "この Wiki のルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",
+                "この Wiki のルールの変更は、それだけで提案します。constitution.yaml、policy.yaml、interwiki.yaml を変更する提案では、ページなどほかのものを変更できません。",
             ],
         },
         Case {

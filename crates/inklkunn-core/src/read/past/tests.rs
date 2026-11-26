@@ -123,6 +123,36 @@ fn the_places_of_a_claim_on_a_hidden_page_are_not_in_the_knowledge_index_at_a_ba
 
 /// **The title index at a base is filtered once for a base and a set of hides** (correction L-10), and **never served after a hide or
 /// an unhide**: what a hidden change wrote is out of the index served, and back in when it is restored, at once.
+/// **The map of a state goes with its index when what a hidden change wrote is taken out** (RFC 007 D-8): the filtered index is made
+/// from the entries again, and a page at the base is read with the links the state had, whatever else is hidden of it.
+#[test]
+fn the_title_index_at_a_base_keeps_the_interwiki_map_of_its_state_when_a_page_is_hidden() {
+    let map = "wp: https://en.wikipedia.org/wiki/{title}\n";
+    let r = rig(&[("pages/One.md", ONE), ("governance/interwiki.yaml", map)]);
+    r.w.fake().set("pages/One.md", ONE_SECRET); // 2
+    r.w.fake().set("pages/Two.md", TWO); // 3
+    // Not hidden: the held index of the state, with its map.
+    let whole = titles_at_3(&r);
+    assert_eq!(
+        whole.interwiki().get("wp"),
+        Some("https://en.wikipedia.org/wiki/{title}")
+    );
+    r.hide(2);
+    let filtered = titles_at_3(&r);
+    assert_eq!(
+        filtered
+            .entry("pages/One.md")
+            .and_then(|e| e.problem.as_deref()),
+        Some(HIDDEN_PROBLEM),
+        "the index is the filtered one"
+    );
+    assert_eq!(filtered.interwiki(), whole.interwiki());
+    assert_eq!(
+        filtered.resolver().resolve("wp:Rust", None).via,
+        inklkunn_markup::Via::Interwiki
+    );
+}
+
 #[test]
 fn the_title_index_at_a_base_is_held_and_is_never_served_after_a_hide_or_an_unhide() {
     let r = world();

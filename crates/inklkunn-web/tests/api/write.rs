@@ -2071,11 +2071,15 @@ async fn propose_files_at_one(c: &Cast, who: &AccountId, files: Value, renames: 
 }
 
 #[tokio::test]
-async fn the_two_governance_files_are_what_the_api_writes_under_governance_and_nothing_else_is() {
+async fn the_three_governance_files_are_what_the_api_writes_under_governance_and_nothing_else_is() {
     let c = cast();
-    // Each of the two is an ordinary proposal; its text is judged when the proposal is accepted, and it is no page, so no
+    // Each of the three is an ordinary proposal; its text is judged when the proposal is accepted, and it is no page, so no
     // key of a page is owned in it.
-    for path in ["governance/policy.yaml", "governance/constitution.yaml"] {
+    for path in [
+        "governance/policy.yaml",
+        "governance/constitution.yaml",
+        "governance/interwiki.yaml",
+    ] {
         let a = propose_files_at_one(
             &c,
             &c.contributor,
@@ -2089,6 +2093,7 @@ async fn the_two_governance_files_are_what_the_api_writes_under_governance_and_n
     for path in [
         "governance/other.yaml",
         "governance/policy.yml",
+        "governance/interwiki.yml",
         "governance/",
         "governance/sub/policy.yaml",
         "Governance/policy.yaml",
@@ -2122,6 +2127,14 @@ async fn the_two_governance_files_are_what_the_api_writes_under_governance_and_n
         (
             json!([{"path": "governance/policy.yaml", "text": "entry: none\n"}]),
             json!([{"from": "pages/Home.md", "to": "pages/Other.md"}]),
+        ),
+        // The map is a file of the rules: a page does not travel with it either.
+        (
+            json!([
+                {"path": "pages/Home.md", "text": "x\n"},
+                {"path": "governance/interwiki.yaml", "text": "wp: https://example.org/{title}\n"}
+            ]),
+            json!([]),
         ),
     ] {
         let a = propose_files_at_one(&c, &c.contributor, files, renames).await;

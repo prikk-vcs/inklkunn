@@ -643,7 +643,10 @@ exact :: rules_change.rs :: label :: a placeholder name of a catalog message
 exact :: rules_change.rs :: before :: a placeholder name of a catalog message
 exact :: rules_change.rs :: after :: a placeholder name of a catalog message
 exact :: rules_change.rs :: protection :: a placeholder name of a catalog message
+exact :: rules_change.rs :: prefix :: a placeholder name of a catalog message
+exact :: rules_change.rs :: template :: a placeholder name of a catalog message
 exact :: rules_data.rs :: the changes of the rules of wiki `{}` could not be read now: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: rules_data.rs :: the interwiki map of wiki `{}` could not be read now: {error} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: rules_form.rs :: small :: the value of the form choice of accepting one own proposal while the wiki is small (never the word the file uses: no page prints it)
 exact :: rules_form.rs :: never :: the value of the form choice of never accepting one own proposal
 exact :: rules_form.rs :: small-wiki :: the word of the file for that choice, which only the text of a draft carries
@@ -667,6 +670,7 @@ exact :: rules_page.rs :: who :: the id of a section of the page of the rules; n
 exact :: rules_page.rs :: accept :: the id of a section of the page of the rules; no sentence a reader sees
 exact :: rules_page.rs :: promotion :: the id of a section of the page of the rules; no sentence a reader sees
 exact :: rules_page.rs :: change :: the id of a section of the page of the rules; no sentence a reader sees
+exact :: rules_page.rs :: interwiki :: the id of a section of the page of the rules; no sentence a reader sees
 exact :: rules_page.rs :: limits :: the id of a section of the page of the rules; no sentence a reader sees
 exact :: rules_page.rs :: role :: a placeholder name of a catalog message
 exact :: rules_page.rs :: days :: a placeholder name of a catalog message
