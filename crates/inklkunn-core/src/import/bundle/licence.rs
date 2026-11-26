@@ -91,11 +91,9 @@ pub fn did_you_mean(name: &str) -> Option<String> {
     let mut tokens: Vec<&str> = Vec::new();
     if *first == "CC" {
         tokens.extend(rest);
-    } else if let Some(after) = first.strip_prefix("CC") {
-        tokens.push(after);
-        tokens.extend(rest);
     } else {
-        return None;
+        tokens.push(first.strip_prefix("CC")?);
+        tokens.extend(rest);
     }
     let mut it = tokens.into_iter().peekable();
     if it.next()? != "BY" {
