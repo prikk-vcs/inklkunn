@@ -90,11 +90,11 @@ fn a_state_narrows_the_list_and_a_draft_is_no_state_a_list_has() {
         let anyone = &Principal::Anonymous;
         assert_eq!(
             ids(e, anyone, Some(ProposalState::HeldForReview), 100),
-            [held.clone()]
+            std::slice::from_ref(&held)
         );
         assert_eq!(
             ids(e, anyone, Some(ProposalState::Declined), 100),
-            [declined.clone()]
+            std::slice::from_ref(&declined)
         );
         assert!(ids(e, anyone, Some(ProposalState::Accepted), 100).is_empty());
         // Asking for the drafts is asking for nothing, not for the reader's own.
@@ -129,7 +129,7 @@ fn a_window_names_the_place_by_when_a_proposal_was_sent_so_a_state_change_does_n
             }
             if walked.is_empty() {
                 set_now(T0 + 1000);
-                let target = &sent[1].id;
+                let target = &sent.get(1).unwrap().id;
                 e.service
                     .decline(&e.maintainer.principal, &e.wiki, target, "No.")
                     .unwrap();

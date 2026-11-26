@@ -229,7 +229,7 @@ async fn a_state_narrows_the_list_and_a_draft_a_cursor_of_another_list_or_a_made
         let c = &c;
         async move { listed(&read(&c.w, &uri, None).await.json()) }
     };
-    assert_eq!(only("held-for-review").await, [held.clone()]);
+    assert_eq!(only("held-for-review").await, std::slice::from_ref(&held));
     assert_eq!(only("declined").await, [declined.to_string()]);
     assert!(only("accepted").await.is_empty());
     // A draft is no state a list has: refused by name, for every reader, not answered with the reader's own.
@@ -683,4 +683,73 @@ async fn every_member_of_the_two_lists_is_declared_in_the_document_and_every_req
         .map(|s| s.as_str())
         .collect();
     assert_eq!(words, own);
+}
+
+// ------------------------------------------------------------------------------------ no rate-limit headers
+
+/// `Retry-After` is the whole of what an answer says of waiting: **there are no rate-limit header fields** until the IETF's are an
+/// RFC (RFC 007 Q-4; requirements IX-4), on a refusal, on a read, on a write or in the document that describes them.
+#[tokio::test]
+async fn no_answer_carries_a_rate_limit_header_and_the_document_names_none() {
+    let c = super::with_quota(
+        cast(),
+        inklkunn_core::proposal::QuotaConfig {
+            proposals_per_hour_per_principal: 1,
+            ..inklkunn_core::proposal::QuotaConfig::default()
+        },
+    );
+    let written = open(&c, &c.contributor, true).await;
+    let refused = post(
+        &c.w,
+        &format!("{API}/proposals"),
+        &[token("propose", &c.contributor), tip()],
+        super::opening("One too many", &super::better(), false),
+    )
+    .await;
+    assert_eq!(refused.status, 429, "{}", refused.text());
+    assert_eq!(refused.header("retry-after"), Some("3600"));
+    let id = id_of(&written);
+    for (what, answer) in [
+        ("a refusal", refused),
+        (
+            "a list",
+            read(&c.w, &format!("{API}/proposals"), None).await,
+        ),
+        (
+            "the comments",
+            read(&c.w, &format!("{API}/proposals/{id}/comments"), None).await,
+        ),
+        (
+            "a proposal",
+            read(&c.w, &format!("{API}/proposals/{id}"), None).await,
+        ),
+        (
+            "the feed",
+            read(&c.w, "/handbook/-/proposals.atom", None).await,
+        ),
+        (
+            "the description",
+            read(&c.w, "/-/api/v1/openapi.json", None).await,
+        ),
+    ] {
+        let names: Vec<String> = answer
+            .headers
+            .keys()
+            .map(|k| k.as_str().to_lowercase())
+            .collect();
+        assert!(
+            !names
+                .iter()
+                .any(|n| n.contains("ratelimit") || n.contains("rate-limit")),
+            "{what}: {names:?}"
+        );
+    }
+    let text = read(&c.w, "/-/api/v1/openapi.json", None)
+        .await
+        .text()
+        .to_lowercase();
+    assert!(
+        !text.contains("ratelimit") && !text.contains("x-rate"),
+        "the document names a rate-limit header"
+    );
 }
