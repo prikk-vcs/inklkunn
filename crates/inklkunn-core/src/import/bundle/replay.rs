@@ -18,13 +18,19 @@
 //! written by `Accept::accept` behind the acceptance guard, bound to an act that was recorded first.
 //!
 //! **What is replayed**, in the plan's order ([`BundlePlan::schedule`]): first, in one change, the files with no history (the pages of
-//! a level 2 bundle, the attachments with their sidecars, the knowledge files, and the bundle's interwiki map as the plan judged it,
+//! a level 2 bundle, the attachments with their sidecars, and the bundle's interwiki map as the plan judged it,
 //! `governance/interwiki.yaml`: the one path below `governance/` an import may write, RFC 007 D-8; a bundle whose pages all have a
 //! history gets a first change of the map alone); then one change a revision (a text writes the page,
 //! a rename moves it, a removal removes it), each with the source's facts as typed trailers ([`SourceRevision`]) and the bundle's
 //! notice ([`ImportNotice`]); last, the change that brings the pages to exactly the bundle's files, if any page differs. **A page the
 //! replay did not have** (its text was hidden at the source, say) **is not moved or removed** (there is nothing to move): the report
-//! counts it.
+//! counts it. **Last, the claim and source files** ([`BundlePlan::knowledge_changes`]): after the history and the change at the end, so that
+//! every page a claim anchors to is there, each file after the files it names, in as many changes as the caps of one acceptance need,
+//! and judged exactly as an acceptance judges a change that is not a curation proposal. **They arrive unsettled** (Z-1,
+//! [`crate::knowledge::unsettle`]): what only an accepted curation proposal sets, a community status, a review day and an availability,
+//! is not written (an import is the service writing, never a curation), the summary of the change and the report say how many, and a
+//! file that had any of them is written as its canonical text without them; **a retirement is not taken out**, so a retired claim or
+//! source still stops the import, by name and rule.
 //!
 //! **The bundle is read again, and checked again.** The plan keeps no text. A history file is read from the directories the plan
 //! walked, through the inode it recorded, and must be the file it judged (the size and the digest); a page of the bundle, an attachment, a sidecar and a
@@ -54,6 +60,7 @@ use super::{BundlePlan, HistorySource, PageHistory, Part, Revision, Step};
 use crate::acceptance::{StoreLedger, SystemActFailure, SystemActs, SystemRequest};
 use crate::authorize::{Authorizer, StoreAuthz};
 use crate::import::{Digest, PlannedFile, open_chain, read_regular, read_some, sha256};
+use crate::knowledge::Unsettled;
 use crate::lease::{LeaseConfig, WikiLeases};
 use crate::read::{ReadConfig, ReadService};
 use crate::wiki::{
@@ -75,6 +82,8 @@ pub enum ImportStep {
     Revision(usize),
     /// The change that brings the pages to the bundle's files is sealed.
     FinalState,
+    /// The claim and source files are sealed (one change, or as many as the caps of one acceptance need): the last change of the history.
+    Knowledge,
     /// The whole repository verified.
     Verified,
     /// The report is kept beside the repository.
@@ -187,6 +196,12 @@ pub struct ImportedWiki {
     pub final_written: usize,
     /// See [`ImportedWiki::final_written`].
     pub final_removed: usize,
+    /// How many claim and source files were written (after the history and the change at the end).
+    pub knowledge_files: usize,
+    /// In how many changes the claim and source files were written.
+    pub knowledge_changes: usize,
+    /// What those files had that only a curation sets, and was not written (Z-1).
+    pub knowledge_not_imported: Unsettled,
 }
 
 /// Why an import did not make a wiki. **No variant leaves a record behind**; what remains on disk is said.
@@ -511,11 +526,12 @@ pub fn import_bundle(
         blocks: 0,
     };
 
-    // The first change: what has no history.
+    // The first change: what has no history (the knowledge files wait for the pages they anchor to).
     let first: Vec<&PlannedFile> = plan
         .plan
         .files
         .iter()
+        .filter(|f| !f.is_knowledge())
         .filter(|f| !f.path.starts_with("pages/") || plan.first_pages.contains(&f.path))
         .collect();
     let mut first_change = false;
@@ -772,6 +788,73 @@ pub fn import_bundle(
         observe(ImportStep::FinalState);
     }
 
+    // The claim and source files, last (Z-1): the pages they anchor to are there now, and each file comes after the files it names. They
+    // are judged as an acceptance judges a change that is not a curation, and written without what only a curation sets.
+    let mut knowledge_files = 0_usize;
+    let mut knowledge_not_imported = Unsettled::default();
+    let planned_files: BTreeMap<&str, &PlannedFile> = plan
+        .plan
+        .files
+        .iter()
+        .filter(|f| f.is_knowledge())
+        .map(|f| (f.path.as_str(), f))
+        .collect();
+    for group in &plan.knowledge_changes {
+        let planned: Vec<&PlannedFile> = group
+            .iter()
+            .filter_map(|path| planned_files.get(path.as_str()).copied())
+            .collect();
+        if planned.len() != group.len() {
+            abandon!(
+                "the knowledge files",
+                "the plan's order names a file it does not have"
+            );
+        }
+        let mut files = match read_some(&plan.plan, planned.iter().copied()) {
+            Ok(f) => f,
+            Err(e) => abandon!("reading the knowledge files", e),
+        };
+        let mut left_out = Unsettled::default();
+        for file in &mut files {
+            let path = file.path.to_string_lossy().into_owned();
+            let Some(bytes) = &file.content else {
+                continue;
+            };
+            // **Every file read is the file the plan read** (V-2): it is the bundle's bytes that are compared, before anything is left out.
+            if plan_digest(plan, &path) != Some(&sha256(bytes)) {
+                abandon!(
+                    "reading the knowledge files",
+                    format!(
+                        "`{}` is not the file that was planned (it changed since the plan)",
+                        super::shown(&path)
+                    )
+                );
+            }
+            match crate::knowledge::unsettle(&path, bytes) {
+                Ok(done) => {
+                    left_out = left_out.plus(done.left_out);
+                    if let Some(rewritten) = done.rewritten {
+                        file.content = Some(rewritten);
+                    }
+                }
+                Err(fault) => abandon!(
+                    "reading the knowledge files",
+                    format!("`{}` {fault}", super::shown(&path))
+                ),
+            }
+        }
+        let summary = left_out.summary(files.len());
+        knowledge_files += files.len();
+        knowledge_not_imported = knowledge_not_imported.plus(left_out);
+        if let Err(why) = run.change(&summary, files, Vec::new(), None) {
+            abandon!("the knowledge change", why);
+        }
+    }
+    let knowledge_changes = plan.knowledge_changes.len();
+    if knowledge_changes > 0 {
+        observe(ImportStep::Knowledge);
+    }
+
     // The whole repository verifies, as a creation's does, and the report is kept beside it; then the record, last.
     if let Err(fault) = verify_repository(&**world.storage, &repo) {
         let e = fault.with_cleanup(settle(mark, discard(world.layout, signer_bootstrap, &id)));
@@ -809,6 +892,9 @@ pub fn import_bundle(
         final_changes,
         final_written,
         final_removed,
+        knowledge_files,
+        knowledge_changes,
+        knowledge_not_imported,
     })
 }
 

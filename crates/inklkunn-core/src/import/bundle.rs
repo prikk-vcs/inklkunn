@@ -163,6 +163,10 @@ pub struct BundlePlan {
     pub first_pages: Vec<String>,
     /// The paths of the pages whose file at the end differs from their last replayed revision: the change at the end writes them.
     pub final_pages: Vec<String>,
+    /// **The knowledge files, by the change that writes them** (Z-1), in the order of the changes: all of them after the history and
+    /// the change that brings the pages to the bundle's files, so that every page a claim anchors to is there, each file after the files
+    /// it names, and as many changes as the caps of one acceptance (files and bytes) need. Empty when the bundle has none.
+    pub knowledge_changes: Vec<Vec<String>>,
     /// The SHA-256 of each page's file of the bundle, by path: what the replay's last change is compared with, and what it reads the
     /// file again against.
     pub page_digests: BTreeMap<String, Digest>,
@@ -252,6 +256,10 @@ pub(super) struct Gathered {
     verify: bool,
     sums_path: Option<String>,
     knowledge_known: bool,
+    /// What the knowledge files read leave out when written: a status, a review day, an availability (Z-1).
+    unsettled: crate::knowledge::Unsettled,
+    /// The knowledge files read, each with the paths of the files it names: the order they are written in follows it.
+    knowledge_refs: BTreeMap<String, Vec<String>>,
     read_history: bool,
     history_cap: u64,
     history_bytes: u64,
@@ -352,6 +360,17 @@ impl Gathered {
             self.read.insert(rel.to_owned(), bytes);
         }
         Ok(())
+    }
+
+    /// A knowledge file the walk read: the files it names, and what it leaves out when it is written (Z-1).
+    pub(super) fn knowledge(
+        &mut self,
+        rel: &str,
+        names: Vec<String>,
+        left_out: crate::knowledge::Unsettled,
+    ) {
+        self.unsettled = self.unsettled.plus(left_out);
+        self.knowledge_refs.insert(rel.to_owned(), names);
     }
 
     /// A knowledge file, read by the walk: its size and digest.
@@ -688,6 +707,7 @@ pub fn plan_bundle(
                 histories: Vec::new(),
                 schedule: Vec::new(),
                 first_pages: Vec::new(),
+                knowledge_changes: Vec::new(),
                 final_pages: Vec::new(),
                 page_digests: BTreeMap::new(),
                 file_digests: BTreeMap::new(),
@@ -1727,6 +1747,7 @@ fn finish(
         .count();
     report.attachments = attachments_total - report.sidecars;
     report.knowledge_files = plan.knowledge_count();
+    report.knowledge_not_imported = gathered.unsettled;
 
     // --- the interwiki map the import writes (D-8): the bundle's, judged one prefix at a time
     let interwiki = judge_bundle_interwiki(manifest, &plan, &histories, &mut report);
@@ -1734,6 +1755,11 @@ fn finish(
     // --- the caps of one acceptance: the first change and the last
     let (mut first_files, mut first_bytes) = (0_usize, 0_u64);
     for f in &plan.files {
+        // The knowledge files are not in the first change: they are written after the pages they anchor to (Z-1), and in as many changes as the
+        // caps of one acceptance need.
+        if f.path.starts_with("knowledge/") {
+            continue;
+        }
         if !f.path.starts_with("pages/") || first_change.contains(&f.path) {
             first_files += 1;
             first_bytes = first_bytes.saturating_add(f.size);
@@ -1905,6 +1931,48 @@ fn finish(
         key(a).cmp(&key(b))
     });
 
+    // --- the knowledge files (Z-1): written after the pages they anchor to, a file a file names first, in as many changes as the caps
+    // of one acceptance need; a file that names another that would come in a later change is refused here, by name, and not by a
+    // failed import.
+    let knowledge_changes = {
+        let sizes: BTreeMap<&str, u64> = plan
+            .files
+            .iter()
+            .filter(|f| f.path.starts_with("knowledge/"))
+            .map(|f| (f.path.as_str(), f.size))
+            .collect();
+        let known: BTreeMap<String, Vec<String>> = gathered
+            .knowledge_refs
+            .iter()
+            .filter(|(path, _)| sizes.contains_key(path.as_str()))
+            .map(|(path, names)| (path.clone(), names.clone()))
+            .collect();
+        let groups = knowledge_groups(&dependency_order(&known), &|path| {
+            sizes.get(path).copied().unwrap_or(0)
+        });
+        let group_of: BTreeMap<&str, usize> = groups
+            .iter()
+            .enumerate()
+            .flat_map(|(i, group)| group.iter().map(move |path| (path.as_str(), i)))
+            .collect();
+        for (path, names) in &known {
+            let own = group_of.get(path.as_str()).copied().unwrap_or(0);
+            for name in names {
+                if group_of.get(name.as_str()).is_some_and(|g| *g > own) {
+                    refusals.push(refusal(
+                        path,
+                        format!(
+                            "names `{}`, which the caps of one acceptance ({MAX_CHANGE_FILES} files, {}) would write in a later change",
+                            shown(name),
+                            unit(MAX_CHANGE_BYTES)
+                        ),
+                    ));
+                }
+            }
+        }
+        groups
+    };
+
     let plan_files: Vec<String> = plan.files.iter().map(|f| f.path.clone()).collect();
     let bundle_digest = bundle_identity(gathered, manifest, &report);
     // The plan's refusals are the walk's and the judgement's together, by name.
@@ -1918,6 +1986,7 @@ fn finish(
         schedule,
         first_pages: first_change,
         final_pages: final_paths,
+        knowledge_changes,
         users,
         page_digests: kept_pages
             .iter()
@@ -1939,6 +2008,60 @@ fn finish(
         source_name: manifest.source_name.clone(),
         source_address: manifest.source_url.clone(),
     }
+}
+
+/// The knowledge files in the order they are written: **a file after the files it names** (a claim after its sources and the claims it
+/// relates to, a source after the source that replaces it), so that a set written in several changes leaves every reference present
+/// when the change that names it is judged. A depth-first walk in path order, so the same bundle always gives the same order; a cycle
+/// (two claims that name each other) is broken where the walk meets it. A name that is no file of the bundle is left to acceptance.
+fn dependency_order(refs: &BTreeMap<String, Vec<String>>) -> Vec<String> {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    let mut out = Vec::with_capacity(refs.len());
+    for start in refs.keys() {
+        if !seen.insert(start.as_str()) {
+            continue;
+        }
+        // A path and how many of its names have been looked at (a stack, because a chain may be as long as the cap).
+        let mut stack: Vec<(&str, usize)> = vec![(start.as_str(), 0)];
+        while let Some((path, next)) = stack.pop() {
+            let names = refs.get(path).map(Vec::as_slice).unwrap_or_default();
+            match names.get(next) {
+                Some(name) => {
+                    stack.push((path, next + 1));
+                    if refs.contains_key(name.as_str()) && seen.insert(name.as_str()) {
+                        stack.push((name.as_str(), 0));
+                    }
+                }
+                None => out.push(path.to_owned()),
+            }
+        }
+    }
+    out
+}
+
+/// Cut the files, in `order`, into the changes one acceptance carries: at most [`MAX_CHANGE_FILES`] files and [`MAX_CHANGE_BYTES`]
+/// bytes (the sizes `size_of` gives) in each. **The plan and the replay both cut with this**, so what the plan judged is what the
+/// replay writes.
+pub(super) fn knowledge_groups(order: &[String], size_of: &dyn Fn(&str) -> u64) -> Vec<Vec<String>> {
+    let mut groups: Vec<Vec<String>> = Vec::new();
+    let (mut files, mut bytes) = (0_usize, 0_u64);
+    let mut current: Vec<String> = Vec::new();
+    for path in order {
+        let size = size_of(path);
+        if !current.is_empty()
+            && (files + 1 > MAX_CHANGE_FILES || bytes.saturating_add(size) > MAX_CHANGE_BYTES)
+        {
+            groups.push(std::mem::take(&mut current));
+            (files, bytes) = (0, 0);
+        }
+        files += 1;
+        bytes = bytes.saturating_add(size);
+        current.push(path.clone());
+    }
+    if !current.is_empty() {
+        groups.push(current);
+    }
+    groups
 }
 
 #[cfg(test)]

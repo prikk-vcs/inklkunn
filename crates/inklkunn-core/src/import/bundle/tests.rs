@@ -9,6 +9,7 @@ use super::*;
 
 mod corrections;
 mod interwiki;
+mod knowledge;
 
 // ------------------------------------------------------------------------------------------------ helpers
 

@@ -74,6 +74,23 @@ pub enum File {
     Source(Box<Source>),
 }
 
+impl File {
+    /// The paths of the other knowledge files this one names: a claim's sources and related claims, a source's replacement. A change that
+    /// writes this file must leave each of them present and readable ([`super::check`]'s *reference* rule), so a set of files written in
+    /// several changes is written with these first.
+    pub fn references(&self) -> Vec<String> {
+        match self {
+            File::Claim(claim) => claim
+                .sources
+                .iter()
+                .map(|link| source_path(&link.source))
+                .chain(claim.relations.iter().map(|r| claim_path(&r.claim)))
+                .collect(),
+            File::Source(source) => source.superseded_by.iter().map(source_path).collect(),
+        }
+    }
+}
+
 /// Why the wiki cannot read a knowledge file. The three causes a person is told apart by: nothing else is ever said of what
 /// the file holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

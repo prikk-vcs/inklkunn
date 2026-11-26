@@ -8,6 +8,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::knowledge::Unsettled;
+
 /// The most entries of a list that the text shows (the rest is counted).
 pub const MAX_LISTED: usize = 25;
 
@@ -177,6 +179,9 @@ pub struct BundleReport {
     pub attachment_licenses: BTreeMap<String, usize>,
     /// Claim and source files of the knowledge layer that come in.
     pub knowledge_files: usize,
+    /// **What only a curation sets, left out of those files** (Z-1): the community statuses, the review days and the availabilities the
+    /// bundle's claim and source files had and the import does not write. A file with any of them is written without them.
+    pub knowledge_not_imported: Unsettled,
     /// `--no-history`: the history was not replayed.
     pub no_history: bool,
     /// Pages and the revisions of each (the pages that have history).
@@ -369,6 +374,14 @@ impl BundleReport {
                 String::new()
             }
         ));
+        for sentence in self.knowledge_not_imported.sentences() {
+            out.push_str(&sentence);
+            out.push('\n');
+        }
+        if !self.knowledge_not_imported.is_none() {
+            out.push_str(Unsettled::DIFFERENCE);
+            out.push('\n');
+        }
         if !self.attachment_licenses.is_empty() {
             let licences: Vec<String> = self
                 .attachment_licenses
@@ -614,6 +627,11 @@ impl BundleReport {
                 "sidecars": self.sidecars,
                 "attachment_licenses": self.attachment_licenses,
                 "knowledge_files": self.knowledge_files,
+                "knowledge_not_imported": {
+                    "community_statuses": self.knowledge_not_imported.statuses,
+                    "review_days": self.knowledge_not_imported.review_days,
+                    "availabilities": self.knowledge_not_imported.availabilities,
+                },
             },
             "history": {
                 "no_history": self.no_history,

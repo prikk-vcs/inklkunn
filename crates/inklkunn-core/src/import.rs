@@ -1026,15 +1026,28 @@ impl Walk<'_> {
                     return;
                 }
                 Ok(bytes) => {
-                    if let Err(fault) = crate::knowledge::read_file(rel, &bytes) {
-                        self.refuse(rel, fault.to_string());
-                        return;
-                    }
+                    let file = match crate::knowledge::read_file(rel, &bytes) {
+                        Ok(file) => file,
+                        Err(fault) => {
+                            self.refuse(rel, fault.to_string());
+                            return;
+                        }
+                    };
                     if want_digest {
                         digest = Some(sha256(&bytes));
                     }
                     if let Some(gathered) = self.bundle.as_mut() {
                         gathered.seen(rel, Some(sha256(&bytes)));
+                        // A bundle's claim and source files arrive unsettled (Z-1): the plan counts what the replay will leave out,
+                        // with the same step the replay writes them with, and keeps what each file names, for the order they are
+                        // written in.
+                        match crate::knowledge::unsettle(rel, &bytes) {
+                            Ok(done) => gathered.knowledge(rel, file.references(), done.left_out),
+                            Err(fault) => {
+                                self.refuse(rel, fault.to_string());
+                                return;
+                            }
+                        }
                     }
                 }
             }
