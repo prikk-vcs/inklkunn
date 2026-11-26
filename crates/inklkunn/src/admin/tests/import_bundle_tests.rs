@@ -189,8 +189,12 @@ fn discard_unfinished_asks_for_the_id_again_removes_exactly_what_the_start_would
     );
     assert!(repo.is_dir(), "the sweep removed a history");
     // Without the id again: said, and nothing removed.
-    let (status, _, err) = w.cli(&["wiki", "discard-unfinished", id.as_str()]);
+    let (status, out, err) = w.cli(&["wiki", "discard-unfinished", id.as_str()]);
     assert_eq!(status, 1);
+    assert!(
+        out.contains(&format!("an unfinished creation of wiki {id}")),
+        "{out}"
+    );
     assert!(
         err.contains("nothing was removed")
             && err.contains(&format!("--confirm {id}"))
@@ -288,4 +292,124 @@ fn discard_unfinished_asks_for_the_id_again_removes_exactly_what_the_start_would
         .filter(|e| e.file_name().to_string_lossy().ends_with(".key.json"))
         .count();
     assert_eq!(keys, 1);
+}
+
+/// **V-8**: the command asks the mark and the store before it describes anything, so a stored wiki's id is never called *an unfinished
+/// creation*, with or without `--confirm`.
+#[test]
+fn discard_unfinished_checks_the_mark_and_the_store_before_it_says_what_it_found() {
+    let Some(w) = world("ib-discard-first") else {
+        return;
+    };
+    // A creation killed after its record was stored: a wiki, and only its mark is left.
+    w.killed_creation_after("whole", CreationStep::Stored);
+    let id = w.layout().creation_marks().unwrap().remove(0);
+    assert!(w.store.get(&id).is_ok(), "the record is stored");
+    let (status, out, err) = w.cli(&["wiki", "discard-unfinished", id.as_str()]);
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(!out.contains("unfinished creation"), "{out}");
+    assert!(
+        err.contains("is stored") || err.contains("no unfinished creation"),
+        "{err}"
+    );
+    assert!(w.layout().repo_dir(&id).is_dir());
+    assert!(w.store.get(&id).is_ok());
+    // An id with no mark at all is not described either.
+    let none = inklkunn_store::WikiId::new();
+    let (status, out, err) = w.cli(&["wiki", "discard-unfinished", none.as_str()]);
+    assert_eq!(status, 1, "{out}{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("no unfinished creation"), "{err}");
+}
+
+/// **V-12**: the usage names the visibilities the parser accepts, for `create` and for `import-bundle`, and a refusal says the same.
+#[test]
+fn the_usage_and_the_refusal_name_the_visibilities_the_parser_accepts() {
+    let Some(w) = world("ib-visibility") else {
+        return;
+    };
+    assert!(
+        crate::admin::USAGE.contains(
+            "wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|internal|restricted]"
+        ),
+        "{}",
+        crate::admin::USAGE
+    );
+    for v in ["public", "internal", "restricted"] {
+        assert!(inklkunn_store::Visibility::parse(v).is_some(), "{v}");
+    }
+    let (status, _, err) = w.cli(&[
+        "wiki",
+        "create",
+        "x",
+        "--name",
+        "X",
+        "--visibility",
+        "private",
+    ]);
+    assert_eq!(status, 1);
+    assert!(
+        err.contains("is not a visibility (public, internal or restricted)"),
+        "{err}"
+    );
+}
+
+/// **V-11**: a converted MediaWiki wiki (its pages' ids are `mw:101`, which no file can be named) exported again keeps its history:
+/// the file is named by the page's path, and the import reads that name back.
+#[test]
+fn a_converted_mediawiki_wiki_exported_again_keeps_its_history_under_the_names_of_its_paths() {
+    let Some(w) = world("ib-mw-roundtrip") else {
+        return;
+    };
+    let bundle = fixture("mediawiki/bundle");
+    let (status, out, err) = w.cli(&[
+        "wiki",
+        "import-bundle",
+        "garden",
+        bundle.to_str().unwrap(),
+        "--name",
+        "Garden Notes",
+        "--bundle-license",
+        "CC-BY-SA-4.0",
+    ]);
+    assert_eq!(status, 0, "{out}{err}");
+    let target = w.tmp.0.join("mw-again");
+    let (status, out, err) = w.cli(&[
+        "wiki",
+        "export",
+        "garden",
+        "--bundle",
+        target.to_str().unwrap(),
+    ]);
+    assert_eq!(status, 0, "{out}{err}");
+    let manifest = std::fs::read_to_string(target.join("wiki-bundle.yaml")).unwrap();
+    assert!(
+        manifest.contains("  histories_not_written: 0\n"),
+        "{manifest}"
+    );
+    let names: Vec<String> = std::fs::read_dir(target.join("history"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        names.iter().any(|n| n == "~%43omposting.jsonl"),
+        "{names:?}"
+    );
+    assert!(names.iter().all(|n| !n.contains(':')), "{names:?}");
+    // The page whose id is `mw:101` has the revisions the fixture's history has, each a record with its text.
+    let kept = std::fs::read_to_string(target.join("history/~%43omposting.jsonl")).unwrap();
+    let had = std::fs::read_to_string(bundle.join("history/mw:101.jsonl")).unwrap();
+    assert!(kept.lines().count() >= had.lines().count(), "{kept}");
+    // And the exported bundle is one this import takes in again, its history with it.
+    let (status, out, err) = w.cli(&[
+        "wiki",
+        "import-bundle",
+        "garden-again",
+        target.to_str().unwrap(),
+        "--name",
+        "Garden again",
+        "--dry-run",
+    ]);
+    assert_eq!(status, 0, "{out}{err}");
+    assert!(out.contains("pages/Composting.md:"), "{out}");
 }

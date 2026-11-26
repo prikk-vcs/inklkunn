@@ -749,7 +749,7 @@ fn page_with_id(title: &str, id: &str) -> String {
 }
 
 #[test]
-fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_silently() {
+fn a_page_whose_id_cannot_name_a_file_has_its_history_in_a_file_named_by_its_path() {
     if !prikk_on_path() {
         println!("skipping: prikk not on PATH");
         return;
@@ -757,7 +757,7 @@ fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_sile
     let w = world("unwritable", Sandbox::Unconfined);
     let a = create(&w, "epsilon");
     // One page with a good id and one whose id cannot name a file. (Two pages that share an id can no longer be
-    // brought in: the import refuses a page id the wiki already keeps, R7. The export still counts them.)
+    // brought in: the import refuses a page id the wiki already keeps, R7. The export names such a page by its path too.)
     let first = dir_in(&w.tmp, "folder1");
     put(
         &first.0,
@@ -769,6 +769,11 @@ fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_sile
         "pages/Bad.md",
         page_with_id("Bad", "../escape/bad").as_bytes(),
     );
+    put(
+        &first.0,
+        "pages/Wiki Colon.md",
+        page_with_id("Wiki Colon", "mw:101").as_bytes(),
+    );
     do_import(&w, &a, &first.0, false);
 
     let out = dir_in(&w.tmp, "out");
@@ -776,20 +781,35 @@ fn histories_that_cannot_be_written_are_counted_in_the_manifest_not_dropped_sile
     let done = export_bundle(&w, &w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
         .unwrap_or_else(|e| panic!("{e}"));
     let files = files_of(&dest);
-    // Bad: one page whose history has no file.
-    assert_eq!(done.histories_not_written, 1);
+    // V-11: a page whose id cannot name a file (a path, a colon) is named by its path, as a page with no id is, and its history is
+    // kept: nothing is "not written".
+    assert_eq!(done.histories_not_written, 0);
     assert!(
         String::from_utf8(get(&files, "wiki-bundle.yaml").clone())
             .unwrap()
-            .contains("  histories_not_written: 1\n")
+            .contains("  histories_not_written: 0\n")
     );
-    // The history that could be written (Help, Good) is there; none of the others is, and nothing escaped.
     assert!(files.contains_key("history/good-1.jsonl"));
-    assert_eq!(done.histories, 2, "Help and Good");
+    assert!(
+        files.contains_key("history/~%42ad.jsonl"),
+        "{:?}",
+        files.keys()
+    );
+    assert!(
+        files.contains_key("history/~%57iki%20%43olon.jsonl"),
+        "{:?}",
+        files.keys()
+    );
+    assert_eq!(done.histories, 4, "Help, Good, Bad and Wiki Colon");
+    // The file's records are the page's: the one record, the creation, with the page's text.
+    let bad = String::from_utf8(get(&files, "history/~%42ad.jsonl").clone()).unwrap();
+    assert_eq!(bad.lines().count(), 1, "{bad}");
+    assert!(bad.contains("Body of Bad."), "{bad}");
+    // Nothing escaped, and no file is named by an id that could not name one.
     assert!(
         !files
             .keys()
-            .any(|k| k.contains("twin") || k.contains("escape"))
+            .any(|k| k.contains("twin") || k.contains("escape") || k.contains("mw:"))
     );
     assert!(!out.0.join("escape").exists() && !out.0.join("bad.jsonl").exists());
     // The checksums list every file that is there.

@@ -64,7 +64,9 @@ pub struct ExportFacts {
     /// Changes in the history to paths that are not pages of the tip (a page since removed or renamed), which
     /// no `history/<page id>.jsonl` holds.
     pub unattributed_changes: usize,
-    /// Pages whose history file was not written (the page id cannot name a file, or two pages share it).
+    /// Pages whose history file was not written: the file's name would be longer than a file system's name may be, or two
+    /// pages that were never at one time both there held one path. A page whose id cannot name a file, or that shares its id,
+    /// is named by its path and is not counted here (the I-T2 review's V-11).
     pub histories_not_written: usize,
     /// The bundle carries the knowledge layer's data (a claim or source file, a claim's thread or a view's record), so the
     /// manifest declares [`KNOWLEDGE_EXTENSION`] in `extensions_used`.
