@@ -84,7 +84,7 @@ struct Case {
 }
 
 const MEDIAWIKI: &str = "mediawiki/bundle";
-const LICENSED: &[&str] = &["--bundle-license", "CC-BY-SA-4.0"];
+pub(super) const LICENSED: &[&str] = &["--bundle-license", "CC-BY-SA-4.0"];
 
 fn cases() -> Vec<Case> {
     vec![

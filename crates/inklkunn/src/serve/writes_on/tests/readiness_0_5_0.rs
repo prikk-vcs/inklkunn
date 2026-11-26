@@ -41,6 +41,7 @@ use super::*;
 
 mod bookstack;
 mod mediawiki;
+mod kill;
 mod refusals;
 mod roundtrip;
 mod surfaces;
@@ -350,6 +351,7 @@ fn the_interchange_works_end_to_end_on_a_real_prikk() {
     p.a_round_trip();
     p.refusals_are_named_and_write_nothing();
     p.the_new_surfaces();
+    p.a_killed_import_is_discarded_by_a_person();
 
     let steps = p.t.steps;
     p.t.say(format!("\n== end of the transcript: {steps} steps"));
