@@ -525,7 +525,13 @@ fn every_refusal_is_in_the_list_and_a_stored_name_reads_back_as_the_refusal_it_w
             | Refusal::PlatformLimit(Limit::LimitDays)
             | Refusal::OutsideDefaultView
             | Refusal::UnknownFile
-            | Refusal::NotAFile => Refusal::ALL.contains(&r),
+            | Refusal::NotAFile
+            | Refusal::PrefixIsNamespace
+            | Refusal::TemplateScheme
+            | Refusal::TemplateHost
+            | Refusal::TemplateUserInfo
+            | Refusal::TemplatePlaceholder
+            | Refusal::TemplateCharacter => Refusal::ALL.contains(&r),
         }
     }
     for r in Refusal::ALL {

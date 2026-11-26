@@ -23,6 +23,7 @@ pub(crate) fn constitution_fault(text: &str) -> Fault {
 mod defaults;
 mod draft;
 mod hostile;
+mod interwiki;
 mod keys;
 mod limits;
 mod lines;
