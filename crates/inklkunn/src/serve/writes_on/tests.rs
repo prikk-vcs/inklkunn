@@ -1409,6 +1409,7 @@ mod policy;
 mod knowledge;
 mod measure;
 mod readiness;
+mod readiness_0_5_0;
 mod upgrade;
 mod upgrade_0_3_0;
 mod upgrade_0_4_0;
