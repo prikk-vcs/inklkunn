@@ -316,36 +316,59 @@ fn a_file_that_changed_since_the_plan_fails_the_import_in_the_middle_and_nothing
         println!("skipping: prikk not on PATH");
         return;
     }
-    let copy = dir_in(&std::env::temp_dir(), "changed-after-plan");
-    copy_tree(&fixture("mediawiki/bundle"), &copy.0);
-    let plan = plan_of(&copy.0, Some("CC-BY-SA-4.0"));
-    // The history of the page whose revision comes last in the order: blocks of other pages are sealed before it is read.
-    let (h, _) = *plan.schedule.last().unwrap();
-    let last = plan.histories.get(h).unwrap().file.clone();
-    let path = copy.0.join(&last);
-    let mut bytes = std::fs::read(&path).unwrap();
-    bytes.push(b'\n');
-    std::fs::write(&path, bytes).unwrap();
-    let w = world("changed");
-    let seen = std::cell::RefCell::new(0_usize);
-    let failed = run(&w, &plan, "changed", "CC-BY-SA-4.0", &|s| {
-        if matches!(s, inklkunn_core::import::bundle::ImportStep::Revision(_)) {
-            *seen.borrow_mut() += 1;
+    // Three ways a file is not the one that was planned: longer, the same size with another byte, and the same bytes in another inode.
+    for (n, how) in ["longer", "a byte", "an inode"].into_iter().enumerate() {
+        let copy = dir_in(&std::env::temp_dir(), &format!("changed-after-plan-{n}"));
+        copy_tree(&fixture("mediawiki/bundle"), &copy.0);
+        let plan = plan_of(&copy.0, Some("CC-BY-SA-4.0"));
+        // The history of the page whose revision comes last in the order: blocks of other pages are sealed before it is read.
+        let (h, _) = *plan.schedule.last().unwrap();
+        let last = plan.histories.get(h).unwrap().file.clone();
+        let path = copy.0.join(&last);
+        let mut bytes = std::fs::read(&path).unwrap();
+        match how {
+            "longer" => {
+                bytes.push(b'\n');
+                std::fs::write(&path, bytes).unwrap();
+            }
+            "a byte" => {
+                let at = bytes.iter().position(|b| *b == b'e').unwrap();
+                *bytes.get_mut(at).unwrap() = b'E';
+                std::fs::write(&path, bytes).unwrap();
+            }
+            _ => {
+                let other = copy.0.join("moved.tmp");
+                std::fs::write(&other, &bytes).unwrap();
+                std::fs::rename(&other, &path).unwrap();
+            }
         }
-    })
-    .expect_err("the file changed");
-    assert!(*seen.borrow() >= 1, "blocks were sealed before it failed");
-    let said = failed.to_string();
-    assert!(
-        said.contains("did not make") || said.contains("was not made"),
-        "{said}"
-    );
-    assert!(said.contains("not the file that was planned"), "{said}");
-    assert!(said.contains("nothing was left on disk"), "{said}");
-    // A failure the process survives removes everything the attempt made, the sealed blocks and the keys with it.
-    assert_eq!(leftovers(&w), Vec::<String>::new());
-    assert!(w.store.list().unwrap().is_empty());
-    assert!(w.layout.creation_marks().unwrap().is_empty());
+        let w = world(&format!("changed{n}"));
+        let seen = std::cell::RefCell::new(0_usize);
+        let failed = run(&w, &plan, "changed", "CC-BY-SA-4.0", &|s| {
+            if matches!(s, inklkunn_core::import::bundle::ImportStep::Revision(_)) {
+                *seen.borrow_mut() += 1;
+            }
+        })
+        .expect_err(how);
+        assert!(
+            *seen.borrow() >= 1,
+            "{how}: blocks were sealed before it failed"
+        );
+        let said = failed.to_string();
+        assert!(
+            said.contains("did not make") || said.contains("was not made"),
+            "{how}: {said}"
+        );
+        assert!(
+            said.contains("not the file that was planned"),
+            "{how}: {said}"
+        );
+        assert!(said.contains("nothing was left on disk"), "{how}: {said}");
+        // A failure the process survives removes everything the attempt made, the sealed blocks and the keys with it.
+        assert_eq!(leftovers(&w), Vec::<String>::new(), "{how}");
+        assert!(w.store.list().unwrap().is_empty());
+        assert!(w.layout.creation_marks().unwrap().is_empty());
+    }
 }
 
 #[test]
