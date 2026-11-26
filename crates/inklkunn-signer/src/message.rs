@@ -14,6 +14,9 @@
 //! Base: <block id, 64 lower-case hex>           (proposals and rollbacks only)
 //! Kind: proposal | rollback | import | system
 //! Imported-From: <url or bundle digest>         (imports only)
+//! Imported-On, Imported-Source-Name,
+//! Imported-Source-Address, Imported-Checks,
+//! Imported-License                              (an import of a bundle: what its notice says, see [`notice`])
 //! Imported-Rev, Imported-At, Imported-Author,
 //! Imported-Summary, Imported-Hidden,
 //! Imported-Minor, Imported-Automated            (an imported revision only: what the source said, see [`source`])
@@ -37,8 +40,10 @@ use std::fmt;
 use inklkunn_store::record::is_line_or_control;
 use inklkunn_store::{AccountId, DisplayName, ProposalId};
 
+pub mod notice;
 pub mod source;
 
+pub use notice::{ChecksState, ImportNotice, LicenseWord};
 pub use source::{SourceAuthor, SourceAuthorKind, SourceRevision};
 
 /// The longest summary line CT-03 allows (RFC 002 D-5), in characters.
@@ -53,13 +58,18 @@ const LABEL_MAX: usize = 32;
 const ELLIPSIS: char = '…';
 
 /// The trailers, in the order they appear.
-const ORDER: [&str; 13] = [
+const ORDER: [&str; 18] = [
     "Proposal",
     "Proposed-By",
     "Accepted-By",
     "Base",
     "Kind",
     "Imported-From",
+    "Imported-On",
+    "Imported-Source-Name",
+    "Imported-Source-Address",
+    "Imported-Checks",
+    "Imported-License",
     "Imported-Rev",
     "Imported-At",
     "Imported-Author",
@@ -74,13 +84,18 @@ const ACCEPTED_BY: usize = 2;
 const BASE: usize = 3;
 const KIND: usize = 4;
 const IMPORTED_FROM: usize = 5;
-const IMPORTED_REV: usize = 6;
-const IMPORTED_AT: usize = 7;
-const IMPORTED_AUTHOR: usize = 8;
-const IMPORTED_SUMMARY: usize = 9;
-const IMPORTED_HIDDEN: usize = 10;
-const IMPORTED_MINOR: usize = 11;
-const IMPORTED_AUTOMATED: usize = 12;
+const IMPORTED_ON: usize = 6;
+const IMPORTED_SOURCE_NAME: usize = 7;
+const IMPORTED_SOURCE_ADDRESS: usize = 8;
+const IMPORTED_CHECKS: usize = 9;
+const IMPORTED_LICENSE: usize = 10;
+const IMPORTED_REV: usize = 11;
+const IMPORTED_AT: usize = 12;
+const IMPORTED_AUTHOR: usize = 13;
+const IMPORTED_SUMMARY: usize = 14;
+const IMPORTED_HIDDEN: usize = 15;
+const IMPORTED_MINOR: usize = 16;
+const IMPORTED_AUTOMATED: usize = 17;
 
 /// Why a message could not be composed or read. No variant carries the offending text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -422,6 +437,7 @@ pub struct Message {
     accepted_by: Actor,
     base: Option<BlockId>,
     imported_from: Option<ImportSource>,
+    notice: Option<ImportNotice>,
     source: Option<SourceRevision>,
 }
 
@@ -443,6 +459,7 @@ impl Message {
             accepted_by,
             base: Some(base),
             imported_from: None,
+            notice: None,
             source: None,
         })
     }
@@ -463,6 +480,7 @@ impl Message {
             accepted_by,
             base: Some(base),
             imported_from: None,
+            notice: None,
             source: None,
         })
     }
@@ -477,20 +495,23 @@ impl Message {
             accepted_by: Actor::System(label),
             base: None,
             imported_from: Some(source),
+            notice: None,
             source: None,
         }
     }
 
-    /// One revision of a source, replayed by an import: [`Message::import`] with what the source said of the revision (RFC 007
-    /// D-3). The change is still the service's; the facts are data about where its text came from.
-    pub fn import_revision(
+    /// An import of a bundle, one change of it: [`Message::import`] with what the bundle's notice says (every change of the import
+    /// carries it) and, for a replayed revision, what the source said of it.
+    pub fn import_of_bundle(
         summary: Summary,
         label: SystemLabel,
         source: ImportSource,
-        revision: SourceRevision,
+        notice: ImportNotice,
+        revision: Option<SourceRevision>,
     ) -> Self {
         Message {
-            source: Some(revision),
+            notice: Some(notice),
+            source: revision,
             ..Message::import(summary, label, source)
         }
     }
@@ -505,6 +526,7 @@ impl Message {
             accepted_by: Actor::System(label),
             base: None,
             imported_from: None,
+            notice: None,
             source: None,
         }
     }
@@ -542,6 +564,11 @@ impl Message {
     /// Where an import came from.
     pub fn imported_from(&self) -> Option<&ImportSource> {
         self.imported_from.as_ref()
+    }
+
+    /// What the notice of an import of a bundle says (the source, the day, the checksums, the licence's word).
+    pub fn notice(&self) -> Option<&ImportNotice> {
+        self.notice.as_ref()
     }
 
     /// What the source said of the revision an import replays (the revision, its time, its author, its summary): data about
@@ -590,6 +617,12 @@ impl Message {
             if m.kind != Kind::Import && m.source.is_some() {
                 return Err(not_allowed("Imported-Rev"));
             }
+            if m.kind != Kind::Import && m.notice.is_some() {
+                return Err(not_allowed("Imported-On"));
+            }
+            if m.source.is_some() && m.notice.is_none() {
+                return Err(MessageError::Missing("Imported-On"));
+            }
         }
         Ok(m)
     }
@@ -618,6 +651,11 @@ impl Message {
         out.push_str(&format!("{}: {}\n", ORDER[KIND], self.kind.as_str()));
         if let Some(s) = &self.imported_from {
             out.push_str(&format!("{}: {}\n", ORDER[IMPORTED_FROM], s.as_str()));
+        }
+        if let Some(notice) = &self.notice {
+            for (name, value) in notice.trailers() {
+                out.push_str(&format!("{name}: {value}\n"));
+            }
         }
         if let Some(revision) = &self.source {
             for (name, value) in revision.trailers() {
@@ -649,7 +687,7 @@ impl Message {
             Some((n, _)) => return Err(malformed(n, "a blank line follows the summary")),
             None => return Err(MessageError::Missing("Kind")),
         }
-        let mut values: [Option<&str>; 13] = [None; 13];
+        let mut values: [Option<&str>; 18] = [None; 18];
         let mut last: Option<usize> = None;
         for (n, line) in lines {
             let Some((key, value)) = line.split_once(": ") else {
@@ -679,8 +717,9 @@ impl Message {
             base,
             kind,
             imported_from,
-            source @ ..,
+            rest @ ..,
         ] = values;
+        let (notice, source) = rest.split_at(5);
         let kind = kind.ok_or(MessageError::Missing("Kind"))?;
         let kind = Kind::parse(kind).ok_or(MessageError::Invalid {
             field: "Kind",
@@ -704,7 +743,8 @@ impl Message {
             .transpose()?;
         let base = base.map(BlockId::new).transpose()?;
         let imported_from = imported_from.map(ImportSource::new).transpose()?;
-        let source = SourceRevision::parse(&source)?;
+        let notice = ImportNotice::parse(notice)?;
+        let source = SourceRevision::parse(source)?;
         Self::checked(Message {
             kind,
             summary,
@@ -713,6 +753,7 @@ impl Message {
             accepted_by,
             base,
             imported_from,
+            notice,
             source,
         })
     }

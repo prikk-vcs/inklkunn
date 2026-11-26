@@ -308,6 +308,7 @@ impl World {
             renames: Vec::new(),
             imported_from: None,
             source: None,
+            notice: None,
             planned_against: None,
         };
         let signed = self

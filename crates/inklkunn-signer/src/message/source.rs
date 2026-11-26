@@ -115,7 +115,7 @@ pub struct SourceRevision {
 
 /// `text` as one line of at most `max` characters: control characters and line breaks become spaces, the ends are trimmed, and a
 /// longer text is cut with a closing `…`. `None` when nothing is left. **Lossy on purpose**: the text is a person's at the source.
-fn one_line(text: &str, max: usize) -> Option<String> {
+pub(super) fn one_line(text: &str, max: usize) -> Option<String> {
     let spaced: String = text
         .chars()
         .map(|c| if is_line_or_control(c) { ' ' } else { c })
@@ -376,7 +376,7 @@ impl fmt::Display for SourceAuthorKind {
 }
 
 /// Unix seconds from `YYYY-MM-DDTHH:MM:SSZ`, and only from that exact form (what [`rfc3339`] writes).
-fn parse_at(text: &str) -> Result<i64, MessageError> {
+pub(super) fn parse_at(text: &str) -> Result<i64, MessageError> {
     let bad = || MessageError::Invalid {
         field: "Imported-At",
         rule: "RFC 3339 in UTC to the second, like 1999-12-31T23:59:59Z",

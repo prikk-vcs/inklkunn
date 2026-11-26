@@ -291,6 +291,7 @@ fn a_change_the_service_makes_for_itself_does_not_write_the_knowledge_layer() {
         renames: vec![],
         imported_from: None,
         source: None,
+        notice: None,
         planned_against: None,
     };
     let got = acts.run(&s.rig.wiki, &label, request(&claim_path(&s.claim.id)));

@@ -1,17 +1,24 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use super::super::{ImportSource, Kind, Message, SystemLabel};
+use super::super::{
+    ChecksState, ImportNotice, ImportSource, Kind, LicenseWord, Message, SystemLabel,
+};
 use super::*;
 use crate::message::Summary;
 
 const FROM: &str = "bundle sha256:00";
 
+fn notice() -> ImportNotice {
+    ImportNotice::new(1_764_000_000, ChecksState::Verified, LicenseWord::Manifest).expect("notice")
+}
+
 fn import(revision: SourceRevision) -> Message {
-    Message::import_revision(
+    Message::import_of_bundle(
         Summary::new("Import a revision of Guides/Setup").expect("summary"),
         SystemLabel::new("import").expect("label"),
         ImportSource::new(FROM).expect("source"),
-        revision,
+        notice(),
+        Some(revision),
     )
 }
 
@@ -35,6 +42,9 @@ fn a_replayed_revision_has_exactly_the_documented_text_and_reads_back() {
          Accepted-By: system (import)\n\
          Kind: import\n\
          Imported-From: bundle sha256:00\n\
+         Imported-On: 2025-11-24T16:00:00Z\n\
+         Imported-Checks: verified\n\
+         Imported-License: manifest\n\
          Imported-Rev: 1234\n\
          Imported-At: 2009-02-13T23:31:30Z\n\
          Imported-Author: person (Ada (the first))\n\
@@ -103,7 +113,9 @@ fn a_revision_with_nothing_but_its_id_and_time_is_a_message() {
     let bare = SourceRevision::new("a", 86_400).expect("revision");
     let text = import(bare.clone()).to_text();
     assert!(
-        text.ends_with("Imported-Rev: a\nImported-At: 1970-01-02T00:00:00Z\n"),
+        text.ends_with(
+            "Imported-License: manifest\nImported-Rev: a\nImported-At: 1970-01-02T00:00:00Z\n"
+        ),
         "{text}"
     );
     assert_eq!(Message::parse(&text).expect("parses").source(), Some(&bare));
@@ -259,8 +271,8 @@ fn every_rule_of_the_trailers_refuses_and_none_echoes_a_value() {
     let cases: Vec<(&str, String)> = vec![
         ("a rev with no time", without("Imported-At")),
         ("a time with no rev", without("Imported-Rev")),
-        ("the time before the rev", swap(5, 6)),
-        ("an author before the time", swap(6, 7)),
+        ("the time before the rev", swap(8, 9)),
+        ("an author before the time", swap(9, 10)),
         ("a repeated rev", format!("{ok}Imported-Rev: x\n")),
         (
             "an unknown kind of author",
@@ -324,6 +336,13 @@ fn every_rule_of_the_trailers_refuses_and_none_echoes_a_value() {
         (
             "the facts without the source",
             ok.replace("Imported-From: bundle sha256:00\n", ""),
+        ),
+        (
+            "a revision without the notice of its bundle",
+            ok.replace(
+                "Imported-On: 2025-11-24T16:00:00Z\nImported-Checks: verified\nImported-License: manifest\n",
+                "",
+            ),
         ),
     ];
     for (what, text) in &cases {

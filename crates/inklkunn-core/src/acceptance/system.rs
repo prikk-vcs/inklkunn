@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 use inklkunn_prikk::Storage;
 use inklkunn_signer::accept::{Accept, AcceptanceToken, PreparedChange, PreparedFile, Unconfirmed};
-use inklkunn_signer::message::{ImportSource, Message, SourceRevision, Summary, SystemLabel};
+use inklkunn_signer::message::{
+    ImportNotice, ImportSource, Message, SourceRevision, Summary, SystemLabel,
+};
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceStore, ActStore, AuditSink, RecoveryFlag, RecoveryReason,
     RootLayout, StoreError, SystemActEnd, SystemActId, SystemActKind, SystemActRecord, WikiRecord,
@@ -42,8 +44,12 @@ pub struct SystemRequest {
     pub renames: Vec<(PathBuf, PathBuf)>,
     /// Where an import came from (required for `Import`, refused for `System`).
     pub imported_from: Option<ImportSource>,
-    /// What the source said of the revision an import replays (RFC 007 D-3): written as typed trailers, and only on an import.
+    /// What the source said of the revision an import replays (RFC 007 D-3): written as typed trailers, and only on an import
+    /// that also carries a `notice`.
     pub source: Option<SourceRevision>,
+    /// What the notice of an import of a bundle says (the source, the day, the checksums, the licence's word): every change of
+    /// such an import carries it, and only an import does.
+    pub notice: Option<ImportNotice>,
     /// The block of the tip the change was planned against: the signer writes it only if the view is still
     /// there. `None` pins the tip read under the lease.
     pub planned_against: Option<String>,
@@ -320,16 +326,27 @@ impl SystemActs {
         let described =
             |e: inklkunn_signer::message::MessageError| SystemActFailure::Invalid(e.to_string());
         let summary = Summary::from_text(&request.summary).map_err(described)?;
-        if request.source.is_some() && request.kind != SystemActKind::Import {
+        if (request.source.is_some() || request.notice.is_some())
+            && request.kind != SystemActKind::Import
+        {
             return Err(SystemActFailure::Invalid(
-                "only an import carries what a source said of a revision".to_owned(),
+                "only an import carries what a source said of a revision or what the notice of a bundle says".to_owned(),
+            ));
+        }
+        if request.source.is_some() && request.notice.is_none() {
+            return Err(SystemActFailure::Invalid(
+                "a replayed revision carries the notice of its bundle".to_owned(),
             ));
         }
         let message = match (request.kind, &request.imported_from) {
-            (SystemActKind::Import, Some(from)) => match &request.source {
-                Some(revision) => {
-                    Message::import_revision(summary, label.clone(), from.clone(), revision.clone())
-                }
+            (SystemActKind::Import, Some(from)) => match &request.notice {
+                Some(notice) => Message::import_of_bundle(
+                    summary,
+                    label.clone(),
+                    from.clone(),
+                    notice.clone(),
+                    request.source.clone(),
+                ),
                 None => Message::import(summary, label.clone(), from.clone()),
             },
             (SystemActKind::Import, None) => {

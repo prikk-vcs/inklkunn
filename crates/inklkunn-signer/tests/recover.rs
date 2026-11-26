@@ -282,6 +282,7 @@ impl Fixture {
             base: Some(base),
             imported_from: None,
             source: None,
+            notice: None,
             pinned_tip: BlockId::new(&self.first_block).unwrap(),
             change_digest: change.digest(),
         };

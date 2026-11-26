@@ -702,6 +702,7 @@ impl World {
                 base: Some(base.clone()),
                 imported_from: None,
                 source: None,
+                notice: None,
                 pinned_tip: base,
                 change_digest: change.digest(),
             },

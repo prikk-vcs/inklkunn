@@ -81,6 +81,7 @@ pub fn facts_of(
         base: parsed.base().cloned(),
         imported_from: parsed.imported_from().cloned(),
         source: parsed.source().cloned(),
+        notice: parsed.notice().cloned(),
         pinned_tip: pinned,
         change_digest,
     })

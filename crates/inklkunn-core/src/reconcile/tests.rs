@@ -206,6 +206,7 @@ fn facts(m: &Message, view: &str) -> ExpectedMessage {
         base: m.base().cloned(),
         imported_from: m.imported_from().cloned(),
         source: m.source().cloned(),
+        notice: m.notice().cloned(),
         pinned_tip: BlockId::new(&id(1)).unwrap(),
     }
 }
