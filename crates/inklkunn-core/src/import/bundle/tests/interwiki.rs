@@ -84,12 +84,12 @@ fn a_good_map_is_the_one_the_import_writes_and_the_report_says_so_and_what_it_la
     // The record of the act keeps the same.
     let json = p.report.to_json();
     assert_eq!(
-        json["links"]["interwiki_map"][0]["prefix"],
-        serde_json::json!("docs")
+        json.pointer("/links/interwiki_map/0/prefix"),
+        Some(&serde_json::json!("docs"))
     );
     assert_eq!(
-        json["links"]["interwiki_left_out"][0]["rule"],
-        serde_json::json!("prefix-is-namespace")
+        json.pointer("/links/interwiki_left_out/0/rule"),
+        Some(&serde_json::json!("prefix-is-namespace"))
     );
 }
 
