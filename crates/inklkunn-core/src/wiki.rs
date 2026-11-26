@@ -183,11 +183,34 @@ pub fn creation_message(record: &WikiRecord) -> String {
     system_message(&format!("Create the wiki {}", record.display_name))
 }
 
+/// The creation of `record` as the sealed system act that records it (start and end): `sealed` is its first block. What a
+/// creation stores with the record, and what an import of a bundle holds back with the rest of its history until the end.
+pub(crate) fn creation_act(
+    record: &WikiRecord,
+    sealed: &inklkunn_signer::SealedIds,
+    at: i64,
+) -> (
+    inklkunn_store::SystemActRecord,
+    inklkunn_store::SystemActEnd,
+) {
+    act::entries(
+        record,
+        &creation_message(record),
+        &sealed.block_id,
+        sealed.patch_ids.first().map_or("", String::as_str),
+        at,
+    )
+}
+
 /// Remove everything a creation that did not finish made: whatever the signer kept elsewhere (the sealed key
 /// record), then the directories (the repository, the scratch directory, the lock file; the lock file last,
 /// because the signer's removal of the key record takes it). Both are tried; the first thing left behind is
 /// what is reported.
-fn discard(layout: &RootLayout, signer: &dyn RepositoryBootstrap, id: &WikiId) -> Cleanup {
+pub(crate) fn discard(
+    layout: &RootLayout,
+    signer: &dyn RepositoryBootstrap,
+    id: &WikiId,
+) -> Cleanup {
     let keys = signer.discard_unfinished(&layout.repo_dir(id));
     let directories = layout.discard_unfinished(id);
     match (directories, keys) {
@@ -205,7 +228,7 @@ fn discard(layout: &RootLayout, signer: &dyn RepositoryBootstrap, id: &WikiId) -
 
 /// A creation that ends here is over: when everything it made is gone its mark is removed, and when something
 /// was left the mark stays, so that the next start's sweep finishes the removal. Returns `cleanup` unchanged.
-fn settle(mark: CreationMark, cleanup: Cleanup) -> Cleanup {
+pub(crate) fn settle(mark: CreationMark, cleanup: Cleanup) -> Cleanup {
     if cleanup == Cleanup::Removed {
         // A mark that cannot be removed is harmless: the sweep finds no record and no directories and clears it.
         let _ = mark.finish();

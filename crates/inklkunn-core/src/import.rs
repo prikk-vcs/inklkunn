@@ -1327,11 +1327,19 @@ fn collect(
 /// Read the files of a plan that can be imported, checking each again as it is read: the directories above it,
 /// the open handle's identity against the plan's, its size and (for a page) its content.
 fn read_files(plan: &ImportPlan) -> Result<Vec<PreparedFile>, ImportError> {
+    read_some(plan, plan.files.iter())
+}
+
+/// [`read_files`] for some of the files of a plan (a bundle's replay writes them in several changes), each checked the same way.
+pub(crate) fn read_some<'a>(
+    plan: &ImportPlan,
+    which: impl Iterator<Item = &'a PlannedFile>,
+) -> Result<Vec<PreparedFile>, ImportError> {
     let page_cap = plan.page_cap;
     let mut files = Vec::with_capacity(plan.files.len());
     let changed =
         |f: &PlannedFile, why: String| ImportError::Changed(format!("`{}` {why}", f.path));
-    for f in &plan.files {
+    for f in which {
         let (parent, name) =
             open_chain(&plan.root, &plan.dirs, &f.source).map_err(|why| changed(f, why))?;
         let cap = if f.is_page() {

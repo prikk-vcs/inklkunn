@@ -54,6 +54,14 @@ impl RootLayout {
             .join(format!("{}.creating", id.as_str()))
     }
 
+    /// The report of an import of a bundle (RFC 007 D-6), kept beside the repository: what the plan said, as the operator read it
+    /// before the run. It is made before the wiki's record is stored, and so is part of what an unfinished creation leaves.
+    pub fn import_report(&self, id: &WikiId) -> PathBuf {
+        self.root
+            .join(id.shard())
+            .join(format!("{}.import-report.txt", id.as_str()))
+    }
+
     /// The ids of the wikis whose creation mark exists, live or dead (the caller decides which: the mark is
     /// locked while its creation runs). A root that does not exist yet has none.
     pub fn creation_marks(&self) -> std::io::Result<Vec<WikiId>> {
@@ -107,6 +115,12 @@ impl RootLayout {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => return Err(e),
             }
+        }
+        // What an import of a bundle kept beside the repository goes too.
+        match std::fs::remove_file(self.import_report(id)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
         }
         match std::fs::remove_file(self.lock_file(id)) {
             Ok(()) => Ok(()),

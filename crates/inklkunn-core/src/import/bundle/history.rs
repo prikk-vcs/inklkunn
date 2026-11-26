@@ -552,6 +552,10 @@ pub fn judge(records: &[Record], page_cap: u64) -> Result<Judged, (Option<String
     for r in records {
         let refuse = |rule: &str| (Some(r.rev.clone()), rule.to_owned());
         let at = r.at.ok_or_else(|| refuse("has no `at`"))?;
+        // The change's message writes the time as a date of four digits of year, and year 0 has none.
+        if at.secs < -62_135_596_800 {
+            return Err(refuse("has an `at` before the year 1"));
+        }
         if !seen.insert(r.rev.as_str()) {
             return Err(refuse("is used by an earlier record of the page"));
         }

@@ -685,9 +685,15 @@ fn the_checksums_are_the_file_the_manifest_names_and_never_a_fixed_name() {
     let p = plan(&d.0);
     assert_importable(&p);
     assert!(matches!(&p.report.checksums, Checksums::Verified { file, .. } if file == "sums.txt"));
-    // A file by the old name that the manifest does not name is a file the checksums do not name.
+    // A file by the old name that the manifest does not name is a file the import does not read: left out and said, not refused.
     put(&d.0, "sha256sums.txt", b"anything");
-    assert_refused(&plan(&d.0), "sha256sums.txt", "does not name it");
+    let p = plan(&d.0);
+    assert_importable(&p);
+    assert!(
+        p.report.left_out.iter().any(|l| l.what == "sha256sums.txt"),
+        "{}",
+        p.render()
+    );
     // Without the key, no file of checksums is read at all, and it is said.
     std::fs::write(&manifest_path, m.replace("checksums: sha256sums.txt\n", "")).unwrap();
     let p = plan(&d.0);
@@ -916,15 +922,60 @@ fn checksums_that_are_present_are_verified_for_every_file_and_a_lie_a_gap_and_a_
     let p = plan(&d.0);
     assert_refused(&p, "pages/Home.md", "missing from the bundle");
     assert_refused(&p, "pages/Other.md", "does not name it");
-    // An extra file of any kind, including one the import would not read.
-    let d = small("sum-extra");
-    put(&d.0, "extensions/notes.txt", b"x");
-    assert_refused(&plan(&d.0), "extensions/notes.txt", "does not name it");
-    // The converters' own report, written after their checksums, gets its way out said.
-    let d = small("sum-report");
-    put(&d.0, "import-report.md", b"x");
-    let p = plan(&d.0);
-    assert_refused(&p, "import-report.md", "--no-report");
+    // An extra file that the import READS (a page, an attachment, a history file, `users.yaml`): refused, by name. The I-T1 review's
+    // ruling on I-T2: the rule is about what is read, and nothing unverified enters the wiki.
+    for (rel, bytes) in [
+        ("pages/Other.md", &b"---\nid: other\n---\n\nx\n"[..]),
+        ("attachments/extra.bin", b"x"),
+        ("attachments/extra.bin.meta.yaml", b"license: CC0-1.0\n"),
+        ("history/home.jsonl", b""),
+        ("users.yaml", b"- id: ann\n  name: Ann\n"),
+    ] {
+        let d = small("sum-extra");
+        put(&d.0, rel, bytes);
+        assert_refused(
+            &plan(&d.0),
+            rel,
+            "the import reads it, and the checksums file does not name it",
+        );
+    }
+    // An extra file that the import does not read is no refusal: it is listed as not imported, and the bundle is as importable as it
+    // was. Among them the converters' own report, which they write after their checksums, so their default output imports.
+    for rel in [
+        "extensions/notes.txt",
+        "import-report.md",
+        "export-report.md",
+        "governance/rules.txt",
+        "pages/.keep",
+        ".prikkignore",
+        "README.txt",
+    ] {
+        let d = small("sum-unread");
+        put(&d.0, rel, b"x");
+        let p = plan(&d.0);
+        assert_importable(&p);
+        assert!(
+            p.render().contains(rel.split('/').next().unwrap_or(rel)) || rel.ends_with(".keep"),
+            "{rel} is not said:\n{}",
+            p.render()
+        );
+        assert_eq!(
+            p.report.checksums,
+            Checksums::Verified {
+                file: "sha256sums.txt".to_owned(),
+                entries: 1
+            },
+            "{rel}"
+        );
+    }
+    // With no history read (`--no-history`), a history file is a file the import does not read.
+    let d = small("sum-nohistory");
+    put(&d.0, "history/home.jsonl", b"");
+    let given = BundleOptions {
+        no_history: true,
+        ..BundleOptions::default()
+    };
+    assert_importable(&plan_with(&d.0, &given));
     // Every kind of file is hashed: an attachment, a history file, users.yaml, and a file in an unread directory.
     for rel in [
         "attachments/a.bin",
@@ -2073,4 +2124,78 @@ fn the_history_of_a_page_the_bundle_does_not_have_and_cannot_place_is_left_out_a
         "{}",
         p.render()
     );
+}
+
+/// Acceptance criterion 2's *sidecars' licences*, shown by a bundle written by hand (neither converter writes one): each
+/// attachment's own licence is in its sidecar, comes in with it as it is, and the report says which licences came.
+#[test]
+fn a_hand_written_bundle_shows_the_licence_of_each_sidecar() {
+    let p = plan(&fixture("sidecars/bundle"));
+    assert_importable(&p);
+    let r = &p.report;
+    assert_eq!(r.license.as_deref(), Some("CC-BY-SA-4.0"));
+    assert_eq!(r.license_from, Some(LicenseFrom::Manifest));
+    assert_eq!((r.pages, r.attachments, r.sidecars), (1, 2, 2));
+    assert_eq!(
+        r.attachment_licenses.iter().collect::<Vec<_>>(),
+        [(&"CC-BY-4.0".to_owned(), &1), (&"CC0-1.0".to_owned(), &1)]
+    );
+    assert!(r.incompatible.is_empty());
+    // One change: nothing has a history, so the page and both attachments with their sidecars are the first change.
+    assert_eq!(p.plan.files.len(), 5);
+    assert_eq!(p.first_pages, ["pages/Orchard Plan.md"]);
+    assert!(p.schedule.is_empty());
+    assert!(
+        p.render().contains(
+            "attachment licences (each in its sidecar, kept as it is): CC-BY-4.0 (1), CC0-1.0 (1)"
+        ),
+        "{}",
+        p.render()
+    );
+    // A sidecar's licence that the wiki's cannot take refuses it by name, and `--leave-out-incompatible` leaves the pair out.
+    let d = copy_of("sidecar-nc", "sidecars/bundle");
+    let sidecar = d.0.join("attachments/notes.txt.meta.yaml");
+    let text = std::fs::read_to_string(&sidecar).unwrap();
+    std::fs::write(&sidecar, text.replace("CC-BY-4.0", "CC-BY-NC-4.0")).unwrap();
+    // The checksums name the sidecar, so they are made again.
+    seal(&d.0);
+    assert_refused(&plan(&d.0), "attachments/notes.txt", "CC-BY-NC-4.0");
+    let given = BundleOptions {
+        leave_out_incompatible: true,
+        ..BundleOptions::default()
+    };
+    let left = plan_with(&d.0, &given);
+    assert_importable(&left);
+    assert_eq!(left.plan.files.len(), 3);
+}
+
+/// The converters write their report after their checksums, so the checksums do not name it. A file the import does not read does
+/// not refuse (the I-T1 review's ruling on I-T2): wiki-commons' default output imports without `--no-report`.
+#[test]
+fn a_converters_own_report_beside_the_bundle_is_left_out_and_said_and_refuses_nothing() {
+    for (name, fixture_dir, license) in [
+        ("report-mw", "mediawiki/bundle", Some("CC-BY-SA-4.0")),
+        ("report-bs", "bookstack/bundle", Some("CC0-1.0")),
+    ] {
+        let d = copy_of(name, fixture_dir);
+        put(
+            &d.0,
+            "import-report.md",
+            b"# Import report\n\nwritten after the checksums\n",
+        );
+        let given = BundleOptions {
+            bundle_license: license.map(str::to_owned),
+            ..BundleOptions::default()
+        };
+        let p = plan_with(&d.0, &given);
+        assert_importable(&p);
+        assert!(matches!(p.report.checksums, Checksums::Verified { .. }));
+        let left = p
+            .report
+            .left_out
+            .iter()
+            .find(|l| l.what == "import-report.md")
+            .unwrap_or_else(|| panic!("not said:\n{}", p.render()));
+        assert!(left.why.contains("converter"), "{}", left.why);
+    }
 }

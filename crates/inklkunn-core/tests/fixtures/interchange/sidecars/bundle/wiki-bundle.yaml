@@ -1,0 +1,17 @@
+format: portable-wiki-bundle
+version: '0.1'
+generator:
+  name: written by hand
+source:
+  name: Orchard Plans
+  url: https://plans.example.org/
+lang: en
+license: CC-BY-SA-4.0
+visibility_default: public
+contents:
+  pages: 1
+  attachments: 2
+  history: false
+fidelity:
+  level: 2
+checksums: sha256sums.txt

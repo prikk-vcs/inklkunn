@@ -152,6 +152,9 @@ pub struct BundleReport {
     pub attachments: usize,
     /// Attachment sidecars (`<name>.meta.yaml`) that come in with them.
     pub sidecars: usize,
+    /// The licences the sidecars of the attachments that come in declare, with how many attachments each (an attachment's own
+    /// licence travels in its sidecar and is never rewritten; the sidecars that say none are not counted).
+    pub attachment_licenses: BTreeMap<String, usize>,
     /// Claim and source files of the knowledge layer that come in.
     pub knowledge_files: usize,
     /// `--no-history`: the history was not replayed.
@@ -333,6 +336,17 @@ impl BundleReport {
                 String::new()
             }
         ));
+        if !self.attachment_licenses.is_empty() {
+            let licences: Vec<String> = self
+                .attachment_licenses
+                .iter()
+                .map(|(l, n)| format!("{l} ({n})"))
+                .collect();
+            out.push_str(&format!(
+                "attachment licences (each in its sidecar, kept as it is): {}\n",
+                licences.join(", ")
+            ));
+        }
         if self.no_history {
             out.push_str(
                 "history: not imported (--no-history): every page comes in with its latest text, in one change\n",
@@ -523,6 +537,7 @@ impl BundleReport {
                 "pages": self.pages,
                 "attachments": self.attachments,
                 "sidecars": self.sidecars,
+                "attachment_licenses": self.attachment_licenses,
                 "knowledge_files": self.knowledge_files,
             },
             "history": {

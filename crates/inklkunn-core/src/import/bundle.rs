@@ -32,6 +32,7 @@ mod history;
 pub mod licence;
 mod manifest;
 mod patch;
+mod replay;
 mod report;
 mod safe;
 pub mod time;
@@ -46,6 +47,9 @@ use rustix::fs::FileType;
 
 pub use history::{Author, Part, Revision, Skipped, Step};
 pub use manifest::Manifest;
+pub use replay::{
+    ImportBundleError, ImportStaging, ImportStep, ImportWorld, ImportedWiki, import_bundle,
+};
 pub use report::{
     BundleReport, Checksums, FileKind, Found, Incompatible, LeftOut, LicenseFrom, MAX_LISTED,
     PageLine, PeopleLine,
@@ -142,6 +146,18 @@ pub struct BundlePlan {
     pub first_pages: Vec<String>,
     /// The paths of the pages whose file at the end differs from their last replayed revision: the change at the end writes them.
     pub final_pages: Vec<String>,
+    /// The SHA-256 of each page's file of the bundle, by path: what the replay's last change is compared with, and what it reads the
+    /// file again against.
+    pub page_digests: BTreeMap<String, Digest>,
+    /// The SHA-256 of the manifest's bytes: the bundle's identity in the `Imported-From` of every change of the import.
+    pub bundle_digest: Digest,
+    /// The people `users.yaml` names, by the source's id: the name to show and the kind (`unspecified` when it says none). What a
+    /// record that names an author by id alone is read with.
+    pub users: BTreeMap<String, (String, String)>,
+    /// The name the manifest gives the source, as written (text).
+    pub source_name: Option<String>,
+    /// The address the manifest gives the source, as written (**text, never a link**).
+    pub source_address: Option<String>,
 }
 
 impl BundlePlan {
@@ -232,6 +248,14 @@ impl Gathered {
         rel.starts_with("pages/")
             || rel.starts_with("attachments/")
             || (self.knowledge_known && rel.starts_with("knowledge/"))
+    }
+
+    /// Does the import **read** this file (the manifest and the file of checksums aside): a page, an attachment with its sidecar, a
+    /// knowledge file it reads, a history file it replays, `users.yaml`? **Only what is read must be named by the checksums** (the I-T1
+    /// review's ruling on I-T2): nothing unverified enters the wiki, and a file the import never opens (a converter's report) is
+    /// listed as not imported and does not refuse.
+    fn reads(&self, rel: &str) -> bool {
+        self.is_content(rel) || matches!(self.role(rel), Role::Whole(_) | Role::History)
     }
 
     fn role(&self, rel: &str) -> Role {
@@ -632,6 +656,11 @@ pub fn plan_bundle(
                 schedule: Vec::new(),
                 first_pages: Vec::new(),
                 final_pages: Vec::new(),
+                page_digests: BTreeMap::new(),
+                users: BTreeMap::new(),
+                bundle_digest: [0; 32],
+                source_name: None,
+                source_address: None,
             });
         }
     };
@@ -1053,17 +1082,14 @@ fn judge_checksums(
             || path == named
             || path == crate::bundle::MANIFEST
             || walked_refusals.contains(&super::shown(path))
+            // A file the import does not read is not a file that gets into the wiki: it is left out and said.
+            || !gathered.reads(path)
         {
             continue;
         }
-        let hint = if path == "import-report.md" || path == "export-report.md" {
-            " (wiki-commons' tools write this report after the checksums: run them with `--no-report`, or take the file out)"
-        } else {
-            ""
-        };
         refusals.push(refusal(
             path,
-            format!("is in the bundle and the checksums file does not name it{hint}"),
+            "is in the bundle, the import reads it, and the checksums file does not name it",
         ));
     }
     if refusals.len() == before {
@@ -1190,6 +1216,30 @@ fn finish(
         });
     }
 
+    // --- the licences the attachments that come in declare, each in its sidecar
+    for (sidecar, bytes) in &gathered.sidecars {
+        let Some(base) = sidecar.strip_suffix(".meta.yaml") else {
+            continue;
+        };
+        if !plan.files.iter().any(|f| f.path == base)
+            || !plan.files.iter().any(|f| &f.path == sidecar)
+        {
+            continue;
+        }
+        let parsed = std::str::from_utf8(bytes)
+            .ok()
+            .and_then(|t| inklkunn_markup::frontmatter::parse_yaml(t).ok());
+        if let Some(inklkunn_markup::Value::Map(members)) = parsed
+            && let Some((_, inklkunn_markup::Value::Str(own))) =
+                members.iter().find(|(k, _)| k == "license")
+        {
+            *report
+                .attachment_licenses
+                .entry(shown_up_to(own, 60))
+                .or_insert(0) += 1;
+        }
+    }
+
     // --- what the history comes to
     let mut replayed_pages: BTreeSet<String> = BTreeSet::new();
     let mut identity: BTreeMap<String, (String, String)> = BTreeMap::new();
@@ -1255,6 +1305,7 @@ fn finish(
             revisions: replayed,
         });
     }
+    let users = people.clone();
     for (k, v) in identity {
         people.entry(k).or_insert(v);
     }
@@ -1427,6 +1478,10 @@ fn finish(
                     "the manifest does not declare the knowledge extension this build reads, so nothing in it is read",
                 ),
                 ".prikkignore" => (".prikkignore".to_owned(), "service-local"),
+                "import-report.md" | "export-report.md" => (
+                    shown(rel),
+                    "a converter's own report of what it did (it writes it after the checksums, so they do not name it); the import does not read it",
+                ),
                 _ => (shown(rel), "not part of the bundle layout"),
             }
         };
@@ -1478,7 +1533,7 @@ fn finish(
             let rev = history.and_then(|x| x.revisions.get(r));
             (
                 rev.map(|v| v.at),
-                rev.and_then(|v| v.path.clone()),
+                history.map(|x| x.page.clone().unwrap_or_else(|| x.file.clone())),
                 history.map(|x| x.file.clone()),
                 r,
             )
@@ -1497,6 +1552,17 @@ fn finish(
         schedule,
         first_pages: first_change,
         final_pages: final_paths,
+        users,
+        page_digests: kept_pages
+            .iter()
+            .filter_map(|p| gathered.pages.get(p).map(|f| (p.clone(), f.sha256)))
+            .collect(),
+        bundle_digest: gathered
+            .read
+            .get(crate::bundle::MANIFEST)
+            .map_or([0; 32], |bytes| sha256(bytes)),
+        source_name: manifest.source_name.clone(),
+        source_address: manifest.source_url.clone(),
     }
 }
 

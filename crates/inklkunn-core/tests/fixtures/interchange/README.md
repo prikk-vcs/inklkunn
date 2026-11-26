@@ -1,6 +1,6 @@
 # Interchange fixtures (RFC 007 P-2)
 
-Three small bundles that the bundle import's plan reads (`import/bundle/tests.rs`, `tests/import_bundle.rs`). **Python is never
+Four small bundles that the bundle import's plan and replay read (`import/bundle/tests.rs`, `tests/import_bundle.rs`). **Python is never
 needed to run the tests**: the bundles are committed, and the commands below are for whoever regenerates them.
 
 **Licence of the fixtures: CC0 1.0** (public domain dedication). Every word of the two sources was written for these fixtures; no
@@ -12,6 +12,7 @@ third-party content is in them.
 | `mediawiki/bundle/` | its conversion: a level 3 bundle with history | wiki-commons' converter, below |
 | `bookstack/input/` | a BookStack export, extracted (`data.json` and `files/`): one book, one chapter, three pages (Markdown and HTML), an image and an attachment | written by hand (the image is a one-pixel PNG made for it) |
 | `bookstack/bundle/` | its conversion: a level 2 bundle with no history | wiki-commons' converter, below |
+| `sidecars/bundle/` | a level 2 bundle of one page and two attachments, each with a sidecar that declares a licence (CC0-1.0 and CC-BY-4.0) in a wiki of CC-BY-SA-4.0 | **written by hand** (see below) |
 | `inklkunn/input-1..3/` | three folders of pages and one attachment | written by hand |
 | `inklkunn/bundle/` | **inklkunn's own export** of a wiki made from those folders (the shape our own export has) | the commands below |
 
@@ -34,9 +35,12 @@ python3 -m venv /tmp/wc-venv && /tmp/wc-venv/bin/pip install PyYAML
     --name "Allotment Handbook" --no-report
 ```
 
-**`--no-report` matters.** By default the converter writes `import-report.md` into the bundle *after* it wrote the checksums, so
-the checksums file does not name it, and the import refuses the bundle by name (a file in the bundle that the checksums do not
-name). The refusal says so, and says how to fix it. (The converters' output is otherwise unchanged by the flag.)
+**`--no-report` no longer matters to the import.** By default the converter writes `import-report.md` into the bundle *after* it
+wrote the checksums, so the checksums file does not name it. The import's rule is about what it **reads**: every file it reads (a
+page, an attachment and its sidecar, a history file, `users.yaml`, the file of checksums the manifest names) must be named by the
+checksums, and a file it does not read, such as that report, is listed as *not imported* and refuses nothing (the I-T1 review's
+ruling on I-T2). So the converters' default output imports. The fixtures are made with the flag anyway, so that what is committed is
+what the checksums cover. A test puts a report beside each converted bundle and shows both importable.
 
 The converters stamp `exported_at` with the day they ran, so a regeneration gives other bytes in the manifest and nowhere else:
 the page, history and `users.yaml` files, and so the checksums, are the same bytes. The tests read counts and rules, never that
@@ -54,6 +58,21 @@ Findings about the converters' output that the import's plan depends on, or that
 - a history file is named by the page's `id` (`mw:101`), colon included. **`cargo package` refuses a file name with a colon**, so
   `inklkunn-core`'s `Cargo.toml` excludes `mediawiki/bundle/history/` from the published crate (the tests that read it run in the
   repository, never from the package).
+
+## The bundle written by hand (`sidecars/bundle/`)
+
+**Neither converter writes a licence in an attachment's sidecar** (the BookStack converter writes none, and MediaWiki has no
+sidecars), so acceptance criterion 2's *sidecars' licences* cannot be shown by a converted bundle. This one is written by hand, for
+that and for nothing else: a manifest (`license: CC-BY-SA-4.0`, `checksums: sha256sums.txt`, fidelity level 2), a page, two
+attachments (`plan.svg`, `notes.txt`) and their sidecars (`license: CC0-1.0` and `license: CC-BY-4.0`, which CC-BY-SA takes). The
+checksums are made with `sha256sum` over every file but the manifest:
+
+```sh
+cd crates/inklkunn-core/tests/fixtures/interchange/sidecars/bundle
+sha256sum attachments/notes.txt attachments/notes.txt.meta.yaml attachments/plan.svg attachments/plan.svg.meta.yaml "pages/Orchard Plan.md" > sha256sums.txt
+```
+
+The tests that read it make their own changed copies (a sidecar whose licence the wiki cannot take) and re-seal them.
 
 ## inklkunn's own export
 
