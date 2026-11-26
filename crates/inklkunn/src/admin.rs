@@ -37,7 +37,7 @@ use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{
     ExportError, ExportNote, HistoryInputs, export_bundle_with, knowledge_records,
 };
-use inklkunn_core::import::bundle::{BundleOptions, plan_bundle, shown};
+use inklkunn_core::import::bundle::{BundleOptions, plan_bundle, shown, shown_up_to};
 use inklkunn_core::import::{ImportError, judge_knowledge, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::read::ReadService;
@@ -1046,7 +1046,7 @@ fn import_bundle(
         } else {
             ""
         },
-        shown(&folder.display().to_string())
+        shown_up_to(&folder.display().to_string(), 400)
     );
     let _ = write!(out, "{}", plan.render());
     if !plan.is_importable() {
@@ -1851,3 +1851,6 @@ pub(crate) fn start_up(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod bundle_tests;
