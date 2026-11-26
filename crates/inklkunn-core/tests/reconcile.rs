@@ -150,6 +150,7 @@ fn world(tag: &str) -> Option<World> {
             accepted_by: Actor::System(SystemLabel::inklkunn()),
             base: None,
             imported_from: None,
+            source: None,
             pinned_tip: BlockId::new(&sealed.block_id).unwrap(),
         },
     });
@@ -204,6 +205,7 @@ impl World {
             accepted_by: self.acceptor.clone(),
             base: message.base().cloned(),
             imported_from: None,
+            source: None,
             // The block the change is made on: the view's tip now (the base is enforced for every acceptance).
             pinned_tip: BlockId::new(
                 &self

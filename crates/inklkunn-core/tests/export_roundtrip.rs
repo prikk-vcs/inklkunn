@@ -264,6 +264,7 @@ fn proposal_edit(w: &World, wiki: &CreatedWiki) -> (String, String) {
             accepted_by: acceptor,
             base: Some(BlockId::new(&base).unwrap()),
             imported_from: None,
+            source: None,
             pinned_tip: BlockId::new(&base).unwrap(),
             change_digest: change.digest(),
         },

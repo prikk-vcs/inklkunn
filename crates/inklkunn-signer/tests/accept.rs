@@ -345,6 +345,7 @@ impl Fixture {
             accepted_by: self.acceptor.clone(),
             base: Some(base),
             imported_from: None,
+            source: None,
             // The record names the block the change is made on: the tip of the view now (Q7).
             pinned_tip: BlockId::new(&self.real_tip(view)).unwrap(),
             change_digest: change.digest(),
@@ -1737,6 +1738,7 @@ fn child_accepts_and_blocks_in_seal() {
             accepted_by: actor(&s(field(e, "acceptor_id")), &s(field(e, "acceptor_name"))),
             base: BlockId::new(&s(field(e, "base"))).ok(),
             imported_from: None,
+            source: None,
             pinned_tip: BlockId::new(&s(field(e, "base"))).expect("a base"),
         },
     );

@@ -11,7 +11,7 @@
 
 use inklkunn_store::{ProposalId, WikiId};
 
-use crate::message::{Actor, BlockId, ImportSource, Kind, Message};
+use crate::message::{Actor, BlockId, ImportSource, Kind, Message, SourceRevision};
 use crate::recover::{RecoveryFacts, RecoveryToken};
 
 /// The id of an acceptance record in state *pending seal* (RFC 004's records; the guard is RFC 002 D-4's).
@@ -396,6 +396,9 @@ pub struct ExpectedMessage {
     pub base: Option<BlockId>,
     /// Where an import came from.
     pub imported_from: Option<ImportSource>,
+    /// What the source said of the revision an import replays (RFC 007 D-3): bound like the rest, so the signer writes the
+    /// facts the act recorded and no others.
+    pub source: Option<SourceRevision>,
     /// The block the view's tip must still be when the change is written: the block the act was made on (an import
     /// is planned against the tip it saw; a message of kind `import` carries no `Base`, so the pin lives here, in the
     /// record). The signer reads the tip under the wiki's write lock, before it decrypts a seed or writes a byte,
@@ -419,6 +422,7 @@ impl ExpectedMessage {
             && message.accepted_by() == &self.accepted_by
             && message.base() == self.base.as_ref()
             && message.imported_from() == self.imported_from.as_ref()
+            && message.source() == self.source.as_ref()
     }
 }
 

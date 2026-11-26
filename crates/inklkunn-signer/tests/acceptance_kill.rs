@@ -397,6 +397,7 @@ fn system_request() -> SystemRequest {
         }],
         renames: Vec::new(),
         imported_from: None,
+        source: None,
         planned_against: None,
     }
 }

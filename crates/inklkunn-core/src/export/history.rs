@@ -22,7 +22,8 @@
 //!   `from_path` for a rename), `proposed_by` and `accepted_by`, `imported_from`, `message_readable`, and `at_from`.
 //! - **`at`** is the best time this service has for the block, and **`inklkunn.at_from` says which** (prikk's log has no time):
 //!   `sealed` (the end of the acceptance, or of the system act, that made the block: the service keeps it for every block it
-//!   made), `source` (an imported change's own time, from its message: the hook is [`source_time`], which I-T3 fills), or
+//!   made), `source` (an imported revision's own time, from its message's `Imported-At`: it **wins over the seal** (RFC 007 D-3: the
+//!   seal of a replayed revision is the day of the import, which the wiki's notice says once)), or
 //!   `first-seen` (when a surface first asked for the block, an upper bound, and never later than any later change's time; a block
 //!   no surface has asked for is recorded as seen now, and stays so: the same export of the same tip is the same bytes). **Within a
 //!   file `at` never decreases** (RFC 007 D-2 refuses an import that does): a record whose time would be before the one before it
@@ -605,23 +606,26 @@ impl AtFrom {
     }
 }
 
-/// **The time a message says its change was made at, for an imported change** (I-T1 correction X-2 (b); RFC 007 D-3). The message
-/// type has no such trailer yet: I-T3 adds it, and this is where it is read. Until then there is none, and a block is timed by its
-/// seal or by when it was first seen.
-pub(super) fn source_time(_message: &Message) -> Option<i64> {
-    None
+/// **The time a message says its change was made at, for an imported change** (RFC 007 D-3; the I-T1 review's ruling): the
+/// `Imported-At` trailer of a replayed revision, in Unix seconds. The first change, the change at the end and a folder's import
+/// carry none: they are the day of the import, which is the seal.
+pub(super) fn source_time(message: &Message) -> Option<i64> {
+    message
+        .source()
+        .map(inklkunn_signer::message::SourceRevision::at)
 }
 
-/// **The best time for a block, in this order** (X-2): when its act sealed (the service keeps it for every block it made), then an
-/// imported change's own time, then when the block was first seen. `None` only when none is known.
+/// **The best time for a block, in this order** (X-2, and the ruling on it): an imported revision's own time (it is the specific rule,
+/// and it names when the change was made; the seal of a replayed revision is only when the import ran), then when its act sealed (the
+/// service keeps it for every block it made), then when the block was first seen. `None` only when none is known.
 pub(super) fn best_time(
     sealed: Option<i64>,
     source: Option<i64>,
     seen: Option<i64>,
 ) -> Option<(i64, AtFrom)> {
-    sealed
-        .map(|at| (at, AtFrom::Sealed))
-        .or(source.map(|at| (at, AtFrom::Source)))
+    source
+        .map(|at| (at, AtFrom::Source))
+        .or(sealed.map(|at| (at, AtFrom::Sealed)))
         .or(seen.map(|at| (at, AtFrom::FirstSeen)))
 }
 
@@ -932,7 +936,7 @@ pub(super) fn histories(
             .len(),
     });
 
-    // The time of each block (X-2): when its act sealed, then an imported change's own time, then when the service first saw it.
+    // The time of each block (X-2, and the ruling on it): an imported revision's own time, then when its act sealed, then when the service first saw it.
     // Only a block with neither is asked of `first_seen` (which writes), and in chunks (X-6). A block's first-seen time is an
     // upper bound that never runs past the time of any later block that is known, since no change was made after the first sight
     // (or the seal) of a change that came after it.

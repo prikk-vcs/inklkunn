@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use inklkunn_prikk::Storage;
 use inklkunn_signer::accept::{Accept, AcceptanceToken, PreparedChange, PreparedFile, Unconfirmed};
-use inklkunn_signer::message::{ImportSource, Message, Summary, SystemLabel};
+use inklkunn_signer::message::{ImportSource, Message, SourceRevision, Summary, SystemLabel};
 use inklkunn_store::{
     AcceptanceOutcome, AcceptanceStore, ActStore, AuditSink, RecoveryFlag, RecoveryReason,
     RootLayout, StoreError, SystemActEnd, SystemActId, SystemActKind, SystemActRecord, WikiRecord,
@@ -42,6 +42,8 @@ pub struct SystemRequest {
     pub renames: Vec<(PathBuf, PathBuf)>,
     /// Where an import came from (required for `Import`, refused for `System`).
     pub imported_from: Option<ImportSource>,
+    /// What the source said of the revision an import replays (RFC 007 D-3): written as typed trailers, and only on an import.
+    pub source: Option<SourceRevision>,
     /// The block of the tip the change was planned against: the signer writes it only if the view is still
     /// there. `None` pins the tip read under the lease.
     pub planned_against: Option<String>,
@@ -318,10 +320,18 @@ impl SystemActs {
         let described =
             |e: inklkunn_signer::message::MessageError| SystemActFailure::Invalid(e.to_string());
         let summary = Summary::from_text(&request.summary).map_err(described)?;
+        if request.source.is_some() && request.kind != SystemActKind::Import {
+            return Err(SystemActFailure::Invalid(
+                "only an import carries what a source said of a revision".to_owned(),
+            ));
+        }
         let message = match (request.kind, &request.imported_from) {
-            (SystemActKind::Import, Some(source)) => {
-                Message::import(summary, label.clone(), source.clone())
-            }
+            (SystemActKind::Import, Some(from)) => match &request.source {
+                Some(revision) => {
+                    Message::import_revision(summary, label.clone(), from.clone(), revision.clone())
+                }
+                None => Message::import(summary, label.clone(), from.clone()),
+            },
             (SystemActKind::Import, None) => {
                 return Err(SystemActFailure::Invalid(
                     "an import names where it came from".to_owned(),

@@ -1465,6 +1465,7 @@ pub fn run_import(
         files,
         renames: Vec::new(),
         imported_from: Some(source),
+        source: None,
         planned_against: Some(plan.base.clone()),
     };
     let signed = acts

@@ -281,6 +281,7 @@ impl Fixture {
             accepted_by: self.acceptor.clone(),
             base: Some(base),
             imported_from: None,
+            source: None,
             pinned_tip: BlockId::new(&self.first_block).unwrap(),
             change_digest: change.digest(),
         };

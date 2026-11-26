@@ -149,6 +149,7 @@ fn an_import_under_the_system_principal_verifies_with_prikk_itself_and_says_what
         accepted_by: Actor::System(label.clone()),
         base: None,
         imported_from: Some(source.clone()),
+        source: None,
         pinned_tip,
         change_digest: digest,
     };

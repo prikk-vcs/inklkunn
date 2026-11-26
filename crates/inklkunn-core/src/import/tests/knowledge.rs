@@ -348,6 +348,7 @@ fn a_system_change_still_may_not_write_the_knowledge_layer_and_an_import_cannot_
         renames: Vec::new(),
         imported_from: (kind == SystemActKind::Import)
             .then(|| ImportSource::new("folder sha256:00").unwrap()),
+        source: None,
         planned_against: None,
     };
     let err = acts
