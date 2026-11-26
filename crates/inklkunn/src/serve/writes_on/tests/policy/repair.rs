@@ -140,7 +140,7 @@ fn broken(tag: &str, files: &[(&str, Option<Vec<u8>>)]) -> Option<Broken> {
 /// POST of the form as it would be, with her own CSRF token.
 fn press_accept(person: &mut Person, id: &str) -> Reply {
     let csrf = person.browser.csrf();
-    let body = format!("csrf={}", encode(&csrf)).into_bytes();
+    let body = format!("csrf={}&revision=1", encode(&csrf)).into_bytes();
     person.browser.visit(
         "POST",
         &format!("{}/accept", proposal_page(id)),

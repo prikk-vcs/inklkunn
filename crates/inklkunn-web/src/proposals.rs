@@ -117,9 +117,20 @@ impl Ctx {
             .is_allowed()
     }
 
-    /// **Why the principal may not** do `action` to `resource`, as the refusal a page says: *restricted*, with the reason and
-    /// the end, when a restriction is the reason (RFC 006 D-7; told to the restricted person alone), else *not allowed*.
+    /// **Why the principal may not** do `action` to `resource`, as the refusal a page says, in the order the service itself
+    /// judges a write (`ProposalService`): *the rules cannot be read* (the governance file, and what is wrong with it) for a write
+    /// of a wiki whose rules cannot be read, to whoever may read the wiki (Y-1: a maintainer who presses *Accept* there was told
+    /// that her role does not include accepting, which is not what refuses her); *restricted*, with the reason and the end, when
+    /// a restriction is the reason (RFC 006 D-7; told to the restricted person alone); else *not allowed*.
     pub(crate) fn refusal(&self, action: Action, resource: &Resource) -> ProposalError {
+        if action != Action::Read
+            && let Some(fault) = self
+                .services
+                .authorizer
+                .write_refusal(&self.principal, &self.wiki.id)
+        {
+            return ProposalError::RulesUnreadable(fault);
+        }
         self.services
             .authorizer
             .restriction_refusal(&self.principal, action, resource)

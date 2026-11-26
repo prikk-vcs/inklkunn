@@ -527,6 +527,7 @@ pub(crate) async fn accept(
                 },
             ) {
                 ProposalError::Restricted(notice) => AcceptOutcome::Restricted(notice),
+                ProposalError::RulesUnreadable(fault) => AcceptOutcome::RulesUnreadable(fault),
                 _ => AcceptOutcome::NotAllowed,
             }
         } else if ctx
