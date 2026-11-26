@@ -378,6 +378,8 @@ exact :: words.rs :: state :: a placeholder name of a catalog message
 exact :: words.rs :: latest :: a placeholder name of a catalog message
 exact :: words.rs :: view :: a placeholder name of a catalog message
 exact :: words.rs :: keys :: a placeholder name of a catalog message
+exact :: words.rs :: prefix :: a placeholder name of a catalog message
+exact :: words.rs :: host :: a placeholder name of a catalog message
 exact :: proposals.rs :: wiki `{}`: {line} :: a line for the operator's log; no response carries it
 exact :: proposals.rs :: a proposal's base could not be read now: {cause} :: a line for the operator's log; no response carries it
 exact :: proposals.rs :: the proposal records could not be used: {cause} :: a line for the operator's log; no response carries it

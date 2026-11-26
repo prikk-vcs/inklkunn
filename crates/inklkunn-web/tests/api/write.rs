@@ -2160,6 +2160,60 @@ async fn the_three_governance_files_are_what_the_api_writes_under_governance_and
     assert_eq!(a.json().at("/reason"), "path-outside-pages", "{}", a.text());
 }
 
+#[tokio::test]
+async fn a_new_page_titled_in_a_prefix_of_the_interwiki_map_is_refused_by_name_and_says_where_the_prefix_leads()
+ {
+    // Correction W-5: the wiki's map has `gh`, so a page `GH:Notes` could never be reached by its own title. The word is its own, the
+    // sentence is the catalog's with the prefix and the host (the map's words, never the title's), and a page that is there is not
+    // touched.
+    let legacy = inklkunn_markup::path::title_to_path("GH:Legacy").expect("a path");
+    let c = cast_over(&[
+        (
+            "governance/interwiki.yaml",
+            "gh: https://github.com/org/repo/wiki/{title}\n",
+        ),
+        (legacy.as_str(), "---\ntitle: GH:Legacy\n---\n\nOld.\n"),
+    ]);
+    let path = inklkunn_markup::path::title_to_path("GH:Notes").expect("a path");
+    let a = propose_files_at_one(
+        &c,
+        &c.contributor,
+        json!([{"path": path, "text": "---\ntitle: GH:Notes\n---\n\nNew.\n"}]),
+        json!([]),
+    )
+    .await;
+    assert_eq!(a.status, 422, "{}", a.text());
+    assert_eq!(a.json().at("/reason"), "namespace-mapped", "{}", a.text());
+    let said = a
+        .json()
+        .at("/detail")
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    assert!(
+        said.contains("gh") && said.contains("github.com") && !said.contains("Notes"),
+        "{said}"
+    );
+    // A rename into it is refused the same way.
+    let a = propose_files_at_one(
+        &c,
+        &c.contributor,
+        json!([{"path": path, "text": "---\ntitle: GH:Notes\n---\n\nNew.\n"}]),
+        json!([{"from": "pages/Guide.md", "to": path}]),
+    )
+    .await;
+    assert_eq!(a.json().at("/reason"), "namespace-mapped", "{}", a.text());
+    // The page that was there before is edited as before.
+    let a = propose_files_at_one(
+        &c,
+        &c.contributor,
+        json!([{"path": legacy, "text": "---\ntitle: GH:Legacy\n---\n\nEdited.\n"}]),
+        json!([]),
+    )
+    .await;
+    assert_eq!(a.status, 201, "{}", a.text());
+}
+
 /// A proposal sent for review at once, of `files`, by the contributor, against the repository as it stands (version 1).
 async fn submit_files(c: &Cast, files: Value) -> Answer {
     let uri = format!("{API}/proposals");
