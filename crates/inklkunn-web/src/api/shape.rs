@@ -97,6 +97,7 @@ pub(super) fn provenance(provenance: &Provenance) -> Value {
             kind,
             proposed_by,
             accepted_by,
+            ..
         } => json!({
             "kind": history_kind(*kind),
             "proposed_by": who(proposed_by),

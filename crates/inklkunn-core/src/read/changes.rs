@@ -182,6 +182,8 @@ pub struct ChangeRow {
     /// What moderation hides of this change now (RFC 006 D-8): its summary is already empty and its people are
     /// [`Person::Hidden`] where they are hidden.
     pub hidden: crate::tombstone::Hidden,
+    /// What the import of a bundle says of it, when it was one (RFC 007 D-3), with what moderation hides taken out.
+    pub imported: Option<super::history::Imported>,
 }
 
 impl ChangeRow {
@@ -213,6 +215,8 @@ pub struct ChangeList {
 
 /// The message of a block as a row's head: kind, summary and people.
 struct Described {
+    /// What the message says of the bundle it was imported from, when it was.
+    imported: Option<super::history::Imported>,
     /// The proposal the message names (a proposal or a rollback).
     proposal: Option<ProposalId>,
     kind: ChangeKind,
@@ -228,6 +232,7 @@ fn describe(block: &HistoryBlock) -> Described {
     for patch in &block.patch_messages {
         if let Ok(message) = Message::parse(&patch.message) {
             return Described {
+                imported: super::history::imported_of(&message),
                 proposal: message.proposal_id().cloned(),
                 kind: match message.kind() {
                     Kind::Proposal => ChangeKind::Proposal,
@@ -257,6 +262,7 @@ fn describe(block: &HistoryBlock) -> Described {
         summary.push('…');
     }
     Described {
+        imported: None,
         proposal: None,
         kind: ChangeKind::Foreign,
         summary,
@@ -591,6 +597,7 @@ impl ReadService {
                 }
                 proposed_by = Some(Person::Hidden);
             }
+            let imported = head.imported.map(|i| i.without(&hidden));
             rows.push(ChangeRow {
                 block_id: c.block.block_id.clone(),
                 view: c.view,
@@ -606,6 +613,7 @@ impl ReadService {
                 machine_assisted: flagged.automated,
                 first_seen,
                 pages: titled,
+                imported,
             });
         }
         Ok(ChangeList {

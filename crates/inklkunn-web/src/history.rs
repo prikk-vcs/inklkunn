@@ -25,8 +25,9 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::read::{
     AtOutcome, ChangeDetail, ChangeInfo, ChangeOutcome, Did, DiffOutcome, DiffStatus,
-    HistoryChangeKind, HistoryOutcome, HistoryRow, HunkView, LineKind, MAX_DIFF_LINES, PageDiff,
-    PageEvent, PageHistory, Presentation, Provenance, ReadError, Subject, Who,
+    HistoryChangeKind, HistoryOutcome, HistoryRow, HunkView, Imported, ImportedRevision, LineKind,
+    MAX_DIFF_LINES, PageDiff, PageEvent, PageHistory, Presentation, Provenance, ReadError, Said,
+    Subject, Who,
 };
 use inklkunn_markup::path::path_to_title;
 use inklkunn_store::{AcceptanceOutcome, ProposalId, Role, WikiRecord};
@@ -205,9 +206,18 @@ fn who_text(t: T, who: &Who) -> String {
 pub(crate) fn people(t: T, provenance: &Provenance) -> Vec<String> {
     match provenance {
         Provenance::Recorded {
+            imported:
+                Some(Imported {
+                    revision: Some(revision),
+                    ..
+                }),
+            ..
+        } => vec![imported_sentence(t, revision)],
+        Provenance::Recorded {
             kind: HistoryChangeKind::Proposal | HistoryChangeKind::Rollback,
             proposed_by,
             accepted_by,
+            ..
         } => vec![
             t.msg(Key::PeopleProposedBy)
                 .with("name", who_text(t, proposed_by))
@@ -226,6 +236,86 @@ pub(crate) fn people(t: T, provenance: &Provenance) -> Vec<String> {
         ],
         Provenance::NotRecorded => vec![t.get(Key::PeopleUnrecorded)],
     }
+}
+
+/// **The sentence an imported revision says in place of its people** (RFC 007 D-3): *Imported. Originally by {name}, {date}: {summary}*.
+/// The name is the source's, said so and never linked to or matched with an account; the date is the source's, labelled
+/// *originally*; what the source hid is said *hidden at the source*, and what moderation of this wiki hides is not said at all.
+pub(crate) fn imported_sentence(t: T, revision: &ImportedRevision) -> String {
+    let name = match &revision.author {
+        Said::Given(author) => t
+            .msg(Key::PeopleImportedName)
+            .with("name", &author.name)
+            .text(),
+        Said::NotGiven => t.get(Key::PeopleImportedUnnamed),
+        Said::HiddenAtSource => t.get(Key::PeopleImportedHidden),
+        Said::HiddenHere => crate::tombstone::author_word(t),
+    };
+    let date = t
+        .msg(Key::PeopleImportedDate)
+        .with("date", crate::time::utc_minutes(revision.at))
+        .text();
+    let (key, summary) = match &revision.summary {
+        Said::Given(text) => (Key::PeopleImported, text.clone()),
+        Said::HiddenAtSource => (Key::PeopleImported, t.get(Key::PeopleImportedHidden)),
+        Said::NotGiven | Said::HiddenHere => (Key::PeopleImportedNoSummary, String::new()),
+    };
+    t.msg(key)
+        .with("name", name)
+        .with("date", date)
+        .with("summary", summary)
+        .text()
+}
+
+/// **The notice of an import** (RFC 007 D-3; LIC-4's *imported from*), from the first imported change among `provenances`: where the
+/// bundle came from (the source's name and address, as text), the day, whether its checksums were checked, and whether the license is the
+/// importing admin's word. Empty when none of the changes was imported from a bundle.
+pub(crate) fn import_notice<'a>(
+    t: T,
+    provenances: impl IntoIterator<Item = &'a Provenance>,
+) -> Vec<String> {
+    let notice = provenances.into_iter().find_map(|p| match p {
+        Provenance::Recorded {
+            imported: Some(imported),
+            ..
+        } => Some(&imported.notice),
+        _ => None,
+    });
+    notice_lines(t, notice)
+}
+
+/// The lines of a notice (see [`import_notice`]).
+pub(crate) fn notice_lines(
+    t: T,
+    notice: Option<&inklkunn_core::message::ImportNotice>,
+) -> Vec<String> {
+    use inklkunn_core::message::{ChecksState, LicenseWord};
+    let Some(notice) = notice else {
+        return Vec::new();
+    };
+    let source = match (notice.source_name(), notice.source_address()) {
+        (Some(name), Some(address)) => t
+            .msg(Key::ImportNoticeSource)
+            .with("name", name)
+            .with("address", address)
+            .text(),
+        (Some(only), None) | (None, Some(only)) => only.to_owned(),
+        (None, None) => t.get(Key::ImportNoticeSourceUnnamed),
+    };
+    let mut lines = vec![
+        t.msg(Key::ImportNotice)
+            .with("source", source)
+            .with("date", crate::time::utc_minutes(notice.on()))
+            .text(),
+        t.get(match notice.checks() {
+            ChecksState::Verified => Key::ImportNoticeChecksVerified,
+            ChecksState::None => Key::ImportNoticeChecksNone,
+        }),
+    ];
+    if notice.license() == LicenseWord::DeclaredByAdmin {
+        lines.push(t.get(Key::ImportNoticeLicenseDeclared));
+    }
+    lines
 }
 
 /// What a change is marked as, beyond what its people say. One list for the pages (which say each in words) and
@@ -315,6 +405,7 @@ struct HistoryTpl<'a> {
     title: String,
     heading: String,
     view_note: Option<String>,
+    notice: Vec<String>,
     empty: String,
     rows: Vec<RowView>,
     older: Option<LinkView>,
@@ -438,6 +529,7 @@ fn render_history(page: &Page, start: &Start, history: &PageHistory) -> Response
             .with("title", &history.title)
             .text(),
         view_note: view_note(t, view),
+        notice: import_notice(t, history.rows.iter().map(|row| &row.change.provenance)),
         empty,
         rows,
         older: history.older.map(|after| LinkView {
@@ -490,6 +582,7 @@ fn statement(t: T, provenance: &Provenance) -> String {
             kind: HistoryChangeKind::Proposal | HistoryChangeKind::Rollback,
             proposed_by,
             accepted_by,
+            ..
         } => t
             .msg(Key::ChangeSignedBy)
             .with("proposer", who_text(t, proposed_by))
@@ -567,6 +660,7 @@ fn accepted_facts(t: T, slug: &str, provenance: &Provenance, authority: &Authori
         kind: HistoryChangeKind::Proposal | HistoryChangeKind::Rollback,
         proposed_by,
         accepted_by,
+        ..
     } = provenance
     else {
         return people(t, provenance)

@@ -4,6 +4,9 @@
 {% include "wiki_nav.html" %}
 <h1>{{ heading }}</h1>
 {% if let Some(note) = view_note %}<p class="view-note">{{ note }}</p>
+{% endif %}{% if !notice.is_empty() %}<div class="import-notice" role="note">
+{% for line in notice %}<p>{{ line }}</p>
+{% endfor %}</div>
 {% endif %}{% if rows.is_empty() %}<p>{{ empty }}</p>
 {% else %}<p>{{ page.get(Key::HistoryIntro) }}</p>
 <ol class="history">

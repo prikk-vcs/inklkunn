@@ -340,6 +340,7 @@ fn the_people_are_what_the_message_says_and_nothing_is_guessed() {
             accepted_by: Who::Person {
                 name: "Ren Sato".to_owned()
             },
+            imported: None,
         }
     );
     assert_eq!(
@@ -348,6 +349,7 @@ fn the_people_are_what_the_message_says_and_nothing_is_guessed() {
             kind: ChangeKind::System,
             proposed_by: Who::Service,
             accepted_by: Who::Service,
+            imported: None,
         }
     );
     let foreign = &by_number(4).change;

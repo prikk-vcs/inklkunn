@@ -107,6 +107,73 @@ pub enum ChangeKind {
     System,
 }
 
+/// One part of what a source said of a revision, as a surface may show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Said<T> {
+    /// The source said it.
+    Given(T),
+    /// The source said nothing of it.
+    NotGiven,
+    /// The source hid it before the bundle was made: **said as the source's**, never as moderation's.
+    HiddenAtSource,
+    /// Moderation of this wiki hides it now (RFC 006 D-8): nothing of it is shown.
+    HiddenHere,
+}
+
+/// The author the source names: a name as text, and a kind. **Never an account of this service**: nothing links it to one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceName {
+    /// The name, as the source gave it (one line, bounded).
+    pub name: String,
+    /// The kind the source gave.
+    pub kind: inklkunn_signer::message::SourceAuthorKind,
+}
+
+/// What the source said of one revision an import replayed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedRevision {
+    /// The source's id of the revision.
+    pub rev: String,
+    /// When the source says it was made, in Unix seconds (UTC): **the source's date**, never the day of the import.
+    pub at: i64,
+    /// Who wrote it, at the source.
+    pub author: Said<SourceName>,
+    /// The summary, at the source.
+    pub summary: Said<String>,
+    /// Flagged minor at the source.
+    pub minor: bool,
+    /// Flagged automated at the source.
+    pub automated: bool,
+}
+
+/// What an import of a bundle says of a change it made (RFC 007 D-3): the bundle's notice, and, for a replayed revision, what the
+/// source said of that revision. **Data about where the text came from, never who signed**: nothing in it is an account of this service
+/// and a surface never links it to one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Imported {
+    /// The notice of the bundle (the source's name and address as text, the day, the checksums, whose word the licence is).
+    pub notice: inklkunn_signer::message::ImportNotice,
+    /// What the source said of the revision, for a change that replays one (the first change and the change at the end have none).
+    pub revision: Option<ImportedRevision>,
+}
+
+impl Imported {
+    /// This with what moderation hides of the change taken out (RFC 006 D-8): a hidden author or summary is [`Said::HiddenHere`], and
+    /// nothing of what it said remains.
+    #[must_use]
+    pub fn without(mut self, hidden: &Hidden) -> Imported {
+        if let Some(r) = &mut self.revision {
+            if hidden.author().is_some() {
+                r.author = Said::HiddenHere;
+            }
+            if hidden.summary().is_some() {
+                r.summary = Said::HiddenHere;
+            }
+        }
+        self
+    }
+}
+
 /// What a change's message says about the people.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Provenance {
@@ -118,6 +185,8 @@ pub enum Provenance {
         proposed_by: Who,
         /// Who accepted it.
         accepted_by: Who,
+        /// What the import of a bundle says of it, when it is one.
+        imported: Option<Imported>,
     },
     /// A message that is not in that form: the change was sealed by someone else, or before the contract. It
     /// names nobody, and nobody is assumed.
@@ -161,17 +230,21 @@ impl ChangeInfo {
         if hidden.summary().is_some() {
             self.summary.clear();
         }
-        if hidden.author().is_some()
-            && let Provenance::Recorded {
-                proposed_by,
-                accepted_by,
-                ..
-            } = &mut self.provenance
+        if let Provenance::Recorded {
+            proposed_by,
+            accepted_by,
+            imported,
+            ..
+        } = &mut self.provenance
         {
-            if accepted_by == proposed_by {
-                *accepted_by = Who::Hidden;
+            if hidden.author().is_some() {
+                if accepted_by == proposed_by {
+                    *accepted_by = Who::Hidden;
+                }
+                *proposed_by = Who::Hidden;
             }
-            *proposed_by = Who::Hidden;
+            // What the source said of the revision is hidden as the change's own author and summary are.
+            *imported = imported.take().map(|i| i.without(&hidden));
         }
         self.hidden = hidden;
         self
@@ -595,7 +668,34 @@ fn provenance(message: &Message) -> Provenance {
         },
         proposed_by: who(message.proposed_by()),
         accepted_by: who(message.accepted_by()),
+        imported: imported_of(message),
     }
+}
+
+/// What the message says of the bundle it was imported from, if it was imported from one.
+pub(super) fn imported_of(message: &Message) -> Option<Imported> {
+    message.notice().map(|notice| Imported {
+        notice: notice.clone(),
+        revision: message.source().map(|s| ImportedRevision {
+            rev: s.rev().to_owned(),
+            at: s.at(),
+            author: match s.author() {
+                Some(a) => Said::Given(SourceName {
+                    name: a.name().to_owned(),
+                    kind: a.kind(),
+                }),
+                None if s.author_hidden() => Said::HiddenAtSource,
+                None => Said::NotGiven,
+            },
+            summary: match s.summary() {
+                Some(text) => Said::Given(text.to_owned()),
+                None if s.summary_hidden() => Said::HiddenAtSource,
+                None => Said::NotGiven,
+            },
+            minor: s.is_minor(),
+            automated: s.is_automated(),
+        }),
+    })
 }
 
 /// The summary, the people and the proposal of a block: from the first of its patch messages that is in CT-03

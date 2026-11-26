@@ -123,6 +123,7 @@ pub use history::{
     MAX_DIFF_LINES, MAX_INSPECTED_PER_REQUEST, MAX_SHOWS_PER_REQUEST, MAX_WINDOW, PageDiff,
     PageEvent, PageHistory, Provenance, Subject, Who,
 };
+pub use history::{Imported, ImportedRevision, Said, SourceName};
 pub use holders::{
     LaterHolder, LaterHolders, MAX_HOLDER_CHECKS, MAX_HOLDER_PATHS, MAX_HOLDERS_LISTED,
 };

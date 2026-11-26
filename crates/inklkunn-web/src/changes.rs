@@ -197,6 +197,10 @@ pub(crate) fn people_lines(t: T, row: &ChangeRow) -> Vec<String> {
     if row.kind == ChangeKind::Foreign {
         return vec![t.get(Key::ChangesForeign)];
     }
+    // A replayed revision of an import says what the source said of it (RFC 007 D-3), and not that the wiki made it.
+    if let Some(revision) = row.imported.as_ref().and_then(|i| i.revision.as_ref()) {
+        return vec![crate::history::imported_sentence(t, revision)];
+    }
     match (&row.proposed_by, &row.accepted_by) {
         (Some(p), Some(a)) if p == a => vec![
             t.msg(Key::ChangesMadeBy)
@@ -281,6 +285,7 @@ struct ChangesTpl<'a> {
     active: Vec<String>,
     clear_href: String,
     rows: Vec<RowView>,
+    notice: Vec<String>,
     notes: Vec<String>,
     feed_href: String,
 }
@@ -443,6 +448,14 @@ fn render_changes(page: &Page, listed: &Listed, filter: &ChangeFilter) -> Respon
             .iter()
             .map(|r| row_view(t, page, wiki, r))
             .collect(),
+        notice: crate::history::notice_lines(
+            t,
+            listed
+                .rows
+                .iter()
+                .find_map(|r| r.imported.as_ref())
+                .map(|i| &i.notice),
+        ),
         notes,
         feed_href: format!("/{}/-/changes.atom{}", wiki.slug, query_of(filter)),
     }

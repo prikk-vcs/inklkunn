@@ -416,6 +416,39 @@ pub const CATALOG: &[Entry] = &[
         "people.unrecorded",
         "The record of this change does not say who made it.",
     ),
+    msg(
+        "people.imported",
+        "Imported. Originally by {name}, {date}: {summary}",
+    ),
+    msg(
+        "people.imported_no_summary",
+        "Imported. Originally by {name}, {date}",
+    ),
+    msg("people.imported_name", "{name} (a name at the source)"),
+    msg("people.imported_hidden", "hidden at the source"),
+    msg(
+        "people.imported_unnamed",
+        "an author the source did not name",
+    ),
+    msg("people.imported_date", "{date} (originally)"),
+    msg("import.notice", "Imported from {source} on {date}."),
+    msg("import.notice_source", "{name} ({address})"),
+    msg(
+        "import.notice_source_unnamed",
+        "a bundle that names no source",
+    ),
+    msg(
+        "import.notice_checks_verified",
+        "The files of the bundle were checked against its checksums.",
+    ),
+    msg(
+        "import.notice_checks_none",
+        "The bundle had no checksums, so its files were not checked.",
+    ),
+    msg(
+        "import.notice_license_declared",
+        "The license was declared by the importing admin; the bundle declared none.",
+    ),
     msg("flag.undo", "Undoes earlier changes"),
     msg("flag.import", "Import"),
     msg("flag.service", "Made by the wiki service itself"),

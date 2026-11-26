@@ -478,6 +478,36 @@ pub const CATALOG: &[Entry] = &[
         "people.unrecorded",
         "この変更の記録には、誰が行ったかが書かれていません。",
     ),
+    msg(
+        "people.imported",
+        "インポートされた変更。元の作成者: {name}、{date}: {summary}",
+    ),
+    msg(
+        "people.imported_no_summary",
+        "インポートされた変更。元の作成者: {name}、{date}",
+    ),
+    msg("people.imported_name", "{name}（出典での名前）"),
+    msg("people.imported_hidden", "出典で非表示"),
+    msg("people.imported_unnamed", "出典に名前のない作成者"),
+    msg("people.imported_date", "{date}（元の日時）"),
+    msg(
+        "import.notice",
+        "{source} から {date} にインポートしました。",
+    ),
+    msg("import.notice_source", "{name}（{address}）"),
+    msg("import.notice_source_unnamed", "出典を示していないバンドル"),
+    msg(
+        "import.notice_checks_verified",
+        "バンドルのファイルは、チェックサムと照合しました。",
+    ),
+    msg(
+        "import.notice_checks_none",
+        "バンドルにチェックサムがなかったため、ファイルの照合は行っていません。",
+    ),
+    msg(
+        "import.notice_license_declared",
+        "ライセンスは、バンドルではなく、インポートを実行した管理者が宣言したものです。",
+    ),
     msg("flag.undo", "以前の変更を取り消す変更"),
     msg("flag.import", "インポート"),
     msg("flag.service", "Wiki サービス自身が行った変更"),
