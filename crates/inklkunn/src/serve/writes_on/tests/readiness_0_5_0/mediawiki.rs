@@ -6,7 +6,8 @@ use super::*;
 
 /// The template the story gives the `wikipedia` prefix: its query has an `&`, which a page must write as `&amp;`.
 const WIKIPEDIA: &str = "https://en.wikipedia.org/w/index.php?search={title}&ns0=1";
-const WIKIPEDIA_COMPOST: &str = "href=\"https://en.wikipedia.org/w/index.php?search=Compost&amp;ns0=1\"";
+const WIKIPEDIA_COMPOST: &str =
+    "href=\"https://en.wikipedia.org/w/index.php?search=Compost&amp;ns0=1\"";
 
 /// The minute-precision times a text gives as `… UTC (originally)`, in the order the text has them.
 fn originally(text: &str) -> Vec<String> {
@@ -70,11 +71,26 @@ impl Proof {
             &format!("{out}{err}"),
         );
         for (what, line) in [
-            ("the revisions it would replay, one block each", "7 revision(s) would be replayed, one block each"),
-            ("the revision the source hid, counted and not replayed", "suppressions kept: 1 record(s) with their text hidden at the wiki it was imported from (not replayed)"),
-            ("the licence, declared by the admin because the converter wrote none", "licence of the wiki: CC-BY-SA-4.0 (the bundle declares none; declared by the importing admin"),
-            ("the checksums, verified", "checksums: verified, every file against `sha256sums.txt`"),
-            ("the prefix with no map, with how many links use it", "wikipedia: 1 link(s)"),
+            (
+                "the revisions it would replay, one block each",
+                "7 revision(s) would be replayed, one block each",
+            ),
+            (
+                "the revision the source hid, counted and not replayed",
+                "suppressions kept: 1 record(s) with their text hidden at the wiki it was imported from (not replayed)",
+            ),
+            (
+                "the licence, declared by the admin because the converter wrote none",
+                "licence of the wiki: CC-BY-SA-4.0 (the bundle declares none; declared by the importing admin",
+            ),
+            (
+                "the checksums, verified",
+                "checksums: verified, every file against `sha256sums.txt`",
+            ),
+            (
+                "the prefix with no map, with how many links use it",
+                "wikipedia: 1 link(s)",
+            ),
         ] {
             self.t.saw(out.contains(line), what, &out);
         }
@@ -167,7 +183,7 @@ impl Proof {
         ];
         let places: Vec<Option<usize>> = rows.iter().map(|r| said.find(r)).collect();
         self.t.saw(
-            places.iter().all(Option::is_some) && places.windows(2).all(|w| w[0] < w[1]),
+            places.iter().all(Option::is_some) && places.windows(2).all(|w| matches!(w, [a, b] if a < b)),
             "its rows, newest first, each say *Imported. Originally by {name} (a name in the wiki it was imported from), {the source's date} (originally): {the source's summary}*",
             &said,
         );
@@ -183,7 +199,9 @@ impl Proof {
         );
         let notice_day = [day_before.as_str(), day_after.as_str()]
             .into_iter()
-            .map(|d| format!("Imported from Garden Notes (https://garden.example.org/wiki) on {d} "))
+            .map(|d| {
+                format!("Imported from Garden Notes (https://garden.example.org/wiki) on {d} ")
+            })
             .find(|n| said.contains(n.as_str()));
         self.t.saw(
             notice_day.is_some()
@@ -235,7 +253,12 @@ impl Proof {
         // The final pages are the bundle's files.
         let export = self.export("garden", "export-garden-1");
         self.t.did("the operator exports the new wiki as a bundle");
-        for page in ["Composting.md", "Worm bins.md", "Compost heap.md", "Talk/Composting.md"] {
+        for page in [
+            "Composting.md",
+            "Worm bins.md",
+            "Compost heap.md",
+            "Talk/Composting.md",
+        ] {
             let given = std::fs::read(bundle.join("pages").join(page)).unwrap();
             let kept = std::fs::read(export.join("pages").join(page)).unwrap();
             self.t.saw(
@@ -297,7 +320,8 @@ impl Proof {
         );
         let blocks_before = self.blocks_of("garden").len();
         let accepted = accept_in("garden", &mut gwen, &id);
-        self.t.did("Gwen accepts it (the rung the policy names: a maintainer)");
+        self.t
+            .did("Gwen accepts it (the rung the policy names: a maintainer)");
         self.t.saw(
             accepted.status == 200
                 && accepted.body.contains("Signed into the history")
@@ -325,7 +349,10 @@ impl Proof {
         ));
         self.t.did("a reader opens the permalink of change 4, an old revision made before the map existed (W-4: one map per wiki, from the default tip)");
         self.t.saw(
-            links.len() == 4 && old.status == 200 && old.body.contains(WIKIPEDIA_COMPOST) && old.body.contains("rel=\"nofollow ugc\""),
+            links.len() == 4
+                && old.status == 200
+                && old.body.contains(WIKIPEDIA_COMPOST)
+                && old.body.contains("rel=\"nofollow ugc\""),
             "the old revision's link resolves through the wiki's map too",
             &format!("{links:?}\n{}", old.body),
         );
@@ -348,7 +375,9 @@ impl Proof {
         let manifest = std::fs::read_to_string(export.join("wiki-bundle.yaml")).unwrap();
         self.t.did("the operator exports again");
         self.t.saw(
-            manifest.contains("interwiki:") && manifest.contains("wikipedia") && manifest.contains("en.wikipedia.org/w/index.php?search={title}&ns0=1"),
+            manifest.contains("interwiki:")
+                && manifest.contains("wikipedia")
+                && manifest.contains("en.wikipedia.org/w/index.php?search={title}&ns0=1"),
             "the export's manifest carries the map",
             &manifest,
         );
@@ -357,7 +386,56 @@ impl Proof {
                 .unwrap_or_default()
                 .is_empty(),
             "and the bundle carries the governance file of the map",
-            &format!("{:?}", files_under(&export).iter().map(|f| &f.0).collect::<Vec<_>>()),
+            &format!(
+                "{:?}",
+                files_under(&export)
+                    .iter()
+                    .map(|f| &f.0)
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
+
+    /// A bundle that carries its own interwiki map (the hand-written one: neither converter writes one): the import writes the good
+    /// prefixes, leaves out and names the one that is a namespace of its pages, and what the map lacks stays dangling.
+    pub(super) fn a_bundle_with_its_own_interwiki_map_comes_in_with_it(&mut self) {
+        let bundle = fixture("interwiki/bundle");
+        let (status, out, err) = self.import("seeds", "Seed Library", &bundle, &[]);
+        self.t.did("the operator imports the hand-written bundle whose manifest has an interwiki map of three prefixes, one of them a namespace of its pages (`help`)");
+        self.t.saw(
+            status == 0
+                && out.contains("forum: 1 link(s)")
+                && out.contains("help"),
+            "the plan says which prefix the map lacks (`forum`, one link) and names the one it leaves out (`help`)",
+            &format!("{out}{err}"),
+        );
+        let page = self.anonymous.get("/seeds/Seed%20Library");
+        self.t.saw(
+            page.body.contains("href=\"https://en.wikipedia.org/wiki/Seed%20bank\"")
+                && page.body.contains("href=\"https://docs.example.org/read?page=Sowing%20guide\"")
+                && page.body.matches("rel=\"nofollow ugc\"").count() == 2
+                && page.body.contains("wikilink-missing")
+                && page.body.contains("title=forum%3ASeed%20swap"),
+            "the two good prefixes are external links at once, under their templates; `forum:` is a dangling link; nothing was proposed or accepted for it",
+            &page.body,
+        );
+        let policy = self.anonymous.get("/seeds/-/policy");
+        let said = plain(main_of(&policy));
+        self.t.saw(
+            said.contains("https://en.wikipedia.org/wiki/{title}")
+                && said.contains("https://docs.example.org/read?page={title}")
+                && !said.contains("help.example.org"),
+            "the policy page lists the two prefixes and not `help`",
+            &said,
+        );
+        let export = self.export("seeds", "export-seeds");
+        let manifest = std::fs::read_to_string(export.join("wiki-bundle.yaml")).unwrap();
+        self.t.saw(
+            manifest.contains("wikipedia")
+                && manifest.contains("docs")
+                && !manifest.contains("help.example.org"),
+            "and the export's manifest carries the map the wiki has",
+            &manifest,
         );
     }
 }

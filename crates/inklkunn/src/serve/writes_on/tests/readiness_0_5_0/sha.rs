@@ -31,10 +31,13 @@ pub(super) fn sha256_hex(bytes: &[u8]) -> String {
         message.push(0);
     }
     message.extend_from_slice(&(bytes.len() as u64 * 8).to_be_bytes());
-    for block in message.chunks_exact(64) {
+    let (blocks, _) = message.as_chunks::<64>();
+    for block in blocks {
         let mut w: Vec<u32> = block
-            .chunks_exact(4)
-            .map(|c| c.iter().fold(0u32, |acc, b| (acc << 8) | u32::from(*b)))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| u32::from_be_bytes(*c))
             .collect();
         for i in 16..64 {
             let (w15, w2) = (at(&w, i - 15), at(&w, i - 2));

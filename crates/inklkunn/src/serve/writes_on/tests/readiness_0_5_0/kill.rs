@@ -22,7 +22,13 @@ use inklkunn_store::{AuditLog, AuditSink, DisplayName, NewWiki, WikiId};
 impl Proof {
     /// Run the product's import of `bundle` as `slug` and stop it, by a panic, right after `stop`. `during` is called at every step
     /// before the stop, in the process that is importing.
-    fn killed_import(&self, slug: &str, bundle: &Path, stop: ImportStep, during: &dyn Fn(ImportStep)) {
+    fn killed_import(
+        &self,
+        slug: &str,
+        bundle: &Path,
+        stop: ImportStep,
+        during: &dyn Fn(ImportStep),
+    ) {
         let settings = &self.world.settings;
         let layout = self.layout();
         let options = BundleOptions {
@@ -31,7 +37,10 @@ impl Proof {
         };
         let plan = plan_bundle(bundle, &ReadConfig::default(), &options).unwrap();
         assert!(plan.is_importable(), "{}", plan.render());
-        let mut new = NewWiki::new(Slug::new(slug).unwrap(), DisplayName::new("Interrupted").unwrap());
+        let mut new = NewWiki::new(
+            Slug::new(slug).unwrap(),
+            DisplayName::new("Interrupted").unwrap(),
+        );
         new.languages.clone_from(&plan.report.languages);
         new.default_license.clone_from(&plan.report.license);
         let staging = ImportStaging::new();
@@ -80,7 +89,10 @@ impl Proof {
             })
         }));
         std::panic::set_hook(hook);
-        assert!(outcome.is_err(), "the import was not stopped after {stop:?}");
+        assert!(
+            outcome.is_err(),
+            "the import was not stopped after {stop:?}"
+        );
     }
 
     pub(super) fn a_killed_import_is_discarded_by_a_person(&mut self) {
@@ -95,14 +107,27 @@ impl Proof {
         self.killed_import("interrupted", &bundle, ImportStep::Revision(3), &|step| {
             if step == ImportStep::Revision(1) {
                 let id = self.layout().creation_marks().unwrap().remove(0);
-                let asked = self.cli(&["wiki", "discard-unfinished", id.as_str(), "--confirm", id.as_str()]);
-                *alive.borrow_mut() = Some((id.as_str().to_owned(), asked, self.layout().repo_dir(&id).is_dir()));
+                let asked = self.cli(&[
+                    "wiki",
+                    "discard-unfinished",
+                    id.as_str(),
+                    "--confirm",
+                    id.as_str(),
+                ]);
+                *alive.borrow_mut() = Some((
+                    id.as_str().to_owned(),
+                    asked,
+                    self.layout().repo_dir(&id).is_dir(),
+                ));
             }
         });
         self.t.did("the operator imports the MediaWiki bundle as `interrupted`, and the process is killed after the third revision was sealed (a panic that runs no cleanup); while it was running, a second operator asked `wiki discard-unfinished` for it");
         let (id, (status, out, err), repo_kept) = {
             let seen = alive.borrow();
-            let (id, asked, kept) = seen.as_ref().expect("the observer saw the first revision").clone();
+            let (id, asked, kept) = seen
+                .as_ref()
+                .expect("the observer saw the first revision")
+                .clone();
             (id, asked, kept)
         };
         self.t.saw(
@@ -128,7 +153,10 @@ impl Proof {
         );
         let record = inklkunn_store::WikiRecord::from_new(
             wiki_id.clone(),
-            NewWiki::new(Slug::new("interrupted").unwrap(), DisplayName::new("Interrupted").unwrap()),
+            NewWiki::new(
+                Slug::new("interrupted").unwrap(),
+                DisplayName::new("Interrupted").unwrap(),
+            ),
             now(),
         )
         .unwrap();
@@ -146,7 +174,13 @@ impl Proof {
         );
 
         // The next command's sweep reports it and keeps it.
-        let (status, _, err) = self.cli(&["wiki", "create", "after-the-kill", "--name", "After the kill"]);
+        let (status, _, err) = self.cli(&[
+            "wiki",
+            "create",
+            "after-the-kill",
+            "--name",
+            "After the kill",
+        ]);
         self.t.did("the operator's next command (`wiki create after-the-kill`) sweeps what a killed creation left");
         self.t.saw(
             status == 0
@@ -170,14 +204,26 @@ impl Proof {
             &format!("{out}{err}"),
         );
         let other = WikiId::new();
-        let (status, _, err) = self.cli(&["wiki", "discard-unfinished", &id, "--confirm", other.as_str()]);
+        let (status, _, err) = self.cli(&[
+            "wiki",
+            "discard-unfinished",
+            &id,
+            "--confirm",
+            other.as_str(),
+        ]);
         self.t.saw(
             status == 1 && err.contains("is not the id of the creation") && repo.is_dir(),
             "with another id typed it is refused, and nothing is removed",
             &err,
         );
         let kept = self.record("garden").id;
-        let (status, out, err) = self.cli(&["wiki", "discard-unfinished", kept.as_str(), "--confirm", kept.as_str()]);
+        let (status, out, err) = self.cli(&[
+            "wiki",
+            "discard-unfinished",
+            kept.as_str(),
+            "--confirm",
+            kept.as_str(),
+        ]);
         self.t.saw(
             status == 1
                 && (err.contains("no unfinished creation of that id exists") || err.contains("the record of that wiki is stored"))
@@ -187,15 +233,20 @@ impl Proof {
             "for the id of `garden`, a wiki that was imported whole, it is refused and says no unfinished creation exists: the wiki's history is untouched",
             &format!("{out}{err}"),
         );
-        let keys_before = std::fs::read_dir(&self.world.settings.key_dir).unwrap().count();
+        let keys_before = std::fs::read_dir(&self.world.settings.key_dir)
+            .unwrap()
+            .count();
         let (status, out, err) = self.cli(&["wiki", "discard-unfinished", &id, "--confirm", &id]);
-        self.t.did("the person types the id again: `wiki discard-unfinished <id> --confirm <id>`");
+        self.t
+            .did("the person types the id again: `wiki discard-unfinished <id> --confirm <id>`");
         self.t.saw(
             status == 0 && out.contains("removed: nothing of the unfinished creation is left"),
             "it is removed, and says that nothing of it is left",
             &format!("{out}{err}"),
         );
-        let keys_after = std::fs::read_dir(&self.world.settings.key_dir).unwrap().count();
+        let keys_after = std::fs::read_dir(&self.world.settings.key_dir)
+            .unwrap()
+            .count();
         self.t.saw(
             !repo.exists()
                 && self.layout().creation_marks().unwrap().is_empty()
@@ -225,7 +276,10 @@ impl Proof {
             trail
                 == [
                     ("allowed".to_owned(), "removal begun".to_owned()),
-                    ("allowed".to_owned(), "unfinished creation removed".to_owned()),
+                    (
+                        "allowed".to_owned(),
+                        "unfinished creation removed".to_owned(),
+                    ),
                 ],
             "the audit trail has the act twice: before it was done, and when it was",
             &format!("{trail:?}"),
@@ -235,7 +289,9 @@ impl Proof {
         let (status, out, err) = self.import("interrupted", "Interrupted", &bundle, LICENSED);
         self.t.did("the operator imports the same bundle as `interrupted` again: nothing is resumed, the slug is free");
         self.t.saw(
-            status == 0 && self.listed().contains(&"interrupted".to_owned()) && self.layout().creation_marks().unwrap().is_empty(),
+            status == 0
+                && self.listed().contains(&"interrupted".to_owned())
+                && self.layout().creation_marks().unwrap().is_empty(),
             "it comes in whole, and no creation mark is left",
             &format!("{out}{err}"),
         );
@@ -254,7 +310,13 @@ impl Proof {
             &format!("{:?}", self.listed()),
         );
         let late = self.record("stored-late").id;
-        let (status, out, err) = self.cli(&["wiki", "discard-unfinished", late.as_str(), "--confirm", late.as_str()]);
+        let (status, out, err) = self.cli(&[
+            "wiki",
+            "discard-unfinished",
+            late.as_str(),
+            "--confirm",
+            late.as_str(),
+        ]);
         self.t.saw(
             status == 1
                 && err.contains("the record of that wiki is stored, so it is a wiki and not an unfinished creation")
@@ -264,12 +326,15 @@ impl Proof {
             &format!("{out}{err}"),
         );
         let page = self.anonymous.get("/stored-late/Composting");
-        self.t.saw(
-            page.status == 200,
-            "and the server serves it",
-            &page.head,
-        );
-        let (status, _, err) = self.cli(&["wiki", "create", "sweeps-the-mark", "--name", "Sweeps the mark"]);
+        self.t
+            .saw(page.status == 200, "and the server serves it", &page.head);
+        let (status, _, err) = self.cli(&[
+            "wiki",
+            "create",
+            "sweeps-the-mark",
+            "--name",
+            "Sweeps the mark",
+        ]);
         self.t.saw(
             status == 0 && self.layout().creation_marks().unwrap().is_empty() && !err.contains("discard-unfinished"),
             "the next command's sweep finishes it: it removes the mark, and says nothing of discarding",

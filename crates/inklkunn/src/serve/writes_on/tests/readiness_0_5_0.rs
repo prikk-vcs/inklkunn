@@ -40,12 +40,12 @@ use super::knowledge::approve_and_accept;
 use super::*;
 
 mod bookstack;
-mod mediawiki;
 mod kill;
+mod mediawiki;
 mod refusals;
 mod roundtrip;
-mod surfaces;
 mod sha;
+mod surfaces;
 
 const FIXTURES: &str = "../inklkunn-core/tests/fixtures/interchange";
 
@@ -245,13 +245,7 @@ impl Proof {
     }
 
     /// A person who comes by invitation to the wiki `slug` and signs in (`join`, for a wiki that is not `handbook`).
-    fn join_in(
-        &self,
-        slug: &str,
-        login: &'static str,
-        name: &'static str,
-        role: Role,
-    ) -> Person {
+    fn join_in(&self, slug: &str, login: &'static str, name: &'static str, role: Role) -> Person {
         let link = self.invite_to(slug, role);
         let password = password_for(login);
         let mut opener = self.running.browser();
@@ -274,7 +268,13 @@ impl Proof {
     }
 
     /// What the operator's `wiki import-bundle` says and does for `slug` from `bundle`, with `extra` options.
-    fn import(&self, slug: &str, name: &str, bundle: &Path, extra: &[&str]) -> (i32, String, String) {
+    fn import(
+        &self,
+        slug: &str,
+        name: &str,
+        bundle: &Path,
+        extra: &[&str],
+    ) -> (i32, String, String) {
         let mut args = vec![
             "wiki",
             "import-bundle",
@@ -298,13 +298,8 @@ impl Proof {
     /// The operator's `wiki export <slug> --bundle <new directory in the scratch directory>`: where it was written.
     fn export(&self, slug: &str, name: &str) -> PathBuf {
         let dest = self.world.tmp.0.join(name);
-        let (status, out, err) = self.cli(&[
-            "wiki",
-            "export",
-            slug,
-            "--bundle",
-            dest.to_str().unwrap(),
-        ]);
+        let (status, out, err) =
+            self.cli(&["wiki", "export", slug, "--bundle", dest.to_str().unwrap()]);
         assert_eq!(status, 0, "{out}{err}");
         dest
     }
@@ -347,6 +342,7 @@ fn the_interchange_works_end_to_end_on_a_real_prikk() {
     );
 
     p.a_mediawiki_dump_comes_in_with_its_history();
+    p.a_bundle_with_its_own_interwiki_map_comes_in_with_it();
     p.a_bookstack_export_comes_in();
     p.a_round_trip();
     p.refusals_are_named_and_write_nothing();

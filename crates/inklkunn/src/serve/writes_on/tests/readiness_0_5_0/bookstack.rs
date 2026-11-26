@@ -42,7 +42,10 @@ impl Proof {
             &said,
         );
         for (path, what) in [
-            ("/allotment/Allotment%20Handbook/Sowing/Seed%20trays", "a Markdown page in a chapter of a book"),
+            (
+                "/allotment/Allotment%20Handbook/Sowing/Seed%20trays",
+                "a Markdown page in a chapter of a book",
+            ),
             ("/allotment/Calendar", "the HTML page, kept as HTML"),
             ("/allotment/Index", "the first page of the book"),
         ] {
@@ -65,7 +68,8 @@ impl Proof {
 
         // The attachments and their sidecars, kept as they are.
         let export = self.export("allotment", "export-allotment");
-        self.t.did("the operator exports it: the attachments and their sidecars are in the bundle");
+        self.t
+            .did("the operator exports it: the attachments and their sidecars are in the bundle");
         for rel in [
             "attachments/tray.png",
             "attachments/tray.png.meta.yaml",
@@ -82,7 +86,8 @@ impl Proof {
                 &String::from_utf8_lossy(&kept),
             );
         }
-        let sidecar = std::fs::read_to_string(export.join("attachments/tray.png.meta.yaml")).unwrap();
+        let sidecar =
+            std::fs::read_to_string(export.join("attachments/tray.png.meta.yaml")).unwrap();
         self.t.saw(
             !sidecar.contains("license"),
             "the BookStack converter wrote no licence in the sidecar, and the import did not write one: a licence is never invented, the attachment is the wiki's",
@@ -129,7 +134,9 @@ impl Proof {
         );
 
         // What a reader can do with an attachment in this build.
-        let img = seed.body.contains("<img src=\"../../../attachments/tray.png\"");
+        let img = seed
+            .body
+            .contains("<img src=\"../../../attachments/tray.png\"");
         let tray = self.anonymous.get("/allotment/attachments/tray.png");
         let raw = self.anonymous.get("/allotment/-/raw/attachments/tray.png");
         self.t.saw(

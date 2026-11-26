@@ -84,7 +84,11 @@ impl Proof {
                 "{path}: the description stays the first Link: {links:?}"
             );
             let Some(cursor) = body.get("next_cursor").and_then(|c| c.as_str()) else {
-                assert_eq!(links.len(), 1, "{path}: the last page has no next: {links:?}");
+                assert_eq!(
+                    links.len(),
+                    1,
+                    "{path}: the last page has no next: {links:?}"
+                );
                 return walked;
             };
             assert_eq!(links.len(), 2, "{path}: {links:?}");
@@ -113,7 +117,9 @@ impl Proof {
             .get(from..)
             .and_then(|rest| rest.find(&want))
             .map(|i| from + i)
-            .unwrap_or_else(|| panic!("no link to hide a `{kind}` after `{after}`:\n{}", page.body));
+            .unwrap_or_else(|| {
+                panic!("no link to hide a `{kind}` after `{after}`:\n{}", page.body)
+            });
         body.get(at + MODERATE.len() + 1..)
             .unwrap_or_default()
             .split('"')
@@ -132,10 +138,18 @@ impl Proof {
 
         // What there is to list.
         let one = propose_edit(&mut noor, "Help", "Open proposal one", |t| {
-            t.replacen("It never claims more than it checked.", "It never claims more than it checked, one.", 1)
+            t.replacen(
+                "It never claims more than it checked.",
+                "It never claims more than it checked, one.",
+                1,
+            )
         });
         let two = propose_edit(&mut noor, "Help", "Open proposal two", |t| {
-            t.replacen("It never claims more than it checked.", "It never claims more than it checked, two.", 1)
+            t.replacen(
+                "It never claims more than it checked.",
+                "It never claims more than it checked, two.",
+                1,
+            )
         });
         let draft_body = format!(
             "{{\"summary\":\"{DRAFT_WORD} a draft only Noor sees\",\"submit\":false,\"files\":[{{\"title\":\"Seeds\",\"text\":{}}}]}}",
@@ -182,7 +196,9 @@ impl Proof {
         let mut id_sets: Vec<BTreeSet<String>> = Vec::new();
         for (name, who) in viewers {
             let walked = self.walk(who, &format!("{API}/proposals?limit=3"));
-            self.t.did(&format!("{name} walks `listProposals?limit=3` by the `Link` header's `rel=\"next\"`"));
+            self.t.did(&format!(
+                "{name} walks `listProposals?limit=3` by the `Link` header's `rel=\"next\"`"
+            ));
             let ids: BTreeSet<String> = walked
                 .items
                 .iter()
@@ -222,7 +238,7 @@ impl Proof {
         }
         let _ = two;
         self.t.saw(
-            id_sets.windows(2).all(|w| w[0] == w[1]),
+            id_sets.windows(2).all(|w| matches!(w, [a, b] if a == b)),
             "the three readers walk the same nine proposals: a list shows what the same person's pages show, and the pages show the same to each (the list names no author, so there is nothing for a moderator to see more of)",
             &format!("{id_sets:?}"),
         );
@@ -268,11 +284,18 @@ impl Proof {
         // listProposalComments.
         for (name, who) in viewers {
             let walked = self.walk(who, &format!("{API}/proposals/{one}/comments?limit=2"));
-            self.t.did(&format!("{name} walks `listProposalComments?limit=2` of the first open proposal"));
+            self.t.did(&format!(
+                "{name} walks `listProposalComments?limit=2` of the first open proposal"
+            ));
             let bodies: Vec<String> = walked
                 .items
                 .iter()
-                .map(|i| i.get("body").and_then(|b| b.as_str()).unwrap_or("?").to_owned())
+                .map(|i| {
+                    i.get("body")
+                        .and_then(|b| b.as_str())
+                        .unwrap_or("?")
+                        .to_owned()
+                })
                 .collect();
             self.t.saw(
                 walked.pages == 3 && bodies == ["first", "second", "", "fourth", "fifth"],
@@ -305,14 +328,19 @@ impl Proof {
 
         // The feed.
         for (name, reply) in [
-            ("an anonymous reader", self.anonymous.get("/handbook/-/proposals.atom")),
+            (
+                "an anonymous reader",
+                self.anonymous.get("/handbook/-/proposals.atom"),
+            ),
             ("Noor", noor.browser.get("/handbook/-/proposals.atom")),
             ("Maya", maya.browser.get("/handbook/-/proposals.atom")),
         ] {
             self.t.did(&format!("{name} reads the proposals feed"));
             self.t.saw(
                 reply.status == 200
-                    && reply.header("content-type").is_some_and(|c| c.starts_with("application/atom+xml"))
+                    && reply
+                        .header("content-type")
+                        .is_some_and(|c| c.starts_with("application/atom+xml"))
                     && reply.body.starts_with("<?xml")
                     && reply.body.trim_end().ends_with("</feed>"),
                 "it is an Atom feed",
@@ -326,15 +354,25 @@ impl Proof {
                 &reply.body,
             );
             self.t.saw(
-                reply.body.contains("<title>Proposed: (summary hidden)</title>")
-                    && reply.body.contains("<author><name>(hidden)</name></author>"),
+                reply
+                    .body
+                    .contains("<title>Proposed: (summary hidden)</title>")
+                    && reply
+                        .body
+                        .contains("<author><name>(hidden)</name></author>"),
                 "the hidden revision's entries say *(summary hidden)* and name no author",
                 &reply.body,
             );
             self.t.saw(
-                [HIDDEN_SUMMARY_OF_C, ZORA_NAME, HIDDEN_COMMENT, DRAFT_WORD, HIDDEN_TEXT_OF_C]
-                    .iter()
-                    .all(|n| !reply.body.contains(n)),
+                [
+                    HIDDEN_SUMMARY_OF_C,
+                    ZORA_NAME,
+                    HIDDEN_COMMENT,
+                    DRAFT_WORD,
+                    HIDDEN_TEXT_OF_C,
+                ]
+                .iter()
+                .all(|n| !reply.body.contains(n)),
                 "and the feed carries nothing that was hidden and nothing of the draft",
                 &reply.body,
             );
@@ -347,12 +385,23 @@ impl Proof {
         );
 
         // A restricted wiki is absent to an anonymous reader, on each of the three.
-        let (status, out, err) = self.cli(&["wiki", "create", "vault", "--name", "Vault", "--visibility", "restricted"]);
+        let (status, out, err) = self.cli(&[
+            "wiki",
+            "create",
+            "vault",
+            "--name",
+            "Vault",
+            "--visibility",
+            "restricted",
+        ]);
         self.t.did("the operator makes a restricted wiki `vault`, with the server running; an anonymous reader asks for the three surfaces of it, and of a wiki that does not exist");
         assert_eq!(status, 0, "{out}{err}");
         for (what, tail) in [
             ("listProposals", "/-/api/v1/proposals"),
-            ("listProposalComments", "/-/api/v1/proposals/01a2183b-9453-7072-a902-6bc581b179c5/comments"),
+            (
+                "listProposalComments",
+                "/-/api/v1/proposals/01a2183b-9453-7072-a902-6bc581b179c5/comments",
+            ),
             ("the proposals feed", "/-/proposals.atom"),
         ] {
             let (hidden, absent) = (

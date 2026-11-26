@@ -101,7 +101,14 @@ fn cases() -> Vec<Case> {
         Case {
             tag: "checksum-lies",
             from: MEDIAWIKI,
-            make: |d| replace_in(d, "pages/Composting.md", "turns kitchen scraps", "turnz kitchen scraps"),
+            make: |d| {
+                replace_in(
+                    d,
+                    "pages/Composting.md",
+                    "turns kitchen scraps",
+                    "turnz kitchen scraps",
+                )
+            },
             env: &[],
             options: LICENSED,
             name: "pages/Composting.md",
@@ -121,7 +128,13 @@ fn cases() -> Vec<Case> {
         Case {
             tag: "extra-file-read",
             from: MEDIAWIKI,
-            make: |d| std::fs::write(d.join("pages/Extra.md"), "---\nid: extra\ntitle: Extra\n---\n\nnot in the checksums\n").unwrap(),
+            make: |d| {
+                std::fs::write(
+                    d.join("pages/Extra.md"),
+                    "---\nid: extra\ntitle: Extra\n---\n\nnot in the checksums\n",
+                )
+                .unwrap()
+            },
             env: &[],
             options: LICENSED,
             name: "pages/Extra.md",
@@ -168,7 +181,14 @@ fn cases() -> Vec<Case> {
         Case {
             tag: "escaping-checksums-file",
             from: MEDIAWIKI,
-            make: |d| replace_in(d, "wiki-bundle.yaml", "checksums: sha256sums.txt", "checksums: ../sums.txt"),
+            make: |d| {
+                replace_in(
+                    d,
+                    "wiki-bundle.yaml",
+                    "checksums: sha256sums.txt",
+                    "checksums: ../sums.txt",
+                )
+            },
             env: &[],
             options: LICENSED,
             name: "wiki-bundle.yaml",
@@ -197,7 +217,9 @@ fn cases() -> Vec<Case> {
             tag: "record-digest",
             from: MEDIAWIKI,
             make: |d| {
-                change_line(d, "history/mw:101.jsonl", 2, |v| set(v, "sha256", "a".repeat(64)));
+                change_line(d, "history/mw:101.jsonl", 2, |v| {
+                    set(v, "sha256", "a".repeat(64))
+                });
                 seal(d);
             },
             env: &[],
@@ -210,7 +232,12 @@ fn cases() -> Vec<Case> {
             tag: "address-in-users",
             from: MEDIAWIKI,
             make: |d| {
-                replace_in(d, "users.yaml", "  name: Mira\n", "  name: Mira\n  email: mira@example.org\n");
+                replace_in(
+                    d,
+                    "users.yaml",
+                    "  name: Mira\n",
+                    "  name: Mira\n  email: mira@example.org\n",
+                );
                 seal(d);
             },
             env: &[],
@@ -236,7 +263,9 @@ fn cases() -> Vec<Case> {
             tag: "time-order",
             from: MEDIAWIKI,
             make: |d| {
-                change_line(d, "history/mw:101.jsonl", 2, |v| set(v, "at", "2025-03-01T00:00:00Z"));
+                change_line(d, "history/mw:101.jsonl", 2, |v| {
+                    set(v, "at", "2025-03-01T00:00:00Z")
+                });
                 seal(d);
             },
             env: &[],
@@ -343,7 +372,11 @@ impl Proof {
     pub(super) fn refusals_are_named_and_write_nothing(&mut self) {
         self.t.part("(D) refusals, each by name, each with nothing written (RFC 007 D-1, D-4, D-5; criteria 6 and 7)");
         let before = self.untouched();
-        let seeds = || std::fs::read_dir(&self.world.settings.seed_dir).unwrap().count();
+        let seeds = || {
+            std::fs::read_dir(&self.world.settings.seed_dir)
+                .unwrap()
+                .count()
+        };
         self.t.note(&format!(
             "before: {} wikis listed, {} paths under the data directory, {} creation marks, {} import acts in the audit trail",
             before.wikis.len(),
@@ -364,7 +397,10 @@ impl Proof {
             ];
             args.extend_from_slice(case.options);
             let (status, out, err) = self.cli_with(case.env, &args);
-            self.t.did(&format!("the operator offers {}: `wiki import-bundle refused <the copy>`", case.what));
+            self.t.did(&format!(
+                "the operator offers {}: `wiki import-bundle refused <the copy>`",
+                case.what
+            ));
             self.t.saw(
                 status == 1,
                 "the command exits with status 1",
@@ -373,11 +409,16 @@ impl Proof {
             self.t.saw(
                 out.lines()
                     .any(|l| l.trim_start().starts_with(case.name) && l.contains(case.rule)),
-                &format!("the plan names `{}` and the rule `{}`", case.name, case.rule),
+                &format!(
+                    "the plan names `{}` and the rule `{}`",
+                    case.name, case.rule
+                ),
                 &out,
             );
             self.t.saw(
-                err.contains("refused, so none of the bundle would be imported; nothing was written"),
+                err.contains(
+                    "refused, so none of the bundle would be imported; nothing was written",
+                ),
                 "and the command says that nothing was written",
                 &err,
             );
@@ -420,22 +461,43 @@ impl Proof {
     fn leaving_out_the_incompatible_leaves_out_exactly_those(&mut self, before: &Untouched) {
         // An attachment whose sidecar names a licence the wiki cannot take.
         let dir = self.copy_for("licence-sidecar", "sidecars/bundle");
-        replace_in(&dir, "attachments/notes.txt.meta.yaml", "license: CC-BY-4.0", "license: CC-BY-NC-4.0");
+        replace_in(
+            &dir,
+            "attachments/notes.txt.meta.yaml",
+            "license: CC-BY-4.0",
+            "license: CC-BY-NC-4.0",
+        );
         seal(&dir);
         let (status, out, err) = self.import("orchard-lite", "Orchard Lite", &dir, &[]);
         self.t.did("the operator offers the hand-written bundle of per-file licences with one sidecar changed to CC-BY-NC-4.0");
         self.t.saw(
             status == 1
-                && out.lines().any(|l| l.trim_start().starts_with("attachments/notes.txt") && l.contains("CC-BY-NC-4.0")),
+                && out.lines().any(|l| {
+                    l.trim_start().starts_with("attachments/notes.txt")
+                        && l.contains("CC-BY-NC-4.0")
+                }),
             "it is refused, naming the attachment and the licence",
             &format!("{out}{err}"),
         );
-        let given = self.cli(&["wiki", "import-bundle", "orchard-lite", dir.to_str().unwrap(), "--name", "Orchard Lite", "--leave-out-incompatible"]);
-        self.t.did("and again with `--leave-out-incompatible`: there is no flag that imports it");
+        let given = self.cli(&[
+            "wiki",
+            "import-bundle",
+            "orchard-lite",
+            dir.to_str().unwrap(),
+            "--name",
+            "Orchard Lite",
+            "--leave-out-incompatible",
+        ]);
+        self.t
+            .did("and again with `--leave-out-incompatible`: there is no flag that imports it");
         self.t.saw(
             given.0 == 0
-                && given.1.contains("left out for their licence (--leave-out-incompatible):")
-                && given.1.contains("attachment attachments/notes.txt: CC-BY-NC-4.0"),
+                && given
+                    .1
+                    .contains("left out for their licence (--leave-out-incompatible):")
+                && given
+                    .1
+                    .contains("attachment attachments/notes.txt: CC-BY-NC-4.0"),
             "the run leaves it out and names it",
             &format!("{}{}", given.1, given.2),
         );
@@ -452,22 +514,43 @@ impl Proof {
 
         // A page whose own licence the wiki cannot take, with its history.
         let dir = self.copy_for("licence-page", "interwiki/bundle");
-        replace_in(&dir, "pages/Seed Library.md", "title: Seed Library\n", "title: Seed Library\nlicense: CC-BY-NC-4.0\n");
+        replace_in(
+            &dir,
+            "pages/Seed Library.md",
+            "title: Seed Library\n",
+            "title: Seed Library\nlicense: CC-BY-NC-4.0\n",
+        );
         seal(&dir);
         let (status, out, _) = self.import("seeds-lite", "Seeds Lite", &dir, &[]);
         self.t.did("the operator offers the bundle with an interwiki map, one of whose two pages is changed to CC-BY-NC-4.0");
         self.t.saw(
             status == 1
-                && out.lines().any(|l| l.trim_start().starts_with("pages/Seed Library.md") && l.contains("CC-BY-NC-4.0")),
+                && out.lines().any(|l| {
+                    l.trim_start().starts_with("pages/Seed Library.md")
+                        && l.contains("CC-BY-NC-4.0")
+                }),
             "it is refused, naming the page and the licence",
             &out,
         );
-        let given = self.cli(&["wiki", "import-bundle", "seeds-lite", dir.to_str().unwrap(), "--name", "Seeds Lite", "--leave-out-incompatible"]);
-        self.t.saw(given.0 == 0, "and `--leave-out-incompatible` imports the other", &format!("{}{}", given.1, given.2));
+        let given = self.cli(&[
+            "wiki",
+            "import-bundle",
+            "seeds-lite",
+            dir.to_str().unwrap(),
+            "--name",
+            "Seeds Lite",
+            "--leave-out-incompatible",
+        ]);
+        self.t.saw(
+            given.0 == 0,
+            "and `--leave-out-incompatible` imports the other",
+            &format!("{}{}", given.1, given.2),
+        );
         let export = self.export("seeds-lite", "export-seeds-lite");
         let files: Vec<String> = files_under(&export).into_iter().map(|f| f.0).collect();
         self.t.saw(
-            files.contains(&"pages/Help/Sowing.md".to_owned()) && !files.contains(&"pages/Seed Library.md".to_owned()),
+            files.contains(&"pages/Help/Sowing.md".to_owned())
+                && !files.contains(&"pages/Seed Library.md".to_owned()),
             "exactly that page is left out; `Help/Sowing` is in",
             &format!("{files:?}"),
         );
@@ -482,14 +565,39 @@ impl Proof {
     fn no_history_is_the_way_past_the_revision_cap(&mut self) {
         let bundle = fixture(MEDIAWIKI);
         let cap = [("INKLKUNN_IMPORT_MAX_REVISIONS", "3")];
-        let (status, out, _) = self.cli_with(&cap, &["wiki", "import-bundle", "garden-flat", bundle.to_str().unwrap(), "--name", "Garden Flat", "--bundle-license", "CC-BY-SA-4.0"]);
+        let (status, out, _) = self.cli_with(
+            &cap,
+            &[
+                "wiki",
+                "import-bundle",
+                "garden-flat",
+                bundle.to_str().unwrap(),
+                "--name",
+                "Garden Flat",
+                "--bundle-license",
+                "CC-BY-SA-4.0",
+            ],
+        );
         self.t.did("the operator offers the MediaWiki bundle again, with the cap at 3, and then with `--no-history`");
         self.t.saw(
             status == 1 && out.contains("and the cap is 3") && out.contains("`--no-history`"),
             "over the cap it is refused with the count, the cap and the way on (`--no-history`)",
             &out,
         );
-        let (status, out, err) = self.cli_with(&cap, &["wiki", "import-bundle", "garden-flat", bundle.to_str().unwrap(), "--name", "Garden Flat", "--bundle-license", "CC-BY-SA-4.0", "--no-history"]);
+        let (status, out, err) = self.cli_with(
+            &cap,
+            &[
+                "wiki",
+                "import-bundle",
+                "garden-flat",
+                bundle.to_str().unwrap(),
+                "--name",
+                "Garden Flat",
+                "--bundle-license",
+                "CC-BY-SA-4.0",
+                "--no-history",
+            ],
+        );
         self.t.saw(
             status == 0 && out.contains("history: not imported (--no-history)"),
             "with `--no-history` it is imported, and the plan says the history is not",
@@ -505,7 +613,9 @@ impl Proof {
         );
         let page = self.anonymous.get("/garden-flat/Composting");
         self.t.saw(
-            page.status == 200 && plain(main_of(&page)).contains("Composting turns kitchen scraps into rich soil."),
+            page.status == 200
+                && plain(main_of(&page))
+                    .contains("Composting turns kitchen scraps into rich soil."),
             "and the pages read as the bundle's files do",
             &plain(main_of(&page)),
         );

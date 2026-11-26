@@ -51,7 +51,15 @@ fn carrying(bundle: &Path, word: &str) -> Vec<String> {
 /// What a record says of a page's text and who wrote it, without the ids that belong to one wiki's blocks.
 fn essence(record: &serde_json::Value) -> String {
     [
-        "/type", "/at", "/summary", "/content", "/sha256", "/author/name", "/author/kind", "/from", "/to",
+        "/type",
+        "/at",
+        "/summary",
+        "/content",
+        "/sha256",
+        "/author/name",
+        "/author/kind",
+        "/from",
+        "/to",
     ]
     .iter()
     .map(|p| member(record, p).to_string())
@@ -63,11 +71,17 @@ impl Proof {
     /// A script's bearer token.
     pub(super) fn token(&self, login: &str, scope: Scope) -> String {
         let auth = self.running.services.auth.clone().expect("sign-in");
-        auth.issue_token(&self.world.account_of(login), scope, "r5-proof", 3600, now())
-            .unwrap()
-            .secret
-            .as_str()
-            .to_owned()
+        auth.issue_token(
+            &self.world.account_of(login),
+            scope,
+            "r5-proof",
+            3600,
+            now(),
+        )
+        .unwrap()
+        .secret
+        .as_str()
+        .to_owned()
     }
 
     /// The tip's state id, which a proposal sent through the API names.
@@ -107,7 +121,11 @@ impl Proof {
     pub(super) fn accepted(&self, maya: &mut Person, id: &str) {
         let accepted = approve_and_accept(maya, id);
         assert_eq!(accepted.status, 200, "{}\n{}", accepted.head, accepted.body);
-        assert!(accepted.body.contains("Signed into the history"), "{}", accepted.body);
+        assert!(
+            accepted.body.contains("Signed into the history"),
+            "{}",
+            accepted.body
+        );
     }
 
     /// Hide `parts` of the item whose moderation form is at `query`, as Maya, through the form.
@@ -163,7 +181,9 @@ impl Proof {
             for line in lines {
                 if let Some(content) = line.get("content").and_then(|c| c.as_str()) {
                     checked += 1;
-                    if member(&line, "/sha256").as_str() != Some(sha256_hex(content.as_bytes()).as_str()) {
+                    if member(&line, "/sha256").as_str()
+                        != Some(sha256_hex(content.as_bytes()).as_str())
+                    {
                         wrong.push(format!("{file} {}", member(&line, "/rev")));
                     }
                 }
@@ -183,49 +203,124 @@ impl Proof {
             "the SHA-256 this proof checks the bundle with agrees with the published vectors (it is not the product's own code run again)",
             "",
         );
-        let mut maya = join(&self.world, &self.running, "maya", "Maya Maintainer", Role::Maintainer);
-        let _noor = join(&self.world, &self.running, "noor", "Noor Contributor", Role::Contributor);
+        let mut maya = join(
+            &self.world,
+            &self.running,
+            "maya",
+            "Maya Maintainer",
+            Role::Maintainer,
+        );
+        let _noor = join(
+            &self.world,
+            &self.running,
+            "noor",
+            "Noor Contributor",
+            Role::Contributor,
+        );
         let _zora = join(&self.world, &self.running, "zora", ZORA, Role::Contributor);
         self.t.did("the operator invited Maya (maintainer), Noor and Zora Quokka (contributors) to `handbook`; each signed in");
 
         // The wiki, made through the server.
-        let started = self.sent("noor", "Start the notes", &format!("{{\"title\":\"Notes\",\"text\":{}}}", json_quote(&page("Notes", "The first draft of the notes."))), "");
+        let started = self.sent(
+            "noor",
+            "Start the notes",
+            &format!(
+                "{{\"title\":\"Notes\",\"text\":{}}}",
+                json_quote(&page("Notes", "The first draft of the notes."))
+            ),
+            "",
+        );
         self.accepted(&mut maya, &started);
-        let zoras = self.sent("zora", &format!("{HIDDEN_SUMMARY} add a line"), &format!("{{\"path\":\"pages/Notes.md\",\"text\":{}}}", json_quote(&page("Notes", &format!("The first draft of the notes.\n\n{HIDDEN_TEXT} a line only Zora wrote.")))), "");
+        let zoras = self.sent(
+            "zora",
+            &format!("{HIDDEN_SUMMARY} add a line"),
+            &format!(
+                "{{\"path\":\"pages/Notes.md\",\"text\":{}}}",
+                json_quote(&page(
+                    "Notes",
+                    &format!(
+                        "The first draft of the notes.\n\n{HIDDEN_TEXT} a line only Zora wrote."
+                    )
+                ))
+            ),
+            "",
+        );
         self.accepted(&mut maya, &zoras);
-        let rewritten = self.sent("noor", "Rewrite the notes", &format!("{{\"path\":\"pages/Notes.md\",\"text\":{}}}", json_quote(&page("Notes", "The second draft of the notes."))), "");
+        let rewritten = self.sent(
+            "noor",
+            "Rewrite the notes",
+            &format!(
+                "{{\"path\":\"pages/Notes.md\",\"text\":{}}}",
+                json_quote(&page("Notes", "The second draft of the notes."))
+            ),
+            "",
+        );
         self.accepted(&mut maya, &rewritten);
-        let draft = self.sent("noor", "Start a draft", &format!("{{\"title\":\"Draft\",\"text\":{}}}", json_quote(&page("Draft", "A plan."))), "");
+        let draft = self.sent(
+            "noor",
+            "Start a draft",
+            &format!(
+                "{{\"title\":\"Draft\",\"text\":{}}}",
+                json_quote(&page("Draft", "A plan."))
+            ),
+            "",
+        );
         self.accepted(&mut maya, &draft);
-        let moved = self.sent("noor", "Name it a plan", "", "{\"from\":\"pages/Draft.md\",\"to\":\"pages/Plan.md\"}");
+        let moved = self.sent(
+            "noor",
+            "Name it a plan",
+            "",
+            "{\"from\":\"pages/Draft.md\",\"to\":\"pages/Plan.md\"}",
+        );
         self.accepted(&mut maya, &moved);
-        let scratch = self.sent("noor", "Start a scratch page", &format!("{{\"title\":\"Scratch\",\"text\":{}}}", json_quote(&page("Scratch", "Throw away."))), "");
+        let scratch = self.sent(
+            "noor",
+            "Start a scratch page",
+            &format!(
+                "{{\"title\":\"Scratch\",\"text\":{}}}",
+                json_quote(&page("Scratch", "Throw away."))
+            ),
+            "",
+        );
         self.accepted(&mut maya, &scratch);
-        let gone = self.sent("noor", "Remove the scratch page", "{\"path\":\"pages/Scratch.md\",\"text\":null}", "");
+        let gone = self.sent(
+            "noor",
+            "Remove the scratch page",
+            "{\"path\":\"pages/Scratch.md\",\"text\":null}",
+            "",
+        );
         self.accepted(&mut maya, &gone);
         self.t.did("through the API and the accept form: Noor starts Notes, Zora adds a line to it, Noor rewrites it (two accounts edited it); Noor starts Draft and renames it Plan; she starts Scratch and removes it; Maya reviews and accepts each");
         let notes = self.anonymous.get("/handbook/-/history/Notes");
         let said = plain(main_of(&notes));
         self.t.saw(
-            said.contains("Proposed by Zora Quokka") && said.contains(&format!("{HIDDEN_SUMMARY} add a line")),
+            said.contains("Proposed by Zora Quokka")
+                && said.contains(&format!("{HIDDEN_SUMMARY} add a line")),
             "before the hide, the history of Notes names Zora and her summary",
             &said,
         );
         let plan = self.anonymous.get("/handbook/-/history/Plan");
         let scratch_page = self.anonymous.get("/handbook/Scratch");
         self.t.saw(
-            plain(main_of(&plan)).contains("The page was moved here from Draft") && scratch_page.status == 410,
+            plain(main_of(&plan)).contains("The page was moved here from Draft")
+                && scratch_page.status == 410,
             "Plan says it was moved here from Draft, and Scratch answers 410 Gone",
             &plain(main_of(&plan)),
         );
 
         // The hide: a revision that is not the tip.
-        self.hide(&mut maya, &format!("kind=proposal-revision&proposal={zoras}&seq=1"), &["part_content", "part_summary", "part_author"]);
+        self.hide(
+            &mut maya,
+            &format!("kind=proposal-revision&proposal={zoras}&seq=1"),
+            &["part_content", "part_summary", "part_author"],
+        );
         self.t.did("Maya hides, through the moderation form, the text, summary and author of Zora's revision of Notes, which a later change of Noor's replaced");
         let notes = self.anonymous.get("/handbook/-/history/Notes");
         let said = plain(main_of(&notes));
         self.t.saw(
-            !said.contains(ZORA) && !said.contains(HIDDEN_SUMMARY) && said.contains("Hidden by moderation"),
+            !said.contains(ZORA)
+                && !said.contains(HIDDEN_SUMMARY)
+                && said.contains("Hidden by moderation"),
             "the page's history says it is hidden and does not name her or her summary",
             &said,
         );
@@ -242,7 +337,8 @@ impl Proof {
             &format!("{files:?}"),
         );
         self.t.saw(
-            !files.iter().any(|f| f == "pages/Scratch.md") && !files.iter().any(|f| f == "pages/Draft.md"),
+            !files.iter().any(|f| f == "pages/Scratch.md")
+                && !files.iter().any(|f| f == "pages/Draft.md"),
             "neither the removed page nor the old name of the renamed one is a page of the bundle",
             &format!("{files:?}"),
         );
@@ -326,7 +422,10 @@ impl Proof {
             let found = carrying(&first, word);
             self.t.saw(
                 found.is_empty(),
-                &format!("export 1: {what} is in none of the bundle's {} files", files.len()),
+                &format!(
+                    "export 1: {what} is in none of the bundle's {} files",
+                    files.len()
+                ),
                 &format!("found in {found:?}"),
             );
         }
@@ -351,14 +450,16 @@ impl Proof {
             &format!("{out}{err}"),
         );
         self.t.saw(
-            self.layout().creation_marks().unwrap() == marks && self.listed().contains(&"handbook2".to_owned()),
+            self.layout().creation_marks().unwrap() == marks
+                && self.listed().contains(&"handbook2".to_owned()),
             "the new wiki is listed, and no creation mark is left",
             &format!("{:?}", self.listed()),
         );
 
         // The same pages, history, renames and removals; authors said as D-3 says.
         let second = self.export("handbook2", "export-handbook-2");
-        self.t.did("the operator exports the new wiki, and compares the two bundles");
+        self.t
+            .did("the operator exports the new wiki, and compares the two bundles");
         let pages_of = |dir: &Path| -> BTreeMap<String, Vec<u8>> {
             files_under(dir)
                 .into_iter()
@@ -371,7 +472,9 @@ impl Proof {
             &format!("{:?} {:?}", pages_of(&first).keys(), pages_of(&second).keys()),
         );
         let records2 = histories(&second);
-        let names = |h: &BTreeMap<String, Vec<serde_json::Value>>| -> BTreeSet<String> { h.keys().cloned().collect() };
+        let names = |h: &BTreeMap<String, Vec<serde_json::Value>>| -> BTreeSet<String> {
+            h.keys().cloned().collect()
+        };
         self.t.saw(
             names(&records)
                 .iter()
@@ -383,7 +486,12 @@ impl Proof {
         for file in ["~%4Eotes.jsonl", "~%50lan.jsonl", "~%53cratch.jsonl"] {
             let before: Vec<String> = records
                 .get(file)
-                .map(|r| r.iter().filter(|x| x.get("suppressed").is_none()).map(essence).collect())
+                .map(|r| {
+                    r.iter()
+                        .filter(|x| x.get("suppressed").is_none())
+                        .map(essence)
+                        .collect()
+                })
                 .unwrap_or_default();
             let after: Vec<String> = records2
                 .get(file)
@@ -428,7 +536,10 @@ impl Proof {
         let notes_history = self.anonymous.get("/handbook2/-/history/Notes");
         let said = plain(main_of(&notes_history));
         let at_of = |r: &serde_json::Value| -> String {
-            let at = member(r, "/at").as_str().unwrap_or_default().replace('T', " ");
+            let at = member(r, "/at")
+                .as_str()
+                .unwrap_or_default()
+                .replace('T', " ");
             at.get(..16).unwrap_or_default().to_owned()
         };
         self.t.saw(
@@ -461,7 +572,11 @@ impl Proof {
             "the second wiki's histories say the page was removed, and that Plan was moved here from Draft",
             &plain(main_of(&moved)),
         );
-        for (word, what) in [(HIDDEN_TEXT, "text"), (HIDDEN_SUMMARY, "summary"), (ZORA, "author")] {
+        for (word, what) in [
+            (HIDDEN_TEXT, "text"),
+            (HIDDEN_SUMMARY, "summary"),
+            (ZORA, "author"),
+        ] {
             let found = carrying(&second, word);
             self.t.saw(
                 found.is_empty(),
