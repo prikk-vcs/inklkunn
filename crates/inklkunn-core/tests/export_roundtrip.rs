@@ -638,6 +638,110 @@ impl Storage for NoCheckpoint<'_> {
     }
 }
 
+/// An accepted proposal by two accounts that writes `governance/interwiki.yaml` (and nothing else): the map of RFC 007 D-8 as a
+/// wiki gets it. The signer signs what it is given; the rules' judgement of the file is the acceptance's own, tested in the core.
+fn accept_map(w: &World, wiki: &CreatedWiki, text: &str) {
+    let view = wiki.record.default_view.clone();
+    let tip = w
+        .storage
+        .history(&wiki.repo, &Point::View(view.clone()), Some(1))
+        .unwrap();
+    let base = tip.blocks.first().unwrap().block_id.clone();
+    let proposer = Actor::Account {
+        id: AccountId::new(),
+        name: DisplayName::new("Aiko Tanaka").unwrap(),
+    };
+    let acceptor = Actor::Account {
+        id: AccountId::new(),
+        name: DisplayName::new("Ben (maintainer)").unwrap(),
+    };
+    let proposal = ProposalId::new();
+    let message = Message::proposal(
+        Summary::from_text("Where wikipedia: leads").unwrap(),
+        proposal.clone(),
+        proposer.clone(),
+        acceptor.clone(),
+        BlockId::new(&base).unwrap(),
+    )
+    .unwrap();
+    let change = PreparedChange {
+        files: vec![PreparedFile {
+            path: "governance/interwiki.yaml".into(),
+            content: Some(text.as_bytes().to_vec()),
+        }],
+        renames: vec![],
+        message: message.to_text(),
+    };
+    let token = AcceptanceToken::new(format!("acceptance-{proposal}"));
+    w.ledgers.extra.lock().unwrap().insert(
+        token.as_str().to_owned(),
+        ExpectedMessage {
+            wiki: wiki.record.id.clone(),
+            view: view.clone(),
+            kind: message.kind(),
+            proposal: Some(proposal),
+            proposed_by: proposer,
+            accepted_by: acceptor,
+            base: Some(BlockId::new(&base).unwrap()),
+            imported_from: None,
+            source: None,
+            notice: None,
+            pinned_tip: BlockId::new(&base).unwrap(),
+            change_digest: change.digest(),
+        },
+    );
+    w.signer
+        .accept(&wiki.record.id, &view, &token, &change)
+        .unwrap_or_else(|e| panic!("{e}"));
+}
+
+/// RFC 007 D-8: **the export publishes the wiki's own interwiki map** (`interwiki` in the manifest, the shape wiki-commons' schema
+/// has), as the tip being exported holds it, and a wiki with none still says `interwiki: {}`.
+#[test]
+fn an_export_carries_the_interwiki_map_of_the_tip_it_is_of() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let w = world("rt-interwiki", Sandbox::Unconfined);
+    let a = create(&w, "alpha");
+    let folder = dir_in(&w.tmp, "folder-interwiki");
+    first_folder(&folder.0);
+    do_import(&w, &a, &folder.0, false);
+    // No map yet.
+    let before = dir_in(&w.tmp, "out-before");
+    let dir = before.0.join("bundle");
+    export_bundle(&w, &w.storage, &w.layout, &a.record, &dir, "0.0.0", 1_700_000_000)
+        .unwrap_or_else(|e| panic!("{e}"));
+    let files = files_of(&dir);
+    let manifest = String::from_utf8(get(&files, "wiki-bundle.yaml").clone()).unwrap();
+    assert!(manifest.contains("interwiki: {}"), "{manifest}");
+    // The map, accepted: the next export has it, prefix by prefix, as wiki-commons' manifest writes a map.
+    accept_map(
+        &w,
+        &a,
+        "wikipedia: https://en.wikipedia.org/wiki/{title}\ndocs: \"https://example.org/docs?page={title}\"\n",
+    );
+    let after = dir_in(&w.tmp, "out-after");
+    let dir = after.0.join("bundle");
+    export_bundle(&w, &w.storage, &w.layout, &a.record, &dir, "0.0.0", 1_700_000_000)
+        .unwrap_or_else(|e| panic!("{e}"));
+    let files = files_of(&dir);
+    // The checks of the manifest against wiki-commons' schema are the bundle's own, run here.
+    bundle_checksums(&files);
+    let manifest = String::from_utf8(get(&files, "wiki-bundle.yaml").clone()).unwrap();
+    assert!(
+        manifest.contains(
+            "interwiki:\n  \"docs\": \"https://example.org/docs?page={title}\"\n  \"wikipedia\": \"https://en.wikipedia.org/wiki/{title}\"\n"
+        ),
+        "{manifest}"
+    );
+    assert!(!manifest.contains("interwiki: {}"), "{manifest}");
+    // The file is in the bundle as every file of the tree is (the import reads the map from the manifest and leaves a wiki's own
+    // rules to the wiki it makes), and the manifest says the same as the file.
+    assert!(get(&files, "governance/interwiki.yaml").starts_with(b"wikipedia: https://en.wikipedia.org/wiki/{title}\n"));
+}
+
 #[test]
 fn an_export_without_prikks_checkpoint_says_so_and_leaves_nothing() {
     if !prikk_on_path() {

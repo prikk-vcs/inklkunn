@@ -354,7 +354,7 @@ fn a_wiki_whose_governance_cannot_be_read_refuses_every_write_and_reads_on() {
 }
 
 #[test]
-fn an_admin_may_propose_to_the_two_governance_files_in_that_state_and_to_nothing_else() {
+fn an_admin_may_propose_to_the_three_governance_files_in_that_state_and_to_nothing_else() {
     let w = wikis();
     let (admin, maintainer) = (account(), account());
     let mut f = facts(&w, &[]);
@@ -363,7 +363,11 @@ fn an_admin_may_propose_to_the_two_governance_files_in_that_state_and_to_nothing
     f.roles
         .insert((maintainer.clone(), w.internal.clone()), Role::Maintainer);
     let (a, _, _) = over(Governed::new(f, faulted()));
-    for path in ["governance/policy.yaml", "governance/constitution.yaml"] {
+    for path in [
+        "governance/policy.yaml",
+        "governance/constitution.yaml",
+        "governance/interwiki.yaml",
+    ] {
         assert!(
             a.authorize(&session(&admin), Action::Propose, &page(&w.internal, path))
                 .is_allowed(),
