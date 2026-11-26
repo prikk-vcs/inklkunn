@@ -9,7 +9,8 @@ use super::knowledge::{
     SURVEY, approve_and_accept, attach, curate, ids_after, main_of, signed_into_history,
 };
 use super::upgrade::{
-    OldServer, bare_world, binary_0_4_0, first_difference, masked, old_cli, old_invite, redeem,
+    OldServer, bare_world, binary_0_4_0, first_difference, masked, old_cli, old_invite, pages_to_compare,
+    redeem,
     schema_of, settled, stylesheet_of,
 };
 use super::*;
@@ -262,6 +263,161 @@ fn sent(port: u16, token: &str, summary: &str, members: &str) -> String {
     );
     assert_eq!(made.status, 201, "{}\n{}\n{body}", made.head, made.body);
     json_field(&made.body, "id").expect("a proposal id")
+}
+
+/// What a person was shown at each path: the status, the body and the `Location` (a redirect's, else none).
+type Shown = BTreeMap<String, (u16, String, Option<String>)>;
+
+/// The pages `paths` as `browser` (anonymous, or a person who is signed in) is shown them.
+fn capture_as(browser: &mut Browser, paths: &[String]) -> Shown {
+    paths
+        .iter()
+        .map(|p| {
+            let r = browser.get(p);
+            let location = r.header("location");
+            (p.clone(), (r.status, r.body, location))
+        })
+        .collect()
+}
+
+/// A page as it is compared: what differs on every page for no reason of the page's (the ports of the two servers, the
+/// stylesheet's name, a form's token, the footer's version, and this tree's `service-desc` head line, which `masked` takes out
+/// exactly) is masked, and nothing else. The footer's version is masked for 0.4.0's own and for this tree's, which are one
+/// string until this tree's version moves.
+fn compared(html: &str, ports: [u16; 2]) -> String {
+    masked(
+        &html.replace("inklkunn version 0.4.0", "inklkunn version VERSION"),
+        ports,
+    )
+}
+
+/// The policy page's section for the interwiki map when the wiki has none (0.5.0's I-T4: *The policy page shows the map*), as
+/// its lines are, in order.
+const POLICY_MAP_SECTION: [&str; 5] = [
+    "<section id=\"interwiki\" aria-labelledby=\"interwiki-heading\">",
+    "<h2 id=\"interwiki-heading\">Interwiki map</h2>",
+    "<p>A link written with one of these prefixes goes to the address shown, with the page title put in. A link with any other prefix stays a link to a page that does not exist.</p>",
+    "<p class=\"note\">This wiki has no interwiki map.</p>",
+    "</section>",
+];
+
+/// The policy form's section for the interwiki map when the wiki has none (0.5.0's W-6: *the policy form edits the interwiki
+/// map*), as its lines are, in order, and the hidden count of its rows that the form carries beside the protections' count.
+const FORM_MAP_FIELDSET: [&str; 5] = [
+    "<fieldset>",
+    "<legend>Interwiki map</legend>",
+    "<p class=\"note\">A link whose prefix is in this map goes to the address given, with the page title put in where {title} stands. A prefix is made of letters, digits and hyphens, and cannot be how the titles of some pages of this wiki begin. An address is a web address that begins with https, and holds {title} once. Remove every row for a wiki with no map.</p>",
+    "<p class=\"buttons\"><button type=\"submit\" name=\"act\" value=\"map-add\">Add an interwiki prefix</button></p>",
+    "</fieldset>",
+];
+const FORM_MAP_ROWS: &str = "<input type=\"hidden\" name=\"map_rows\" value=\"0\">";
+
+/// `site.json`'s member that names the API's description (0.5.0's I-T5, item 5: `describedby`), as it is written.
+const SITE_DESCRIBEDBY: &str = "\"describedby\":\"http://localhost:PORT/-/api/v1/openapi.json\",";
+
+/// `html` without the run of lines `block`, which must be there **exactly once**, in order, line for line; whether it was.
+fn without_block(html: &str, block: &[&str]) -> (String, bool) {
+    let lines: Vec<&str> = html.split_inclusive('\n').collect();
+    let at: Vec<usize> = (0..lines.len())
+        .filter(|i| {
+            block
+                .iter()
+                .enumerate()
+                .all(|(k, want)| lines.get(i + k).is_some_and(|l| l.trim_end() == *want))
+        })
+        .collect();
+    match at.as_slice() {
+        [] => (html.to_owned(), false),
+        [at] => (
+            lines
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i < *at || *i >= at + block.len())
+                .map(|(_, l)| *l)
+                .collect(),
+            true,
+        ),
+        more => panic!("the block {block:?} is on the page {} times", more.len()),
+    }
+}
+
+/// This tree's page with what 0.5.0 adds to the pages of 0.4.0 taken out, **exactly**, and whether anything was: the interwiki
+/// map's section on the policy page and on the policy form (with the form's hidden count of its rows), and `describedby` in
+/// the site description. Each is looked for where it belongs and nowhere else (a second one, or one on another page, is not
+/// taken out and is found as a difference). The `service-desc` line of every wiki page's head is taken out by `masked`, which
+/// the 0.2.0 and the 0.3.0 tests share.
+fn undo_what_0_5_0_adds(path: &str, html: &str) -> (String, bool) {
+    match path {
+        POLICY => without_block(html, &POLICY_MAP_SECTION),
+        POLICY_FORM => {
+            let (html, section) = without_block(html, &FORM_MAP_FIELDSET);
+            let (html, rows) = without_block(&html, &[FORM_MAP_ROWS]);
+            assert_eq!(
+                section, rows,
+                "the form's map section and its row count are one change"
+            );
+            (html, section)
+        }
+        "/handbook/-/site.json" => {
+            assert_eq!(html.matches(SITE_DESCRIBEDBY).count(), 1, "{html}");
+            (html.replacen(SITE_DESCRIBEDBY, "", 1), true)
+        }
+        _ => (html.to_owned(), false),
+    }
+}
+
+/// Every path of `before` against the same path of `after`: the status, the `Location` and the body, after the masks and
+/// after what 0.5.0 adds (`undo_what_0_5_0_adds`) is taken out of this tree's page. The differences, each with where it is,
+/// are returned and printed; none is hidden. **And which pages had something of 0.5.0's taken out**, so that the set is
+/// asserted.
+fn differences(
+    who: &str,
+    before: &Shown,
+    old_ports: [u16; 2],
+    after: &Shown,
+    new_ports: [u16; 2],
+) -> (Vec<String>, Vec<String>) {
+    let (mut out, mut declared) = (Vec::new(), Vec::new());
+    for (path, (old_status, old_html, old_location)) in before {
+        let Some((new_status, new_html, new_location)) = after.get(path) else {
+            out.push(format!("{who} {path}: not asked of this tree"));
+            continue;
+        };
+        if old_status != new_status {
+            out.push(format!(
+                "{who} {path}: the status was {old_status}, it is {new_status}"
+            ));
+            continue;
+        }
+        let (old_loc, new_loc) = (
+            old_location.as_deref().map(|l| compared(l, old_ports)),
+            new_location.as_deref().map(|l| compared(l, new_ports)),
+        );
+        if old_loc != new_loc {
+            out.push(format!(
+                "{who} {path}: the Location was {old_loc:?}, it is {new_loc:?}"
+            ));
+        }
+        let o = compared(old_html, old_ports);
+        let (n, touched) = undo_what_0_5_0_adds(path, &compared(new_html, new_ports));
+        if touched {
+            declared.push(format!("{who} {path}"));
+        }
+        if o != n {
+            if let Some(dump) = std::env::var_os("RU_DUMP_DIR") {
+                let name = path.replace(['/', '?', '&', '='], "_");
+                std::fs::write(Path::new(&dump).join(format!("{who}{name}.old")), &o).unwrap();
+                std::fs::write(Path::new(&dump).join(format!("{who}{name}.new")), &n).unwrap();
+            }
+            out.push(format!(
+                "{who} {path}: renders differently ({} bytes to {}): {}",
+                o.len(),
+                n.len(),
+                first_difference(&o, &n)
+            ));
+        }
+    }
+    (out, declared)
 }
 
 fn scratch(title: &str, body: &str) -> String {
@@ -535,5 +691,285 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     );
     say("0.4.0: Help is protected for a day: only an admin may accept a change to it");
     settled(&mut reader, started);
-    let _ = (&store_file, &mut world, &mut rex, &mut reader, rules, r3, revision(&r1), tombstone);
+
+    // ---- 0.4.0's own output, for the comparison: what each kind of reader was shown, before the process stops
+    let history = reader.get("/handbook/-/history/Help");
+    let on_help = blocks_after(&history.body, "/handbook/-/change/");
+    assert!(on_help.len() >= 4, "{on_help:?}");
+    let (b3, b2, b1, b0) = (
+        on_help.first().cloned().unwrap(),
+        on_help.get(1).cloned().unwrap(),
+        on_help.get(2).cloned().unwrap(),
+        on_help.get(3).cloned().unwrap(),
+    );
+    let hidden_pages = |who: &str| -> Vec<String> {
+        let _ = who;
+        vec![
+            "/handbook/-/history/Help".to_owned(),
+            format!("/handbook/-/change/{b1}"),
+            format!("/handbook/-/change/{b2}"),
+            format!("/handbook/-/at/{b1}/Help"),
+            format!("/handbook/-/at/{b2}/Help"),
+            format!("/handbook/-/diff/{b0}/{b1}/Help"),
+            format!("/handbook/-/diff/{b1}/{b2}/Help"),
+            format!("/handbook/-/diff/{b2}/{b3}/Help"),
+            proposal_page(&r1),
+            proposal_page(&r2),
+            claim_page.clone(),
+            "/handbook/-/moderation".to_owned(),
+        ]
+    };
+    let mut anonymous_paths = pages_to_compare(&b3);
+    anonymous_paths.extend(hidden_pages("anonymous"));
+    anonymous_paths.extend(
+        [
+            POLICY.to_owned(),
+            "/handbook/-/people".to_owned(),
+            "/handbook/-/site.json".to_owned(),
+            "/handbook/-/changes.atom".to_owned(),
+            proposal_page(&rules),
+            proposal_page(&open),
+            proposal_page(&r3),
+            "/handbook/Notes".to_owned(),
+            "/handbook/Sandbox".to_owned(),
+            "/handbook/Scratch".to_owned(),
+            "/handbook/-/history/Notes".to_owned(),
+            "/handbook/-/history/Sandbox".to_owned(),
+            "/handbook/-/why/Help".to_owned(),
+            "/handbook/-/health/sources-to-review".to_owned(),
+            format!("{API}/claims/{claim}"),
+            format!("{API}/history/Help"),
+            format!("{API}/revisions/{b1}"),
+            format!("{API}/revisions/{b1}?title=Help"),
+            format!("{API}/revisions/{b2}"),
+            format!("{API}/diff?from={b0}&to={b1}&path=Help"),
+            format!("{API}/raw/Help"),
+            format!("{API}/pages/Help"),
+            format!("{API}/policy"),
+            format!("{API}/protections"),
+            format!("{API}/moderation-log"),
+            format!("{API}/provenance/Help"),
+            format!("{API}/proposals/{r1}"),
+            format!("{API}/proposals/{open}"),
+        ]
+        .into_iter(),
+    );
+    let mut maya_paths = hidden_pages("maya");
+    maya_paths.extend([
+        format!("{MODERATE}?{}", revision(&r1)),
+        format!("{PROTECT}?page=Help"),
+        POLICY_FORM.to_owned(),
+        proposal_page(&open),
+        "/handbook/-/people".to_owned(),
+        format!("{APPEALS}/mine"),
+    ]);
+    let mut zora_paths = hidden_pages("zora");
+    zora_paths.extend([
+        format!("{APPEALS}/mine"),
+        format!("{API}/appeals/mine"),
+        proposal_page(&open),
+    ]);
+    let ada_paths = vec![
+        APPEALS.to_owned(),
+        "/handbook/-/people".to_owned(),
+        "/handbook/-/people/restrict".to_owned(),
+        "/handbook/-/moderation".to_owned(),
+        proposal_page(&r1),
+    ];
+    let rex_paths = vec![
+        "/handbook/-/proposals/new?page=Help".to_owned(),
+        format!("{APPEALS}/mine"),
+        "/handbook/-/people".to_owned(),
+        HELP.to_owned(),
+    ];
+    let before = (
+        capture_as(&mut reader, &anonymous_paths),
+        capture_as(&mut maya.browser, &maya_paths),
+        capture_as(&mut zora.browser, &zora_paths),
+        capture_as(&mut ada.browser, &ada_paths),
+        capture_as(&mut rex.browser, &rex_paths),
+    );
+    for (who, shown) in [
+        ("anonymous", &before.0),
+        ("maya", &before.1),
+        ("zora", &before.2),
+        ("ada", &before.3),
+        ("rex", &before.4),
+    ] {
+        for (path, (status, _, _)) in shown {
+            eprintln!("  0.4.0 answers {who} {path}: {status}");
+        }
+    }
+    let old_css = reader
+        .get(&stylesheet_of(&before.0.get(HELP).unwrap().1))
+        .body;
+    assert!(!old_css.is_empty());
+    let old_ports = [server.port, server.content_port];
+    let old_log = server.stop();
+    assert_eq!(schema_of(&store_file), 19, "0.4.0 writes store schema 19");
+    say("0.4.0's server is stopped; the store is at schema 19 with the rows of governance and moderation");
+
+    // The five tables hold what 0.4.0 wrote: one row of each at least, and the derived ones exist.
+    let governance_before: Vec<(&str, Vec<String>)> = GOVERNANCE_TABLES
+        .iter()
+        .map(|t| (*t, dump(&store_file, t)))
+        .collect();
+    for (table, rows) in &governance_before {
+        assert!(!rows.is_empty(), "0.4.0 wrote no row in {table}");
+        eprintln!("  {table}: {} row(s)", rows.len());
+    }
+    for table in DERIVED_TABLES {
+        assert!(rows_in(&store_file, table) > 0, "{table} is empty");
+    }
+    let repository = the_one_repository(&world.settings.wikis_root());
+    let repository_before = snapshot(&repository);
+    assert!(!repository_before.is_empty());
+
+    // ---- this tree opens the same directory, as `serve` does
+    let running = Running::start(&world);
+    assert!(
+        running
+            .banner
+            .iter()
+            .any(|l| l.contains("accepting proposals: the signer is open")),
+        "the signer did not open over the key store 0.4.0 made: {:?}",
+        running.banner
+    );
+    assert_eq!(
+        schema_of(&store_file),
+        19,
+        "the schema is this tree's: no migration runs"
+    );
+    assert_eq!(
+        snapshot(&repository),
+        repository_before,
+        "opening the directory wrote to the repository"
+    );
+    for (table, rows) in &governance_before {
+        assert_eq!(
+            &dump(&store_file, table),
+            rows,
+            "{table}: the rows 0.4.0 wrote are not the rows this tree finds"
+        );
+    }
+    world.store = Arc::new(SqliteStore::open(&store_file).unwrap());
+    world.wiki = world
+        .store
+        .by_slug(&Slug::new("handbook").unwrap())
+        .unwrap();
+    let first_blocks = world.blocks();
+    say("this tree's server opened the directory: schema 19, no migration, the repository untouched, the five governance tables as they were");
+
+    let new_ports = [running.port, running.content_port];
+    let mut anonymous = running.browser();
+    let mut maya_now = Person {
+        login: "maya",
+        name: "Maya Maintainer",
+        password: password_for("maya"),
+        browser: running.browser(),
+    };
+    sign_in(&mut maya_now.browser, "maya", &password_for("maya"), "/");
+    let mut zora_now = Person {
+        login: "zora",
+        name: "Zora Quokka",
+        password: password_for("zora"),
+        browser: running.browser(),
+    };
+    sign_in(&mut zora_now.browser, "zora", &password_for("zora"), "/");
+    let mut ada_now = Person {
+        login: "ada",
+        name: "Ada Admin",
+        password: password_for("ada"),
+        browser: running.browser(),
+    };
+    sign_in(&mut ada_now.browser, "ada", &password_for("ada"), "/");
+    let mut rex_now = Person {
+        login: "rex",
+        name: "Rex Restricted",
+        password: password_for("rex"),
+        browser: running.browser(),
+    };
+    sign_in(&mut rex_now.browser, "rex", &password_for("rex"), "/");
+    say("the accounts of 0.4.0 sign in with the passwords chosen there");
+
+    // ---- every page of the sample is 0.4.0's, byte for byte after the masks, for every kind of reader
+    let after = (
+        capture_as(&mut anonymous, &anonymous_paths),
+        capture_as(&mut maya_now.browser, &maya_paths),
+        capture_as(&mut zora_now.browser, &zora_paths),
+        capture_as(&mut ada_now.browser, &ada_paths),
+        capture_as(&mut rex_now.browser, &rex_paths),
+    );
+    let (mut differing, mut declared) = (Vec::new(), Vec::new());
+    for (who, was, is) in [
+        ("anonymous", &before.0, &after.0),
+        ("maya", &before.1, &after.1),
+        ("zora", &before.2, &after.2),
+        ("ada", &before.3, &after.3),
+        ("rex", &before.4, &after.4),
+    ] {
+        let (found, undone) = differences(who, was, old_ports, is, new_ports);
+        differing.extend(found);
+        declared.extend(undone);
+    }
+    for line in &differing {
+        eprintln!("DIFFERENCE {line}");
+    }
+    assert!(
+        differing.is_empty(),
+        "{} pages differ from 0.4.0's",
+        differing.len()
+    );
+    // The three places this tree's pages are not byte for byte 0.4.0's (after the masks), each a change 0.5.0's CHANGELOG
+    // declares: no other path of the sample differs, for any of the five readers.
+    assert_eq!(
+        declared,
+        [
+            "anonymous /handbook/-/policy",
+            "anonymous /handbook/-/site.json",
+            "maya /handbook/-/policy/edit"
+        ],
+        "the pages that differ from 0.4.0's"
+    );
+    let paths_asked: usize = [&before.0, &before.1, &before.2, &before.3, &before.4]
+        .iter()
+        .map(|s| s.len())
+        .sum();
+    // The stylesheet: every line of 0.4.0's is in this tree's, in its order.
+    let new_css = anonymous
+        .get(&stylesheet_of(&after.0.get(HELP).unwrap().1))
+        .body;
+    let mut rest = new_css.lines();
+    for want in old_css.lines() {
+        assert!(
+            rest.any(|l| l == want),
+            "a line of 0.4.0's stylesheet is gone or changed (or out of its place): {want}"
+        );
+    }
+    say(&format!(
+        "{paths_asked} pages compared with 0.4.0's own output for five readers: byte for byte after the masks; three places differ, as named"
+    ));
+    let _ = (
+        old_log, first_blocks, rex, ada, zora, quinn, maya, noor, b3, b2, b1, b0, running,
+    );
+}
+
+/// The one repository under the wikis root (`<shard>/<wiki id>`), while the directory holds one wiki.
+fn the_one_repository(root: &Path) -> PathBuf {
+    let dirs = |dir: &Path| -> Vec<PathBuf> {
+        let mut found: Vec<PathBuf> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.is_dir())
+            .collect();
+        found.sort();
+        found
+    };
+    let repositories: Vec<PathBuf> = dirs(root)
+        .iter()
+        .flat_map(|shard| dirs(shard))
+        .filter(|p| p.extension().is_none_or(|e| e != "scratch"))
+        .collect();
+    assert_eq!(repositories.len(), 1, "{repositories:?}");
+    repositories.into_iter().next().unwrap()
 }
