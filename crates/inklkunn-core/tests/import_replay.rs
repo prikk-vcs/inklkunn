@@ -112,7 +112,7 @@ fn a_mediawiki_dump_comes_in_with_its_history_every_revision_a_block_and_the_pag
     sorted.sort();
     assert_eq!(times, sorted);
     // The final pages equal the bundle's files, byte for byte.
-    for (path, _) in &plan.page_digests {
+    for path in plan.page_digests.keys() {
         assert_eq!(
             read_text(&done.repo.join(path)),
             read_text(&bundle.join(path)),
@@ -218,6 +218,16 @@ fn an_import_stopped_after_any_step_leaves_nothing_a_reader_can_reach_and_what_t
             before.iter().any(|p| p.ends_with(".creating")),
             "{step:?}: no creation mark among {before:?}"
         );
+        if stored {
+            // The record is stored and only the mark is left: it is a wiki, and no person may discard it, whatever id is typed.
+            let id = w.store.list().expect("list").remove(0).id;
+            assert_eq!(
+                discard_unfinished_creation(&*w.store, &w.layout, &*w.signer, &id, &NoSweepAudit),
+                Err(DiscardRefusal::Stored),
+                "a wiki whose record was stored was discarded"
+            );
+            assert!(w.layout.repo_dir(&id).is_dir());
+        }
         // The next start.
         let report = sweep_unfinished_creations(
             &*w.store,
@@ -295,7 +305,7 @@ fn an_import_stopped_after_any_step_leaves_nothing_a_reader_can_reach_and_what_t
             "{step:?}: the sweep changed what it refused"
         );
         // A person discards it, and **what the sweep would have removed is all that goes**: nothing is left.
-        let id = report.left_behind[0].0.clone();
+        let id = report.left_behind.first().unwrap().0.clone();
         assert_eq!(marks(&w), vec![id.clone()]);
         let cleanup =
             discard_unfinished_creation(&*w.store, &w.layout, &*w.signer, &id, &NoSweepAudit)

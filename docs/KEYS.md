@@ -236,17 +236,46 @@ stops using it. That is why the maintainer key is the one that matters.
 inklkunn wiki create <slug> --name "<name>"            # the keys are made with the wiki; the deployment too, if it is the first
 inklkunn wiki import-folder <wiki> <dir> --dry-run     # what would be written, what is refused and why; writes nothing
 inklkunn wiki import-folder <wiki> <dir>               # one accepted change, Kind: import, under the system principal
+inklkunn wiki import-bundle <new-wiki> <bundle-dir> --name "<name>" [--dry-run]   # a NEW wiki, with the bundle's history
+inklkunn wiki discard-unfinished <wiki id> --confirm <wiki id>   # what a killed creation or import left
 inklkunn wiki export <wiki> --bundle <dir> --archive <file>
 ```
 
 `create` is the act that is asked to bring a key store into being: it makes one when the key directory is new or
 empty (and refuses a directory of other files, saying so). A creation that is killed leaves a mark, and the next
-`create` or `serve` removes what it made, key record included, and says so on standard error. `import-folder`
+`create` or `serve` removes what it made, key record included, and says so on standard error (**unless it had sealed a block**:
+that is a history, which `wiki discard-unfinished` removes by a person's act). `import-folder`
 refuses the whole folder when any entry is refused and names every reason; it never follows a link. An export's
 destination must not exist, and both outputs are readable by you alone (they hold private pages too). The archive
 is prikk's own (`prikk archive verify <file>` checks it without inklkunn). Every one of these is audited like the key
 commands. A seed never appears in any of their output, in a bundle or in an archive (a test looks for the real seeds
 in every file of a deployment).
+
+**A new wiki from a bundle, with its history** (`import-bundle`, RFC 007). `inklkunn wiki import-bundle <new-wiki> <bundle-dir> --name
+"<name>" [--dry-run] [--bundle-license <SPDX id>] [--leave-out-incompatible] [--no-history]` reads a Portable Wiki Bundle (a directory:
+unpack an archive first) and makes **a new wiki** of it, one change for every revision the bundle has, one block each, each signed by
+the wiki and carrying what the source said (the revision, its time, its author's name and kind, its summary) as data: the history
+says *Imported. Originally by {name}, {date}: {summary}*, with the source's date labelled *originally*, and the wiki's history and each
+imported page's history say *Imported from {source} on {date}*. **Nothing says a person signed what they did not**, and a source's
+name is text: it is never linked to an account of the wiki, even one of the same name. `--dry-run` prints the plan (the report: what comes
+in and what does not, the people the history names, the licences, the checksums, the time it will take) and writes nothing; a run prints
+the same plan first. The wiki takes **the bundle's licence** (`--bundle-license` declares one for a bundle that has none, and the notice
+says the admin declared it); files whose licence the wiki cannot take refuse the run unless `--leave-out-incompatible`, which leaves
+exactly those out. A bundle over `INKLKUNN_IMPORT_MAX_REVISIONS` is refused with its count; `--no-history` imports the pages as they
+are, in one change. **The wiki appears only when it is complete**: it is made as *create wiki* is, under a creation mark, and its record
+is stored last, in one transaction with the record of every change; until then nothing serves, lists or links it, and a request for it
+answers as for a wiki that does not exist. The plan's report is kept beside the repository (`<data dir>/wikis/<shard>/<wiki id>.import-report.txt`).
+`pages/Help.md`: `wiki create` writes a help page, and a bundle that has a page at that path (inklkunn's own export always does)
+replaces it with its own; a bundle with none keeps the wiki's. The import checks the whole repository when it is done (so the hold
+note below, for prikk 0.57.0 and earlier, is met by the import itself).
+
+**A killed import.** A failure the process survives removes everything the attempt made. A process that is killed leaves a creation mark
+and sealed blocks: the next `create`, `import-bundle` or `serve` says so, and **removes nothing** (a history is not removed by a start).
+`inklkunn wiki discard-unfinished <wiki id> --confirm <wiki id>` is the person's act: it removes exactly what the start would have
+removed for a creation that never finished (the repository with its blocks, the wiki's keys, the scratch directory, the report, the
+lock file and the mark), and nothing else. The id is typed again (without `--confirm` the command says what it found and removes
+nothing); it is refused for a wiki whose record was stored and for a creation that is running; it is audited (`wiki-discard-unfinished`).
+There is no resuming an import: a wiki that no one has read can be made again.
 
 **A bundle's knowledge, and the claim threads.** When a bundle's manifest declares the knowledge extension
 (`extensions_used: inklkunn-knowledge`, version 1), `import-folder` also reads its `knowledge/claims/` and

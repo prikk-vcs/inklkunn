@@ -196,20 +196,21 @@ fn each_kind_of_record_does_what_the_plan_said_and_the_sources_facts_are_the_mes
         .map(|m| m.source().unwrap().clone())
         .collect();
     // r1: a person, a summary.
-    assert_eq!(facts[0].rev(), "r1");
-    assert_eq!(facts[0].at(), 1_577_872_800);
+    let (first, second) = (facts.first().unwrap(), facts.get(1).unwrap());
+    assert_eq!(first.rev(), "r1");
+    assert_eq!(first.at(), 1_577_872_800);
     assert_eq!(
-        facts[0].author().map(|a| (a.name(), a.kind())),
+        first.author().map(|a| (a.name(), a.kind())),
         Some(("Ada", SourceAuthorKind::Person))
     );
-    assert_eq!(facts[0].summary(), Some("first"));
+    assert_eq!(first.summary(), Some("first"));
     // r2: an author by id alone is the name and the kind `users.yaml` gives; minor; no summary given and none hidden.
     assert_eq!(
-        facts[1].author().map(|a| (a.name(), a.kind())),
+        second.author().map(|a| (a.name(), a.kind())),
         Some(("Bo", SourceAuthorKind::Bot))
     );
-    assert!(facts[1].is_minor() && !facts[1].is_automated());
-    assert!(facts[1].summary().is_none() && !facts[1].summary_hidden());
+    assert!(second.is_minor() && !second.is_automated());
+    assert!(second.summary().is_none() && !second.summary_hidden());
     // r4: the author is hidden at the source, so no name is carried, and automated.
     let last = facts.last().unwrap();
     assert_eq!(last.rev(), "r4");
@@ -406,4 +407,52 @@ fn a_creation_that_is_alive_is_not_discarded_and_an_import_counts_for_no_partici
     );
     // The slug is the wiki's, and one wiki only.
     assert!(w.store.by_slug(&Slug::new("alive").unwrap()).is_ok());
+}
+
+#[test]
+fn no_history_imports_the_pages_as_they_are_in_one_change_and_a_bundle_over_the_cap_has_that_way_on()
+ {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    use inklkunn_core::import::bundle::{BundleOptions, plan_bundle};
+    use inklkunn_core::read::ReadConfig;
+    let bundle = fixture("mediawiki/bundle");
+    // Over the cap: refused at the plan, with the count, the cap and the way on.
+    let capped = BundleOptions {
+        bundle_license: Some("CC-BY-SA-4.0".to_owned()),
+        max_revisions: 2,
+        ..BundleOptions::default()
+    };
+    let refused = plan_bundle(&bundle, &ReadConfig::default(), &capped).unwrap();
+    assert!(!refused.is_importable());
+    assert!(
+        refused
+            .plan
+            .refused
+            .iter()
+            .any(|r| r.reason.contains("the cap is 2") && r.reason.contains("--no-history")),
+        "{}",
+        refused.render()
+    );
+    // `--no-history`: the pages as they are, in one change, with the same cap.
+    let options = BundleOptions {
+        no_history: true,
+        ..capped
+    };
+    let plan = plan_bundle(&bundle, &ReadConfig::default(), &options).unwrap();
+    assert!(plan.is_importable(), "{}", plan.render());
+    let w = world("nohistory");
+    let done = run(&w, &plan, "nohistory", "CC-BY-SA-4.0", &|_| {}).expect("imported");
+    assert!(done.first_change);
+    assert_eq!((done.revisions, done.final_changes), (0, 0));
+    assert_eq!(messages(&w, &done.record.id).len(), 2);
+    for path in plan.page_digests.keys() {
+        assert_eq!(
+            read_text(&done.repo.join(path)),
+            read_text(&bundle.join(path)),
+            "{path}"
+        );
+    }
 }

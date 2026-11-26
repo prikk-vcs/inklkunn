@@ -2199,3 +2199,62 @@ fn a_converters_own_report_beside_the_bundle_is_left_out_and_said_and_refuses_no
         assert!(left.why.contains("converter"), "{}", left.why);
     }
 }
+
+/// **A page's own order is its history, whatever the order of the paths it passes through** (RFC 007 D-2): two revisions of one page with the
+/// same instant, the first at a path that sorts after the path of the second (a creation at `Zed` and its move to `Alpha`), are replayed in
+/// the file's order, never in the order of the paths.
+#[test]
+fn the_order_of_one_pages_revisions_survives_a_tie_in_time_across_a_rename() {
+    let d = dir("tie-rename");
+    manifest(&d.0, &["license: CC0-1.0"]);
+    put(
+        &d.0,
+        "pages/Alpha.md",
+        b"---\nid: p1\ntitle: Alpha\n---\n\nbody\n",
+    );
+    let created = serde_json::json!({
+        "rev": "r1", "parent": null, "type": "create", "at": "2025-01-01T00:00:00Z",
+        "content": "---\nid: p1\ntitle: Zed\n---\n\nbody\n",
+    });
+    let moved = serde_json::json!({
+        "rev": "r2", "parent": "r1", "type": "rename", "at": "2025-01-01T00:00:00Z",
+        "from": "Zed", "to": "Alpha",
+    });
+    put(
+        &d.0,
+        "history/p1.jsonl",
+        format!("{created}\n{moved}\n").as_bytes(),
+    );
+    let p = plan(&d.0);
+    assert_importable(&p);
+    assert_eq!(p.schedule, [(0, 0), (0, 1)], "{}", p.render());
+    // Two pages with the same instants are in the order of their pages' paths, and each keeps its own.
+    put(
+        &d.0,
+        "pages/Beta.md",
+        b"---\nid: p2\ntitle: Beta\n---\n\nb\n",
+    );
+    let other = serde_json::json!({
+        "rev": "q1", "parent": null, "type": "create", "at": "2025-01-01T00:00:00Z",
+        "content": "---\nid: p2\ntitle: Beta\n---\n\nb\n",
+    });
+    put(&d.0, "history/p2.jsonl", format!("{other}\n").as_bytes());
+    let p = plan(&d.0);
+    assert_importable(&p);
+    let order: Vec<&str> = p
+        .schedule
+        .iter()
+        .map(|(h, r)| {
+            p.histories
+                .get(*h)
+                .and_then(|x| x.revisions.get(*r))
+                .map(|v| v.rev.as_str())
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(
+        order,
+        ["r1", "r2", "q1"],
+        "the page Alpha, then the page Beta"
+    );
+}

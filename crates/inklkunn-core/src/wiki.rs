@@ -684,7 +684,7 @@ impl std::error::Error for DiscardRefusal {}
 
 /// **`wiki discard-unfinished`'s act** (RFC 007 D-1): remove, for a person who asked for it, what `sweep_unfinished_creations` would
 /// remove for a creation that never finished, **and nothing else**: the sealed key record, the repository, the scratch directory,
-/// what an import kept beside it, the lock file and the mark ([`discard`]). It is the same removal, reached by the one thing the sweep
+/// what an import kept beside it, the lock file and the mark (`discard`). It is the same removal, reached by the one thing the sweep
 /// will not do: remove a repository that holds a sealed block (R9: only a person discards a history).
 ///
 /// Refused, with nothing removed: when no mark of this id exists, when the creation is alive, and when the record of the wiki is in

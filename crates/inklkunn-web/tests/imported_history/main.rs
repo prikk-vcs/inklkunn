@@ -175,7 +175,7 @@ async fn an_imported_revision_says_who_wrote_it_at_the_source_and_when_and_the_p
     );
     assert!(main.contains("Imported from Garden Notes"), "{main}");
     assert!(
-        main.contains("The files of the bundle were checked") == false,
+        !main.contains("The files of the bundle were checked"),
         "{main}"
     );
 }
@@ -204,6 +204,14 @@ async fn a_source_name_is_text_and_is_never_linked_to_an_account_even_one_of_the
             })
             .collect();
         assert!(main.contains(&escaped), "{name}: {main}");
+        // The row that says it holds no anchor, escaped or not: the name is the source's text and links nowhere.
+        let row_at = main.find("Originally by").expect("the row");
+        let row = &main[main[..row_at].rfind("<li>").expect("a list item")..];
+        let row = &row[..row.find("</li>").expect("its end")];
+        assert!(
+            !row.contains("<a") && !row.contains("&#60;a"),
+            "{name}: {row}"
+        );
         assert!(!main.contains("<b>Eve"), "{main}");
         assert!(
             !main.contains(&format!("{escaped}</a>")),

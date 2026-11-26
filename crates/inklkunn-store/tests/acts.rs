@@ -525,7 +525,7 @@ fn a_history_is_stored_whole_or_not_at_all(store: &(impl ActStore + WikiStore)) 
         Err(StoreError::Backend(_))
     ));
     let mut twice = acts.clone();
-    twice.push(acts[1].clone());
+    twice.push(acts.get(1).unwrap().clone());
     assert_eq!(
         store.insert_wiki_with_acts(record.clone(), &twice),
         Err(StoreError::AlreadyRecorded)

@@ -186,7 +186,7 @@ pub enum Provenance {
         /// Who accepted it.
         accepted_by: Who,
         /// What the import of a bundle says of it, when it is one.
-        imported: Option<Imported>,
+        imported: Option<Box<Imported>>,
     },
     /// A message that is not in that form: the change was sealed by someone else, or before the contract. It
     /// names nobody, and nobody is assumed.
@@ -244,7 +244,7 @@ impl ChangeInfo {
                 *proposed_by = Who::Hidden;
             }
             // What the source said of the revision is hidden as the change's own author and summary are.
-            *imported = imported.take().map(|i| i.without(&hidden));
+            *imported = imported.take().map(|i| Box::new((*i).without(&hidden)));
         }
         self.hidden = hidden;
         self
@@ -668,7 +668,7 @@ fn provenance(message: &Message) -> Provenance {
         },
         proposed_by: who(message.proposed_by()),
         accepted_by: who(message.accepted_by()),
-        imported: imported_of(message),
+        imported: imported_of(message).map(Box::new),
     }
 }
 

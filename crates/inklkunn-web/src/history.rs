@@ -25,7 +25,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::read::{
     AtOutcome, ChangeDetail, ChangeInfo, ChangeOutcome, Did, DiffOutcome, DiffStatus,
-    HistoryChangeKind, HistoryOutcome, HistoryRow, HunkView, Imported, ImportedRevision, LineKind,
+    HistoryChangeKind, HistoryOutcome, HistoryRow, HunkView, ImportedRevision, LineKind,
     MAX_DIFF_LINES, PageDiff, PageEvent, PageHistory, Presentation, Provenance, ReadError, Said,
     Subject, Who,
 };
@@ -206,13 +206,13 @@ fn who_text(t: T, who: &Who) -> String {
 pub(crate) fn people(t: T, provenance: &Provenance) -> Vec<String> {
     match provenance {
         Provenance::Recorded {
-            imported:
-                Some(Imported {
-                    revision: Some(revision),
-                    ..
-                }),
+            imported: Some(imported),
             ..
-        } => vec![imported_sentence(t, revision)],
+        } if imported.revision.is_some() => imported
+            .revision
+            .iter()
+            .map(|revision| imported_sentence(t, revision))
+            .collect(),
         Provenance::Recorded {
             kind: HistoryChangeKind::Proposal | HistoryChangeKind::Rollback,
             proposed_by,

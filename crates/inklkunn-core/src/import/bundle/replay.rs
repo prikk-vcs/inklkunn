@@ -574,16 +574,12 @@ pub fn import_bundle(
             super::shown(&revision.rev),
             super::shown(history.page.as_deref().unwrap_or(&history.file))
         );
-        if !cursors.contains_key(&h) {
-            match load(plan, history) {
-                Ok(c) => {
-                    cursors.insert(h, c);
-                }
+        let cursor = match cursors.entry(h) {
+            std::collections::btree_map::Entry::Occupied(held) => held.into_mut(),
+            std::collections::btree_map::Entry::Vacant(free) => match load(plan, history) {
+                Ok(c) => free.insert(c),
                 Err(why) => abandon!(at, why),
-            }
-        }
-        let Some(cursor) = cursors.get_mut(&h) else {
-            abandon!(at, "the history file is not held");
+            },
         };
         let text = match text_at(cursor, r, page_cap) {
             Ok(t) => t,

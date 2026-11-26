@@ -16,6 +16,12 @@ fn fixture(rel: &str) -> PathBuf {
         .join(rel)
 }
 
+/// A member of a JSON value, by pointer (`/inklkunn/path`); `null` when it is not there.
+fn j<'a>(v: &'a serde_json::Value, pointer: &str) -> &'a serde_json::Value {
+    static NULL: serde_json::Value = serde_json::Value::Null;
+    v.pointer(pointer).unwrap_or(&NULL)
+}
+
 /// The operator's audit events of an action: `(outcome, detail)`.
 fn events(w: &World, action: &str) -> Vec<(String, String)> {
     w.store
@@ -29,8 +35,8 @@ fn events(w: &World, action: &str) -> Vec<(String, String)> {
 
 #[test]
 fn a_run_makes_the_wiki_with_its_history_one_block_a_revision_and_audits_it() {
+    // `world` says `skipping: prikk not on PATH` itself when there is none.
     let Some(w) = world("ib-run") else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let bundle = fixture("mediawiki/bundle");
@@ -90,7 +96,6 @@ fn a_run_makes_the_wiki_with_its_history_one_block_a_revision_and_audits_it() {
 fn an_exported_wiki_imported_and_exported_again_keeps_its_times_as_the_sources_and_its_authors_as_names()
  {
     let Some(w) = world("ib-roundtrip") else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     let bundle = fixture("inklkunn/bundle");
@@ -129,8 +134,8 @@ fn an_exported_wiki_imported_and_exported_again_keeps_its_times_as_the_sources_a
             let record: serde_json::Value = serde_json::from_str(line).unwrap();
             let key = format!(
                 "{}@{}",
-                record["rev"].as_str().unwrap(),
-                record["inklkunn"]["path"].as_str().unwrap()
+                j(&record, "/rev").as_str().unwrap(),
+                j(&record, "/inklkunn/path").as_str().unwrap()
             );
             had.insert(key, record);
         }
@@ -140,20 +145,20 @@ fn an_exported_wiki_imported_and_exported_again_keeps_its_times_as_the_sources_a
         let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
         for line in text.lines() {
             let record: serde_json::Value = serde_json::from_str(line).unwrap();
-            if record["inklkunn"]["at_from"] != "source" {
+            if j(&record, "/inklkunn/at_from") != "source" {
                 continue;
             }
             from_source += 1;
-            let rev = record["inklkunn"]["imported_rev"].as_str().unwrap();
-            let key = format!("{rev}@{}", record["inklkunn"]["path"].as_str().unwrap());
+            let rev = j(&record, "/inklkunn/imported_rev").as_str().unwrap();
+            let key = format!("{rev}@{}", j(&record, "/inklkunn/path").as_str().unwrap());
             let original = had.get(&key).unwrap_or_else(|| panic!("{key}: {record}"));
-            assert_eq!(record["at"], original["at"], "{record}");
-            assert_eq!(record["author"], original["author"], "{record}");
-            assert_eq!(record["summary"], original["summary"], "{record}");
-            assert_eq!(record["content"], original["content"], "{record}");
+            assert_eq!(j(&record, "/at"), j(original, "/at"), "{record}");
+            assert_eq!(j(&record, "/author"), j(original, "/author"), "{record}");
+            assert_eq!(j(&record, "/summary"), j(original, "/summary"), "{record}");
+            assert_eq!(j(&record, "/content"), j(original, "/content"), "{record}");
             // The wiki signed it: the block is its own, and the record says the change was an import.
-            assert_eq!(record["inklkunn"]["kind"], "import");
-            assert_ne!(record["rev"].as_str().unwrap(), rev);
+            assert_eq!(j(&record, "/inklkunn/kind"), "import");
+            assert_ne!(j(&record, "/rev").as_str().unwrap(), rev);
         }
     }
     assert!(
@@ -166,7 +171,6 @@ fn an_exported_wiki_imported_and_exported_again_keeps_its_times_as_the_sources_a
 fn discard_unfinished_asks_for_the_id_again_removes_exactly_what_the_start_would_not_and_is_audited()
  {
     let Some(w) = world("ib-discard") else {
-        println!("skipping: prikk not on PATH");
         return;
     };
     // A creation killed after its first block was sealed: a history the start-up sweep reports and does not remove.
