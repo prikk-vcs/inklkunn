@@ -297,6 +297,7 @@ fn every_route_that_can_show_wiki_data_is_guarded_and_the_rest_are_public() {
         guarded,
         [
             ("/{slug}/-/proposals", Read),
+            ("/{slug}/-/proposals.atom", Read),
             ("/{slug}/-/proposals/new", Propose),
             ("/{slug}/-/proposals/curate", Propose),
             ("/{slug}/-/proposals/{id}", Read),
