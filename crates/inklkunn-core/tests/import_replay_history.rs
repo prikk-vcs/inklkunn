@@ -575,3 +575,82 @@ fn a_page_the_replay_made_that_the_bundle_does_not_have_is_removed_by_the_change
         text("Kept", "kept", "k")
     );
 }
+
+#[test]
+fn a_page_moved_to_the_same_title_in_another_case_and_back_is_replayed_move_by_move() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    // W-1: the plan takes the places of one page in turn as no collision of case, and prikk, on the real tree, takes the moves.
+    let d = dir_in(&std::env::temp_dir(), "case-moves");
+    put(
+        &d.0,
+        "wiki-bundle.yaml",
+        "format: portable-wiki-bundle\nversion: '0.4'\nlicense: CC0-1.0\n",
+    );
+    put(&d.0, "pages/Foo bar.md", &text("Foo bar", "foo", "v2"));
+    let lines = [
+        record(
+            "r1",
+            None,
+            "create",
+            "2020-01-01T00:00:00Z",
+            serde_json::json!({"content": text("Foo bar", "foo", "v1")}),
+        ),
+        record(
+            "r2",
+            Some("r1"),
+            "rename",
+            "2020-01-02T00:00:00Z",
+            serde_json::json!({"from": "Foo bar", "to": "Foo Bar"}),
+        ),
+        record(
+            "r3",
+            Some("r2"),
+            "edit",
+            "2020-01-03T00:00:00Z",
+            serde_json::json!({"content": text("Foo Bar", "foo", "v1b")}),
+        ),
+        record(
+            "r4",
+            Some("r3"),
+            "rename",
+            "2020-01-04T00:00:00Z",
+            serde_json::json!({"from": "Foo Bar", "to": "Foo bar"}),
+        ),
+        record(
+            "r5",
+            Some("r4"),
+            "edit",
+            "2020-01-05T00:00:00Z",
+            serde_json::json!({"content": text("Foo bar", "foo", "v2")}),
+        ),
+    ];
+    put(&d.0, "history/foo.jsonl", &(lines.join("\n") + "\n"));
+    let plan = plan_of(&d.0, None);
+    let w = world("case-moves-wiki");
+    let done = run(&w, &plan, "casemoves", "CC0-1.0", &|_| {}).expect("imported");
+    assert_eq!(done.revisions, 5, "{done:?}");
+    assert_eq!(done.not_applied, 0, "{done:?}");
+    assert_eq!(
+        read_text(&done.repo.join("pages/Foo bar.md")),
+        text("Foo bar", "foo", "v2")
+    );
+    // On a file system that tells the cases apart (this one), only the page's last place is there.
+    let there: Vec<String> = std::fs::read_dir(done.repo.join("pages"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        there.iter().any(|n| n == "Foo bar.md") && !there.iter().any(|n| n == "Foo Bar.md"),
+        "{there:?}"
+    );
+    let blocks = messages(&w, &done.record.id);
+    let summaries: Vec<&str> = blocks.iter().map(|m| m.summary().as_str()).collect();
+    assert!(
+        summaries.contains(&"Import the move of Foo bar to Foo Bar")
+            && summaries.contains(&"Import the move of Foo Bar to Foo bar"),
+        "{summaries:?}"
+    );
+}
