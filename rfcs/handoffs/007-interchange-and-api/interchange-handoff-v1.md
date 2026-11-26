@@ -275,3 +275,23 @@ this exact tree.**
 
 Hand back as `007-interchange-w-review-request.md`. Then **readiness (R-5)**, as *After the build* says, with the
 Japanese list since `162f0cc`. **R-7, the candidate, also bumps `wiki-commons.yaml`'s `subject.version`.**
+
+## The W round reviewed: the build is complete; readiness (R-5) assigned (2026-11-26)
+
+**W-1 – W-10: Approved** (`.git-exclude/reviewed/007-interchange-w-review-result.md`). **RFC 007's build, I-T1 – I-T6, is
+complete.** W-7's deviation is confirmed: a title with a `.` or `..` segment is no interwiki link, because the URL
+standard reads `%2E%2E` as `..`.
+
+**R-5, readiness, is assigned now:**
+- the end-to-end proof of the plan's criterion 4, on a real prikk;
+- the upgrade from 0.4.0 against its release binary, pinned by checksum (`277e7962…` for the x86_64 tarball);
+- the CHANGELOG lead with its *Output changes*;
+- the report against RFC 007's criteria 1 – 12 and threat model v0.5's §7 lines;
+- the Japanese list since `162f0cc` in `.git-exclude/ja-review/` format, with the five term questions (バンドル,
+  チェックサム, インポート元, Wiki 間リンクの対応表, 接頭辞);
+- **Y-1:** the broken-map repair end to end, fixed if it is refused;
+- **Y-2:** `web/history.rs`'s doc comments;
+- **Y-3:** drop `interwiki_of`'s `view`.
+
+Hand back as `0.5.0-readiness-review-request.md`. Then R-6 (the architect's review), R-7 (the candidate: the version,
+the CHANGELOG heading **and `wiki-commons.yaml`'s `subject.version`**), R-8, R-9.

@@ -197,10 +197,10 @@ ids, a converter's output taken for the source's.
 - **C-5b** A prikk archive import never adopts carried keys; the wiki's own keys remain the only trusted
   signers (prikk's own rule: carried, not adopted).
 - **C-5c** Imported content goes through the same sanitizer and the same path mapping as a proposal, **at every
-  revision**, and arrives as the wiki's own changes. **The source's author and time are data, never a signature or a
-  trust label** (*Imported. Originally by …*), a source's name is never linked to or matched with a local account,
+  revision**, and arrives as the wiki's own changes. **The author and time from the wiki it was imported from are data, never a
+  signature or a trust label** (*Imported. Originally by …*), such a name is never linked to or matched with a local account,
   and the import report is the plan, shown before anything is written (IX-3; RFC 007 D-3, D-6).
-- **C-5d** (v0.5) **A bundle's history is a claim.** Its `at`, author, licence and `rev` are recorded as the source's
+- **C-5d** (v0.5) **A bundle's history is a claim.** Its `at`, author, licence and `rev` are recorded as the imported wiki's
   and never shown as inklkunn's facts. Within a page, its file's order is its history: a `parent` or `at` that breaks
   it refuses the import, so a forged time cannot rearrange a page (RFC 007 D-2).
 - **C-5e** (v0.5) **Bounds:** a revision cap (`INKLKUNN_IMPORT_MAX_REVISIONS`, set from measurement), the page cap
