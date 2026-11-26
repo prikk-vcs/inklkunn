@@ -143,7 +143,9 @@ impl Resolution {
 
 /// Does a title, split on `/`, have a segment that is `.` or `..`?
 fn has_dot_segment(title: &str) -> bool {
-    title.split('/').any(|segment| matches!(segment, "." | ".."))
+    title
+        .split('/')
+        .any(|segment| matches!(segment, "." | ".."))
 }
 
 /// The page index free links resolve against.

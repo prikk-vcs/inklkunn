@@ -125,10 +125,8 @@ fn a_dot_segment_is_refused_in_a_query_template_too_and_one_map_serves_many_inde
         .insert("q".into(), "https://example.org/read?page={title}".into());
     assert_eq!(ix.resolve("q:../x", None).via, Via::Dangling);
     // `resolve_with` takes the prefixes from the map it is given and the pages from the index.
-    let other: BTreeMap<String, String> = BTreeMap::from([(
-        "zz".to_owned(),
-        "https://zz.example.org/{title}".to_owned(),
-    )]);
+    let other: BTreeMap<String, String> =
+        BTreeMap::from([("zz".to_owned(), "https://zz.example.org/{title}".to_owned())]);
     assert_eq!(
         ix.resolve_with(&other, "zz:Rust", None).url.as_deref(),
         Some("https://zz.example.org/Rust")

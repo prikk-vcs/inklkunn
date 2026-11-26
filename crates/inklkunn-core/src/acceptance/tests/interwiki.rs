@@ -326,3 +326,108 @@ fn an_admin_repairs_a_map_that_does_not_read_by_rewriting_it_or_taking_it_away()
         assert_eq!(record.acceptor_role, Role::Admin);
     }
 }
+
+// ------------------------------------------------------------------------------------------- W-5: the rule is symmetric
+
+const GH: &str = "gh: https://github.com/org/repo/wiki/{title}\n";
+
+fn page_titled(title: &str, id: &str) -> String {
+    format!("---\ntitle: {title}\nid: p-{id}\n---\n\nBody.\n")
+}
+
+fn path_of(title: &str) -> String {
+    inklkunn_markup::path::title_to_path(title).expect("a path")
+}
+
+#[test]
+fn a_new_page_in_a_mapped_namespace_is_refused_at_acceptance_before_the_signer_is_asked() {
+    // The proposal was made while the wiki had no map (the proposing judges by the map it sees; this one is the acceptance's own).
+    let rig = ruled(&[]);
+    let (maintainer, _, author, _) = people(&rig);
+    let path = path_of("GH:Notes");
+    let text = page_titled("GH:Notes", "n");
+    let p = rig.propose(&author, "A page", &[(&path, Some(&text))]);
+    rig.fake.set_files(&[(PATH.to_owned(), GH.to_owned())]);
+    rig.reads.forget_wiki(&rig.wiki);
+    match refused(rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1)) {
+        AcceptFailure::Proposal(ProposalError::NamespaceMapped(taken)) => {
+            assert_eq!((taken.prefix(), taken.host()), ("gh", "github.com"));
+        }
+        other => panic!("not refused as a mapped namespace: {other:?}"),
+    }
+    assert!(rig.double.calls().is_empty(), "the signer was asked");
+    assert!(rig.store.acceptances_of(&p.id, 1).unwrap().is_empty());
+    assert_eq!(rig.state(&p.id), ProposalState::HeldForReview);
+    // The refusal has its own word.
+    let taken = crate::governance::read_interwiki(GH.as_bytes())
+        .unwrap()
+        .takes_namespace_of("gh:x")
+        .unwrap();
+    assert_eq!(
+        AcceptFailure::Proposal(ProposalError::NamespaceMapped(taken)).word(),
+        "namespace-mapped"
+    );
+}
+
+#[test]
+fn a_wiki_without_the_prefix_in_its_map_accepts_the_same_page() {
+    let rig = ruled(&[(PATH, MAP)]);
+    let (maintainer, _, author, _) = people(&rig);
+    let path = path_of("GH:Notes");
+    let text = page_titled("GH:Notes", "n");
+    let p = rig.propose(&author, "A page", &[(&path, Some(&text))]);
+    assert!(matches!(
+        rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1),
+        Ok(Accepted::Signed(_))
+    ));
+}
+
+#[test]
+fn a_page_moved_into_a_mapped_namespace_is_refused_at_acceptance() {
+    let rig = ruled(&[]);
+    let (maintainer, _, author, _) = people(&rig);
+    let moved = path_of("gh:Home");
+    let edit = ProposalEdit {
+        summary: "Move the front page".to_owned(),
+        files: vec![inklkunn_store::FileChange {
+            path: moved.clone(),
+            text: Some(page_titled("gh:Home", "p-home")),
+        }],
+        renames: vec![inklkunn_store::Rename {
+            from: "pages/Home.md".to_owned(),
+            to: moved,
+        }],
+        ..ProposalEdit::default()
+    };
+    let draft = rig
+        .proposals
+        .create(&author, &rig.wiki, None, edit)
+        .expect("a draft");
+    let p = rig
+        .proposals
+        .submit(&author, &rig.wiki, &draft.id)
+        .expect("sent");
+    rig.fake.set_files(&[(PATH.to_owned(), GH.to_owned())]);
+    rig.reads.forget_wiki(&rig.wiki);
+    assert!(matches!(
+        refused(rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1)),
+        AcceptFailure::Proposal(ProposalError::NamespaceMapped(_))
+    ));
+    assert!(rig.double.calls().is_empty(), "the signer was asked");
+}
+
+#[test]
+fn a_page_that_was_there_before_the_map_is_edited_as_before() {
+    // `GH:Legacy` was made when the wiki had no `gh`; the map arrived after it. Reads are as they were (the map wins in the resolver),
+    // and an edit of the page is an edit: only new pages and the place a page is moved to are refused.
+    let legacy = path_of("GH:Legacy");
+    let before = page_titled("GH:Legacy", "legacy");
+    let rig = ruled(&[(legacy.as_str(), before.as_str()), (PATH, GH)]);
+    let (maintainer, _, author, _) = people(&rig);
+    let after = before.replace("Body.", "Edited.");
+    let p = rig.propose(&author, "An edit", &[(&legacy, Some(&after))]);
+    assert!(matches!(
+        rig.acceptor().accept(&maintainer, &rig.wiki, &p.id, 1),
+        Ok(Accepted::Signed(_))
+    ));
+}
