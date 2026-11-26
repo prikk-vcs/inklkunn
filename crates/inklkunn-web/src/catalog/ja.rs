@@ -3453,11 +3453,35 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "governance.rule_unknown_file",
-        "governance/ にあるのは constitution.yaml と policy.yaml の 2 つのファイルだけで、この変更は別のファイルについてです。",
+        "governance/ にあるのは constitution.yaml、policy.yaml、interwiki.yaml の 3 つのファイルだけで、この変更は別のファイルについてです。",
     ),
     msg(
         "governance.rule_not_a_file",
         "このファイルがあるべき場所に、通常のファイルではないものがあります。",
+    ),
+    msg(
+        "governance.rule_prefix_is_namespace",
+        "Wiki 間リンクの対応表の接頭辞が、この Wiki の一部のページのタイトルの先頭（Help/ や Help: など）と同じです。その接頭辞を使ったリンクは、2 通りの意味に取れてしまいます。",
+    ),
+    msg(
+        "governance.rule_template_not_https",
+        "Wiki 間リンクの対応表のアドレスのテンプレートが、https で始まるアドレスになっていません。",
+    ),
+    msg(
+        "governance.rule_template_host",
+        "Wiki 間リンクの対応表のアドレスのテンプレートに、ホスト名がないか、ホスト名ではないものがあります。",
+    ),
+    msg(
+        "governance.rule_template_userinfo",
+        "Wiki 間リンクの対応表のアドレスのテンプレートに、ユーザー名（user@host）があります。リンクには含められません。",
+    ),
+    msg(
+        "governance.rule_template_placeholder",
+        "Wiki 間リンクの対応表のアドレスのテンプレートには、ページのタイトルを入れる場所を、パスまたはクエリの中に 1 つだけ（title という語を波括弧で囲んで）書く必要があります。ほかの波括弧は使えません。",
+    ),
+    msg(
+        "governance.rule_template_character",
+        "Wiki 間リンクの対応表のアドレスのテンプレートに、使えない文字があります。空白、ASCII 以外の文字、引用符、山括弧、バックスラッシュ、キャレット、バッククォート、縦線のいずれかです。",
     ),
     msg(
         "outcome.governance_rung",
@@ -3502,11 +3526,11 @@ pub const CATALOG: &[Entry] = &[
     msg("governance.found_more", "ほか {more} 件"),
     msg(
         "invalid.governance_path",
-        "governance/ の下に書けるのは constitution.yaml と policy.yaml だけで、名前を変えることもできません。",
+        "governance/ の下に書けるのは constitution.yaml、policy.yaml、interwiki.yaml だけで、名前を変えることもできません。",
     ),
     msg(
         "invalid.governance_mixed",
-        "この Wiki のルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",
+        "この Wiki のルールの変更は、それだけで提案します。constitution.yaml、policy.yaml、interwiki.yaml を変更する提案では、ページなどほかのものを変更できません。",
     ),
     msg(
         "proposal.approvals_unreachable",
@@ -4533,6 +4557,22 @@ pub const CATALOG: &[Entry] = &[
         "policy.protections_self_note",
         "保護が承認を求めている場合、提案者本人が受け入れても条件を満たしません。Wiki が小さい間でも、メンテナーが一人だけなら、保護されたページの変更を自分で提案して自分で受け入れることはできません。",
     ),
+    msg(
+        "policy.interwiki_heading",
+        "Wiki 間リンクの対応表",
+    ),
+    msg(
+        "policy.interwiki_intro",
+        "ここにある接頭辞を付けたリンクは、ページのタイトルを入れた、示されたアドレスに移動します。ほかの接頭辞のリンクは、存在しないページへのリンクのままです。",
+    ),
+    msg(
+        "policy.interwiki_none",
+        "この Wiki には Wiki 間リンクの対応表がありません。",
+    ),
+    msg(
+        "policy.interwiki_unavailable",
+        "Wiki 間リンクの対応表を、いま読み込めません。",
+    ),
     msg("policy.limits_heading", "このサーバーの制限"),
     msg(
         "policy.limits_intro",
@@ -4595,6 +4635,18 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "policy.change_protection_changed",
         "保護を変更: {before} → {after}",
+    ),
+    msg(
+        "policy.change_interwiki_added",
+        "Wiki 間リンクの接頭辞を追加: {prefix} → {template}",
+    ),
+    msg(
+        "policy.change_interwiki_removed",
+        "Wiki 間リンクの接頭辞を削除: {prefix}（移動先は {template} でした）",
+    ),
+    msg(
+        "policy.change_interwiki_changed",
+        "Wiki 間リンクの接頭辞を変更: {prefix} の移動先を {before} から {after} に変更",
     ),
     msg(
         "policy.protection_page",

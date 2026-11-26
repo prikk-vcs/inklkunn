@@ -2,9 +2,11 @@
 //! the validator, the defaults and the platform limits. **There is no surface here**: nothing registers a route, reads
 //! a request or touches the store; the acceptance code and `authorize()` call these pure functions (part C).
 //!
-//! # The two files
+//! # The files
 //!
-//! Both are optional, both are read from **the default view's tip**, and both are the plain YAML subset of the
+//! There are three, and each is optional: the policy and the constitution, which are about who may do what (below), and
+//! `governance/interwiki.yaml`, which says where a link with a prefix leads (RFC 007 D-8; its own account is in
+//! [`Interwiki`]). A change to the map is a change to the policy as far as who may accept it. The first two are read from **the default view's tip**, and both are the plain YAML subset of the
 //! frontmatter ([`inklkunn_markup::frontmatter`]: no anchors, no tags, no repeated keys), like `knowledge/`. A missing
 //! file is its default, and **the defaults are 0.3.0's behaviour** ([`defaults`]). **Schema version 1 has no version
 //! key**: the knowledge files have none, and the same rule is followed (a file is version 1 because it has these keys

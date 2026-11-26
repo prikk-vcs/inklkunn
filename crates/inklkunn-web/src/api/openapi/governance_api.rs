@@ -49,7 +49,7 @@ pub(super) fn schemas() -> Map<String, Value> {
                         object(
                             "A governance file that cannot be read: the wiki refuses every write until it is repaired, and still reads. Never what the file said.",
                             json!({
-                                "file": {"type": "string", "description": "`governance/policy.yaml` or `governance/constitution.yaml`."},
+                                "file": {"type": "string", "description": "`governance/policy.yaml`, `governance/constitution.yaml` or `governance/interwiki.yaml`."},
                                 "rule": {"type": "string", "description": "The rule it breaks, by its stable name (`not-a-file` where something that is not an ordinary file stands at its place)."},
                                 "line": {"type": ["integer", "null"], "description": "The line, from 1, where it can be said."},
                                 "found": {"type": "array", "items": {"type": "string"}, "description": "For `not-a-file`: the repository paths found at or below the file's place, at most 50."},

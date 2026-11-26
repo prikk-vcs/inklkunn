@@ -137,11 +137,11 @@ pub enum Refusal {
     PlatformLimit(Limit),
     /// A proposal in an alternative view touches `governance/` (RFC 006 D-1: governance forks are not in scope).
     OutsideDefaultView,
-    /// A proposal writes a path under `governance/` that is neither of the two files: the set of paths is closed
-    /// (exactly `governance/constitution.yaml` and `governance/policy.yaml`), and no other file there is part of the
+    /// A proposal writes a path under `governance/` that is none of the three files: the set of paths is closed
+    /// (exactly `governance/constitution.yaml`, `governance/policy.yaml` and `governance/interwiki.yaml`), and no other file there is part of the
     /// rules of a wiki.
     UnknownFile,
-    /// Where one of the two governance files belongs there is something that is not an ordinary file (a directory, a link,
+    /// Where one of the governance files belongs there is something that is not an ordinary file (a directory, a link,
     /// anything else): the rules of a wiki are read from files, so the wiki refuses every write until it is put right. (Found
     /// in a repository, never written by a proposal; handoff G-T1 correction C-5.)
     NotAFile,
@@ -273,7 +273,7 @@ impl Refusal {
                 "governance/ can be changed only in the default view, and this proposal is in another view"
             }
             Refusal::UnknownFile => {
-                "governance/ holds exactly two files, constitution.yaml and policy.yaml, and this is neither"
+                "governance/ holds exactly three files, constitution.yaml, policy.yaml and interwiki.yaml, and this is none of them"
             }
             Refusal::NotAFile => {
                 "there is something at the file's place that is not an ordinary file"
@@ -348,7 +348,7 @@ impl Fault {
         }
     }
 
-    /// A refusal of a path under `governance/` that is neither of the two files.
+    /// A refusal of a path under `governance/` that is none of the three files.
     pub const fn unknown_file() -> Fault {
         Fault {
             file: None,

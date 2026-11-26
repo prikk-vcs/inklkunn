@@ -388,3 +388,62 @@ fn the_index_is_by_path_without_duplicates_and_answers_by_path() {
     assert_eq!(ix.entry("pages/C.md"), None);
     assert_eq!(ix.resolver().pages().len(), 2);
 }
+
+// ------------------------------------------------------------------------------------ the interwiki map of a tree
+
+#[test]
+fn the_map_of_a_tree_is_its_governance_interwiki_file_when_that_is_an_ordinary_sound_file() {
+    let tmp = TempDir::new("tree-interwiki");
+    let root = &tmp.0;
+    assert!(interwiki_in_tree(root).is_empty(), "no file, no map");
+    write(
+        root,
+        "governance/interwiki.yaml",
+        b"wp: https://en.wikipedia.org/wiki/{title}\n",
+    );
+    let map = interwiki_in_tree(root);
+    assert_eq!(map.get("wp"), Some("https://en.wikipedia.org/wiki/{title}"));
+    // The index it is given to resolves with it.
+    let index = TitleIndex::new("s", vec![entry("pages/Home.md", "Home")]).with_interwiki(map);
+    let hit = index.resolver().resolve("wp:Rust", None);
+    assert_eq!(hit.via, Via::Interwiki);
+    assert_eq!(
+        hit.url.as_deref(),
+        Some("https://en.wikipedia.org/wiki/Rust")
+    );
+    assert_eq!(index.resolver().resolve("zz:Rust", None).via, Via::Dangling);
+}
+
+#[test]
+fn a_map_that_is_not_an_ordinary_sound_file_is_no_map_for_the_links() {
+    for (name, make) in [
+        ("unsound", 0),
+        ("directory", 1),
+        ("link", 2),
+        ("too-large", 3),
+        ("not-text", 4),
+    ] {
+        let tmp = TempDir::new(&format!("tree-interwiki-{name}"));
+        let root = &tmp.0;
+        let path = root.join("governance/interwiki.yaml");
+        match make {
+            0 => write(
+                root,
+                "governance/interwiki.yaml",
+                b"wp: http://x.example/{title}\n",
+            ),
+            1 => write(root, "governance/interwiki.yaml/inner", b"x\n"),
+            2 => {
+                write(root, "elsewhere.yaml", b"wp: https://x.example/{title}\n");
+                std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+                std::os::unix::fs::symlink(root.join("elsewhere.yaml"), &path).expect("link");
+            }
+            3 => {
+                let big = format!("# {}\n", "x".repeat(crate::governance::MAX_INTERWIKI_BYTES));
+                write(root, "governance/interwiki.yaml", big.as_bytes());
+            }
+            _ => write(root, "governance/interwiki.yaml", &[0xff, 0xfe, 0x00]),
+        }
+        assert!(interwiki_in_tree(root).is_empty(), "{name}");
+    }
+}

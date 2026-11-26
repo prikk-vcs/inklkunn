@@ -191,6 +191,7 @@ fn sections(t: T, ctx: &Ctx, data: &RulesData) -> Vec<SectionView> {
             .collect(),
             notes: change_notes,
         },
+        interwiki_section(t, data),
         SectionView {
             id: "limits",
             heading: t.get(Key::PolicyLimitsHeading),
@@ -206,6 +207,37 @@ fn sections(t: T, ctx: &Ctx, data: &RulesData) -> Vec<SectionView> {
             ],
         },
     ]
+}
+
+/// The interwiki map, read-only: each prefix and the address it leads to (RFC 007 D-8). It is changed by a proposal of its own, like
+/// the rest of the rules, and this page is where it is shown. **While the map is the file that cannot be read** nothing is listed
+/// as if the wiki had none: the section says it could not be read.
+fn interwiki_section(t: T, data: &RulesData) -> SectionView {
+    let broken = data
+        .rules
+        .fault()
+        .is_some_and(|f| f.file() == inklkunn_core::governance::GovernanceFile::Interwiki);
+    let (lines, notes) = match (&data.interwiki, broken) {
+        (Some(map), false) if !map.is_empty() => (
+            map.iter()
+                .map(|(prefix, template)| LineView {
+                    label: prefix.to_owned(),
+                    value: template.to_owned(),
+                    note: None,
+                })
+                .collect(),
+            Vec::new(),
+        ),
+        (Some(_), false) => (Vec::new(), vec![t.get(Key::PolicyInterwikiNone)]),
+        _ => (Vec::new(), vec![t.get(Key::PolicyInterwikiUnavailable)]),
+    };
+    SectionView {
+        id: "interwiki",
+        heading: t.get(Key::PolicyInterwikiHeading),
+        intro: Some(t.get(Key::PolicyInterwikiIntro)),
+        lines,
+        notes,
+    }
 }
 
 /// The label of a proposal as a link names it: its summary, or the words that stand in for one that moderation hides, that has

@@ -320,7 +320,7 @@ fn components() -> Value {
                             "type": "object",
                             "required": ["file", "rule", "field", "line"],
                             "properties": {
-                                "file": {"type": "string", "description": "The file's fixed name (`governance/policy.yaml`, `governance/constitution.yaml`), or `governance/` when it is no file of the two."},
+                                "file": {"type": "string", "description": "The file's fixed name (`governance/policy.yaml`, `governance/constitution.yaml`, `governance/interwiki.yaml`), or `governance/` when it is no file of the three."},
                                 "rule": {"type": "string", "description": "The rule's stable name (`unknown-key`, `wrong-shape`, `ordering-propose-above-review`, `platform-limit-entry-max`, `outside-default-view`, `unknown-file`, …)."},
                                 "field": {"type": "string", "description": "The schema's field the rule is about (a name of the schema, never read from the file); empty when the rule is about the whole file."},
                                 "line": {"type": ["integer", "null"], "description": "The line of the file, from 1, where it can be said."},

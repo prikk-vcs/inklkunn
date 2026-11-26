@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use inklkunn_core::Principal;
-use inklkunn_core::governance::{ApprovalsWarning, PlatformLimits, Rules};
+use inklkunn_core::governance::{ApprovalsWarning, Interwiki, PlatformLimits, Rules};
 use inklkunn_core::protection::Notice;
 use inklkunn_core::read::RuleHistory;
 use inklkunn_store::WikiRecord;
@@ -30,6 +30,8 @@ pub(crate) struct RulesData {
     pub(crate) warning: Option<ApprovalsWarning>,
     /// The changes of the rules; `None` when they could not be read now, and not asked for by the API.
     pub(crate) history: Option<RuleHistory>,
+    /// The interwiki map of the default view's tip (RFC 007 D-8); `None` when it could not be read now.
+    pub(crate) interwiki: Option<Interwiki>,
 }
 
 /// Read the rules of `wiki` for `principal`, who may read it (the caller has opened the wiki). `with_history` asks for the
@@ -67,6 +69,16 @@ pub(crate) fn gather(
     } else {
         None
     };
+    let interwiki = match services.read.interwiki_of(wiki, None) {
+        Ok(map) => Some(map),
+        Err(error) => {
+            (services.log)(&format!(
+                "the interwiki map of wiki `{}` could not be read now: {error}",
+                wiki.slug
+            ));
+            None
+        }
+    };
     Ok(RulesData {
         rules,
         limits: *services.read.platform_limits(),
@@ -74,5 +86,6 @@ pub(crate) fn gather(
         notices,
         warning,
         history,
+        interwiki,
     })
 }

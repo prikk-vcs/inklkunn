@@ -6,7 +6,8 @@
 //! rules has no sentences, and the caller says why with the fault.
 
 use inklkunn_core::governance::{
-    Constitution, Fault, GovernanceFile, Policy, Protection, read_constitution, read_policy,
+    Constitution, Fault, GovernanceFile, Interwiki, Policy, Protection, read_constitution,
+    read_interwiki, read_policy,
 };
 
 use super::rules_phrases::{Fact, constitution_facts, policy_facts, protection_sentence};
@@ -39,6 +40,17 @@ pub(crate) fn constitution_side(text: Option<&str>) -> Side<Constitution> {
         None => Side::Absent,
         Some(text) => match read_constitution(text.as_bytes()) {
             Ok(constitution) => Side::Rules(constitution),
+            Err(fault) => Side::Unreadable(fault.fault().clone()),
+        },
+    }
+}
+
+/// The interwiki map a file's text says, as a [`Side`].
+pub(crate) fn interwiki_side(text: Option<&str>) -> Side<Interwiki> {
+    match text {
+        None => Side::Absent,
+        Some(text) => match read_interwiki(text.as_bytes()) {
+            Ok(map) => Side::Rules(map),
             Err(fault) => Side::Unreadable(fault.fault().clone()),
         },
     }
@@ -155,6 +167,53 @@ pub(crate) fn constitution_lines(
     ))
 }
 
+/// What a change to `governance/interwiki.yaml` does, in sentences: the prefixes that were added, removed or sent somewhere else,
+/// in prefix order. The addresses are the file's own (a template is no secret and holds no markup the page would run: it is
+/// shown as text, like everything a person wrote).
+pub(crate) fn interwiki_lines(t: T, before: &Side<Interwiki>, after: &Side<Interwiki>) -> Compared {
+    let empty = Interwiki::empty();
+    let side = |side: &Side<Interwiki>| -> Result<Interwiki, Fault> {
+        match side {
+            Side::Absent => Ok(empty.clone()),
+            Side::Rules(map) => Ok(map.clone()),
+            Side::Unreadable(fault) => Err(fault.clone()),
+        }
+    };
+    let (before, after) = match (side(before), side(after)) {
+        (Ok(b), Ok(a)) => (b, a),
+        (Err(fault), _) | (_, Err(fault)) => return Compared::Unreadable(fault),
+    };
+    let mut prefixes: Vec<&str> = before.iter().chain(after.iter()).map(|(p, _)| p).collect();
+    prefixes.sort_unstable();
+    prefixes.dedup();
+    let mut out = Vec::new();
+    for prefix in prefixes {
+        match (before.get(prefix), after.get(prefix)) {
+            (None, Some(template)) => out.push(
+                t.msg(Key::PolicyChangeInterwikiAdded)
+                    .with("prefix", prefix)
+                    .with("template", template)
+                    .text(),
+            ),
+            (Some(template), None) => out.push(
+                t.msg(Key::PolicyChangeInterwikiRemoved)
+                    .with("prefix", prefix)
+                    .with("template", template)
+                    .text(),
+            ),
+            (Some(was), Some(is)) if was != is => out.push(
+                t.msg(Key::PolicyChangeInterwikiChanged)
+                    .with("prefix", prefix)
+                    .with("before", was)
+                    .with("after", is)
+                    .text(),
+            ),
+            _ => {}
+        }
+    }
+    Compared::Lines(out)
+}
+
 /// What a change to one governance file does, from its text before and after (`None` is no file).
 pub(crate) fn file_lines(
     t: T,
@@ -169,6 +228,9 @@ pub(crate) fn file_lines(
         }
         GovernanceFile::Constitution => {
             constitution_lines(t, &constitution_side(before), &constitution_side(after))
+        }
+        GovernanceFile::Interwiki => {
+            interwiki_lines(t, &interwiki_side(before), &interwiki_side(after))
         }
     }
 }

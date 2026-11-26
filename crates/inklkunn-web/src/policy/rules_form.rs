@@ -257,7 +257,14 @@ pub(crate) fn refusal_text(t: T, refusal: Refusal, limits: &PlatformLimits) -> S
         | Refusal::UnknownKey
         | Refusal::OutsideDefaultView
         | Refusal::UnknownFile
-        | Refusal::NotAFile => rule_key(refusal),
+        | Refusal::NotAFile
+        // The interwiki map is not edited by this form: its refusals are the rules' own sentences.
+        | Refusal::PrefixIsNamespace
+        | Refusal::TemplateScheme
+        | Refusal::TemplateHost
+        | Refusal::TemplateUserInfo
+        | Refusal::TemplatePlaceholder
+        | Refusal::TemplateCharacter => rule_key(refusal),
     };
     t.get(key)
 }
@@ -1183,10 +1190,25 @@ fn changed_files(rules: &Rules, built: &Built) -> Vec<FileChange> {
             text: Some(built.policy.to_yaml()),
         });
     }
+    // The form does not edit the interwiki map. When the map is the file that cannot be read, the repair takes it away (an admin
+    // who wants a map writes one as a proposal of its own, RFC 007 D-8): the wiki is writable again, with no map, and every
+    // prefix is dangling as before. A path the fault lists is already removed above.
+    if broken == Some(GovernanceFile::Interwiki)
+        && !files
+            .iter()
+            .any(|c| c.path == GovernanceFile::Interwiki.path())
+    {
+        files.push(FileChange {
+            path: GovernanceFile::Interwiki.path().to_owned(),
+            text: None,
+        });
+    }
     files
 }
 
-/// The files *back to the default rules* removes: each governance file that is there (and what stands at its place).
+/// The files *back to the default rules* removes: each of the two files of the rules that is there (and what stands at its place).
+/// **The interwiki map is not a rule of who may do what, and stays**, unless it is the file that cannot be read: then it is
+/// removed with the rest, as a repair (RFC 007 D-8).
 fn defaults_files(ctx: &Ctx, rules: &Rules, base: &Base) -> Result<Vec<FileChange>, ()> {
     let mut files = Vec::new();
     if let Some(fault) = rules.fault() {
@@ -1195,7 +1217,11 @@ fn defaults_files(ctx: &Ctx, rules: &Rules, base: &Base) -> Result<Vec<FileChang
             text: None,
         }));
     }
+    let broken = rules.fault().map(ReadFault::file);
     for file in GovernanceFile::ALL {
+        if file == GovernanceFile::Interwiki && broken != Some(GovernanceFile::Interwiki) {
+            continue;
+        }
         let there = ctx
             .services
             .read

@@ -105,8 +105,8 @@ pub fn is_below_governance(path: &str) -> bool {
         .is_some_and(|rest| !rest.is_empty())
 }
 
-/// **The set of paths under `governance/` that a change may WRITE is closed**: exactly the two files
-/// ([`GovernanceFile::path`]). Any other path under it that is written, or renamed to or from, is refused as
+/// **The set of paths under `governance/` that a change may WRITE is closed**: exactly the files
+/// ([`GovernanceFile::ALL`], three). Any other path under it that is written, or renamed to or from, is refused as
 /// [`Refusal::UnknownFile`]: no other file there is part of the rules of a wiki, and none is ever read as if it were.
 /// `written` is what the change writes and both ends of each rename; **a removal is not asked here**, because a change may
 /// remove any path below `governance/` (D-1: it is how something standing where a governance file belongs is cleared, and in a

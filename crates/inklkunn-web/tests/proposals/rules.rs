@@ -104,7 +104,7 @@ async fn the_form_leaves_removals_renames_and_new_paths_to_the_service_and_it_re
         // Refused by its own name (RFC 006 D-1): the set of paths under `governance/` is closed, and a rename is none of it.
         assert!(
             a.body().contains(
-                "Under governance/ a proposal may write constitution.yaml and policy.yaml and nothing else, and cannot rename them."
+                "Under governance/ a proposal may write constitution.yaml, policy.yaml and interwiki.yaml and nothing else, and cannot rename them."
             ),
             "{rename:?}: {}",
             a.body()

@@ -554,7 +554,7 @@ fn cases() -> Vec<Case> {
             },
             status: StatusCode::UNPROCESSABLE_ENTITY,
             english: &[
-                "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml or policy.yaml cannot change a page or anything else.",
+                "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml, policy.yaml or interwiki.yaml cannot change a page or anything else.",
             ],
             japanese: &[
                 "この Wiki のルールの変更は、それだけで提案します。constitution.yaml や policy.yaml を変更する提案では、ページなどほかのものを変更できません。",

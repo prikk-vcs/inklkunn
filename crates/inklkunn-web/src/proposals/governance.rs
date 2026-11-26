@@ -42,6 +42,12 @@ pub(crate) fn rule_key(rule: Rule) -> Key {
         Rule::OutsideDefaultView => Key::GovernanceRuleOutsideDefaultView,
         Rule::UnknownFile => Key::GovernanceRuleUnknownFile,
         Rule::NotAFile => Key::GovernanceRuleNotAFile,
+        Rule::PrefixIsNamespace => Key::GovernanceRulePrefixIsNamespace,
+        Rule::TemplateScheme => Key::GovernanceRuleTemplateNotHttps,
+        Rule::TemplateHost => Key::GovernanceRuleTemplateHost,
+        Rule::TemplateUserInfo => Key::GovernanceRuleTemplateUserinfo,
+        Rule::TemplatePlaceholder => Key::GovernanceRuleTemplatePlaceholder,
+        Rule::TemplateCharacter => Key::GovernanceRuleTemplateCharacter,
     }
 }
 

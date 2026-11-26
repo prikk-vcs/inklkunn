@@ -3395,11 +3395,35 @@ pub const CATALOG: &[Entry] = &[
     ),
     msg(
         "governance.rule_unknown_file",
-        "Under governance/ there are exactly two files, constitution.yaml and policy.yaml, and this change is to another.",
+        "Under governance/ there are exactly three files, constitution.yaml, policy.yaml and interwiki.yaml, and this change is to another.",
     ),
     msg(
         "governance.rule_not_a_file",
         "Where this file belongs there is something that is not an ordinary file.",
+    ),
+    msg(
+        "governance.rule_prefix_is_namespace",
+        "A prefix of the interwiki map is how the titles of some pages of this wiki begin (such as Help/ or Help:), so a link with it could mean two things.",
+    ),
+    msg(
+        "governance.rule_template_not_https",
+        "An address template of the interwiki map is not an https address.",
+    ),
+    msg(
+        "governance.rule_template_host",
+        "An address template of the interwiki map has no host name, or one that is not a host name.",
+    ),
+    msg(
+        "governance.rule_template_userinfo",
+        "An address template of the interwiki map names a user (user@host), which a link may not carry.",
+    ),
+    msg(
+        "governance.rule_template_placeholder",
+        "An address template of the interwiki map must hold the page title exactly once, written as the word title between curly brackets, in the path or the query, and no other curly bracket.",
+    ),
+    msg(
+        "governance.rule_template_character",
+        "An address template of the interwiki map has a character that is not allowed in it: a space, a character outside ASCII, a quotation mark, an angle bracket, a backslash, a caret, a backtick or a vertical bar.",
     ),
     msg(
         "outcome.governance_rung",
@@ -3445,11 +3469,11 @@ pub const CATALOG: &[Entry] = &[
     msg("governance.found_more", "and {more} more"),
     msg(
         "invalid.governance_path",
-        "Under governance/ a proposal may write constitution.yaml and policy.yaml and nothing else, and cannot rename them.",
+        "Under governance/ a proposal may write constitution.yaml, policy.yaml and interwiki.yaml and nothing else, and cannot rename them.",
     ),
     msg(
         "invalid.governance_mixed",
-        "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml or policy.yaml cannot change a page or anything else.",
+        "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml, policy.yaml or interwiki.yaml cannot change a page or anything else.",
     ),
     plural_msg(
         "proposal.approvals_unreachable",
@@ -4484,6 +4508,22 @@ pub const CATALOG: &[Entry] = &[
         "policy.protections_self_note",
         "Where a protection asks for a review, a proposal accepted by its own proposer does not meet it: while the wiki is small, a lone maintainer cannot both propose and accept a change to a protected page.",
     ),
+    msg(
+        "policy.interwiki_heading",
+        "Interwiki map",
+    ),
+    msg(
+        "policy.interwiki_intro",
+        "A link written with one of these prefixes goes to the address shown, with the page title put in. A link with any other prefix stays a link to a page that does not exist.",
+    ),
+    msg(
+        "policy.interwiki_none",
+        "This wiki has no interwiki map.",
+    ),
+    msg(
+        "policy.interwiki_unavailable",
+        "The interwiki map could not be read now.",
+    ),
     msg("policy.limits_heading", "Limits of this server"),
     msg(
         "policy.limits_intro",
@@ -4550,6 +4590,18 @@ pub const CATALOG: &[Entry] = &[
     msg(
         "policy.change_protection_changed",
         "Protection changed: {before} → {after}",
+    ),
+    msg(
+        "policy.change_interwiki_added",
+        "Interwiki prefix added: {prefix} → {template}",
+    ),
+    msg(
+        "policy.change_interwiki_removed",
+        "Interwiki prefix removed: {prefix} (it led to {template})",
+    ),
+    msg(
+        "policy.change_interwiki_changed",
+        "Interwiki prefix changed: {prefix} led to {before} and now leads to {after}",
     ),
     msg(
         "policy.protection_page",
