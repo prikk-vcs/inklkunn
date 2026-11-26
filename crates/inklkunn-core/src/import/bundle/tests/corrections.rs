@@ -378,8 +378,9 @@ fn histories_only(tag: &str, files: &[(&str, String)]) -> Dir {
 }
 
 #[test]
-fn two_paths_that_differ_only_in_case_are_refused_whichever_revision_holds_one() {
-    // A removed page's revision at `pages/HOME.md` and the bundle's own `pages/Home.md`.
+fn two_paths_that_differ_only_in_case_are_refused_when_held_at_the_same_moment() {
+    // A removed page's revision at `pages/HOME.md` and the bundle's own `pages/Home.md` (a page with no history is there from the
+    // first change to the end, so the removed page's whole life is while it is there).
     let d = histories_only(
         "v4-file",
         &[(
@@ -402,31 +403,55 @@ fn two_paths_that_differ_only_in_case_are_refused_whichever_revision_holds_one()
         "{}",
         p.render()
     );
-    // Two histories, one path in two cases.
+    // Two histories, one path in two cases, alive together: one begins while the other holds its path.
+    let two = |tag: &str, second_from: &str, second_until: &str| {
+        histories_only(
+            tag,
+            &[
+                (
+                    "aa",
+                    held(
+                        "aa",
+                        "pages/Same.md",
+                        "2025-01-01T00:00:00Z",
+                        Some("2025-01-03T00:00:00Z"),
+                    ),
+                ),
+                (
+                    "bb",
+                    held("bb", "pages/SAME.md", second_from, Some(second_until)),
+                ),
+            ],
+        )
+    };
+    let d = two("v4-two", "2025-01-02T00:00:00Z", "2025-01-04T00:00:00Z");
+    assert_refused(&plan(&d.0), "history/bb.jsonl", "ignores case");
+    // ... one begins the second the other ends (the order of two acts of one second is not the file's to say, as V-7 has it).
+    let d = two("v4-touch", "2025-01-03T00:00:00Z", "2025-01-04T00:00:00Z");
+    assert_refused(&plan(&d.0), "history/bb.jsonl", "ignores case");
+    // ... one is still there at the end, so a later one in the other case is alive with it.
     let d = histories_only(
-        "v4-two",
+        "v4-open",
         &[
             (
                 "aa",
-                held(
-                    "aa",
-                    "pages/Same.md",
-                    "2025-01-01T00:00:00Z",
-                    Some("2025-01-02T00:00:00Z"),
-                ),
+                held("aa", "pages/Same.md", "2025-01-01T00:00:00Z", None),
             ),
             (
                 "bb",
                 held(
                     "bb",
                     "pages/SAME.md",
-                    "2025-01-03T00:00:00Z",
-                    Some("2025-01-04T00:00:00Z"),
+                    "2025-02-01T00:00:00Z",
+                    Some("2025-02-02T00:00:00Z"),
                 ),
             ),
         ],
     );
     assert_refused(&plan(&d.0), "history/bb.jsonl", "ignores case");
+    // Never alive together: the first is over before the second begins (a page removed, another made at the path in other case).
+    let d = two("v4-apart", "2025-01-03T00:00:01Z", "2025-01-04T00:00:00Z");
+    assert_importable(&plan(&d.0));
     // A path that is the same, as written, is no collision: the same page again, later.
     let d = histories_only(
         "v4-same",
@@ -451,6 +476,80 @@ fn two_paths_that_differ_only_in_case_are_refused_whichever_revision_holds_one()
             ),
         ],
     );
+    assert_importable(&plan(&d.0));
+}
+
+/// A bundle whose page `p1` has one history of a create at the first of `titles` and a rename to each of the next, a day apart; its
+/// file is at the last.
+fn moved_through(tag: &str, titles: &[&str]) -> Dir {
+    let d = dir(tag);
+    manifest(
+        &d.0,
+        &["license: CC-BY-SA-4.0", "checksums: sha256sums.txt"],
+    );
+    let text = |title: &str| format!("---\nid: p1\ntitle: {title}\n---\n\nbody\n");
+    let last = titles.last().unwrap();
+    put(&d.0, &format!("pages/{last}.md"), text(last).as_bytes());
+    let mut lines = vec![record(
+        "r1",
+        None,
+        "2025-01-01T00:00:00Z",
+        Some(&text(titles.first().unwrap())),
+    )];
+    for (n, pair) in titles.windows(2).enumerate() {
+        lines.push(
+            serde_json::json!({
+                "rev": format!("r{}", n + 2),
+                "parent": format!("r{}", n + 1),
+                "type": "rename",
+                "at": format!("2025-01-{:02}T00:00:00Z", n + 2),
+                "from": pair[0],
+                "to": pair[1],
+            })
+            .to_string(),
+        );
+    }
+    put(
+        &d.0,
+        "history/p1.jsonl",
+        (lines.join("\n") + "\n").as_bytes(),
+    );
+    seal(&d.0);
+    d
+}
+
+#[test]
+fn a_rename_that_changes_only_the_case_is_a_rename_and_imports() {
+    // `Foo bar` → `Foo Bar`: the page holds the first until the move and the second from it.
+    let p = plan(&moved_through("w1-one", &["Foo bar", "Foo Bar"]).0);
+    assert_importable(&p);
+    // ... and back again, and again: the places of one page never overlap.
+    let p = plan(&moved_through("w1-back", &["Foo bar", "Foo Bar", "Foo bar", "FOO BAR"]).0);
+    assert_importable(&p);
+    // Another page that holds a path of the other case while the page is at one is alive with it.
+    let d = moved_through("w1-other", &["Foo bar", "Foo Bar"]);
+    put(
+        &d.0,
+        "history/zz.jsonl",
+        held("zz", "pages/FOO BAR.md", "2025-01-01T12:00:00Z", None).as_bytes(),
+    );
+    seal(&d.0);
+    let p = plan(&d.0);
+    assert_refused(&p, "history/zz.jsonl", "ignores case");
+    // ... but not before the page was made.
+    let d = moved_through("w1-after", &["Foo bar", "Foo Bar"]);
+    put(
+        &d.0,
+        "history/zz.jsonl",
+        held(
+            "zz",
+            "pages/FOO BAR.md",
+            "2024-12-01T00:00:00Z",
+            Some("2024-12-02T00:00:00Z"),
+        )
+        .as_bytes(),
+    );
+    seal(&d.0);
     assert_importable(&plan(&d.0));
 }
 

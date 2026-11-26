@@ -1215,10 +1215,30 @@ fn holds_of(history: &PageHistory) -> Vec<Hold> {
     holds
 }
 
+/// One place a page is held, for the check of case: the path, who holds it (a history file; `None` for a page of the bundle that has no
+/// history, which each is its own) and from when to when (`None`: from the first change, or to the end).
+struct Held<'a> {
+    path: String,
+    owner: Option<&'a str>,
+    from: Option<time::Instant>,
+    until: Option<time::Instant>,
+}
+
+/// After every revision of every history: the change at the end that brings the pages to the bundle's files.
+const FINAL_CHANGE: time::Instant = time::Instant {
+    secs: i64::MAX,
+    nanos: 0,
+};
+
 /// **The paths the replay would write, judged together** (the plan's, before anything is made):
 ///
-/// * *case* (V-4): two paths of the pages' files and of every revision, a rename's `from` included, that differ and are one for a file
-///   system that ignores case (`collision_key`), which prikk would otherwise refuse partway through the replay;
+/// * *case* (V-4, by lifetimes, W-1): two paths that differ and are one for a file system that ignores case (`collision_key`), which
+///   prikk would otherwise refuse partway through the replay, **held at the same moment**. A page moved from `Foo bar` to `Foo Bar`
+///   holds the first until the move and the second from it: the places of one page never overlap, and a rename that changes only the
+///   case is a rename. Two pages (`Foo` and `foo`) alive together are refused. A page of the bundle with no history is there from the
+///   first change to the end; one with a history is brought to its file by the change at the end. Times that touch overlap, as in
+///   V-7. Only page paths are judged: the wiki's titles keep case (`Foo bar` and `Foo Bar` are two titles), and an attachment's path
+///   is not a revision's;
 /// * *overlap* (V-7): two histories that hold one path at times that overlap (or touch: the order of two acts of one second is
 ///   not the file's to say), which the replay would write one over the other. Each refusal names both files.
 fn refuse_conflicting_paths(
@@ -1227,50 +1247,75 @@ fn refuse_conflicting_paths(
     refusals: &mut Vec<Refusal>,
 ) {
     use inklkunn_markup::path::collision_key;
-    // case: path → who named it first
-    let mut by_key: BTreeMap<String, (String, String)> = BTreeMap::new();
+    // case
+    let owned: BTreeMap<&str, &str> = histories
+        .iter()
+        .filter_map(|h| Some((h.page.as_deref()?, h.file.as_str())))
+        .collect();
+    let mut places: BTreeMap<String, Vec<Held<'_>>> = BTreeMap::new();
+    for f in plan.files.iter().filter(|f| f.path.starts_with("pages/")) {
+        let (owner, from) = match owned.get(f.path.as_str()) {
+            Some(file) => (Some(*file), Some(FINAL_CHANGE)),
+            None => (None, None),
+        };
+        places
+            .entry(collision_key(&f.path))
+            .or_default()
+            .push(Held {
+                path: f.path.clone(),
+                owner,
+                from,
+                until: None,
+            });
+    }
+    for h in histories {
+        for hold in holds_of(h) {
+            places
+                .entry(collision_key(&hold.path))
+                .or_default()
+                .push(Held {
+                    path: hold.path,
+                    owner: Some(h.file.as_str()),
+                    from: Some(hold.from),
+                    until: hold.until,
+                });
+        }
+    }
     let mut said: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut note = |path: &str, file: Option<&str>, refusals: &mut Vec<Refusal>| {
-        let key = collision_key(path);
-        let whose = file.map_or_else(
-            || "a page of the bundle".to_owned(),
-            |f| format!("`{}`", shown(f)),
-        );
-        match by_key.get(&key) {
-            Some((first, first_whose)) if first != path => {
-                if said.insert((first.clone(), path.to_owned())) {
+    for mut held in places.into_values() {
+        held.sort_by(|a, b| {
+            a.from
+                .cmp(&b.from)
+                .then_with(|| a.path.cmp(&b.path))
+                .then_with(|| a.owner.cmp(&b.owner))
+        });
+        for (i, a) in held.iter().enumerate() {
+            for b in held.iter().skip(i + 1) {
+                // `b` begins no earlier than `a` does: they are held together unless `a` is over before `b` begins.
+                if let (Some(until), Some(begins)) = (a.until, b.from)
+                    && until < begins
+                {
+                    continue;
+                }
+                // One page is at one place at a time; and the same path as written is no collision (V-7 judges that).
+                if a.path == b.path || (a.owner.is_some() && a.owner == b.owner) {
+                    continue;
+                }
+                if said.insert((a.path.clone(), b.path.clone())) {
+                    let whose = a.owner.map_or_else(
+                        || "a page of the bundle".to_owned(),
+                        |f| format!("`{}`", shown(f)),
+                    );
                     refusals.push(refusal(
-                        file.unwrap_or(path),
+                        b.owner.unwrap_or(&b.path),
                         format!(
                             "has the path `{}`, and {} has `{}`: a file system that ignores case cannot tell them apart",
-                            shown(path),
-                            first_whose,
-                            shown(first)
+                            shown(&b.path),
+                            whose,
+                            shown(&a.path)
                         ),
                     ));
                 }
-            }
-            Some(_) => {}
-            None => {
-                by_key.insert(key, (path.to_owned(), whose));
-            }
-        }
-    };
-    for f in plan.files.iter().filter(|f| f.path.starts_with("pages/")) {
-        note(&f.path, None, refusals);
-    }
-    for h in histories {
-        for r in &h.revisions {
-            if matches!(r.step, Step::NotReplayed(_)) {
-                continue;
-            }
-            if let Some(path) = &r.path {
-                note(path, Some(&h.file), refusals);
-            }
-            if let Step::Rename { from, .. } = &r.step
-                && let Ok(path) = title_to_path(from)
-            {
-                note(&path, Some(&h.file), refusals);
             }
         }
     }
