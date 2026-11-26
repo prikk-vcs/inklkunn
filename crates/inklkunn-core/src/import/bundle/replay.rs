@@ -291,8 +291,12 @@ fn load(plan: &BundlePlan, history: &PageHistory) -> Result<Cursor, String> {
     } = &history.source;
     let (dir, name) = open_chain(&plan.plan.root, &plan.plan.dirs, path)
         .map_err(|why| format!("`{}` {why}", super::shown(&history.file)))?;
-    let bytes = read_regular(&dir, &name, *identity, *size)
-        .map_err(|why| format!("`{}` {why}", super::shown(&history.file)))?;
+    let bytes = read_regular(&dir, &name, *identity, *size).map_err(|why| {
+        format!(
+            "`{}` is not the file that was planned (it changed since the plan: it {why})",
+            super::shown(&history.file)
+        )
+    })?;
     if bytes.len() as u64 != *size || sha256(&bytes) != *digest {
         return Err(format!(
             "`{}` is not the file that was planned (it changed since the plan)",
