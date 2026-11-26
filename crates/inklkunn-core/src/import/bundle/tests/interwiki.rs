@@ -284,7 +284,8 @@ fn a_bundles_governance_files_are_never_imported_the_map_comes_from_the_manifest
 #[test]
 fn the_map_is_judged_against_the_titles_of_every_page_the_replay_writes_a_moved_away_one_too() {
     // A page that is moved from `Garden/Beds` to `Beds` during the history is gone from `Garden/` at the end, and its directory is a
-    // namespace the wiki had while the import ran: a prefix of that name is left out, as the safer side.
+    // namespace the wiki had while the import ran: a prefix of that name is left out, as the safer side. (The first record's text was
+    // hidden at the source, so no revision of the page is ever at `Garden/Beds`: only the rename's `from` names it.)
     let d = dir("iw-history");
     manifest(
         &d.0,
@@ -298,7 +299,11 @@ fn the_map_is_judged_against_the_titles_of_every_page_the_replay_writes_a_moved_
     );
     let beds = |n: u32| format!("---\nid: beds\ntitle: Beds\n---\n\nBeds {n}.\n");
     put(&d.0, "pages/Beds.md", beds(2).as_bytes());
-    let r1 = record("r1", None, "2025-01-01T00:00:00Z", Some(&beds(1)));
+    let r1 = serde_json::json!({
+        "rev": "r1", "parent": null, "type": "create", "at": "2025-01-01T00:00:00Z",
+        "suppressed": ["content"], "reason": "personal-data",
+    })
+    .to_string();
     let mut moved: serde_json::Value = serde_json::from_str(&record(
         "r2",
         Some("r1"),
