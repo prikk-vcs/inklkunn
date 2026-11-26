@@ -8,6 +8,7 @@ use sha2::{Digest as _, Sha256};
 use super::*;
 
 mod corrections;
+mod interwiki;
 
 // ------------------------------------------------------------------------------------------------ helpers
 
