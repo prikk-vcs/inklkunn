@@ -690,3 +690,10 @@ rehearsal or release can start.
 
 Hand back as `010-maintenance-2026-11-m63-corrections-review-request.md`. The architect pushes it and runs the
 rehearsal on `main`. **From now on, the architect rehearses every change to `release.yml` before approving it.**
+
+## B-1 reviewed (2026-11-26)
+
+**B-1: Approved on a rehearsal run** (`.git-exclude/reviewed/010-maintenance-2026-11-m63-corrections-review-result.md`).
+Its changes, alone on `origin/main`, were rehearsed on a temporary branch: run 45750463743, every job green, with M63's
+publish dry run passing on CI. The branch was deleted. **`3c161f7` is pushed with I-T2 – I-T3's corrections**, on which
+it sits. Until then `main`'s `release.yml` stays unreadable, and no release is due.

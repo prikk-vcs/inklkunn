@@ -231,3 +231,26 @@ the corrections, built on X-1, X-2 and X-9's shape. It is handed back with I-T3 
 - **I-T3 is assigned now** (the I-T3 section above), and handed back with I-T2 as
   `007-interchange-i-t2-i-t3-review-request.md`.
 - **First, alone: B-1** (the maintenance handoff's last section): `release.yml` does not load on `main`.
+
+## I-T2 – I-T3 reviewed: Changes Requested, V-1 – V-12 (2026-11-26; binding, one round)
+
+**Changes Requested for one High** (`.git-exclude/reviewed/007-interchange-i-t2-i-t3-review-result.md`). The rest is
+sound: an independent review found no forged message, no path escape, nothing served before completion, and no removal
+beyond scope. **Nothing is pushed** until this round is approved. B-1 goes out with it.
+- **V-1 (High):** a removed page's history is never checked for its licence, so an incompatible revision is replayed
+  and served under the wiki's licence. Check every history's licences, keyed by the history.
+- **V-2 (Medium):** every file the replay reads is checked against the plan's digest (attachments, sidecars, knowledge
+  files too), so *verified* is true.
+- **V-3 (Medium):** the revision cap and a bound on patched bytes apply while the records are read, before any patch.
+- **V-4 – V-8:** case collisions over revision paths; `at`'s upper bound; the bundle's digest identifies the bundle;
+  two histories on one path at overlapping times; `discard-unfinished`'s description after its checks.
+- **V-9 (the words):** *the wiki it was imported from* / インポート元, not *source* / 出典 (a claim's source). Glossary
+  rows for バンドル, チェックサム, インポート元, and the twelve messages listed for the owner.
+- **V-10:** a history that begins mid-way is accepted and said; a licence that is not an SPDX id names the near one.
+- **V-11:** an id that cannot name a history file is named by its path, so a converted MediaWiki wiki's round trip
+  keeps its history.
+- **V-12:** `wiki create`'s usage text.
+- **Decided:** `INKLKUNN_IMPORT_MAX_REVISIONS` defaults to **1,000**. The history is the page's notice for 0.5.0 (the
+  page view's notice is recorded for later).
+
+Hand back as `007-interchange-i-t2-i-t3-corrections-review-request.md`. **I-T4 – I-T6 may start now, beside it.**
