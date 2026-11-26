@@ -397,12 +397,11 @@ impl BundleReport {
                     names.join(", ")
                 ));
             }
-            match self.estimate_seconds {
-                Some(s) => out.push_str(&format!(
+            if let Some(s) = self.estimate_seconds {
+                out.push_str(&format!(
                     "estimated time of the replay: {} (a fit to the measured cost of building a history through the signer: 500 blocks 154 s, 2,000 blocks 1,438 s; the import's own cost is measured with the replay)\n",
                     duration(s)
-                )),
-                None => {}
+                ));
             }
         }
         let people = &self.people;
@@ -419,7 +418,7 @@ impl BundleReport {
             out.push_str(&format!("  by kind: {}\n", kinds.join(", ")));
         }
         if !people.names.is_empty() {
-            let names: Vec<String> = people.names.iter().cloned().collect();
+            let names: Vec<String> = people.names.to_vec();
             out.push_str(&format!(
                 "  {}{}\n",
                 names.join(", "),

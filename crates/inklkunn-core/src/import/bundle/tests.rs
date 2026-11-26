@@ -73,6 +73,11 @@ fn copy_of(tag: &str, fixture_dir: &str) -> Dir {
     d
 }
 
+/// Set a member of a JSON object (a test may not index).
+fn set(v: &mut serde_json::Value, key: &str, x: impl Into<serde_json::Value>) {
+    v.as_object_mut().unwrap().insert(key.to_owned(), x.into());
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -150,14 +155,6 @@ fn plan(root: &Path) -> BundlePlan {
     plan_with(root, &BundleOptions::default())
 }
 
-fn said(plan: &BundlePlan) -> Vec<String> {
-    plan.plan
-        .refused
-        .iter()
-        .map(|r| format!("{}: {}", r.name, r.reason))
-        .collect()
-}
-
 /// The plan is refused, and one refusal names `name` with `rule` in it.
 #[track_caller]
 fn assert_refused(plan: &BundlePlan, name: &str, rule: &str) {
@@ -188,8 +185,8 @@ fn record(rev: &str, parent: Option<&str>, at: &str, content: Option<&str>) -> S
         "summary": format!("change {rev}"),
     });
     if let Some(c) = content {
-        v["content"] = c.into();
-        v["sha256"] = sha_hex(c.as_bytes()).into();
+        set(&mut v, "content", c);
+        set(&mut v, "sha256", sha_hex(c.as_bytes()));
     }
     v.to_string()
 }
@@ -599,7 +596,9 @@ fn the_mediawiki_fixture_reports_its_history_people_suppressions_and_unmapped_pr
         .iter()
         .map(|&(h, v)| p.histories.get(h).unwrap().revisions.get(v).unwrap().at)
         .collect();
-    assert!(instants.windows(2).all(|w| w[0] <= w[1]), "{instants:?}");
+    let mut sorted = instants.clone();
+    sorted.sort();
+    assert_eq!(instants, sorted);
     // A bundle that declares no licence is refused without the option, by a sentence that names it.
     let refused = plan(&fixture("mediawiki/bundle"));
     assert_refused(&refused, "wiki-bundle.yaml", "--bundle-license");
@@ -801,7 +800,7 @@ fn an_old_revision_under_a_licence_the_wiki_cannot_take_makes_its_page_incompati
     put(&d.0, "pages/Home.md", text(1).as_bytes());
     let mut v: serde_json::Value =
         serde_json::from_str(&record("r1", None, "2025-01-01T00:00:00Z", Some(&text(1)))).unwrap();
-    v["license"] = "CC-BY-ND-4.0".into();
+    set(&mut v, "license", "CC-BY-ND-4.0");
     put(
         &d.0,
         "history/home.jsonl",
@@ -1104,7 +1103,7 @@ fn a_text_is_checked_against_its_sha256_and_a_patch_is_applied_to_the_text_befor
     // A content that is not the digest it says.
     let mut v: serde_json::Value =
         serde_json::from_str(&record("r1", None, "2025-01-01T00:00:00Z", Some(&text(3)))).unwrap();
-    v["sha256"] = sha_hex(b"something else").into();
+    set(&mut v, "sha256", sha_hex(b"something else"));
     let d = with_history("sha-bad", &[v.to_string()]);
     assert_refused(
         &plan(&d.0),
@@ -1118,8 +1117,8 @@ fn a_text_is_checked_against_its_sha256_and_a_patch_is_applied_to_the_text_befor
     assert_eq!(patch::apply(&one, patch).unwrap(), two);
     let mut p2: serde_json::Value =
         serde_json::from_str(&record("r2", Some("r1"), "2025-01-02T00:00:00Z", None)).unwrap();
-    p2["patch"] = patch.into();
-    p2["sha256"] = sha_hex(two.as_bytes()).into();
+    set(&mut p2, "patch", patch);
+    set(&mut p2, "sha256", sha_hex(two.as_bytes()));
     let lines = [
         record("r1", None, "2025-01-01T00:00:00Z", Some(&one)),
         p2.to_string(),
@@ -1138,7 +1137,7 @@ fn a_text_is_checked_against_its_sha256_and_a_patch_is_applied_to_the_text_befor
     assert_eq!(*bytes, two.len() as u64);
     // A patch whose result is not the digest; a patch with no digest at all; a patch with no text before it; a patch that does not fit.
     let mut wrong = p2.clone();
-    wrong["sha256"] = sha_hex(b"not it").into();
+    set(&mut wrong, "sha256", sha_hex(b"not it"));
     let d = with_history(
         "sha-patch-wrong",
         &[
@@ -1166,7 +1165,7 @@ fn a_text_is_checked_against_its_sha256_and_a_patch_is_applied_to_the_text_befor
         "no `sha256` to check the result against",
     );
     let mut first = p2.clone();
-    first["parent"] = serde_json::Value::Null;
+    set(&mut first, "parent", serde_json::Value::Null);
     let d = with_history("sha-patch-first", &[first.to_string()]);
     assert_refused(
         &plan(&d.0),
@@ -1174,7 +1173,11 @@ fn a_text_is_checked_against_its_sha256_and_a_patch_is_applied_to_the_text_befor
         "no text before it to apply it to",
     );
     let mut misfit = p2.clone();
-    misfit["patch"] = "@@ -6 +6 @@\n-Version 9.\n+Version 2.\n".into();
+    set(
+        &mut misfit,
+        "patch",
+        "@@ -6 +6 @@\n-Version 9.\n+Version 2.\n",
+    );
     let d = with_history(
         "sha-patch-misfit",
         &[
@@ -1445,7 +1448,11 @@ fn an_address_in_users_yaml_refuses_naming_the_entry_and_never_repeating_the_add
     // An address as a history author is the same address.
     let mut v: serde_json::Value =
         serde_json::from_str(&record("r1", None, "2025-01-01T00:00:00Z", Some(&text(3)))).unwrap();
-    v["author"] = serde_json::json!({"name": "CANARY9f3a@example.org"});
+    set(
+        &mut v,
+        "author",
+        serde_json::json!({"name": "CANARY9f3a@example.org"}),
+    );
     let d = with_history("addr-author", &[v.to_string()]);
     let p = plan(&d.0);
     assert_refused(
@@ -1551,7 +1558,11 @@ fn names_that_a_bundle_carries_are_escaped_and_bounded_in_the_report() {
     put(&d.0, "pages/Home.md", HOME.as_bytes());
     let mut v: serde_json::Value =
         serde_json::from_str(&record("r1", None, "2025-01-01T00:00:00Z", Some(&text(3)))).unwrap();
-    v["author"] = serde_json::json!({"id": "m", "name": evil});
+    set(
+        &mut v,
+        "author",
+        serde_json::json!({"id": "m", "name": evil}),
+    );
     let mut w: serde_json::Value = serde_json::from_str(&record(
         "r2",
         Some("r1"),
@@ -1559,11 +1570,15 @@ fn names_that_a_bundle_carries_are_escaped_and_bounded_in_the_report() {
         Some(&text(3)),
     ))
     .unwrap();
-    w["author"] = serde_json::json!({"id": "l", "name": long_name});
-    w["type"] = "weird\u{202e}type".into();
+    set(
+        &mut w,
+        "author",
+        serde_json::json!({"id": "l", "name": long_name}),
+    );
+    set(&mut w, "type", "weird\u{202e}type");
     w.as_object_mut().unwrap().remove("content");
     w.as_object_mut().unwrap().remove("sha256");
-    w["unknown\u{202e}member"] = 1.into();
+    set(&mut w, "unknown\u{202e}member", 1);
     put(&d.0, "history/home.jsonl", format!("{v}\n{w}\n").as_bytes());
     let p = plan(&d.0);
     assert_importable(&p);
@@ -1605,8 +1620,8 @@ fn what_the_bundle_says_that_this_build_does_not_know_is_kept_in_the_report_and_
     put(&d.0, "pages/Home.md", text(1).as_bytes());
     let mut v: serde_json::Value =
         serde_json::from_str(&record("r1", None, "2025-01-01T00:00:00Z", Some(&text(1)))).unwrap();
-    v["x_engine_field"] = serde_json::json!({"a": 1});
-    v["review"] = serde_json::json!({"state": "ok"});
+    set(&mut v, "x_engine_field", serde_json::json!({"a": 1}));
+    set(&mut v, "review", serde_json::json!({"state": "ok"}));
     put(&d.0, "history/home.jsonl", format!("{v}\n").as_bytes());
     let p = plan(&d.0);
     assert_importable(&p);
@@ -1626,7 +1641,7 @@ fn what_the_bundle_says_that_this_build_does_not_know_is_kept_in_the_report_and_
         let mut v: serde_json::Value =
             serde_json::from_str(&record("r1", None, "2025-01-01T00:00:00Z", Some(&text(1))))
                 .unwrap();
-        v[field] = value;
+        set(&mut v, field, value);
         put(&d.0, "history/home.jsonl", format!("{v}\n").as_bytes());
         let p = plan(&d.0);
         assert!(
@@ -1701,7 +1716,7 @@ fn what_the_source_hid_or_the_exporting_inklkunn_withheld_is_not_replayed_and_is
     assert!(!p.render().contains("must not be read"));
     // A record that says its text is hidden and carries text is refused: it cannot be told from what was hidden.
     let mut v = hidden.clone();
-    v["content"] = "x".into();
+    set(&mut v, "content", "x");
     put(
         &d.0,
         "history/home.jsonl",
@@ -1713,8 +1728,8 @@ fn what_the_source_hid_or_the_exporting_inklkunn_withheld_is_not_replayed_and_is
     );
     assert_refused(&plan(&d.0), "history/home.jsonl", "carries text");
     let mut w = withheld.clone();
-    w["parent"] = "r1".into();
-    w["content"] = "x".into();
+    set(&mut w, "parent", "r1");
+    set(&mut w, "content", "x");
     put(
         &d.0,
         "history/home.jsonl",
@@ -1752,7 +1767,7 @@ fn a_page_that_was_renamed_and_removed_is_followed_by_its_titles_and_the_paths_t
                 Some(&t("New name")),
             ))
             .unwrap();
-            v["summary"] = "rewritten".into();
+            set(&mut v, "summary", "rewritten");
             v.to_string()
         },
     ];
@@ -1765,7 +1780,7 @@ fn a_page_that_was_renamed_and_removed_is_followed_by_its_titles_and_the_paths_t
     let gone = [
         {
             let mut v: serde_json::Value = serde_json::from_str(&record("g1", None, "2025-01-01T12:00:00Z", Some("---\nid: g\ntitle: Gone\n---\n\nx\n"))).unwrap();
-            v["inklkunn"] = serde_json::json!({"path": "pages/Gone.md"});
+            set(&mut v, "inklkunn", serde_json::json!({"path": "pages/Gone.md"}));
             v.to_string()
         },
         serde_json::json!({"rev": "g2", "parent": "g1", "type": "delete", "at": "2025-01-04T00:00:00Z", "inklkunn": {"path": "pages/Gone.md"}}).to_string(),
@@ -1826,7 +1841,7 @@ fn a_page_that_was_renamed_and_removed_is_followed_by_its_titles_and_the_paths_t
     assert_eq!(order, vec!["r1", "g1", "r2", "r3", "g2"]);
     // A rename whose `to` is not where the page is, or a title that is not one, is refused naming the revision.
     let mut bad = rename.clone();
-    bad["to"] = "Elsewhere".into();
+    set(&mut bad, "to", "Elsewhere");
     put(
         &d.0,
         "history/p1.jsonl",
@@ -2007,19 +2022,25 @@ fn the_report_is_a_value_that_can_be_kept_and_says_what_it_is_made_of() {
     assert_eq!(p.report.clone(), p.report);
     let json = p.report.to_json();
     assert_eq!(json, again.report.to_json());
-    assert_eq!(json["fidelity"]["declared"], 3);
-    assert_eq!(json["fidelity"]["found"], "history");
-    assert_eq!(json["license"]["from"], "declared-by-admin");
-    assert_eq!(json["checksums"]["state"], "verified");
-    assert_eq!(json["history"]["revisions"], 7);
-    assert_eq!(json["history"]["suppressed"]["content"], 1);
-    assert_eq!(json["people"]["total"], 3);
-    assert_eq!(json["links"]["unmapped_prefixes"]["wikipedia"], 1);
+    let at = |pointer: &str| json.pointer(pointer).cloned().unwrap();
+    assert_eq!(at("/fidelity/declared"), 3);
+    assert_eq!(at("/fidelity/found"), "history");
+    assert_eq!(at("/license/from"), "declared-by-admin");
+    assert_eq!(at("/checksums/state"), "verified");
+    assert_eq!(at("/history/revisions"), 7);
+    assert_eq!(at("/history/suppressed/content"), 1);
+    assert_eq!(at("/people/total"), 3);
+    assert_eq!(at("/links/unmapped_prefixes/wikipedia"), 1);
     // The checksums' absence is part of the value.
     let none = small("value-none");
     manifest(&none.0, &["license: CC0-1.0"]);
     assert_eq!(
-        plan(&none.0).report.to_json()["checksums"]["state"],
+        plan(&none.0)
+            .report
+            .to_json()
+            .pointer("/checksums/state")
+            .cloned()
+            .unwrap(),
         "none-in-the-bundle"
     );
 }

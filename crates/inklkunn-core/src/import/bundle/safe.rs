@@ -55,7 +55,7 @@ pub fn shown_up_to(name: &str, max: usize) -> String {
     out
 }
 
-/// `name` as a report may show it, cut at [`NAME_CHARS`].
+/// `name` as a report may show it, cut at `NAME_CHARS`.
 pub fn shown(name: &str) -> String {
     shown_up_to(name, NAME_CHARS)
 }

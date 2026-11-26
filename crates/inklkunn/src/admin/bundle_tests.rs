@@ -80,7 +80,10 @@ fn all_files(root: &Path) -> Vec<String> {
     out
 }
 
-const HOME: &str = "---\nid: home\ntitle: Home\n---\n\nHello.\n";
+/// Set a member of a JSON object (a test may not index).
+fn set(v: &mut serde_json::Value, key: &str, x: impl Into<serde_json::Value>) {
+    v.as_object_mut().unwrap().insert(key.to_owned(), x.into());
+}
 
 /// A bundle with a licence, a page and three revisions of it (and no checksums: the cases that need them start from a fixture).
 fn good(tag: &str) -> Dir {
@@ -499,7 +502,7 @@ fn every_refusal_of_the_criterion_is_named_the_same_on_a_dry_run_and_on_a_run_an
             make: |r| {
                 change_line(r, "history/home.jsonl", 2, |l| {
                     let mut v: serde_json::Value = serde_json::from_str(l).unwrap();
-                    v["sha256"] = "a".repeat(64).into();
+                    set(&mut v, "sha256", "a".repeat(64));
                     v.to_string()
                 });
             },
@@ -537,7 +540,11 @@ fn every_refusal_of_the_criterion_is_named_the_same_on_a_dry_run_and_on_a_run_an
             make: |r| {
                 change_line(r, "history/home.jsonl", 1, |l| {
                     let mut v: serde_json::Value = serde_json::from_str(l).unwrap();
-                    v["content"] = format!("---\nid: home\n---\n\n{}\n", "x".repeat(3000)).into();
+                    set(
+                        &mut v,
+                        "content",
+                        format!("---\nid: home\n---\n\n{}\n", "x".repeat(3000)),
+                    );
                     v.to_string()
                 });
             },

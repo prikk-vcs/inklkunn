@@ -2,27 +2,27 @@
 //! reported **before anything is written**, which is the whole of this task (the replay is I-T3's).
 //!
 //! **The plan reads and judges everything.** [`plan_bundle`] walks the directory with `import-folder`'s own walk (handles,
-//! `openat`, `O_NOFOLLOW`, identities pinned, the same path, name and size rules: [`super::Walk`]), and then judges, in this
+//! `openat`, `O_NOFOLLOW`, identities pinned, the same path, name and size rules: `Walk`), and then judges, in this
 //! order, what the walk gathered:
 //!
-//! 1. the manifest, by its known keys only ([`manifest::read`]); its `fidelity` is **reported and not trusted**;
+//! 1. the manifest, by its known keys only (`manifest::read`); its `fidelity` is **reported and not trusted**;
 //! 2. the licence the wiki takes (RFC 007 D-4): the manifest's, or `--bundle-license` when it declares none, and **never
 //!    one that changes what the bundle says**; a licence that no wiki may have as its default refuses;
 //! 3. the checksums the manifest names, **strictly when present**: every file against its line, every file of the bundle
 //!    against the lines (a missing, an extra and a wrong file each refuse by name), and *none in the bundle* said when there
 //!    are none; there is no way to skip them;
 //! 4. `users.yaml`: an e-mail address in any entry refuses, naming the entry;
-//! 5. every history file ([`history`]): each record by the schema's types, **the file's own order as the history** (a `parent`,
+//! 5. every history file (`history`): each record by the schema's types, **the file's own order as the history** (a `parent`,
 //!    `rev` or `at` that breaks it refuses, naming the page and the `rev`; times as instants), `content` or `patch` with its
 //!    `sha256` checked, every revision's text judged as the folder import judges a page (frontmatter, the page cap), and the
 //!    licence each declares;
-//! 6. each page's and attachment's own licence by the matrix of chapter 15 ([`licence`]): files it cannot go into refuse the
+//! 6. each page's and attachment's own licence by the matrix of chapter 15 (`licence`): files it cannot go into refuse the
 //!    run unless `--leave-out-incompatible`, which leaves **exactly those** out (a page with all its history), and nothing
 //!    imports them;
 //! 7. the revision cap and the bytes of `history/` (C-5e), with the way on (`--no-history`).
 //!
 //! **Nothing is written, anywhere**, and **no byte of a refused file is repeated**: a refusal names a path (or a page and a
-//! `rev`) and a rule, and every name in it or in the report is display-safe and bounded ([`safe::shown`]).
+//! `rev`) and a rule, and every name in it or in the report is display-safe and bounded (`safe::shown`).
 //!
 //! The result is a [`BundlePlan`]: the files the first change would write (the same [`ImportPlan`] the folder import makes), each
 //! page's judged history, the order of the replay (revisions of all pages merged by `at`, ties in path order, the same every
@@ -362,11 +362,14 @@ impl Walk<'_> {
 
 // ------------------------------------------------------------------------------------------------------- the plan
 
+/// A manifest as the plan reads it, and the mapping it was read from (the knowledge extension's declaration is read from that).
+type ReadManifest = (Manifest, Vec<(String, inklkunn_markup::Value)>);
+
 /// The manifest, read from the bundle's own handle (before the walk, which needs to know whether checksums are named).
 fn read_manifest(
     root: &OwnedFd,
     top: &[(std::ffi::OsString, Result<FileType, rustix::io::Errno>)],
-) -> Result<(Manifest, Vec<(String, inklkunn_markup::Value)>), Vec<String>> {
+) -> Result<ReadManifest, Vec<String>> {
     let name = OsStr::new(crate::bundle::MANIFEST);
     if !top
         .iter()
@@ -1116,7 +1119,7 @@ fn finish(
     }
     report.incompatible_left_out = options.leave_out_incompatible;
     if !incompatible.is_empty() && !options.leave_out_incompatible {
-        let wiki = wiki_license.as_deref().unwrap_or_default();
+        let wiki = wiki_license.unwrap_or_default();
         for i in &incompatible {
             refusals.push(refusal(
                 &i.path,
