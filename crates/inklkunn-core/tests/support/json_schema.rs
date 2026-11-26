@@ -1,7 +1,8 @@
 //! A small JSON Schema (2020-12) checker for the bundle manifest tests, written by hand because no JSON Schema
 //! crate is in the lock and a dependency is not worth one schema. It covers the keywords the wiki-commons
 //! manifest schema uses (`$ref` into `$defs`, `type`, `const`, `enum`, `required`, `properties`,
-//! `additionalProperties`, `items`, `minimum`, `maximum`, `pattern`, `format`) and **fails on any other keyword,
+//! `additionalProperties`, `items`, `minimum`, `maximum`, `pattern`, `format`, and `anyOf` for the self-assessment's
+//! date) and **fails on any other keyword,
 //! on a `pattern` it does not know and on a `format` it would have to check**, so a newer schema copy cannot be
 //! half-checked without the test saying so.
 #![allow(dead_code)]
@@ -33,6 +34,7 @@ const APPLIED: &[&str] = &[
     "pattern",
     "minLength",
     "format",
+    "anyOf",
 ];
 
 /// Every way `instance` fails `schema` (empty when it conforms). Paths are JSON pointers into the instance.
@@ -106,6 +108,21 @@ fn check(root: &Value, schema: &Value, inst: &Value, at: &str, out: &mut Vec<Str
             return;
         }
     }
+    if let Some(Value::Array(alternatives)) = map.get("anyOf") {
+        let mut each: Vec<Vec<String>> = Vec::new();
+        for alternative in alternatives {
+            let mut found = Vec::new();
+            check(root, alternative, inst, at, &mut found);
+            if found.is_empty() {
+                each.clear();
+                break;
+            }
+            each.push(found);
+        }
+        if !each.is_empty() || alternatives.is_empty() {
+            out.push(format!("{at}: matches none of the alternatives: {each:?}"));
+        }
+    }
     if let Some(c) = map.get("const")
         && c != inst
     {
@@ -150,6 +167,16 @@ fn check(root: &Value, schema: &Value, inst: &Value, at: &str, out: &mut Vec<Str
                     out.push(format!("{at}: {s:?} is not an RFC 3339 date-time"));
                 }
             }
+            Some("date") => {
+                if !is_date(s) {
+                    out.push(format!("{at}: {s:?} is not an RFC 3339 full-date"));
+                }
+            }
+            Some("uri") => {
+                if !is_uri(s) {
+                    out.push(format!("{at}: {s:?} is not a URI"));
+                }
+            }
             Some(format) => out.push(format!(
                 "{at}: the checker does not check the format `{format}`"
             )),
@@ -181,6 +208,24 @@ fn check(root: &Value, schema: &Value, inst: &Value, at: &str, out: &mut Vec<Str
             check(root, items, value, &format!("{at}/{i}"), out);
         }
     }
+}
+
+/// RFC 3339 `full-date`: `YYYY-MM-DD`, the month's length and leap years included.
+fn is_date(s: &str) -> bool {
+    is_date_time(&format!("{s}T00:00:00Z"))
+}
+
+/// A URI by its shape: a scheme (a letter, then letters, digits, `+`, `-` or `.`), a colon, something after it, and no space or
+/// control character (the checker is for what a self-assessment holds, the address of a project).
+fn is_uri(s: &str) -> bool {
+    let Some((scheme, rest)) = s.split_once(':') else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && !rest.is_empty()
+        && !s.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 /// RFC 3339 `date-time`: `YYYY-MM-DDTHH:MM:SS`, optional fraction, then `Z` or `±HH:MM`, with the date and time in

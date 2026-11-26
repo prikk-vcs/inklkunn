@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/kos-commons/wiki-commons/main/schemas/self-assessment.schema.json",
+  "title": "Wiki Commons self-assessment (wiki-commons.yaml)",
+  "description": "An engine's, tool's, or deployment's self-declared conformance profiles with per-item status. See guidelines/16-Conformance_Profiles_and_Self_Assessment.md.",
+  "type": "object",
+  "required": ["format", "version", "subject", "profiles"],
+  "properties": {
+    "format": {"const": "wiki-commons-self-assessment"},
+    "version": {"type": "string"},
+    "subject": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "url": {"type": "string", "format": "uri"},
+        "kind": {"type": "string", "enum": ["engine", "tool", "deployment"]}
+      },
+      "additionalProperties": true
+    },
+    "assessed_at": {"type": "string", "anyOf": [{"format": "date"}, {"format": "date-time"}]},
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "claim": {"type": "string", "enum": ["yes", "partial", "planned", "no"]},
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["status"],
+              "properties": {
+                "status": {"type": "string", "enum": ["yes", "partial", "planned", "no", "n/a"]},
+                "note": {"type": "string"},
+                "issue": {"type": "string", "format": "uri"}
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
