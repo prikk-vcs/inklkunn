@@ -16,7 +16,8 @@
 //!   end as the bundle's files, participation counts leave the import out, and a source name equal to a local account's is not
 //!   linked to it; its `wikipedia:` links dangle until the admin proposes an interwiki map through the policy form, which is
 //!   accepted at the rung the policy says, and then the link is an external one on the page, on a permalink of an old revision, in
-//!   `site.json` and in the export's manifest;
+//!   `site.json` and in the export's manifest; and a bundle that carries its own map (the hand-written one) has it written by the import,
+//!   a prefix that is a namespace of its pages left out and a prefix it lacks left dangling;
 //! - (B) **a BookStack export** (level 2, no history) comes in as a second new wiki: pages and attachments in one change, each
 //!   attachment's sidecar licence kept (the converter writes none, so the hand-written bundle of per-file licences is imported too),
 //!   the licence notice of an attachment where the product shows one, and an attachment a reader can fetch;
