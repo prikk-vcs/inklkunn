@@ -16,6 +16,7 @@ use tower::ServiceExt as _;
 use super::common::{self, World, add_person, block_id, page, person, state_id, with_accounts};
 use super::{Answer, At, get, router};
 
+mod feed;
 mod knowledge;
 mod lists;
 mod refusals;

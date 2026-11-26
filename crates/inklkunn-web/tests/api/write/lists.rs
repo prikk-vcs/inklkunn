@@ -16,12 +16,17 @@ use super::{
 };
 
 /// A request with these headers and no body.
-async fn ask(w: &World, method: Method, uri: &str, headers: &[(&'static str, String)]) -> Answer {
+pub(super) async fn ask(
+    w: &World,
+    method: Method,
+    uri: &str,
+    headers: &[(&'static str, String)],
+) -> Answer {
     super::send(w, method, uri, headers, Body::empty()).await
 }
 
 /// An API read as `who` (a session), or with no credential.
-async fn read(w: &World, uri: &str, who: Option<&AccountId>) -> Answer {
+pub(super) async fn read(w: &World, uri: &str, who: Option<&AccountId>) -> Answer {
     match who {
         Some(who) => ask(w, Method::GET, uri, &[session(who)]).await,
         None => ask(w, Method::GET, uri, &[]).await,
@@ -29,7 +34,7 @@ async fn read(w: &World, uri: &str, who: Option<&AccountId>) -> Answer {
 }
 
 /// The ids of the proposals a page of the wiki links to (`/handbook/-/proposals/<id>`), once each, in the order they stand.
-fn ids_in(html: &str) -> Vec<String> {
+pub(super) fn ids_in(html: &str) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
     for (at, _) in html.match_indices("/handbook/-/proposals/") {
         let id: String = html
@@ -45,7 +50,7 @@ fn ids_in(html: &str) -> Vec<String> {
     found
 }
 
-fn listed(body: &Value) -> Vec<String> {
+pub(super) fn listed(body: &Value) -> Vec<String> {
     body.at("/items")
         .as_array()
         .unwrap()
@@ -54,13 +59,13 @@ fn listed(body: &Value) -> Vec<String> {
         .collect()
 }
 
-fn sorted(mut ids: Vec<String>) -> Vec<String> {
+pub(super) fn sorted(mut ids: Vec<String>) -> Vec<String> {
     ids.sort();
     ids
 }
 
 /// Who reads: the roles of the cast, and nobody.
-fn readers(c: &Cast) -> Vec<(&'static str, Option<AccountId>)> {
+pub(super) fn readers(c: &Cast) -> Vec<(&'static str, Option<AccountId>)> {
     vec![
         ("an anonymous visitor", None),
         ("a contributor", Some(c.contributor.clone())),
