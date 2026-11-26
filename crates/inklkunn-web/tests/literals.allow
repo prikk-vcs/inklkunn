@@ -659,6 +659,10 @@ exact :: rules_form.rs :: number :: a placeholder name of a catalog message
 exact :: rules_form.rs :: limit :: a placeholder name of a catalog message
 exact :: rules_form.rs :: wiki :: a placeholder name of a catalog message
 exact :: rules_form.rs :: rule :: a placeholder name of a catalog message
+exact :: rules_form.rs :: placeholder :: a placeholder name of a catalog message
+exact :: rules_form.rs :: {title} :: how the page title's place is written in an address template (the interwiki map's one placeholder, given to a catalog message as its value; it is a piece of the file's format, no sentence)
+exact :: rules_form.rs :: the titles of the wiki could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
+exact :: rules_form.rs :: the interwiki map could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: rules_form.rs :: a base could not be read now: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: rules_form.rs :: a governance file could not be asked for: {e} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 exact :: rules_page.rs :: rungs. :: the beginning of a key of the schema, read to sort the facts of the rules into sections; never printed
