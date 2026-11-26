@@ -249,7 +249,8 @@ The rest is small: the interwiki map, four API additions, and the conformance se
    - a suppressed revision in the dump is kept as D-3 says.
 
    This is shown on a converter-made fixture, pinned with its command (P-2).
-2. **A BookStack export comes in** as pages and attachments with their sidecars' licences, in one change.
+2. **A BookStack export comes in** as pages and attachments, **with their sidecars' licences kept and exported**, in one
+   change. (Attachments are kept, exported and imported but no route serves them yet: see the release notes.)
 3. **An inklkunn wiki exported and imported again** has the same pages, the same history (renames and removals
    included), and the same authors, said as D-3 says.
 4. **The export passes `validate_bundle.py`** (recorded at readiness), and the record's shape test passes.

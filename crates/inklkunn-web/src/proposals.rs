@@ -120,7 +120,7 @@ impl Ctx {
     /// **Why the principal may not** do `action` to `resource`, as the refusal a page says, in the order the service itself
     /// judges a write (`ProposalService`): *the rules cannot be read* (the governance file, and what is wrong with it) for a write
     /// of a wiki whose rules cannot be read, to whoever may read the wiki (Y-1: a maintainer who presses *Accept* there was told
-    /// that her role does not include accepting, which is not what refuses her); *restricted*, with the reason and the end, when
+    /// that their role does not include accepting, which is not what refuses them); *restricted*, with the reason and the end, when
     /// a restriction is the reason (RFC 006 D-7; told to the restricted person alone); else *not allowed*.
     pub(crate) fn refusal(&self, action: Action, resource: &Resource) -> ProposalError {
         if action != Action::Read

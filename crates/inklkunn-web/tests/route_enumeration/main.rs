@@ -439,3 +439,96 @@ fn every_public_route_gives_a_reason_and_is_not_under_a_wiki_slug_unless_it_refu
         }
     }
 }
+
+/// What a route's path may say and still make no wiki: the *new* that opens a proposal, an appeal or a view.
+const NEW_THAT_MAKES_NO_WIKI: [&str; 3] = [
+    "/{slug}/-/proposals/new",
+    "/{slug}/-/appeals/new",
+    "/{slug}/-/views/new",
+];
+
+/// The routes with no wiki in their path that take a write, and what each is of: the visitor's session, the person's own account,
+/// the inbox's own notices, the language. None of them makes a wiki.
+const WRITES_WITHOUT_A_WIKI: [&str; 11] = [
+    "/-/sign-out",
+    "/-/sign-in",
+    "/-/join",
+    "/-/invite/{secret}",
+    "/-/inbox",
+    "/-/lang",
+    "/-/account/name",
+    "/-/account/password",
+    "/-/account/sessions/end",
+    "/-/account/tokens",
+    "/-/account/tokens/revoke",
+];
+
+#[test]
+fn no_web_or_api_route_imports_discards_or_creates_a_wiki() {
+    // Threat model v0.5, C-5a (RFC 007 D-1): a wiki is made, and an unfinished one removed, **only by the operator's command line**.
+    // The harness walks the registry as the rest of this file does, so a route added tomorrow is judged the day it is registered.
+    let (mut walked, mut writes) = (0_usize, 0_usize);
+    let mut unnamed: Vec<String> = Vec::new();
+    for table in [application_table().unwrap(), content_table().unwrap()] {
+        for entry in table.entries() {
+            walked += 1;
+            let path = entry.path.to_ascii_lowercase();
+            for word in [
+                "import",
+                "bundle",
+                "discard",
+                "unfinished",
+                "create",
+                "new-wiki",
+                "wikis/new",
+                "/wikis/",
+            ] {
+                assert!(
+                    !path.contains(word),
+                    "{}: a route whose path says `{word}` is a way to make or remove a wiki from the web; only the command line does",
+                    entry.path
+                );
+            }
+            if path.ends_with("/new") {
+                assert!(
+                    NEW_THAT_MAKES_NO_WIKI.contains(&entry.path),
+                    "{}: a *new* that is none of a proposal, an appeal or a view",
+                    entry.path
+                );
+            }
+            let writes_here = entry.methods.iter().any(|m| *m != "GET" && *m != "HEAD");
+            if writes_here {
+                writes += 1;
+                if !entry.path.contains("{slug}") && !WRITES_WITHOUT_A_WIKI.contains(&entry.path) {
+                    unnamed.push(format!("{} {:?}", entry.path, entry.methods));
+                }
+            }
+            // The list of wikis reads.
+            if entry.path == "/-/wikis" {
+                assert!(
+                    entry.methods.iter().all(|m| *m == "GET" || *m == "HEAD"),
+                    "/-/wikis: the list of wikis takes no write"
+                );
+            }
+        }
+    }
+    // The list names no route that is not there, so that it cannot grow stale into a hole.
+    let all: Vec<&str> = [application_table().unwrap(), content_table().unwrap()]
+        .iter()
+        .flat_map(|t| t.entries().iter().map(|e| e.path).collect::<Vec<_>>())
+        .collect();
+    for known in WRITES_WITHOUT_A_WIKI {
+        assert!(
+            all.contains(&known),
+            "{known} is no route any more: take it off the list"
+        );
+    }
+    assert!(
+        unnamed.is_empty(),
+        "a write that names no wiki is one that could make a wiki or act on all of them: {unnamed:?}"
+    );
+    assert!(
+        walked >= 60 && writes >= 10,
+        "the harness walked {walked} routes ({writes} with writes): is the registry being read?"
+    );
+}

@@ -136,8 +136,8 @@ fn broken(tag: &str, files: &[(&str, Option<Vec<u8>>)]) -> Option<Broken> {
     })
 }
 
-/// What `person` does when she presses *Accept* on proposal `id` where her page offers no button (the wiki refuses what she asks): the
-/// POST of the form as it would be, with her own CSRF token.
+/// What `person` does when they press *Accept* on proposal `id` where their page offers no button (the wiki refuses what they ask): the
+/// POST of the form as it would be, with their own CSRF token.
 fn press_accept(person: &mut Person, id: &str) -> Reply {
     let csrf = person.browser.csrf();
     let body = format!("csrf={}&revision=1", encode(&csrf)).into_bytes();
@@ -182,7 +182,7 @@ impl Broken {
             "{}",
             refused.body
         );
-        // The admin cannot use the repair for anything else: the page proposal is refused to her too.
+        // The admin cannot use the repair for anything else: the page proposal is refused to them too.
         let refused = press_accept(&mut self.ada, &self.open);
         assert!(refused.status >= 400, "{}\n{}", refused.head, refused.body);
         assert!(refused.body.contains(REFUSED), "{}", refused.body);
@@ -241,7 +241,7 @@ impl Broken {
         assert_eq!(form_to(&page, FORM).get("map_rows"), "0");
     }
 
-    /// The admin sends the map `rows` (none: the form as it is) and gets one proposal, which she accepts: the block it makes is
+    /// The admin sends the map `rows` (none: the form as it is) and gets one proposal, which they accept: the block it makes is
     /// signed by the hatch (an admin, the rules unreadable), and is the next block of the wiki.
     fn is_repaired_by(&mut self, rows: &[(&str, &str)]) {
         let sent = send_map(&mut self.ada, rows);
