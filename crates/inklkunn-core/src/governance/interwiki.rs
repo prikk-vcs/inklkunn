@@ -222,7 +222,7 @@ fn namespaces_of_title(title: &str) -> impl Iterator<Item = String> {
     directory.into_iter().chain(colon)
 }
 
-/// The namespaces a wiki has, as the clash rule asks them: from its page titles ([`namespaces_of_title`] of each, in lower case).
+/// The namespaces a wiki has, as the clash rule asks them: from its page titles (each title's first segment when it has a `/`, and the part of its first segment before a `:`, in lower case; see `Interwiki::takes_namespace_of`).
 /// The titles are the wiki's (the caller reads them from the title index of the state the change is accepted on).
 pub fn namespaces_of_titles<'a>(titles: impl IntoIterator<Item = &'a str>) -> BTreeSet<String> {
     titles.into_iter().flat_map(namespaces_of_title).collect()
