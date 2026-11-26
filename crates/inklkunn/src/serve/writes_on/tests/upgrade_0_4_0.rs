@@ -170,6 +170,16 @@ fn snapshot(dir: &Path) -> BTreeMap<String, Vec<u8>> {
     out
 }
 
+/// The paths at which two snapshots of a repository differ: a file added, a file gone, a file with other bytes.
+fn changed_files(was: &BTreeMap<String, Vec<u8>>, is: &BTreeMap<String, Vec<u8>>) -> Vec<String> {
+    let paths: std::collections::BTreeSet<&String> = was.keys().chain(is.keys()).collect();
+    paths
+        .into_iter()
+        .filter(|p| was.get(*p) != is.get(*p))
+        .cloned()
+        .collect()
+}
+
 // ------------------------------------------------------------------------------------ small readings of pages
 
 /// Every block id (64 hexadecimal digits) that follows `marker` in `html`, in order of appearance, once each.
@@ -524,7 +534,14 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     );
     assert_eq!(status, 0, "{err}");
     assert!(created.contains("created wiki handbook"), "{created}");
-    let links: Vec<String> = [
+    let [
+        maya_link,
+        noor_link,
+        quinn_link,
+        ada_link,
+        zora_link,
+        rex_link,
+    ] = [
         Role::Maintainer,
         Role::Contributor,
         Role::Reviewer,
@@ -532,9 +549,7 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         Role::Contributor,
         Role::Contributor,
     ]
-    .into_iter()
-    .map(|role| old_invite(&old, &world, role))
-    .collect();
+    .map(|role| old_invite(&old, &world, role));
 
     let started = now();
     let server = OldServer::start(&old, &world);
@@ -544,12 +559,12 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         "the 0.4.0 server did not open its signer; its log so far:\n{banner}"
     );
     let port = server.port;
-    let mut maya = redeem(&server, &links[0], "maya", "Maya Maintainer");
-    let mut noor = redeem(&server, &links[1], "noor", "Noor Contributor");
-    let mut quinn = redeem(&server, &links[2], "quinn", "Quinn Reviewer");
-    let mut ada = redeem(&server, &links[3], "ada", "Ada Admin");
-    let mut zora = redeem(&server, &links[4], "zora", "Zora Quokka");
-    let mut rex = redeem(&server, &links[5], "rex", "Rex Restricted");
+    let mut maya = redeem(&server, &maya_link, "maya", "Maya Maintainer");
+    let mut noor = redeem(&server, &noor_link, "noor", "Noor Contributor");
+    let mut quinn = redeem(&server, &quinn_link, "quinn", "Quinn Reviewer");
+    let mut ada = redeem(&server, &ada_link, "ada", "Ada Admin");
+    let mut zora = redeem(&server, &zora_link, "zora", "Zora Quokka");
+    let mut rex = redeem(&server, &rex_link, "rex", "Rex Restricted");
     let mut reader = server.browser();
     say(
         "six accounts made by invitation: a maintainer, two contributors and a third, a reviewer and an admin",
@@ -826,39 +841,36 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     };
     let mut anonymous_paths = pages_to_compare(&b3);
     anonymous_paths.extend(hidden_pages());
-    anonymous_paths.extend(
-        [
-            POLICY.to_owned(),
-            "/handbook/-/people".to_owned(),
-            "/handbook/-/site.json".to_owned(),
-            "/handbook/-/changes.atom".to_owned(),
-            proposal_page(&rules),
-            proposal_page(&open),
-            proposal_page(&r3),
-            "/handbook/Notes".to_owned(),
-            "/handbook/Sandbox".to_owned(),
-            "/handbook/Scratch".to_owned(),
-            "/handbook/-/history/Notes".to_owned(),
-            "/handbook/-/history/Sandbox".to_owned(),
-            "/handbook/-/why/Help".to_owned(),
-            "/handbook/-/health/sources-to-review".to_owned(),
-            format!("{API}/claims/{claim}"),
-            format!("{API}/history/Help"),
-            format!("{API}/revisions/{b1}"),
-            format!("{API}/revisions/{b1}?title=Help"),
-            format!("{API}/revisions/{b2}"),
-            format!("{API}/diff?from={b0}&to={b1}&path=Help"),
-            format!("{API}/raw/Help"),
-            format!("{API}/pages/Help"),
-            format!("{API}/policy"),
-            format!("{API}/protections"),
-            format!("{API}/moderation-log"),
-            format!("{API}/provenance/Help"),
-            format!("{API}/proposals/{r1}"),
-            format!("{API}/proposals/{open}"),
-        ]
-        .into_iter(),
-    );
+    anonymous_paths.extend([
+        POLICY.to_owned(),
+        "/handbook/-/people".to_owned(),
+        "/handbook/-/site.json".to_owned(),
+        "/handbook/-/changes.atom".to_owned(),
+        proposal_page(&rules),
+        proposal_page(&open),
+        proposal_page(&r3),
+        "/handbook/Notes".to_owned(),
+        "/handbook/Sandbox".to_owned(),
+        "/handbook/Scratch".to_owned(),
+        "/handbook/-/history/Notes".to_owned(),
+        "/handbook/-/history/Sandbox".to_owned(),
+        "/handbook/-/why/Help".to_owned(),
+        "/handbook/-/health/sources-to-review".to_owned(),
+        format!("{API}/claims/{claim}"),
+        format!("{API}/history/Help"),
+        format!("{API}/revisions/{b1}"),
+        format!("{API}/revisions/{b1}?title=Help"),
+        format!("{API}/revisions/{b2}"),
+        format!("{API}/diff?from={b0}&to={b1}&path=Help"),
+        format!("{API}/raw/Help"),
+        format!("{API}/pages/Help"),
+        format!("{API}/policy"),
+        format!("{API}/protections"),
+        format!("{API}/moderation-log"),
+        format!("{API}/provenance/Help"),
+        format!("{API}/proposals/{r1}"),
+        format!("{API}/proposals/{open}"),
+    ]);
     let mut maya_paths = hidden_pages();
     maya_paths.extend([
         format!("{MODERATE}?{}", revision(&r1)),
@@ -956,10 +968,10 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         19,
         "the schema is this tree's: no migration runs"
     );
-    assert_eq!(
-        snapshot(&repository),
-        repository_before,
-        "opening the directory wrote to the repository"
+    let wrote = changed_files(&repository_before, &snapshot(&repository));
+    assert!(
+        wrote.is_empty(),
+        "opening the directory wrote to the repository: {wrote:?}"
     );
     for (table, rows) in &governance_before {
         assert_eq!(
