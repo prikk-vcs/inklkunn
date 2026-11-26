@@ -197,13 +197,13 @@ fn template_rule(template: &str) -> Option<Refusal> {
     }
     // The placeholder: one, whole, after the authority and before a fragment, and no other brace.
     let fragment_start = rest.find('#').unwrap_or(rest.len());
-    let mut places = rest.match_indices(PLACEHOLDER);
-    let (Some((at, _)), None) = (places.next(), places.next()) else {
+    let Some((at, _)) = rest.match_indices(PLACEHOLDER).next() else {
         return Some(Refusal::TemplatePlaceholder);
     };
     if at < authority_end || at > fragment_start {
         return Some(Refusal::TemplatePlaceholder);
     }
+    // With the first `{title}` taken out no brace is left: a second `{title}` and any other placeholder are braces.
     if rest.replacen(PLACEHOLDER, "", 1).contains(['{', '}']) {
         return Some(Refusal::TemplatePlaceholder);
     }
