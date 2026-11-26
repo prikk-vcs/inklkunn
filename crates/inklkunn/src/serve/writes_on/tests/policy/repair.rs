@@ -364,3 +364,88 @@ fn a_map_that_is_not_text_or_is_too_long_is_repaired_by_the_form_like_one_that_i
     );
     w.running.stop();
 }
+
+/// What stands where the map belongs when it is no file: a directory with two files in it (prikk keeps no links, so a directory is
+/// the one non-file a repository holds there).
+const DIRECTORY: &[(&str, &[u8])] = &[
+    ("governance/interwiki.yaml/inner.txt", b"x\n"),
+    ("governance/interwiki.yaml/more/deeper.txt", b"y\n"),
+];
+
+fn directory() -> Vec<(&'static str, Option<Vec<u8>>)> {
+    DIRECTORY
+        .iter()
+        .map(|(path, bytes)| (*path, Some(bytes.to_vec())))
+        .collect()
+}
+
+/// The policy page and the form say what stands in the map's place, by its paths (the repository's names, never a file's text).
+fn says_what_stands_there(w: &mut Broken) {
+    let policy = w.noor.browser.get(POLICY);
+    let form = w.ada.browser.get(FORM);
+    for page in [&policy, &form] {
+        for (path, _) in DIRECTORY {
+            assert!(page.body.contains(path), "{path}: {}", page.body);
+        }
+    }
+}
+
+#[test]
+fn a_directory_where_the_map_belongs_refuses_every_write_and_the_form_repairs_it_with_rows() {
+    let Some(mut w) = broken("y1-dir-rows", &directory()) else {
+        return;
+    };
+    w.refuses_writes_and_reads();
+    w.form_is_the_repair();
+    says_what_stands_there(&mut w);
+    // The files in the directory are removed and the map is written in the same change.
+    w.is_repaired_by(&[("wikipedia", WIKI)]);
+    w.writes_work(READING_AFTER);
+    let policy = w.noor.browser.get(POLICY);
+    assert!(
+        policy.body.contains("<dt>wikipedia</dt>") && !policy.body.contains("inner.txt"),
+        "{}",
+        policy.body
+    );
+    let site = w.noor.browser.get("/handbook/-/site.json");
+    assert!(
+        site.body.contains("\"interwiki\":{\"wikipedia\":"),
+        "{}",
+        site.body
+    );
+    let form = form_to(&w.ada.browser.get(FORM), FORM);
+    assert_eq!(form.get("map_rows"), "1");
+    assert_eq!(form.get("map-1-prefix"), "wikipedia");
+    w.running.stop();
+}
+
+#[test]
+fn a_directory_where_the_map_belongs_is_repaired_by_the_form_with_no_row_and_the_wiki_has_no_map() {
+    let Some(mut w) = broken("y1-dir-none", &directory()) else {
+        return;
+    };
+    w.refuses_writes_and_reads();
+    w.form_is_the_repair();
+    says_what_stands_there(&mut w);
+    w.is_repaired_by(&[]);
+    w.writes_work(READING_AFTER);
+    let policy = w.noor.browser.get(POLICY);
+    assert!(
+        policy.body.contains("This wiki has no interwiki map.")
+            && !policy.body.contains("inner.txt"),
+        "{}",
+        policy.body
+    );
+    // Nothing stands there now: a row added through the form is an ordinary change of the map.
+    let sent = send_map(&mut w.maya, &[("wikipedia", WIKI)]);
+    assert_eq!(sent.status, 303, "{}\n{}", sent.head, sent.body);
+    accept(&w.world, &mut w.maya, &proposal_id(&sent.location()));
+    assert!(
+        w.noor
+            .browser
+            .get(POLICY)
+            .body
+            .contains("<dt>wikipedia</dt>")
+    );
+    w.running.stop();
+}
