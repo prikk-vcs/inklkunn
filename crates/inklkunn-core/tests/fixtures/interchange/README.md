@@ -1,6 +1,6 @@
 # Interchange fixtures (RFC 007 P-2)
 
-Four small bundles that the bundle import's plan and replay read (`import/bundle/tests.rs`, `tests/import_bundle.rs`). **Python is never
+Five small bundles that the bundle import's plan and replay read (`import/bundle/tests.rs`, `tests/import_bundle.rs`). **Python is never
 needed to run the tests**: the bundles are committed, and the commands below are for whoever regenerates them.
 
 **Licence of the fixtures: CC0 1.0** (public domain dedication). Every word of the two sources was written for these fixtures; no
@@ -13,6 +13,7 @@ third-party content is in them.
 | `bookstack/input/` | a BookStack export, extracted (`data.json` and `files/`): one book, one chapter, three pages (Markdown and HTML), an image and an attachment | written by hand (the image is a one-pixel PNG made for it) |
 | `bookstack/bundle/` | its conversion: a level 2 bundle with no history | wiki-commons' converter, below |
 | `sidecars/bundle/` | a level 2 bundle of one page and two attachments, each with a sidecar that declares a licence (CC0-1.0 and CC-BY-4.0) in a wiki of CC-BY-SA-4.0 | **written by hand** (see below) |
+| `interwiki/bundle/` | a level 2 bundle of two pages (one in a `Help/` directory) whose manifest has an `interwiki` map of three prefixes: two good, and one (`help`) that is a namespace of the pages and is left out | **written by hand** (see below) |
 | `inklkunn/input-1..3/` | three folders of pages and one attachment | written by hand |
 | `inklkunn/bundle/` | **inklkunn's own export** of a wiki made from those folders (the shape our own export has) | the commands below |
 
@@ -73,6 +74,23 @@ sha256sum attachments/notes.txt attachments/notes.txt.meta.yaml attachments/plan
 ```
 
 The tests that read it make their own changed copies (a sidecar whose licence the wiki cannot take) and re-seal them.
+
+## The bundle with an interwiki map, written by hand (`interwiki/bundle/`)
+
+**Neither converter writes an `interwiki` map** (MediaWiki's has none in a dump, and BookStack has no such thing), so RFC 007 D-8's *the import
+writes the bundle's map* cannot be shown by a converted bundle. This one is written by hand for that and for nothing else: a manifest
+(`license: CC-BY-SA-4.0`, `checksums: sha256sums.txt`, fidelity level 2) whose `interwiki` has `wikipedia` and `docs` (good), and `help`
+(a prefix that is a namespace of the page `Help/Sowing`, so the import leaves it out and says so), and two pages: `Seed Library`, whose text
+links `[[wikipedia:...]]`, `[[docs:...]]` and `[[forum:...]]` (no map has `forum`: it stays dangling, and the report says so), and
+`Help/Sowing`. The checksums are made with `sha256sum` over every file but the manifest:
+
+```sh
+cd crates/inklkunn-core/tests/fixtures/interchange/interwiki/bundle
+sha256sum "pages/Help/Sowing.md" "pages/Seed Library.md" > sha256sums.txt
+```
+
+The tests that read it make their own changed copies (a manifest with a template that fails, a namespace in another case, more prefixes
+than the bound, bundle governance files beside it) and re-seal them.
 
 ## inklkunn's own export
 

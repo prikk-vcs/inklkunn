@@ -18,7 +18,9 @@
 //! written by `Accept::accept` behind the acceptance guard, bound to an act that was recorded first.
 //!
 //! **What is replayed**, in the plan's order ([`BundlePlan::schedule`]): first, in one change, the files with no history (the pages of
-//! a level 2 bundle, the attachments with their sidecars, the knowledge files); then one change a revision (a text writes the page,
+//! a level 2 bundle, the attachments with their sidecars, the knowledge files, and the bundle's interwiki map as the plan judged it,
+//! `governance/interwiki.yaml`: the one path below `governance/` an import may write, RFC 007 D-8; a bundle whose pages all have a
+//! history gets a first change of the map alone); then one change a revision (a text writes the page,
 //! a rename moves it, a removal removes it), each with the source's facts as typed trailers ([`SourceRevision`]) and the bundle's
 //! notice ([`ImportNotice`]); last, the change that brings the pages to exactly the bundle's files, if any page differs. **A page the
 //! replay did not have** (its text was hidden at the source, say) **is not moved or removed** (there is nothing to move): the report
