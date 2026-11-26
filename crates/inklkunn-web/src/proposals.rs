@@ -41,6 +41,7 @@ pub(crate) mod anchor;
 pub(crate) mod changes;
 pub(crate) mod claims;
 pub(crate) mod curate;
+pub(crate) mod feed;
 pub(crate) mod fields;
 pub(crate) mod form;
 pub(crate) mod governance;

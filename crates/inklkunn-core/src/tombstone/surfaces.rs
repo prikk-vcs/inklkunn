@@ -176,20 +176,29 @@ pub const SURFACES: &[Surface] = &[
         unchecked: Unchecked::TryAgain("unchecked_proposal_page"),
     },
     Surface {
+        // A comment's body and author: the proposal's page, and the API's list of a proposal's comments (RFC 007 D-9), which gives
+        // a hidden comment as its tombstone with no body and names no author at all.
         id: "proposal-comments",
         shows: Shows::new(true, false, true),
         routes: &["/{slug}/-/proposals/{id}"],
-        api: &[],
+        api: &["/{slug}/-/api/v1/proposals/{id}/comments"],
         test: "surface_proposal_comments",
         unchecked: Unchecked::NoBlockText(
             "a comment's body and author; no text of a block is read",
         ),
     },
     Surface {
+        // The list of proposals asked four ways (RFC 007 D-9): the page, the page of a title's discussion, the API's list and the
+        // feed of what was opened and decided. A hidden summary is the tombstone's words in each, a hidden author is named in
+        // none, and none lists a draft.
         id: "proposal-list",
         shows: Shows::new(false, true, true),
-        routes: &["/{slug}/-/proposals", "/{slug}/-/discussion/{*title}"],
-        api: &[],
+        routes: &[
+            "/{slug}/-/proposals",
+            "/{slug}/-/proposals.atom",
+            "/{slug}/-/discussion/{*title}",
+        ],
+        api: &["/{slug}/-/api/v1/proposals"],
         test: "surface_proposal_list",
         unchecked: Unchecked::NoBlockText(
             "a list of proposals by summary and author; no text of a block is read",

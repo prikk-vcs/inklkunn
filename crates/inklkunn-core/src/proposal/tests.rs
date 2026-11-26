@@ -11,6 +11,7 @@ mod claim_thread;
 mod drafts;
 mod files;
 mod lifecycle;
+mod listed;
 mod machine;
 mod metrics;
 mod quotas;

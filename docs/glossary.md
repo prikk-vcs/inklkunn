@@ -421,6 +421,10 @@ and every row names a catalog message. *Where it appears* is for the translators
 | `feed.title_namespace` | the title of the feed of the changes under a title | "Recent changes under {namespace} · {wiki}" | "{namespace} の下の最近の変更 · {wiki}" |
 | `feed.title_page` | the title of the feed of one page's changes | "Changes to {page} · {wiki}" | "{page} への変更 · {wiki}" |
 | `feed.pages` | the text of a feed entry; `{pages}` is the titles of the pages the change touched | "Pages: {pages}" | "ページ: {pages}" |
+| `feed.proposals_title` | the title of the feed of a wiki's proposals; `{wiki}` is its name | "Proposals · {wiki}" | "提案 · {wiki}" |
+| `feed.proposal_opened` | the title of a feed entry for a proposal that was sent for review; `{summary}` is its summary, or the words that say it is hidden | "Proposed: {summary}" | "提案: {summary}" |
+| `feed.proposal_decided` | the title of a feed entry for a proposal that was decided or taken back; `{state}` is its state's word (`state.accepted`, `state.declined`, `state.withdrawn`, `state.superseded`), `{summary}` as above | "{state}: {summary}" | "{state}: {summary}" |
+| `feed.proposal_by` | the text of a feed entry of a proposal; `{author}` is the proposer's name, or the word that says it is hidden | "Proposed by {author}" | "提案者: {author}" |
 | `title.search` | the title of the search page | "Search · {wiki} · {product}" | "検索 · {wiki} · {product}" |
 | `search.heading` | the heading of the search page | "Search" | "検索" |
 | `search.label` | the label of the search field | "Search the titles and aliases of pages" | "ページのタイトルと別名を検索" |

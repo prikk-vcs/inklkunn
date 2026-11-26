@@ -127,6 +127,8 @@ exact :: request.rs :: parameter :: the name of a placeholder of a catalog messa
 exact :: request.rs :: view :: the name of a placeholder of a catalog message and of the member that carries the same value
 exact :: request.rs :: feature :: the name of the member that says which read is not offered
 exact :: request.rs :: heads/ :: the prefix of a view's name in the repository, taken off for the answer
+exact :: request.rs :: cursor :: the name of the query parameter a list's next page is asked with (RFC 007 D-9): data, not a sentence
+exact :: request.rs :: cursor= :: a format of a machine-readable value (the address of the next page of a list): no sentence a reader sees
 exact :: request.rs :: the API could not read wiki `{}` now: {cause} :: a line for the person who runs the server (English by decision: operator vocabulary); no response carries it
 # --- T5: a page's past (handoff 003): the history, change, difference and permalink handlers
 exact :: history.rs :: view :: the name of a query parameter, and a placeholder name of a catalog message
@@ -630,6 +632,7 @@ exact :: restore.rs :: pages :: a placeholder name of a catalog message
 
 # --- handoff G-T7 (RFC 006 D-4, D-11, D-12): the policy page, the policy form, the authority phrase and the governance endpoints
 scope :: governance_api.rs :: * :: the governance endpoints (descriptions and schemas, English by decision, like describe.rs; JSON member names and codes): every sentence a caller reads is a problem detail or a catalog message
+scope :: proposals_api.rs :: * :: the proposals' read endpoints (descriptions and schemas, English by decision, like describe.rs; JSON member names, the words of the states a list is narrowed to and the tags of the two kinds of cursor): every sentence a caller reads is a problem detail or a catalog message
 scope :: rules_fields.rs :: * :: the names of the policy form fields, their values and the ids of its controls: code a form and a handler agree on, no sentence a reader sees
 scope :: rules_paths.rs :: * :: the addresses of the policy page and its form, under the reserved prefix: no sentence a reader sees
 scope :: rules_phrases.rs :: * :: the placeholder names of the sentences of the rules and the keys of the schema each fact says (code that a test holds is never printed): every sentence is a catalog message

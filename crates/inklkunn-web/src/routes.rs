@@ -89,6 +89,14 @@ fn proposal_specs() -> Vec<Spec> {
             guard: Guard::Action(Action::Read),
             handler: || get(proposals::list::list),
         },
+        // --- handoff 007 I-T5 (RFC 007 D-9): the feed of what the list shows, opened and decided; never a draft.
+        Spec {
+            path: "/{slug}/-/proposals.atom",
+            methods: &["GET", "HEAD"],
+            web_only: false,
+            guard: Guard::Action(Action::Read),
+            handler: || get(proposals::feed::atom),
+        },
         Spec {
             path: "/{slug}/-/proposals/new",
             methods: &["GET", "HEAD", "POST"],

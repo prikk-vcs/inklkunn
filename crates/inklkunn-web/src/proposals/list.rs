@@ -58,7 +58,7 @@ struct ListTpl<'a> {
 }
 
 /// What a proposal is called in a list, and who made it: **what moderation hides is told as hidden** (RFC 006 D-8).
-fn named(ctx: &Ctx, t: T, p: &ProposalRecord) -> (String, String) {
+pub(crate) fn named(ctx: &Ctx, t: T, p: &ProposalRecord) -> (String, String) {
     // What cannot be read is told as hidden: nothing is named when it cannot be known whether it may be.
     let hidden = ctx
         .services
