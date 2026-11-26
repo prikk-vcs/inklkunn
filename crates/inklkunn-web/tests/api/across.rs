@@ -164,16 +164,23 @@ async fn walk(w: &World, first: &str, size: usize) -> Vec<Value> {
     let mut bodies = Vec::new();
     let mut uri = first.to_owned();
     loop {
-        let body = ok(&get(w, &uri).await);
+        let answer = get(w, &uri).await;
+        // Every page of every list that is walked says where the next one is, and the last says none.
+        let link = super::assert_next_link(&answer, &uri);
+        let body = ok(&answer);
         assert!(
             body.at("/items").as_array().unwrap().len() <= size,
             "{body}"
         );
         let next = body.at("/next_cursor").as_str().map(str::to_owned);
         bodies.push(body);
-        match next {
-            Some(cursor) => uri = format!("{first}&cursor={cursor}"),
-            None => return bodies,
+        match (next, link) {
+            (Some(cursor), Some(link)) => {
+                uri = format!("{first}&cursor={cursor}");
+                assert_eq!(link, uri);
+            }
+            (None, None) => return bodies,
+            other => panic!("the body and the Link disagree: {other:?}"),
         }
         assert!(bodies.len() < 50, "the walk does not end");
     }

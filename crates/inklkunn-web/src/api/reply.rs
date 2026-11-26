@@ -22,6 +22,13 @@ pub(crate) struct Reply {
     pub(crate) etag: Option<String>,
     /// Where what a write made lives.
     pub(crate) location: Option<String>,
+    /// The `next_cursor` of the body, when the body is a page of a list that goes on: the one value the body's member
+    /// and the `Link` header are both made from (RFC 007 D-9), read where the body is made so that no list can say one
+    /// and not the other.
+    pub(crate) next_cursor: Option<String>,
+    /// The address of the page that follows, for the `Link` header's `rel="next"` (RFC 8288): made from the request's
+    /// own address and `next_cursor` by the shared start and finish, never by an endpoint.
+    pub(crate) next_link: Option<String>,
 }
 
 impl Reply {
@@ -30,7 +37,14 @@ impl Reply {
     /// HTML, a body pasted into a page). They can only be inside a string, so no other byte changes.
     pub(crate) fn json(value: &Value) -> Result<Reply, Problem> {
         match serde_json::to_vec(value) {
-            Ok(body) => Ok(Reply::bytes("application/json", no_markup(&body))),
+            Ok(body) => {
+                let mut reply = Reply::bytes("application/json", no_markup(&body));
+                reply.next_cursor = value
+                    .get("next_cursor")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                Ok(reply)
+            }
             Err(_) => Err(Problem::new(super::problem::Code::Failed)),
         }
     }
@@ -48,6 +62,8 @@ impl Reply {
             status: StatusCode::OK,
             etag: None,
             location: None,
+            next_cursor: None,
+            next_link: None,
         }
     }
 
@@ -138,6 +154,10 @@ pub(crate) fn finish(
     outcome: Result<Reply, Problem>,
 ) -> Response {
     let language = HeaderValue::from_static(t.lang().tag());
+    let next = outcome
+        .as_ref()
+        .ok()
+        .and_then(|reply| reply.next_link.clone());
     let mut response = match outcome {
         Ok(reply) => {
             let named = reply.etag.is_some();
@@ -199,6 +219,14 @@ pub(crate) fn finish(
     response
         .headers_mut()
         .insert(header::LINK, HeaderValue::from_static(SERVICE_DESC));
+    // A page of a list that goes on says where the next one is, beside the body's `next_cursor` (RFC 8288; RFC 007 D-9). It is
+    // a second `Link` header after the description's, so a client that reads the first one reads what it always read.
+    if let Some(Ok(next)) = next
+        .as_deref()
+        .map(|address| HeaderValue::from_str(&format!("<{address}>; rel=\"next\"")))
+    {
+        response.headers_mut().append(header::LINK, next);
+    }
     response
 }
 

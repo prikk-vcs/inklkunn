@@ -208,6 +208,49 @@ fn assert_api_headers(a: &Answer, what: &str) {
     assert!(a.headers.contains_key(header::CONTENT_LANGUAGE), "{what}");
 }
 
+/// **The `Link` of a list** (RFC 007 D-9; RFC 8288): a page of a list that goes on has, after the description's `Link`, one whose
+/// `rel` is `next` and whose target is the request with the cursor the body gives (every other parameter as it was sent), and
+/// the last page has none. Returns the target, so that a walk can follow it.
+pub(crate) fn assert_next_link(a: &Answer, uri: &str) -> Option<String> {
+    let links: Vec<&str> = a
+        .headers
+        .get_all(header::LINK)
+        .iter()
+        .map(|v| v.to_str().unwrap())
+        .collect();
+    assert_eq!(
+        links.first().copied(),
+        Some(
+            "</-/api/v1/openapi.json>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi+json;version=3.1.0\""
+        ),
+        "{uri}: the description stays the first `Link`"
+    );
+    let cursor = a.json().at("/next_cursor").as_str().map(str::to_owned);
+    let Some(cursor) = cursor else {
+        assert_eq!(
+            links.len(),
+            1,
+            "{uri}: the last page has no next: {links:?}"
+        );
+        return None;
+    };
+    assert_eq!(links.len(), 2, "{uri}: {links:?}");
+    let (path, query) = uri.split_once('?').unwrap_or((uri, ""));
+    let mut kept: Vec<&str> = query
+        .split('&')
+        .filter(|p| !p.is_empty() && !p.starts_with("cursor="))
+        .collect();
+    let given = format!("cursor={cursor}");
+    kept.push(&given);
+    let expected = format!("{path}?{}", kept.join("&"));
+    assert_eq!(
+        links.get(1).copied(),
+        Some(format!("<{expected}>; rel=\"next\"").as_str()),
+        "{uri}"
+    );
+    Some(expected)
+}
+
 // ------------------------------------------------------------------------------------ the pages
 
 #[tokio::test]
@@ -221,6 +264,7 @@ async fn a_list_is_walked_by_cursor_once_in_order_and_in_bounded_pages() {
         assert_eq!(a.status, StatusCode::OK, "{}", a.text());
         assert_eq!(a.header("content-type"), Some("application/json"));
         assert_api_headers(&a, &uri);
+        let target = assert_next_link(&a, &uri);
         let body = a.json();
         let items = body.at("/items").as_array().unwrap();
         assert!(items.len() <= 3);
@@ -232,9 +276,17 @@ async fn a_list_is_walked_by_cursor_once_in_order_and_in_bounded_pages() {
         assert!(body.at("/tip/block_id").is_string());
         assert_eq!(body.at("/tip/view"), "main");
         walked += 1;
-        match body.at("/next_cursor").as_str() {
-            Some(cursor) => uri = format!("/handbook/-/api/v1/pages?limit=3&cursor={cursor}"),
-            None => break,
+        // The walk follows the `Link`, and the body's `next_cursor` says the same.
+        match (body.at("/next_cursor").as_str(), target) {
+            (Some(cursor), Some(target)) => {
+                assert_eq!(
+                    target,
+                    format!("/handbook/-/api/v1/pages?limit=3&cursor={cursor}")
+                );
+                uri = target;
+            }
+            (None, None) => break,
+            other => panic!("the body and the Link disagree: {other:?}"),
         }
         assert!(walked < 20);
     }

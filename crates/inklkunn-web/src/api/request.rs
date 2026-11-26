@@ -35,6 +35,24 @@ pub(crate) fn answer_plain(headers: &HeaderMap, code: Code) -> Response {
     reply::finish(language(headers), None, Err(Problem::new(code)))
 }
 
+/// The address of the page of a list that follows the one asked for (RFC 8288 `rel="next"`): the request's own path and
+/// parameters, with its `cursor` (if it had one) replaced by `cursor`, a path-absolute reference as the `Link` to the
+/// description is. The other parameters are kept as they were sent, in their order, so the next page is the same list.
+pub(crate) fn next_address(path: &str, query: Option<&str>, cursor: &str) -> String {
+    let mut out = String::from(path);
+    out.push('?');
+    for pair in query.unwrap_or("").split('&').filter(|p| !p.is_empty()) {
+        let name = pair.split_once('=').map_or(pair, |(name, _)| name);
+        if component(name).as_deref() != Some("cursor") {
+            out.push_str(pair);
+            out.push('&');
+        }
+    }
+    out.push_str("cursor=");
+    out.push_str(&crate::discover::query_escape(cursor));
+    out
+}
+
 /// What the part of the path after `/{slug}/-/api/v1/<endpoint>` is, raw.
 #[derive(Debug, Clone)]
 pub(crate) struct Ctx {
@@ -101,6 +119,7 @@ where
     let (raw_slug, _word, raw_rest) = parse_path(uri.path()).ok_or_else(not_found)?;
     let slug = decode(raw_slug).ok_or_else(not_found)?;
     let (rest, query) = (raw_rest.to_owned(), uri.query().map(str::to_owned));
+    let path = uri.path().to_owned();
     let done = blocking(move || {
         // Existence-neutral: no wiki and no right to read it are the same answer, before anything else.
         let principal = services.identity.principal(&headers);
@@ -112,7 +131,13 @@ where
             query,
         };
         let params = Params::parse(ctx.query.as_deref(), doc.query)?;
-        work(&services, &wiki, &params, &ctx)
+        let mut reply = work(&services, &wiki, &params, &ctx)?;
+        // The page that follows is the same request with the cursor the body gives: the one place that makes the `Link`.
+        reply.next_link = reply
+            .next_cursor
+            .as_deref()
+            .map(|cursor| next_address(&path, ctx.query.as_deref(), cursor));
+        Ok(reply)
     })
     .await;
     done.unwrap_or_else(|| Err(Problem::new(Code::Failed)))

@@ -244,17 +244,21 @@ async fn a_long_history_is_walked_by_cursor_in_steps_of_at_most_twenty_rows() {
             .show(v, shown(vec![op("edit-text", &["pages/Guide.md"])]));
     }
     // Home's three changes are far back: the first step finds none and says where to go on from.
-    let first = ok(&get(&w, &api("history/Home")).await);
+    let uri = api("history/Home");
+    let answer = get(&w, &uri).await;
+    let mut target = super::assert_next_link(&answer, &uri);
+    let first = ok(&answer);
     assert!(first.at("/items").as_array().unwrap().len() <= 20);
     let mut seen: Vec<u64> = numbers(&first);
-    let mut cursor = first.at("/next_cursor").as_str().map(str::to_owned);
-    assert!(cursor.is_some(), "{first}");
+    assert!(target.is_some(), "{first}");
     let mut steps = 1;
-    while let Some(next) = cursor {
-        let body = ok(&get(&w, &api(&format!("history/Home?cursor={next}"))).await);
+    // The walk follows the `Link` and nothing else.
+    while let Some(next) = target {
+        let answer = get(&w, &next).await;
+        target = super::assert_next_link(&answer, &next);
+        let body = ok(&answer);
         assert!(body.at("/items").as_array().unwrap().len() <= 20);
         seen.extend(numbers(&body));
-        cursor = body.at("/next_cursor").as_str().map(str::to_owned);
         steps += 1;
         assert!(steps < 20, "the walk does not end");
     }

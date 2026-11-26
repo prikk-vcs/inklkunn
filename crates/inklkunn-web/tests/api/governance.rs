@@ -365,18 +365,29 @@ async fn the_log_is_read_a_page_at_a_time_by_a_cursor_and_a_cursor_that_is_not_o
         "{}",
         a.body()
     );
-    let first = as_(&c, &c.maintainer, "moderation-log?limit=1")
-        .await
-        .json();
+    let answer = as_(&c, &c.maintainer, "moderation-log?limit=1").await;
+    // The log's own cursor is told in the `Link` too (RFC 007 D-9): the target of the first page is the second.
+    let target = super::assert_next_link(&answer, "/handbook/-/api/v1/moderation-log?limit=1")
+        .expect("a next page");
+    let first = answer.json();
     assert_eq!(first.at("/items/0/act"), "unhide");
     let cursor = first.at("/next_cursor").as_str().unwrap().to_owned();
-    let second = as_(
+    assert_eq!(
+        target,
+        format!("/handbook/-/api/v1/moderation-log?limit=1&cursor={cursor}")
+    );
+    let answer = as_(
         &c,
         &c.maintainer,
-        &format!("moderation-log?limit=1&cursor={cursor}"),
+        target.strip_prefix("/handbook/-/api/v1/").unwrap(),
     )
-    .await
-    .json();
+    .await;
+    assert_eq!(
+        super::assert_next_link(&answer, &target),
+        None,
+        "the last page has no next"
+    );
+    let second = answer.json();
     assert_eq!(second.at("/items/0/act"), "hide");
     assert_eq!(second.at("/next_cursor"), &Value::Null);
     for bad in ["nonsense", "019a0000-0000-7000-8000-00000000ffff"] {
