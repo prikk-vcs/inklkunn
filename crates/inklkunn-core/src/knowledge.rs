@@ -46,6 +46,7 @@ mod source;
 pub mod summary;
 pub mod touched;
 mod tree;
+pub mod unsettled;
 mod yaml;
 
 pub use anchor::{AnchorState, anchor_state};
@@ -61,6 +62,7 @@ pub use path::{
     claim_path, family_of, is_keep, is_knowledge_path, read_file, readability, source_path,
 };
 pub use tree::{MAX_TREE_BYTES, TreeError, TreeFile, list_tree, read_head, read_tree};
+pub use unsettled::{Unsettled, Unsettling, unsettle};
 pub use yaml::{MAX_EXPRESSIONS, MAX_LINKS, MAX_TEXT_CHARS};
 
 #[cfg(test)]
