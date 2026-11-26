@@ -322,6 +322,42 @@ impl SystemActs {
                     .to_owned(),
             ));
         }
+        // **The rules of a wiki are not a system act's to write** (RFC 006 D-1: `governance/` is changed by an accepted proposal, at a
+        // rung). One exception, the narrowest there is: **an import writes the interwiki map** (RFC 007 D-8), and only that file, as a
+        // write, and not renamed: a bundle's own policy and constitution are never imported, and an import writes no other path below
+        // `governance/`. The map's bytes are judged below, on the tip the change is written on, as an acceptance judges them.
+        let in_governance =
+            |p: &std::path::Path| p.to_str().is_none_or(crate::governance::is_governance_path);
+        let governance_files: Vec<&PreparedFile> = request
+            .files
+            .iter()
+            .filter(|f| in_governance(&f.path))
+            .collect();
+        let governance_renamed = request
+            .renames
+            .iter()
+            .any(|(from, to)| in_governance(from) || in_governance(to));
+        let writes_map = match governance_files.as_slice() {
+            [] if !governance_renamed => false,
+            [only]
+                if request.kind == SystemActKind::Import
+                    && !governance_renamed
+                    && only.content.is_some()
+                    && only.path == std::path::Path::new(crate::governance::INTERWIKI_PATH) =>
+            {
+                true
+            }
+            _ => {
+                return Err(SystemActFailure::Invalid(
+                    if request.kind == SystemActKind::Import {
+                        "an import writes no file below governance/ but the interwiki map: the rules of a wiki are its own"
+                    } else {
+                        "a system change does not write governance/: the rules of a wiki are changed by proposals"
+                    }
+                    .to_owned(),
+                ));
+            }
+        };
         // The message first: a request that cannot be described is refused before anything else is touched.
         let described =
             |e: inklkunn_signer::message::MessageError| SystemActFailure::Invalid(e.to_string());
@@ -443,6 +479,28 @@ impl SystemActs {
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join("; ")
+                )));
+            }
+        }
+
+        // 3b. An import's interwiki map, judged as an acceptance judges the file: well formed, within its bounds, and no prefix one of
+        // the wiki's namespaces (the tip's titles and the pages this change writes; the plan judged against every title the import
+        // writes, so what the plan took passes here).
+        if writes_map {
+            let Some(reads) = &self.reads else {
+                return Err(SystemActFailure::Unavailable(
+                    "this service cannot read the wiki, so it cannot judge the interwiki map of an import".to_owned(),
+                ));
+            };
+            let known = namespaces_for_import(reads, wiki, &request.files)
+                .map_err(SystemActFailure::Unavailable)?;
+            let bytes = governance_files
+                .iter()
+                .find_map(|f| f.content.as_deref())
+                .unwrap_or_default();
+            if let Err(fault) = crate::governance::validate_interwiki_bytes(bytes, &known) {
+                return Err(SystemActFailure::Invalid(format!(
+                    "the interwiki map of the import is refused: {fault}"
                 )));
             }
         }
@@ -577,4 +635,35 @@ impl SystemActs {
             }
         }
     }
+}
+
+/// The namespaces an import's interwiki map is judged against ([`crate::governance::namespaces_of_titles`]): the titles of the default
+/// view's tip and of the pages the change itself writes. A tip that cannot be read now is *could not be done now*, never *no namespaces*.
+fn namespaces_for_import(
+    reads: &ReadService,
+    wiki: &WikiRecord,
+    files: &[PreparedFile],
+) -> Result<std::collections::BTreeSet<String>, String> {
+    let index = reads
+        .title_index(wiki, Some(&wiki.default_view))
+        .map_err(|e| e.to_string())?;
+    let mut titles: Vec<String> = index
+        .entries()
+        .iter()
+        .map(|e| inklkunn_markup::path::path_to_title(&e.path).unwrap_or_else(|| e.path.clone()))
+        .collect();
+    titles.extend(
+        files
+            .iter()
+            .filter(|f| f.content.is_some())
+            .filter_map(|f| {
+                f.path
+                    .to_str()
+                    .filter(|p| p.starts_with("pages/"))
+                    .and_then(inklkunn_markup::path::path_to_title)
+            }),
+    );
+    Ok(crate::governance::namespaces_of_titles(
+        titles.iter().map(String::as_str),
+    ))
 }

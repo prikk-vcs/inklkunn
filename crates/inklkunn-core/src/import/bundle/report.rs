@@ -117,6 +117,18 @@ pub struct PeopleLine {
     pub in_users_file: usize,
 }
 
+/// A prefix of the bundle's interwiki map that the wiki did not take. The prefix is the bundle's text, so it is shown escaped and cut; the
+/// rule is the governance refusal's stable name and its sentence, and never what the bundle said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterwikiLeftOut {
+    /// The prefix, escaped and cut.
+    pub prefix: String,
+    /// The rule's stable name (`template-not-https`, `prefix-is-namespace`, ...).
+    pub rule: &'static str,
+    /// The rule's English sentence.
+    pub reason: &'static str,
+}
+
 /// The plan's report.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BundleReport {
@@ -203,8 +215,15 @@ pub struct BundleReport {
     pub final_state_pages: Vec<String>,
     /// Link prefixes of the pages that the wiki cannot resolve, with how many links use each.
     pub unmapped_prefixes: BTreeMap<String, usize>,
-    /// How many prefixes the bundle's own interwiki map holds (it is read by the map's own import, not by this plan).
+    /// How many prefixes the bundle's own interwiki map (the manifest's `interwiki`) holds, as given.
     pub interwiki_in_bundle: usize,
+    /// **The map the import will write** to `governance/interwiki.yaml` (RFC 007 D-8): the prefixes of the bundle's map that passed the
+    /// judgement acceptance makes, with their templates, by prefix (escaped for display).
+    pub interwiki_map: Vec<(String, String)>,
+    /// The prefixes of the bundle's map that were left out, each with the rule it broke (at most 256 are kept; the next field counts all).
+    pub interwiki_left_out: Vec<InterwikiLeftOut>,
+    /// How many prefixes were left out in all.
+    pub interwiki_left_out_total: usize,
     /// The replay's estimated time in seconds.
     pub estimate_seconds: Option<u64>,
 }
@@ -487,10 +506,49 @@ impl BundleReport {
         list(&mut out, "left out:", &self.left_out, |l| {
             format!("{} ({} file(s)): {}", l.what, l.files, l.why)
         });
+        if self.interwiki_in_bundle > 0 || !self.interwiki_map.is_empty() {
+            if self.interwiki_map.is_empty() {
+                out.push_str(&format!(
+                    "the bundle's interwiki map has {} prefix(es), and none can be the wiki's: no map is written\n",
+                    self.interwiki_in_bundle
+                ));
+            } else {
+                out.push_str(&format!(
+                    "the interwiki map the wiki will have (governance/interwiki.yaml, written with the first change; the bundle's map had {} prefix(es)):\n",
+                    self.interwiki_in_bundle
+                ));
+                for (prefix, template) in self.interwiki_map.iter().take(MAX_LISTED) {
+                    out.push_str(&format!("  {prefix}: {template}\n"));
+                }
+                if self.interwiki_map.len() > MAX_LISTED {
+                    out.push_str(&format!(
+                        "  … and {} more prefix(es)\n",
+                        self.interwiki_map.len() - MAX_LISTED
+                    ));
+                }
+            }
+            if self.interwiki_left_out_total > 0 {
+                out.push_str(&format!(
+                    "interwiki prefixes left out ({}; the import goes on without them):\n",
+                    self.interwiki_left_out_total
+                ));
+                for l in self.interwiki_left_out.iter().take(MAX_LISTED) {
+                    out.push_str(&format!("  {}: {} ({})\n", l.prefix, l.rule, l.reason));
+                }
+                if self.interwiki_left_out_total > MAX_LISTED {
+                    out.push_str(&format!(
+                        "  … and {} more prefix(es)\n",
+                        self.interwiki_left_out_total - MAX_LISTED
+                    ));
+                }
+            }
+        }
         if !self.unmapped_prefixes.is_empty() {
-            out.push_str(
-                "link prefixes with no interwiki map to resolve them (the wiki has no map yet: they stay dangling links, not pages to create):\n",
-            );
+            out.push_str(if self.interwiki_map.is_empty() {
+                "link prefixes with no interwiki map to resolve them (the wiki will have no map: they stay dangling links, not pages to create):\n"
+            } else {
+                "link prefixes the wiki's interwiki map does not have (they stay dangling links, not pages to create):\n"
+            });
             let mut by_count: Vec<(&String, &usize)> = self.unmapped_prefixes.iter().collect();
             by_count.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
             for (prefix, n) in by_count.into_iter().take(MAX_LISTED) {
@@ -502,12 +560,6 @@ impl BundleReport {
                     self.unmapped_prefixes.len() - MAX_LISTED
                 ));
             }
-        }
-        if self.interwiki_in_bundle > 0 {
-            out.push_str(&format!(
-                "the bundle's interwiki map has {} prefix(es); this import does not read it yet, so none of the prefixes above is mapped\n",
-                self.interwiki_in_bundle
-            ));
         }
         out
     }
@@ -597,6 +649,11 @@ impl BundleReport {
             "links": {
                 "unmapped_prefixes": self.unmapped_prefixes,
                 "interwiki_in_bundle": self.interwiki_in_bundle,
+                "interwiki_map": self.interwiki_map.iter().map(|(p, t)| serde_json::json!({"prefix": p, "template": t})).collect::<Vec<_>>(),
+                "interwiki_left_out_total": self.interwiki_left_out_total,
+                "interwiki_left_out": self.interwiki_left_out.iter().map(|l| serde_json::json!({
+                    "prefix": l.prefix, "rule": l.rule,
+                })).collect::<Vec<_>>(),
             },
         })
     }

@@ -55,8 +55,9 @@ pub struct Manifest {
     pub visibility_default: Option<String>,
     /// `namespaces`: the prefixes the bundle's titles have.
     pub namespaces: Vec<String>,
-    /// How many prefixes `interwiki` maps (the map itself is the interwiki map's to read, RFC 007 D-8).
-    pub interwiki_prefixes: usize,
+    /// `interwiki`: the bundle's map of prefixes to templates, **as written** and in the order given (untrusted text: the plan judges it,
+    /// prefix by prefix, with [`crate::governance::judge_interwiki`], RFC 007 D-8). The manifest reader only reads it.
+    pub interwiki: Vec<(String, String)>,
     /// `fidelity.level`, as declared.
     pub fidelity_level: Option<u8>,
     /// What the source says it degraded and dropped (`fidelity.degraded`, `fidelity.dropped`): the constructs named, as written.
@@ -208,11 +209,16 @@ pub fn read(pairs: &[(String, Value)]) -> Result<Manifest, Reasons> {
     match member(pairs, "interwiki", "", &mut reasons) {
         None | Some(Value::Null) => {}
         Some(Value::Map(entries)) => {
-            m.interwiki_prefixes = entries.len();
-            if entries
-                .iter()
-                .any(|(_, v)| !matches!(v, Value::Str(_) | Value::Date(_)))
-            {
+            let mut not_text = false;
+            for (prefix, value) in entries {
+                match value {
+                    Value::Str(template) | Value::Date(template) => {
+                        m.interwiki.push((prefix.clone(), template.clone()));
+                    }
+                    _ => not_text = true,
+                }
+            }
+            if not_text {
                 reasons.push("`interwiki` maps a prefix to something that is not text".to_owned());
             }
         }

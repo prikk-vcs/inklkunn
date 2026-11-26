@@ -61,8 +61,8 @@ pub use replay::{
     ImportBundleError, ImportStaging, ImportStep, ImportWorld, ImportedWiki, import_bundle,
 };
 pub use report::{
-    BundleReport, Checksums, FileKind, Found, Incompatible, LeftOut, LicenseFrom, MAX_LISTED,
-    PageLine, PeopleLine,
+    BundleReport, Checksums, FileKind, Found, Incompatible, InterwikiLeftOut, LeftOut, LicenseFrom,
+    MAX_LISTED, PageLine, PeopleLine,
 };
 pub use safe::{looks_like_an_address, shown, shown_up_to};
 
@@ -71,8 +71,9 @@ use super::{
     dir_identity, hash_all, kind_of, list_dir, lossy, open_regular, open_root, read_all, sha256,
     unit,
 };
+use crate::governance::{Interwiki, MAX_INTERWIKI_PREFIXES, judge_interwiki, namespaces_of_titles};
 use crate::read::ReadConfig;
-use inklkunn_markup::path::title_to_path;
+use inklkunn_markup::path::{path_to_title, title_to_path};
 use inklkunn_signer::{MAX_CHANGE_BYTES, MAX_CHANGE_FILES, check_change_path};
 
 /// The revision cap's default (`INKLKUNN_IMPORT_MAX_REVISIONS`): **1,000**, the architect's decision on I-T3's measurement of the replay
@@ -174,6 +175,10 @@ pub struct BundlePlan {
     /// The people `users.yaml` names, by the source's id: the name to show and the kind (`unspecified` when it says none). What a
     /// record that names an author by id alone is read with.
     pub users: BTreeMap<String, (String, String)>,
+    /// **The interwiki map the import writes** (`governance/interwiki.yaml`, RFC 007 D-8): the bundle's map judged prefix by prefix
+    /// ([`judge_interwiki`]) against the namespaces of the pages the replay writes, so what it holds is a map acceptance would take.
+    /// Empty when the bundle has none, or none of its prefixes passed; then no file is written.
+    pub interwiki: Interwiki,
     /// The name the manifest gives the source, as written (text).
     pub source_name: Option<String>,
     /// The address the manifest gives the source, as written (**text, never a link**).
@@ -688,6 +693,7 @@ pub fn plan_bundle(
                 file_digests: BTreeMap::new(),
                 users: BTreeMap::new(),
                 bundle_digest: [0; 32],
+                interwiki: Interwiki::empty(),
                 source_name: None,
                 source_address: None,
             });
@@ -783,7 +789,7 @@ fn judge(
         dropped_at_source: manifest.dropped.iter().map(|c| shown(c)).collect(),
         no_history: options.no_history,
         max_revisions: options.max_revisions,
-        interwiki_in_bundle: manifest.interwiki_prefixes,
+        interwiki_in_bundle: manifest.interwiki.len(),
         ..BundleReport::default()
     };
     let walked_refusals = names_refused(&plan);
@@ -1300,6 +1306,60 @@ fn refuse_conflicting_paths(
     }
 }
 
+/// **The bundle's interwiki map, judged** (RFC 007 D-8): the manifest's `interwiki` taken one prefix at a time by [`judge_interwiki`] (the
+/// judge acceptance uses, so what is taken is a map acceptance would take) against **the namespaces of every title the replay writes**:
+/// the pages of the bundle and every place a revision puts a page, a rename's `from` too. A prefix that fails is left out and named in
+/// the report with the rule it broke (it is the bundle's text: shown escaped and cut), and the rest are the wiki's map.
+fn judge_bundle_interwiki(
+    manifest: &Manifest,
+    plan: &ImportPlan,
+    histories: &[PageHistory],
+    report: &mut BundleReport,
+) -> Interwiki {
+    if manifest.interwiki.is_empty() {
+        return Interwiki::empty();
+    }
+    let mut titles: BTreeSet<String> = BTreeSet::new();
+    fn title(titles: &mut BTreeSet<String>, path: &str) {
+        if let Some(t) = path_to_title(path) {
+            titles.insert(t);
+        }
+    }
+    for f in plan.files.iter().filter(|f| f.path.starts_with("pages/")) {
+        title(&mut titles, &f.path);
+    }
+    for h in histories {
+        for r in &h.revisions {
+            if matches!(r.step, Step::NotReplayed(_)) {
+                continue;
+            }
+            if let Some(path) = &r.path {
+                title(&mut titles, path);
+            }
+            if let Step::Rename { from, .. } = &r.step {
+                titles.insert(from.clone());
+            }
+        }
+    }
+    let namespaces = namespaces_of_titles(titles.iter().map(String::as_str));
+    let (map, left_out) = judge_interwiki(manifest.interwiki.iter().cloned(), &namespaces);
+    report.interwiki_map = map
+        .iter()
+        .map(|(prefix, template)| (shown(prefix), shown_up_to(template, 512)))
+        .collect();
+    report.interwiki_left_out_total = left_out.len();
+    report.interwiki_left_out = left_out
+        .iter()
+        .take(MAX_INTERWIKI_PREFIXES)
+        .map(|l| InterwikiLeftOut {
+            prefix: shown_up_to(&l.prefix, 40),
+            rule: l.refusal.name(),
+            reason: l.refusal.sentence(),
+        })
+        .collect();
+    map
+}
+
 /// The bundle's identity (V-6), recorded in every change of the import as `Imported-From`: **the digest of the file of checksums** when
 /// the bundle's files were verified against it (it names every file the import reads, by digest, so it names the bundle), and
 /// otherwise a digest over the sorted list of `path`, digest of **every file the import read**. The manifest's alone said the same for
@@ -1623,6 +1683,9 @@ fn finish(
     report.attachments = attachments_total - report.sidecars;
     report.knowledge_files = plan.knowledge_count();
 
+    // --- the interwiki map the import writes (D-8): the bundle's, judged one prefix at a time
+    let interwiki = judge_bundle_interwiki(manifest, &plan, &histories, &mut report);
+
     // --- the caps of one acceptance: the first change and the last
     let (mut first_files, mut first_bytes) = (0_usize, 0_u64);
     for f in &plan.files {
@@ -1630,6 +1693,11 @@ fn finish(
             first_files += 1;
             first_bytes = first_bytes.saturating_add(f.size);
         }
+    }
+    // The map is a file of the first change.
+    if !interwiki.is_empty() {
+        first_files += 1;
+        first_bytes = first_bytes.saturating_add(interwiki.to_yaml().len() as u64);
     }
     if first_files > MAX_CHANGE_FILES {
         refusals.push(refusal(
@@ -1657,12 +1725,14 @@ fn finish(
         ));
     }
 
-    // --- links no map resolves
+    // --- links the wiki's map will not resolve
     let namespaces: BTreeSet<&str> = manifest.namespaces.iter().map(String::as_str).collect();
     for path in &kept_pages {
         if let Some(facts) = gathered.pages.get(path) {
             for (prefix, n) in &facts.prefixes {
-                if !namespaces.contains(prefix.as_str()) {
+                // A prefix the wiki will map is not missing; one the map left out, or never had, is. (The resolver looks a prefix up as
+                // written, so the lookup is exact.)
+                if !namespaces.contains(prefix.as_str()) && interwiki.get(prefix).is_none() {
                     *report
                         .unmapped_prefixes
                         .entry(shown_up_to(prefix, 60))
@@ -1712,7 +1782,7 @@ fn finish(
                 ),
                 "governance" => (
                     "governance/".to_owned(),
-                    "a wiki makes its own rules; the interwiki map is imported by its own task (RFC 007 D-8)",
+                    "a wiki makes its own rules: none of a bundle's governance files is imported (the interwiki map is read from the manifest, and reported above)",
                 ),
                 "discussions" => (
                     "discussions/".to_owned(),
@@ -1820,6 +1890,7 @@ fn finish(
             })
             .collect(),
         bundle_digest,
+        interwiki,
         source_name: manifest.source_name.clone(),
         source_address: manifest.source_url.clone(),
     }

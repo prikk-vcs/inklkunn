@@ -517,8 +517,14 @@ pub fn import_bundle(
         .filter(|f| !f.path.starts_with("pages/") || plan.first_pages.contains(&f.path))
         .collect();
     let mut first_change = false;
-    if !first.is_empty() {
-        let files = match read_some(&plan.plan, first.iter().copied()) {
+    // **The interwiki map, in the first change** (RFC 007 D-8): the plan's judged map in its canonical text, and nothing else of
+    // `governance/` (the system act's guard allows an import this one file, and judges its bytes: [`SystemActs::run`]).
+    let map_file = (!plan.interwiki.is_empty()).then(|| PreparedFile {
+        path: PathBuf::from(crate::governance::INTERWIKI_PATH),
+        content: Some(plan.interwiki.to_yaml().into_bytes()),
+    });
+    if !first.is_empty() || map_file.is_some() {
+        let mut files = match read_some(&plan.plan, first.iter().copied()) {
             Ok(f) => f,
             Err(e) => abandon!("reading the files of the first change", e),
         };
@@ -548,7 +554,16 @@ pub fn import_bundle(
                 (p, o + 1)
             }
         });
-        let summary = format!("Import {pages} page(s) and {others} other file(s) with no history");
+        let summary = match (&map_file, first.is_empty()) {
+            (None, _) => {
+                format!("Import {pages} page(s) and {others} other file(s) with no history")
+            }
+            (Some(_), true) => "Import the interwiki map".to_owned(),
+            (Some(_), false) => format!(
+                "Import {pages} page(s) and {others} other file(s) with no history, and the interwiki map"
+            ),
+        };
+        files.extend(map_file);
         if let Err(why) = run.change(&summary, files, Vec::new(), None) {
             abandon!("the first change", why);
         }
