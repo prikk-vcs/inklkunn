@@ -142,6 +142,47 @@ fn an_import_writes_no_other_path_below_governance_the_bundles_own_rules_never_c
 }
 
 #[test]
+fn the_maps_path_is_the_exact_string_every_other_spelling_of_it_is_refused() {
+    // `Path` equality folds `//` and `./` away, so a comparison by components would have taken these for the map and the signer would
+    // have been asked to write them as spelled (correction W-8). Only `governance/interwiki.yaml` itself is the map.
+    for spelled in [
+        "governance//interwiki.yaml",
+        "governance/./interwiki.yaml",
+        "./governance/interwiki.yaml",
+        "governance/interwiki.yaml/",
+        "governance///interwiki.yaml",
+    ] {
+        // As a write, alone.
+        refused(
+            "no path below governance/ but the interwiki map",
+            request(
+                SystemActKind::Import,
+                vec![file(spelled, MAP)],
+                Vec::new(),
+            ),
+        );
+        // As the `to` of a rename.
+        refused(
+            "no path below governance/ but the interwiki map",
+            request(
+                SystemActKind::Import,
+                vec![file("pages/A.md", "---\ntitle: A\n---\n\nA.\n")],
+                vec![(PathBuf::from("pages/B.md"), PathBuf::from(spelled))],
+            ),
+        );
+        // Beside the map itself: two governance paths are never one write.
+        refused(
+            "no path below governance/ but the interwiki map",
+            request(
+                SystemActKind::Import,
+                vec![file(INTERWIKI_PATH, MAP), file(spelled, MAP)],
+                Vec::new(),
+            ),
+        );
+    }
+}
+
+#[test]
 fn the_maps_bytes_are_judged_at_the_service_as_an_acceptance_judges_them() {
     // A template that is not https, a second placeholder, a key that is no prefix, a file that is not text.
     for bad in [

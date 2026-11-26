@@ -141,6 +141,11 @@ impl Resolution {
     }
 }
 
+/// Does a title, split on `/`, have a segment that is `.` or `..`?
+fn has_dot_segment(title: &str) -> bool {
+    title.split('/').any(|segment| matches!(segment, "." | ".."))
+}
+
 /// The page index free links resolve against.
 #[derive(Debug, Clone, Default)]
 pub struct Index {
@@ -233,8 +238,20 @@ impl Index {
             .filter(|p| p.path == path)
     }
 
-    /// Resolve `target` as written in a link on `from_path`.
+    /// Resolve `target` as written in a link on `from_path`, with this index's own [`interwiki`](Index::interwiki) map.
     pub fn resolve(&self, target: &str, from_path: Option<&str>) -> Resolution {
+        self.resolve_with(&self.interwiki, target, from_path)
+    }
+
+    /// [`Index::resolve`] with **another interwiki map** in place of the index's own: the pages are this index's and the prefixes
+    /// are `interwiki`'s. For an owner of an index that is shared (the pages of a state) and a map that is not (the wiki's, which
+    /// changes at a tip of its own), so that the map is applied when a link is resolved and never copied into the pages.
+    pub fn resolve_with(
+        &self,
+        interwiki: &BTreeMap<String, String>,
+        target: &str,
+        from_path: Option<&str>,
+    ) -> Resolution {
         let mut target = nfc_trim(target);
         if target.is_empty() {
             return Resolution {
@@ -247,9 +264,16 @@ impl Index {
         if !target.starts_with('/')
             && !target.starts_with('.')
             && let Some((prefix, rest)) = target.split_once(':')
-            && let Some(template) = self.interwiki.get(prefix)
+            && let Some(template) = interwiki.get(prefix)
         {
-            let encoded = percent_encode(rest.trim());
+            let rest = rest.trim();
+            // A title that climbs (`..`) or stays (`.`) in the path it stands in is no title of the other wiki, and **no link**: a
+            // browser reads `%2E%2E` as `..` too (the URL standard's *double-dot path segment*), so no spelling of it keeps the
+            // link under the template's path (correction W-7). It stays as a link to nothing, as an unknown prefix does.
+            if has_dot_segment(rest) {
+                return Resolution::dangling();
+            }
+            let encoded = percent_encode(rest);
             let url = if template.contains("{title}") {
                 template.replace("{title}", &encoded)
             } else {

@@ -76,3 +76,71 @@ fn pages_prefix_is_transparent() {
         assert_eq!(ix.resolve(t, Some("pages/Home.md")).via, Via::Exact, "{t}");
     }
 }
+
+#[test]
+fn a_title_with_a_dot_segment_is_no_interwiki_link_and_stays_under_the_templates_path() {
+    let mut ix = index();
+    ix.interwiki.insert(
+        "gh".into(),
+        "https://github.com/org/repo/wiki/{title}".into(),
+    );
+    // The climb of the review's example, in every place a segment can stand, and the plain `.` and `..`.
+    for title in [
+        "../../../x",
+        "..",
+        ".",
+        "a/../b",
+        "a/./b",
+        "a/..",
+        "./a",
+        "  ../x  ",
+    ] {
+        let r = ix.resolve(&format!("gh:{title}"), None);
+        assert_eq!(r.via, Via::Dangling, "{title}");
+        assert!(r.url.is_none(), "{title}");
+    }
+    // What is not a dot segment is as it was: subpages keep their `/`, dots inside a name are names, empty segments stay.
+    for (title, url) in [
+        ("Home/Sub", "https://github.com/org/repo/wiki/Home/Sub"),
+        ("v1.2", "https://github.com/org/repo/wiki/v1.2"),
+        ("...", "https://github.com/org/repo/wiki/..."),
+        (
+            ".hidden/..x",
+            "https://github.com/org/repo/wiki/.hidden/..x",
+        ),
+        ("a//b", "https://github.com/org/repo/wiki/a//b"),
+        // A `%2E` an author types is a percent sign and two letters, and is encoded as one.
+        ("%2E%2E", "https://github.com/org/repo/wiki/%252E%252E"),
+    ] {
+        let r = ix.resolve(&format!("gh:{title}"), None);
+        assert_eq!(r.via, Via::Interwiki, "{title}");
+        assert_eq!(r.url.as_deref(), Some(url), "{title}");
+    }
+}
+
+#[test]
+fn a_dot_segment_is_refused_in_a_query_template_too_and_one_map_serves_many_indexes() {
+    let mut ix = index();
+    ix.interwiki
+        .insert("q".into(), "https://example.org/read?page={title}".into());
+    assert_eq!(ix.resolve("q:../x", None).via, Via::Dangling);
+    // `resolve_with` takes the prefixes from the map it is given and the pages from the index.
+    let other: BTreeMap<String, String> = BTreeMap::from([(
+        "zz".to_owned(),
+        "https://zz.example.org/{title}".to_owned(),
+    )]);
+    assert_eq!(
+        ix.resolve_with(&other, "zz:Rust", None).url.as_deref(),
+        Some("https://zz.example.org/Rust")
+    );
+    assert_eq!(
+        ix.resolve_with(&other, "wp:Rust", None).via,
+        Via::Dangling,
+        "the index's own map is not consulted"
+    );
+    assert_eq!(
+        ix.resolve_with(&other, "Edit Conflicts", Some("Home.md"))
+            .via,
+        Via::Exact
+    );
+}

@@ -21,8 +21,13 @@
 //!   mapped prefix always has), and no map is refused later for it.
 //! - **A template** is `https://` and a host, no user information, **exactly one `{title}`, in the path or the query**, no
 //!   other brace, and only the characters a URL is written with (ASCII, no space, none of `"<>\^`|`): what the title is
-//!   replaced by is percent-encoded, so it cannot leave the path or the query it stands in. At most [`MAX_TEMPLATE_CHARS`]
-//!   characters. A fixed fragment after the placeholder's place is allowed; the placeholder in the fragment is not.
+//!   replaced by is percent-encoded (a `/` is kept, for subpages), so that it cannot end the path, start the query or the
+//!   fragment, or add a parameter. At most [`MAX_TEMPLATE_CHARS`] characters. A fixed fragment after the placeholder's place
+//!   is allowed; the placeholder in the fragment is not.
+//! - **A title that has a segment `.` or `..`** (`[[gh:../../x]]`) **is no link at all**: it stays dangling, as a link with an
+//!   unknown prefix does. Encoding the dots would not keep the link under the template's path, because a browser reads `%2E%2E`
+//!   as `..` as well (the URL standard's *double-dot path segment*), so the one way to keep a title from climbing out of the
+//!   path it stands in is to not make it a link.
 //! - **At most [`MAX_INTERWIKI_PREFIXES`] prefixes**, and a file of at most [`MAX_INTERWIKI_BYTES`].
 //!
 //! # Three ways to a map

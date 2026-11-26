@@ -326,7 +326,9 @@ impl SystemActs {
         // file, not renamed, not removed. A bundle's own policy and constitution are never imported (the plan leaves them out and the
         // replay writes none), and this is the second lock on that door, for an import and no other act: a plain `System` change is as it
         // was, so that the tests that plant a governance file the way a hand edit would still can. The map's own bytes are judged below,
-        // on the tip the change is written on, as an acceptance judges them.
+        // on the tip the change is written on, as an acceptance judges them. **The map's path is compared as the exact string** and not
+        // as a `Path` (whose equality folds `//` and `./` away): `governance//interwiki.yaml` is under `governance/` for the test above
+        // and is not the map for this one, so it is refused, as every other spelling is (correction W-8).
         let in_governance =
             |p: &std::path::Path| p.to_str().is_none_or(crate::governance::is_governance_path);
         let governance_files: Vec<&PreparedFile> = request
@@ -344,7 +346,7 @@ impl SystemActs {
                 [only]
                     if !governance_renamed
                         && only.content.is_some()
-                        && only.path == std::path::Path::new(crate::governance::INTERWIKI_PATH) =>
+                        && only.path.to_str() == Some(crate::governance::INTERWIKI_PATH) =>
                 {
                     true
                 }
