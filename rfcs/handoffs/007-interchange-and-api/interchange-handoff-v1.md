@@ -254,3 +254,24 @@ beyond scope. **Nothing is pushed** until this round is approved. B-1 goes out w
   page view's notice is recorded for later).
 
 Hand back as `007-interchange-i-t2-i-t3-corrections-review-request.md`. **I-T4 – I-T6 may start now, beside it.**
+
+## The V round and I-T4 – I-T6 reviewed: W-1 – W-10 (2026-11-26; binding, one round)
+
+**The V round: Approved** (`.git-exclude/reviewed/007-interchange-i-t2-i-t3-corrections-review-result.md`), so I-T2
+and I-T3 are approved. **I-T4 – I-T6: Conditionally Approved** (`.git-exclude/reviewed/007-interchange-i-t4-i-t6-review-result.md`).
+An independent review found V-1, V-2 and the import-only guard real and complete. No unsafe link, hidden content or
+restricted wiki can leak through the map, the lists, the feed or the `Link` header. **Pushed after the rehearsal of
+this exact tree.**
+- **W-1:** case collisions judged by lifetime, so a case-only rename imports.
+- **W-2:** the CLI report says *the wiki it was imported from*.
+- **W-3:** id-named history files that fold to one name are named by their paths.
+- **W-4 (Medium):** one wiki, one map, read from the default view's tip for every view and state.
+- **W-5:** the rule is symmetric: a page title whose namespace equals a mapped prefix is refused.
+- **W-6 (Medium):** the policy form edits the map, in rows, never as raw YAML.
+- **W-7:** `.` and `..` path segments of a title are encoded, and the doc is corrected.
+- **W-8:** the guard compares the map's path exactly.
+- **W-9:** the lists' and the feed's windows are in the store, and the feed selects by the event's time.
+- **W-10:** the self-assessment is re-read after I-T4 and I-T5, and every `yes` note says no more than its test.
+
+Hand back as `007-interchange-w-review-request.md`. Then **readiness (R-5)**, as *After the build* says, with the
+Japanese list since `162f0cc`. **R-7, the candidate, also bumps `wiki-commons.yaml`'s `subject.version`.**
