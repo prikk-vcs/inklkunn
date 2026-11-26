@@ -36,6 +36,12 @@ pub enum Checksums {
     /// The manifest names no file of checksums: *none in the bundle*, and nothing was verified.
     #[default]
     None,
+    /// The manifest names a file of checksums and the bundle does not stand up to it (the refusals say how): nothing is
+    /// verified.
+    Failed {
+        /// The file, as the manifest names it.
+        file: String,
+    },
     /// Every file of the bundle was checked against the file the manifest names (the manifest itself is not covered by a
     /// checksum, by wiki-commons' convention).
     Verified {
@@ -308,6 +314,9 @@ impl BundleReport {
             Checksums::None => out.push_str(
                 "checksums: none in the bundle (nothing was verified; the wiki's notice says so)\n",
             ),
+            Checksums::Failed { file } => out.push_str(&format!(
+                "checksums: the manifest names `{file}`, and the bundle does not stand up to it (see the refusals)\n"
+            )),
             Checksums::Verified { file, entries } => out.push_str(&format!(
                 "checksums: verified, every file against `{}` ({entries} file(s); they show the bundle is the one that was checked, not who made it)\n",
                 file
@@ -504,6 +513,9 @@ impl BundleReport {
             },
             "checksums": match &self.checksums {
                 Checksums::None => serde_json::json!({"state": "none-in-the-bundle"}),
+                Checksums::Failed { file } => {
+                    serde_json::json!({"state": "failed", "file": file})
+                }
                 Checksums::Verified { file, entries } => {
                     serde_json::json!({"state": "verified", "file": file, "entries": entries})
                 }

@@ -435,96 +435,111 @@ fn path_fault(path: &str) -> Option<String> {
     canonical_fault(path)
 }
 
-/// Where each revision of a page puts the page: the paths the records say (`inklkunn.path`), the renames' titles, and the page's
-/// final path; the path a revision acts on (a deletion's is the path it removes). `None` where nothing says.
+/// Where each revision of a page puts the page, from three witnesses: the paths the records say (`inklkunn.path`), the titles of
+/// its renames, and the page's final path. The path a revision acts on is its place after it (a removal's is the path it
+/// removes); `None` where nothing says. **The witnesses must agree**: a rename whose `to` is not where the revisions after it
+/// have the page, or whose `from` is not where the revisions before it had it, or a record whose own path is not where the
+/// ones around it put the page, is refused naming the `rev`.
 fn resolve_paths(
     revisions: &mut [Revision],
     final_path: Option<&str>,
 ) -> Result<(), (String, String)> {
     let n = revisions.len();
-    // `after[i]`: the path of the page after revision i (None: not there, or not known).
-    let mut after: Vec<Option<String>> = revisions.iter().map(|r| r.path.clone()).collect();
-    let mut deleted: Vec<bool> = revisions
+    let is_delete = |r: &Revision| matches!(r.step, Step::Delete);
+    let titled = |title: &str| title_to_path(title).ok();
+    let not_a_title = |r: &Revision, which: &str| {
+        (
+            r.rev.clone(),
+            format!("has a rename whose `{which}` is not a page title"),
+        )
+    };
+    // `after[i]`: where the page is after revision i (`None`: not known, or not there).
+    let mut after: Vec<Option<String>> = revisions
         .iter()
-        .map(|r| matches!(r.step, Step::Delete))
+        .map(|r| if is_delete(r) { None } else { r.path.clone() })
         .collect();
-    let title_path = |title: &str| title_to_path(title).ok();
-    if let (Some(last), Some(p)) = (after.last_mut(), final_path)
-        && last.is_none()
-        && !deleted.last().copied().unwrap_or(false)
+    if let (Some(last), Some(slot), Some(p)) = (revisions.last(), after.last_mut(), final_path)
+        && slot.is_none()
+        && !is_delete(last)
     {
-        *last = Some(p.to_owned());
+        *slot = Some(p.to_owned());
     }
-    for i in 0..n {
-        let Some(rev) = revisions.get(i) else {
-            continue;
-        };
-        let (before, here) = (
-            i.checked_sub(1)
-                .and_then(|j| after.get(j).cloned().flatten()),
-            after.get(i).cloned().flatten(),
-        );
-        if let Step::Rename { to, .. } = &rev.step {
-            let Some(to_path) = title_path(to) else {
-                return Err((
-                    rev.rev.clone(),
-                    "has a rename whose `to` is not a page title".to_owned(),
-                ));
-            };
-            if here.as_deref().is_some_and(|h| h != to_path) {
-                return Err((
-                    rev.rev.clone(),
-                    "has a rename whose `to` is not the path the page has afterwards".to_owned(),
-                ));
-            }
-            if let Some(slot) = after.get_mut(i) {
-                *slot = Some(to_path);
-            }
-        } else if here.is_none() && !deleted.get(i).copied().unwrap_or(false) {
-            // Not moved here: the page is where it was before.
-            if let Some(slot) = after.get_mut(i) {
-                *slot = before;
-            }
-        }
-    }
-    // Backwards: the path before a revision is the one a rename moved from, else the one after it.
-    for i in (0..n).rev() {
+    // Backwards from what is known: before a rename the page was at its `from`, and before anything else where it is after.
+    for i in (1..n).rev() {
         let Some(rev) = revisions.get(i) else {
             continue;
         };
         let prior = match &rev.step {
             Step::Rename { from, .. } => {
-                let Some(from_path) = title_path(from) else {
-                    return Err((
-                        rev.rev.clone(),
-                        "has a rename whose `from` is not a page title".to_owned(),
-                    ));
-                };
-                Some(from_path)
+                Some(titled(from).ok_or_else(|| not_a_title(rev, "from"))?)
             }
             Step::Delete => None,
             _ => after.get(i).cloned().flatten(),
         };
-        if let Some(j) = i.checked_sub(1)
-            && let Some(slot) = after.get_mut(j)
+        let earlier_is_delete = revisions.get(i - 1).is_some_and(is_delete);
+        if let Some(slot) = after.get_mut(i - 1)
             && slot.is_none()
-            && !deleted.get(j).copied().unwrap_or(false)
+            && !earlier_is_delete
         {
             *slot = prior;
         }
     }
-    // What each revision acts on.
-    for (i, rev) in revisions.iter_mut().enumerate() {
-        let acts_on = if deleted.get(i).copied().unwrap_or(false) {
-            i.checked_sub(1)
-                .and_then(|j| after.get(j).cloned().flatten())
-                .or_else(|| rev.path.clone())
-        } else {
-            after.get(i).cloned().flatten()
+    // Forwards, and every witness against the others.
+    for i in 0..n {
+        let Some(rev) = revisions.get(i) else {
+            continue;
         };
-        rev.path = acts_on;
+        if is_delete(rev) {
+            continue;
+        }
+        let before = i
+            .checked_sub(1)
+            .and_then(|j| after.get(j).cloned().flatten());
+        let (expected, rule) = match &rev.step {
+            Step::Rename { from, to } => {
+                let from_path = titled(from).ok_or_else(|| not_a_title(rev, "from"))?;
+                if before.as_deref().is_some_and(|b| b != from_path) {
+                    return Err((
+                        rev.rev.clone(),
+                        "has a rename whose `from` is not the path the page had before".to_owned(),
+                    ));
+                }
+                (
+                    Some(titled(to).ok_or_else(|| not_a_title(rev, "to"))?),
+                    "has a rename whose `to` is not the path the page has afterwards",
+                )
+            }
+            _ => (
+                before,
+                "is at a path other than the one the records before and after it give the page",
+            ),
+        };
+        match (after.get(i).cloned().flatten(), expected) {
+            (Some(have), Some(want)) if have != want => {
+                return Err((rev.rev.clone(), rule.to_owned()));
+            }
+            (None, Some(want)) => {
+                if let Some(slot) = after.get_mut(i) {
+                    *slot = Some(want);
+                }
+            }
+            _ => {}
+        }
     }
-    deleted.clear();
+    // What each revision acts on.
+    for i in 0..n {
+        let earlier = i
+            .checked_sub(1)
+            .and_then(|j| after.get(j).cloned().flatten());
+        let here = after.get(i).cloned().flatten();
+        if let Some(rev) = revisions.get_mut(i) {
+            rev.path = if is_delete(rev) {
+                rev.path.clone().or(earlier)
+            } else {
+                here
+            };
+        }
+    }
     Ok(())
 }
 
@@ -916,6 +931,8 @@ fn judge_checksums(
     report: &mut BundleReport,
 ) {
     let manifest_name = crate::bundle::MANIFEST;
+    let before = refusals.len();
+    report.checksums = Checksums::Failed { file: shown(named) };
     if !manifest::is_a_path_inside(named) {
         refusals.push(refusal(
             manifest_name,
@@ -983,10 +1000,12 @@ fn judge_checksums(
             format!("is in the bundle and the checksums file does not name it{hint}"),
         ));
     }
-    report.checksums = Checksums::Verified {
-        file: shown(named),
-        entries: sums.len(),
-    };
+    if refusals.len() == before {
+        report.checksums = Checksums::Verified {
+            file: shown(named),
+            entries: sums.len(),
+        };
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

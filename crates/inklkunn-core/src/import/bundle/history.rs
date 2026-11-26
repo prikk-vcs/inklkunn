@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use sha2::{Digest as _, Sha256};
 
 use super::patch;
-use super::safe::{looks_like_an_address, shown};
+use super::safe::looks_like_an_address;
 use super::time::{Instant, parse};
 use crate::import::{Digest, inspect_page};
 
@@ -107,23 +107,23 @@ pub struct Record {
     pub unknown: Vec<String>,
 }
 
-/// A fault in a history file: where (1-based line), the record's `rev` when it was read, and the rule. **Never a value.**
+/// A fault in a history file: where (1-based line; 0 for the file) and the rule. **Never a value**, and not the record's `rev`
+/// either: a fault of types and shapes says the line, and only the rules of order and of digests name a `rev` (D-2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fault {
     /// The line.
     pub line: usize,
-    /// The record's `rev`, as written, when the record has one.
-    pub rev: Option<String>,
     /// The rule.
     pub rule: String,
 }
 
 impl Fault {
-    /// How a refusal says where: the file's page is named by the caller; this is `line N` and the `rev`.
+    /// How a refusal says where: the file's page is named by the caller; this is `line N`.
     pub fn place(&self) -> String {
-        match &self.rev {
-            Some(rev) => format!("line {}, rev `{}`", self.line, shown(rev)),
-            None => format!("line {}", self.line),
+        if self.line == 0 {
+            "the file".to_owned()
+        } else {
+            format!("line {}", self.line)
         }
     }
 }
@@ -305,13 +305,12 @@ fn record_of(value: &serde_json::Value) -> Result<Record, String> {
 
 /// Read the lines of one history file (UTF-8 JSON Lines, one record a line, no blank line). The first fault stops the file.
 pub fn read(bytes: &[u8]) -> Result<Vec<Record>, Fault> {
-    let at_line = |line: usize, rev: Option<String>, rule: &str| Fault {
+    let at_line = |line: usize, rule: &str| Fault {
         line,
-        rev,
         rule: rule.to_owned(),
     };
     let Ok(text) = std::str::from_utf8(bytes) else {
-        return Err(at_line(0, None, "is not UTF-8 text"));
+        return Err(at_line(0, "is not UTF-8 text"));
     };
     let body = text.strip_suffix('\n').unwrap_or(text);
     let mut out = Vec::new();
@@ -321,19 +320,11 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Record>, Fault> {
     for (n, line) in body.split('\n').enumerate() {
         let at = n + 1;
         if line.is_empty() {
-            return Err(at_line(at, None, "is empty"));
+            return Err(at_line(at, "is empty"));
         }
         let value: serde_json::Value =
-            serde_json::from_str(line).map_err(|_| at_line(at, None, "is not JSON"))?;
-        let rev = value
-            .get("rev")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
-        out.push(record_of(&value).map_err(|rule| Fault {
-            line: at,
-            rev,
-            rule,
-        })?);
+            serde_json::from_str(line).map_err(|_| at_line(at, "is not JSON"))?;
+        out.push(record_of(&value).map_err(|rule| Fault { line: at, rule })?);
     }
     Ok(out)
 }
