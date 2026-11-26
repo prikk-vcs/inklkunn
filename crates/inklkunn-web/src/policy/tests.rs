@@ -13,7 +13,7 @@ use inklkunn_markup::frontmatter::parse_yaml;
 use inklkunn_store::Role;
 
 use super::rules_change::{Compared, policy_lines, policy_side};
-use super::rules_form::refusal_text;
+use super::rules_form::{MapAt, map_refusal_text, refusal_text};
 use super::rules_phrases::{COVERED, constitution_facts, policy_facts};
 use crate::catalog::{EN, JA_DEF, Lang, T};
 
@@ -210,6 +210,30 @@ fn every_refusal_of_the_validator_has_a_sentence_for_the_form_in_both_languages(
                 "{}: {text} is another's",
                 refusal.name()
             );
+        }
+    }
+}
+
+#[test]
+fn every_refusal_of_the_validator_has_a_sentence_for_a_row_of_the_interwiki_map_in_both_languages()
+{
+    for t in both() {
+        for at in [MapAt::Prefix, MapAt::Template, MapAt::Whole] {
+            let mut seen = BTreeSet::new();
+            for refusal in Refusal::ALL {
+                let text = map_refusal_text(t, refusal, at);
+                assert!(!text.trim().is_empty(), "{}", refusal.name());
+                assert!(
+                    !text.contains('[') && !text.contains('{'),
+                    "{}: {text}",
+                    refusal.name()
+                );
+                assert!(
+                    seen.insert(text.clone()),
+                    "{}: {text} is another's",
+                    refusal.name()
+                );
+            }
         }
     }
 }

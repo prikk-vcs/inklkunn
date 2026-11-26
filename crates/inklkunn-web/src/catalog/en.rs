@@ -4692,6 +4692,50 @@ pub const CATALOG: &[Entry] = &[
     msg("policy_edit.protect_remove", "Remove this protection"),
     msg("policy_edit.protect_add", "Add a protection"),
     msg(
+        "policy_edit.interwiki_intro",
+        "A link whose prefix is in this map goes to the address given, with the page title put in where {placeholder} stands. A prefix is made of letters, digits and hyphens, and cannot be how the titles of some pages of this wiki begin. An address is a web address that begins with https, and holds {placeholder} once. Remove every row for a wiki with no map.",
+    ),
+    msg(
+        "policy_edit.interwiki_row",
+        "Interwiki prefix {number}",
+    ),
+    msg(
+        "policy_edit.interwiki_prefix_label",
+        "Prefix",
+    ),
+    msg(
+        "policy_edit.interwiki_template_label",
+        "Address, with {placeholder} where the page title goes",
+    ),
+    msg(
+        "policy_edit.interwiki_remove",
+        "Remove this prefix",
+    ),
+    msg(
+        "policy_edit.interwiki_add",
+        "Add an interwiki prefix",
+    ),
+    msg(
+        "policy_edit.interwiki_prefix_characters",
+        "A prefix is made of letters (a to z), digits and hyphens only.",
+    ),
+    msg(
+        "policy_edit.interwiki_prefix_long",
+        "A prefix has at most {max} characters.",
+    ),
+    msg(
+        "policy_edit.interwiki_template_long",
+        "An address has at most {max} characters.",
+    ),
+    msg(
+        "policy_edit.interwiki_repeated",
+        "Another row has this prefix. A prefix leads to one address.",
+    ),
+    msg(
+        "policy_edit.interwiki_too_many",
+        "An interwiki map has at most {max} prefixes.",
+    ),
+    msg(
         "policy_edit.summary_default",
         "Change the rules of this wiki",
     ),

@@ -2,15 +2,18 @@
 //!
 //! **Each key is a sentence and a control, never raw YAML**: the labels are the policy page's own ([`super::rules_phrases`]), the
 //! controls are selects for the rungs and the enumerations, numbers, one line of text for each promotion, a list of protections
-//! with add and remove buttons, and the constitution's three settings. It is filled from the rules in force.
+//! with add and remove buttons, the constitution's three settings, and **the interwiki map as a list of rows, a prefix and the
+//! address it leads to, with the same add and remove buttons** (RFC 007 D-8, W-6). It is filled from the rules in force.
 //!
-//! **What it does is only to make a proposal.** What was typed becomes a draft ([`PolicyDraft`], [`ConstitutionDraft`]), which
-//! is written as the text of a governance file and **read by the very validator acceptance uses**
-//! ([`validate_policy`], [`validate_constitution`], with the platform's limits); what that accepts is written in its canonical
-//! text ([`Policy::to_yaml`]) and sent as an ordinary proposal that touches the governance files and **nothing else**: a change to
-//! the rules is its own proposal (handoff G-T1 correction C-1). Each refusal of the validator is said **by its name, as a sentence
-//! next to the control it concerns** ([`refusal_text`]: one arm for each [`Refusal`], so a refusal with no sentence does not
-//! compile), and the proposal service and the acceptance judge it again: the form is no authority.
+//! **What it does is only to make a proposal.** What was typed becomes a draft ([`PolicyDraft`], [`ConstitutionDraft`],
+//! [`InterwikiDraft`]), which is written as the text of a governance file and **read by the very validator acceptance uses**
+//! ([`validate_policy`], [`validate_constitution`], [`validate_interwiki`], with the platform's limits and the wiki's
+//! namespaces); what that accepts is written in its canonical text ([`Policy::to_yaml`], [`Interwiki::to_yaml`]) and sent as an
+//! ordinary proposal that touches the governance files and **nothing else**: a change to the rules is its own proposal (handoff
+//! G-T1 correction C-1), and one proposal carries every file the form changed. Each refusal of the validator is said **by its
+//! name, as a sentence next to the control it concerns** ([`refusal_text`], [`map_refusal_text`]: one arm for each [`Refusal`],
+//! so a refusal with no sentence does not compile), and the proposal service and the acceptance judge it again: the form is no
+//! authority.
 //!
 //! **Who may open it.** Anyone who may propose may open the form and send a change: who may *accept* it is the rules' own and is
 //! said on the page. Someone who may not propose is told why, as every refusal of a proposal says it. **While the rules cannot
@@ -18,7 +21,7 @@
 //!
 //! **An unchanged form creates nothing** and says so. *Back to the default rules* proposes removing the files that are there.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use askama::Template;
 use axum::extract::rejection::PathRejection;
@@ -27,11 +30,13 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use inklkunn_core::Action;
 use inklkunn_core::governance::draft::{
-    ConstitutionDraft, PolicyDraft, ProtectDraft, fields as schema,
+    ConstitutionDraft, InterwikiDraft, PolicyDraft, ProtectDraft, fields as schema,
 };
 use inklkunn_core::governance::{
-    Constitution, Fault, GovernanceFile, Limit, OrderingPair, PlatformLimits, Policy, ReadFault,
-    Refusal, Rules, validate_constitution, validate_policy,
+    Constitution, Fault, GovernanceFile, Interwiki, Limit, MAX_INTERWIKI_PREFIXES,
+    MAX_PREFIX_CHARS, MAX_TEMPLATE_CHARS, OrderingPair, PlatformLimits, Policy, ReadFault,
+    Refusal, Rules, namespaces_of_titles, validate_constitution, validate_interwiki,
+    validate_policy,
 };
 use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalError};
 use inklkunn_store::{Base, FileChange, Role};
@@ -49,6 +54,9 @@ use crate::proposals::{
     Ctx, from_this_site, needs_account, notice_page, refused, see, serve, words,
 };
 use crate::wiki::{Choice, Shell, generic_not_found, services_of};
+
+/// How the page title's place is written in an address, said on the form (the one placeholder; it is no message's word).
+const PLACEHOLDER: &str = "{title}";
 
 type Raw = crate::proposals::urlencoded::Raw;
 type PathName = Result<Path<String>, PathRejection>;
@@ -70,11 +78,26 @@ impl Row {
     }
 }
 
-/// What the controls hold, by field name, and the protections' rows.
+/// One row of the interwiki map, as typed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct MapRow {
+    prefix: String,
+    template: String,
+}
+
+impl MapRow {
+    /// A row nobody filled in (an added row) says nothing and is left out.
+    fn is_blank(&self) -> bool {
+        self.prefix.trim().is_empty() && self.template.trim().is_empty()
+    }
+}
+
+/// What the controls hold, by field name, the protections' rows and the interwiki map's rows.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Typed {
     values: HashMap<String, String>,
     rows: Vec<Row>,
+    map: Vec<MapRow>,
 }
 
 /// The value the form sends for *a maintainer may accept their own proposal while the wiki is small*: not the file's word.
@@ -99,8 +122,8 @@ impl Typed {
         self.values.insert(name.to_owned(), value.into());
     }
 
-    /// The form filled from the rules in force.
-    fn of(t: T, rules: &Rules) -> Typed {
+    /// The form filled from the rules in force and the interwiki map in force.
+    fn of(t: T, rules: &Rules, map: &Interwiki) -> Typed {
         let d = PolicyDraft::of(rules.policy());
         let c = ConstitutionDraft::of(rules.constitution());
         let mut typed = Typed::default();
@@ -151,6 +174,11 @@ impl Typed {
                 reason: p.reason,
             })
             .collect();
+        typed.map = InterwikiDraft::of(map)
+            .rows
+            .into_iter()
+            .map(|(prefix, template)| MapRow { prefix, template })
+            .collect();
         typed
     }
 
@@ -200,6 +228,24 @@ impl Typed {
                 title: at(f::ROW_TITLE),
                 asks: at(f::ROW_ASKS),
                 reason: at(f::ROW_REASON),
+            });
+        }
+        // The interwiki map's rows, in the same way: as many as the form says it sent, at most the most a map may hold, plus one.
+        let map_rows = given
+            .get(f::MAP_ROWS)
+            .and_then(|n| n.trim().parse::<usize>().ok())
+            .unwrap_or(0)
+            .min(MAX_INTERWIKI_PREFIXES + 1);
+        for n in 1..=map_rows {
+            let at = |field: &str| {
+                given
+                    .get(&f::map_field(n, field))
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            typed.map.push(MapRow {
+                prefix: at(f::MAP_PREFIX),
+                template: at(f::MAP_TEMPLATE),
             });
         }
         typed
@@ -258,7 +304,7 @@ pub(crate) fn refusal_text(t: T, refusal: Refusal, limits: &PlatformLimits) -> S
         | Refusal::OutsideDefaultView
         | Refusal::UnknownFile
         | Refusal::NotAFile
-        // The interwiki map is not edited by this form: its refusals are the rules' own sentences.
+        // The interwiki map's refusals are said by [`map_refusal_text`]; these are the rules' own sentences, for the match.
         | Refusal::PrefixIsNamespace
         | Refusal::TemplateScheme
         | Refusal::TemplateHost
@@ -267,6 +313,76 @@ pub(crate) fn refusal_text(t: T, refusal: Refusal, limits: &PlatformLimits) -> S
         | Refusal::TemplateCharacter => rule_key(refusal),
     };
     t.get(key)
+}
+
+/// Where in the interwiki map a refusal is said: beside a row's prefix, beside a row's address, or about the map as a whole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MapAt {
+    /// The prefix of a row.
+    Prefix,
+    /// The address of a row.
+    Template,
+    /// The map as a whole (it has too many prefixes).
+    Whole,
+}
+
+/// **The sentence of each refusal of the interwiki map's validator**, as the form says it beside a row (or about the map as a
+/// whole). One arm for each [`Refusal`], none a wildcard: a refusal with no sentence does not compile, and a test reads every one of
+/// [`Refusal::ALL`] in both languages. The rules' own sentences ([`rule_key`]) name the *interwiki map* and say what an address
+/// must hold, and read as they are beside a row; the others are said here, in the words of a row (a *prefix*, an *address*).
+pub(crate) fn map_refusal_text(t: T, refusal: Refusal, at: MapAt) -> String {
+    let key = match refusal {
+        // The file's keys are the prefixes: a key that is none is a prefix with a character no prefix has.
+        Refusal::UnknownKey => Key::PolicyEditInterwikiPrefixCharacters,
+        Refusal::RepeatedKey => Key::PolicyEditInterwikiRepeated,
+        Refusal::Bounds => {
+            return match at {
+                MapAt::Prefix => t
+                    .msg(Key::PolicyEditInterwikiPrefixLong)
+                    .with("max", MAX_PREFIX_CHARS)
+                    .text(),
+                MapAt::Template => t
+                    .msg(Key::PolicyEditInterwikiTemplateLong)
+                    .with("max", MAX_TEMPLATE_CHARS)
+                    .text(),
+                MapAt::Whole => t
+                    .msg(Key::PolicyEditInterwikiTooMany)
+                    .with("max", MAX_INTERWIKI_PREFIXES)
+                    .text(),
+            };
+        }
+        // The form says an empty prefix or address itself, before the validator is asked.
+        Refusal::Missing => Key::PolicyEditRefusalMissing,
+        // The rest: the rules' own sentences. The five of the map are the ones a person can meet; the others a row cannot make.
+        Refusal::PrefixIsNamespace
+        | Refusal::TemplateScheme
+        | Refusal::TemplateHost
+        | Refusal::TemplateUserInfo
+        | Refusal::TemplatePlaceholder
+        | Refusal::TemplateCharacter
+        | Refusal::NotText
+        | Refusal::TooLong
+        | Refusal::WrongShape
+        | Refusal::UnknownValue
+        | Refusal::OutOfRange
+        | Refusal::ForbiddenCharacter
+        | Refusal::Duplicate
+        | Refusal::Ordering(_)
+        | Refusal::PlatformLimit(_)
+        | Refusal::OutsideDefaultView
+        | Refusal::UnknownFile
+        | Refusal::NotAFile => rule_key(refusal),
+    };
+    t.get(key)
+}
+
+/// The control a fault of the interwiki map is about: the prefix or the address of the row numbered `n` on the form.
+fn map_control(at: MapAt, n: usize) -> Option<String> {
+    match at {
+        MapAt::Prefix => Some(f::map_field(n, f::MAP_PREFIX)),
+        MapAt::Template => Some(f::map_field(n, f::MAP_TEMPLATE)),
+        MapAt::Whole => None,
+    }
 }
 
 /// The control a fault of the rules is about, by field name: the key's own control, or the row and the field of the protection
@@ -320,6 +436,114 @@ fn problem_of(t: T, fault: &Fault, kept: &[usize], limits: &PlatformLimits) -> P
 pub(crate) struct Built {
     pub(crate) policy: Policy,
     pub(crate) constitution: Constitution,
+    pub(crate) map: Interwiki,
+}
+
+/// The rows of the interwiki map that say something, each with the number it has on the form (a blank row is an added row nobody
+/// filled in) and its prefix and address trimmed.
+fn map_rows(typed: &Typed) -> Vec<(usize, String, String)> {
+    typed
+        .map
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| !row.is_blank())
+        .map(|(i, row)| {
+            (
+                i + 1,
+                row.prefix.trim().to_owned(),
+                row.template.trim().to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// The interwiki map the rows say, **each row judged by the validator acceptance uses** ([`validate_interwiki`], with the wiki's
+/// `namespaces`) and the whole after it, so that every row that breaks a rule is said at once, beside the row. `None` when any
+/// row does, and the problems are pushed. A row with only one of its two filled is refused as empty, a prefix written twice is
+/// refused at its second row (the validator's own *repeated key*), and nothing a person typed is written as syntax
+/// ([`InterwikiDraft::to_text`]).
+fn judge_map(
+    t: T,
+    typed: &Typed,
+    namespaces: &BTreeSet<String>,
+    problems: &mut Vec<Problem>,
+) -> Option<Interwiki> {
+    let mut kept: Vec<(String, String)> = Vec::new();
+    let mut found: Vec<Problem> = Vec::new();
+    let say = |found: &mut Vec<Problem>, at: MapAt, n: usize, refusal: Refusal| {
+        found.push(Problem {
+            control: map_control(at, n),
+            text: map_refusal_text(t, refusal, at),
+        });
+    };
+    for (n, prefix, template) in map_rows(typed) {
+        if prefix.is_empty() || template.is_empty() {
+            if prefix.is_empty() {
+                say(&mut found, MapAt::Prefix, n, Refusal::Missing);
+            }
+            if template.is_empty() {
+                say(&mut found, MapAt::Template, n, Refusal::Missing);
+            }
+            continue;
+        }
+        let row = InterwikiDraft {
+            rows: vec![(prefix.clone(), template.clone())],
+        };
+        if let Err(fault) = validate_interwiki(&row.to_text(), namespaces) {
+            let at = if fault.field == schema::INTERWIKI_TEMPLATE {
+                MapAt::Template
+            } else {
+                MapAt::Prefix
+            };
+            say(&mut found, at, n, fault.refusal);
+            continue;
+        }
+        if kept.iter().any(|(earlier, _)| *earlier == prefix) {
+            say(&mut found, MapAt::Prefix, n, Refusal::RepeatedKey);
+            continue;
+        }
+        kept.push((prefix, template));
+    }
+    if found.is_empty() {
+        match validate_interwiki(&InterwikiDraft { rows: kept }.to_text(), namespaces) {
+            Ok(map) => return Some(map),
+            Err(fault) => say(&mut found, MapAt::Whole, 0, fault.refusal),
+        }
+    }
+    problems.extend(found);
+    None
+}
+
+/// The namespaces of the wiki as an interwiki map's prefixes are judged against them: **the ones acceptance uses**
+/// ([`namespaces_of_titles`] over the titles of the default view's tip). `Err` is *could not be asked now*, never *no namespaces*.
+fn wiki_namespaces(ctx: &Ctx) -> Result<BTreeSet<String>, ()> {
+    let index = ctx
+        .services
+        .read
+        .title_index(&ctx.wiki, Some(&ctx.wiki.default_view))
+        .map_err(|e| ctx.log(&format!("the titles of the wiki could not be read now: {e}")))?;
+    let titles: Vec<String> = index
+        .entries()
+        .iter()
+        .map(|e| inklkunn_markup::path::path_to_title(&e.path).unwrap_or_else(|| e.path.clone()))
+        .collect();
+    Ok(namespaces_of_titles(titles.iter().map(String::as_str)))
+}
+
+/// The namespaces the rows are judged against: **the wiki's when the map is changed, none when it is not**. Acceptance judges a
+/// map against the namespaces only when the proposal writes the file, so a form that does not change the map must not refuse for
+/// a prefix that a page made after the map was accepted has since taken as its namespace.
+fn namespaces_for(
+    ctx: &Ctx,
+    t: T,
+    typed: &Typed,
+    in_force: &Interwiki,
+) -> Result<BTreeSet<String>, ()> {
+    let none = BTreeSet::new();
+    match judge_map(t, typed, &none, &mut Vec::new()) {
+        Some(map) if map == *in_force => Ok(none),
+        _ => wiki_namespaces(ctx),
+    }
 }
 
 fn number(
@@ -344,8 +568,14 @@ fn number(
 }
 
 /// The rules the controls say, **judged by the validator acceptance uses**.
-pub(crate) fn build(t: T, typed: &Typed, limits: &PlatformLimits) -> Result<Built, Vec<Problem>> {
+pub(crate) fn build(
+    t: T,
+    typed: &Typed,
+    limits: &PlatformLimits,
+    namespaces: &BTreeSet<String>,
+) -> Result<Built, Vec<Problem>> {
     let mut problems = Vec::new();
+    let map = judge_map(t, typed, namespaces, &mut problems);
     let approvals = number(
         t,
         typed,
@@ -430,10 +660,14 @@ pub(crate) fn build(t: T, typed: &Typed, limits: &PlatformLimits) -> Result<Buil
     let policy = validate_policy(&draft.to_text(), limits);
     let constitution = validate_constitution(&constitution.to_text());
     match (policy, constitution) {
-        (Ok(policy), Ok(constitution)) => Ok(Built {
-            policy,
-            constitution,
-        }),
+        (Ok(policy), Ok(constitution)) => match map {
+            Some(map) => Ok(Built {
+                policy,
+                constitution,
+                map,
+            }),
+            None => Err(problems),
+        },
         (policy, constitution) => {
             for fault in [policy.err(), constitution.err()].into_iter().flatten() {
                 problems.push(problem_of(t, &fault, &kept, limits));
@@ -493,6 +727,8 @@ struct FormTpl<'a> {
     base_block: String,
     rows_field: &'static str,
     rows: usize,
+    map_rows_field: &'static str,
+    map_rows: usize,
     summary: Control,
     groups: Vec<Group>,
     buttons: Vec<Button>,
@@ -817,6 +1053,53 @@ fn form_page(
         });
     }
 
+    // The interwiki map: a list with a row each, a prefix and the address it leads to.
+    groups.push(Group {
+        legend: t.get(Key::PolicyInterwikiHeading),
+        note: Some(
+            t.msg(Key::PolicyEditInterwikiIntro)
+                .with("placeholder", PLACEHOLDER)
+                .text(),
+        ),
+        controls: Vec::new(),
+        button: Some(Button {
+            name: f::ACT,
+            value: f::ACT_MAP_ADD.to_owned(),
+            label: t.get(Key::PolicyEditInterwikiAdd),
+        }),
+    });
+    for (i, row) in typed.map.iter().enumerate() {
+        let n = i + 1;
+        let mut prefix = maker.line(
+            &f::map_field(n, f::MAP_PREFIX),
+            t.get(Key::PolicyEditInterwikiPrefixLabel),
+            None,
+            false,
+        );
+        prefix.value = row.prefix.clone();
+        prefix.max = Some(MAX_PREFIX_CHARS);
+        let mut template = maker.line(
+            &f::map_field(n, f::MAP_TEMPLATE),
+            t.msg(Key::PolicyEditInterwikiTemplateLabel)
+                .with("placeholder", PLACEHOLDER)
+                .text(),
+            None,
+            false,
+        );
+        template.value = row.template.clone();
+        template.max = Some(MAX_TEMPLATE_CHARS);
+        groups.push(Group {
+            legend: t.msg(Key::PolicyEditInterwikiRow).with("number", n).text(),
+            note: None,
+            controls: vec![prefix, template],
+            button: Some(Button {
+                name: f::ACT,
+                value: format!("{}{n}", f::ACT_MAP_REMOVE),
+                label: t.get(Key::PolicyEditInterwikiRemove),
+            }),
+        });
+    }
+
     let mut summary = maker.line(
         f::SUMMARY,
         t.msg(Key::ProposeLabelSummary)
@@ -850,6 +1133,8 @@ fn form_page(
         base_block: base.block_id.clone(),
         rows_field: f::ROWS,
         rows: typed.rows.len(),
+        map_rows_field: f::MAP_ROWS,
+        map_rows: typed.map.len(),
         summary,
         groups,
         buttons: vec![
@@ -957,6 +1242,19 @@ fn notes_of(t: T, rules: &Rules) -> Vec<String> {
     notes
 }
 
+/// The interwiki map in force, **as the policy page reads it** (`interwiki_of` of the default view's tip): empty while the map is
+/// the file that cannot be read (the form then starts from none, and the repair writes what is typed or removes the file).
+/// `Err` is *could not be read now*, never *none*.
+fn map_in_force(ctx: &Ctx, rules: &Rules) -> Result<Interwiki, ()> {
+    if rules.fault().map(ReadFault::file) == Some(GovernanceFile::Interwiki) {
+        return Ok(Interwiki::empty());
+    }
+    ctx.services
+        .read
+        .interwiki_of(&ctx.wiki, None)
+        .map_err(|e| ctx.log(&format!("the interwiki map could not be read now: {e}")))
+}
+
 /// The base a form is opened on: the state of the default view now.
 fn capture(ctx: &Ctx) -> Result<Base, ()> {
     ctx.services
@@ -988,10 +1286,15 @@ pub(crate) async fn edit_form(
         let Ok(base) = capture(&ctx) else {
             return unavailable(page, &ctx);
         };
+        // The map in force is the one the policy page shows. A map that cannot be read now is not an empty one: the form is not
+        // offered, as it would propose to remove what it does not know.
+        let Ok(map) = map_in_force(&ctx, &rules) else {
+            return unavailable(page, &ctx);
+        };
         form_page(
             page,
             &ctx,
-            &Typed::of(page.t(), &rules),
+            &Typed::of(page.t(), &rules, &map),
             &base,
             &[],
             notes_of(page.t(), &rules),
@@ -1079,6 +1382,19 @@ fn post_act(
         }
         return again(&typed, &[], Vec::new(), StatusCode::OK);
     }
+    if act == f::ACT_MAP_ADD {
+        typed.map.push(MapRow::default());
+        return again(&typed, &[], Vec::new(), StatusCode::OK);
+    }
+    if let Some(n) = act
+        .strip_prefix(f::ACT_MAP_REMOVE)
+        .and_then(|n| n.parse::<usize>().ok())
+    {
+        if (1..=typed.map.len()).contains(&n) {
+            typed.map.remove(n - 1);
+        }
+        return again(&typed, &[], Vec::new(), StatusCode::OK);
+    }
     let limits = *ctx.services.read.platform_limits();
     let summary = typed.get(f::SUMMARY).trim().to_owned();
     let (files, summary) = match act {
@@ -1095,7 +1411,13 @@ fn post_act(
             Err(()) => return unavailable(page, ctx),
         },
         f::ACT_SEND => {
-            let built = match build(t, &typed, &limits) {
+            let Ok(in_force) = map_in_force(ctx, rules) else {
+                return unavailable(page, ctx);
+            };
+            let Ok(namespaces) = namespaces_for(ctx, t, &typed, &in_force) else {
+                return unavailable(page, ctx);
+            };
+            let built = match build(t, &typed, &limits, &namespaces) {
                 Ok(built) => built,
                 Err(problems) => {
                     return again(
@@ -1106,7 +1428,7 @@ fn post_act(
                     );
                 }
             };
-            let files = changed_files(rules, &built);
+            let files = changed_files(rules, &built, &in_force);
             if files.is_empty() {
                 return again(
                     &typed,
@@ -1167,8 +1489,9 @@ fn post_act(
 
 /// The files a change writes: **the governance files that differ from the rules in force, and nothing else**. While the rules
 /// cannot be read (the repair), the file that cannot be read is written too, in its canonical text, and so are the paths found
-/// standing in its place removed.
-fn changed_files(rules: &Rules, built: &Built) -> Vec<FileChange> {
+/// standing in its place removed. **The interwiki map is the file that differs from `in_force`**: written in its canonical text
+/// ([`Interwiki::to_yaml`]), or removed when no row is left (a map with no prefix is no file). One proposal carries every file.
+fn changed_files(rules: &Rules, built: &Built, in_force: &Interwiki) -> Vec<FileChange> {
     let broken = rules.fault().map(ReadFault::file);
     let mut files = Vec::new();
     if let Some(fault) = rules.fault() {
@@ -1190,16 +1513,22 @@ fn changed_files(rules: &Rules, built: &Built) -> Vec<FileChange> {
             text: Some(built.policy.to_yaml()),
         });
     }
-    // The form does not edit the interwiki map. When the map is the file that cannot be read, the repair takes it away (an admin
-    // who wants a map writes one as a proposal of its own, RFC 007 D-8): the wiki is writable again, with no map, and every
-    // prefix is dangling as before. A path the fault lists is already removed above.
-    if broken == Some(GovernanceFile::Interwiki)
-        && !files
-            .iter()
-            .any(|c| c.path == GovernanceFile::Interwiki.path())
+    // The interwiki map (RFC 007 D-8, W-6). When it is the file that cannot be read, the repair writes what the rows say, or takes
+    // the file away when there is none: the wiki is writable again, with that map, or with none (every prefix is then dangling as
+    // before). A path the fault lists is already removed above.
+    let map_path = GovernanceFile::Interwiki.path();
+    let text = (!built.map.is_empty()).then(|| built.map.to_yaml());
+    if text.is_some() && (built.map != *in_force || broken == Some(GovernanceFile::Interwiki)) {
+        files.push(FileChange {
+            path: map_path.to_owned(),
+            text,
+        });
+    } else if text.is_none()
+        && (!in_force.is_empty() || broken == Some(GovernanceFile::Interwiki))
+        && !files.iter().any(|c| c.path == map_path)
     {
         files.push(FileChange {
-            path: GovernanceFile::Interwiki.path().to_owned(),
+            path: map_path.to_owned(),
             text: None,
         });
     }

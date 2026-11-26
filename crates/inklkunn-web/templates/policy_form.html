@@ -16,6 +16,7 @@
 <input type="hidden" name="{{ base_state_field }}" value="{{ base_state }}">
 <input type="hidden" name="{{ base_block_field }}" value="{{ base_block }}">
 <input type="hidden" name="{{ rows_field }}" value="{{ rows }}">
+<input type="hidden" name="{{ map_rows_field }}" value="{{ map_rows }}">
 <p class="buttons">{% for b in buttons %}<button type="submit" name="{{ b.name }}" value="{{ b.value }}">{{ b.label }}</button> {% endfor %}</p>
 <div class="field">
 <label for="{{ summary.id }}">{{ summary.label }}</label>

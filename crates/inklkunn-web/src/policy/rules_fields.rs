@@ -17,6 +17,12 @@ pub(super) const ACT_ADD: &str = "add";
 pub(super) const ACT_REMOVE: &str = "remove-";
 /// How many protection rows the form sent.
 pub(super) const ROWS: &str = "rows";
+/// The value of [`ACT`] that adds an empty row to the interwiki map.
+pub(super) const ACT_MAP_ADD: &str = "map-add";
+/// The prefix of the value of [`ACT`] that removes a row of the interwiki map (`map-remove-2`).
+pub(super) const ACT_MAP_REMOVE: &str = "map-remove-";
+/// How many interwiki map rows the form sent.
+pub(super) const MAP_ROWS: &str = "map_rows";
 /// The state of the view the form was opened on: the base of the proposal it makes.
 pub(super) const BASE_STATE: &str = "base_state";
 /// The change that state belongs to.
@@ -72,9 +78,21 @@ pub(super) const ASKS_REVIEW: &str = "review";
 /// The row's reason.
 pub(super) const ROW_REASON: &str = "reason";
 
-/// The name of one of a row's fields.
+/// The prefix of the fields of one row of the interwiki map, with the row's number after it (`map-2-prefix`).
+pub(super) const MAP_ROW: &str = "map-";
+/// The row's prefix.
+pub(super) const MAP_PREFIX: &str = "prefix";
+/// The row's address template.
+pub(super) const MAP_TEMPLATE: &str = "template";
+
+/// The name of one of a protection's row's fields.
 pub(super) fn row_field(n: usize, field: &str) -> String {
     format!("{ROW}{n}-{field}")
+}
+
+/// The name of one of an interwiki map row's fields.
+pub(super) fn map_field(n: usize, field: &str) -> String {
+    format!("{MAP_ROW}{n}-{field}")
 }
 
 /// The id of the control a refusal of the rules is shown beside.

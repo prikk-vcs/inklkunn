@@ -4740,6 +4740,50 @@ pub const CATALOG: &[Entry] = &[
     msg("policy_edit.protect_remove", "この保護を削除"),
     msg("policy_edit.protect_add", "保護を追加"),
     msg(
+        "policy_edit.interwiki_intro",
+        "この対応表にある接頭辞を付けたリンクは、{placeholder} の場所にページのタイトルを入れた、指定のアドレスに移動します。接頭辞には英字、数字、ハイフンが使え、この Wiki の一部のページのタイトルの先頭と同じにはできません。アドレスは https で始まるウェブのアドレスで、{placeholder} を 1 つだけ含めます。すべての行を削除すると、対応表のない Wiki になります。",
+    ),
+    msg(
+        "policy_edit.interwiki_row",
+        "Wiki 間リンクの接頭辞 {number}",
+    ),
+    msg(
+        "policy_edit.interwiki_prefix_label",
+        "接頭辞",
+    ),
+    msg(
+        "policy_edit.interwiki_template_label",
+        "アドレス（ページのタイトルを入れる場所に {placeholder} を書きます）",
+    ),
+    msg(
+        "policy_edit.interwiki_remove",
+        "この接頭辞を削除",
+    ),
+    msg(
+        "policy_edit.interwiki_add",
+        "Wiki 間リンクの接頭辞を追加",
+    ),
+    msg(
+        "policy_edit.interwiki_prefix_characters",
+        "接頭辞に使えるのは、英字（a から z）、数字、ハイフンだけです。",
+    ),
+    msg(
+        "policy_edit.interwiki_prefix_long",
+        "接頭辞は {max} 文字までです。",
+    ),
+    msg(
+        "policy_edit.interwiki_template_long",
+        "アドレスは {max} 文字までです。",
+    ),
+    msg(
+        "policy_edit.interwiki_repeated",
+        "別の行に同じ接頭辞があります。1 つの接頭辞が移動できるアドレスは 1 つです。",
+    ),
+    msg(
+        "policy_edit.interwiki_too_many",
+        "Wiki 間リンクの対応表の接頭辞は {max} 個までです。",
+    ),
+    msg(
         "policy_edit.summary_default",
         "この Wiki のルールを変更する",
     ),
