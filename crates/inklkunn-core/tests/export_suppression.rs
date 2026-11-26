@@ -1039,7 +1039,10 @@ fn the_revision_of_an_accepted_proposal_is_the_revision_of_the_block_it_sealed()
         &["summary"],
         ReasonCategory::Spam,
     );
-    let untouched = export_as(&extended("proposal-none"), &stand_extended(), "bundle");
+    // The same wiki with the same acceptances (a seal is a time the export carries) and no hide at all.
+    let none = extended("proposal-none");
+    accepted(&none, P3, ANN, B3);
+    let untouched = export_as(&none, &stand_extended(), "bundle");
     assert_eq!(export_as(&r, &stand_extended(), "bundle"), untouched);
 }
 
@@ -1130,8 +1133,8 @@ fn what_no_bundle_carries_changes_nothing_of_it_and_is_not_declared() {
 #[test]
 fn an_unhide_restores_exactly_and_the_export_after_it_is_the_export_before_the_hide() {
     let r = extended("roundtrip");
-    let before = export_as(&r, &stand_extended(), "before");
     accepted(&r, P5, YUKI, B5);
+    let before = export_as(&r, &stand_extended(), "before");
     let hides = [
         page_hide(&r, B4, &["content", "summary", "author"]),
         comment_hide(&r, 5, &["content", "author"]),
