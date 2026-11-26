@@ -497,14 +497,15 @@ fn moved_through(tag: &str, titles: &[&str]) -> Dir {
         Some(&text(titles.first().unwrap())),
     )];
     for (n, pair) in titles.windows(2).enumerate() {
+        let (from, to) = (pair.first().unwrap(), pair.last().unwrap());
         lines.push(
             serde_json::json!({
                 "rev": format!("r{}", n + 2),
                 "parent": format!("r{}", n + 1),
                 "type": "rename",
                 "at": format!("2025-01-{:02}T00:00:00Z", n + 2),
-                "from": pair[0],
-                "to": pair[1],
+                "from": from,
+                "to": to,
             })
             .to_string(),
         );
