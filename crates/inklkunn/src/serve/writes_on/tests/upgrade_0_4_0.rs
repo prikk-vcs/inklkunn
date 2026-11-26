@@ -445,5 +445,95 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     assert_eq!(reader.get("/handbook/Sandbox").status, 410);
     assert_eq!(reader.get("/handbook/Notes").status, 200);
     say("0.4.0: a page renamed (Scratch to Notes) and a page removed (Sandbox, 410 Gone)");
-    let _ = (&store_file, &mut world, started, &mut ada, &mut rex, &mut reader);
+
+    // ---- an open proposal, with a comment of Zora's on it
+    let open = propose_edit(&mut noor, "Notes", "Say more about the notes", |text| {
+        format!("{}\nA second line, said after the rename.\n", text.trim_end())
+    });
+    let said = comment(&mut zora, &open, "This reads better with the second line.");
+    assert_eq!(said.status, 303, "{}\n{}", said.head, said.body);
+    say("0.4.0: a proposal left open on the renamed page, with a comment");
+
+    // ---- moderation: a hidden revision (the text of one, the summary and the author of another) and a hidden comment
+    let revision = |id: &str| format!("kind=proposal-revision&proposal={id}&seq=1");
+    hide(&mut maya, &revision(&r1), &["part_content"]);
+    hide(
+        &mut maya,
+        &revision(&r2),
+        &["part_summary", "part_author"],
+    );
+    let on_claim = maya.browser.get(&claim_page);
+    hide(
+        &mut maya,
+        &moderate_query(&on_claim, "claim-comment"),
+        &["part_content", "part_author"],
+    );
+    say("0.4.0: moderation hid the text of Zora's revision, the summary and author of Noor's, and Zora's comment in the claim's thread");
+
+    // ---- an appeal against a hiding, left for a decision
+    let prefix = "/handbook/-/appeals/new?kind=tombstone&id=";
+    let mine = zora.browser.get(&format!("{APPEALS}/mine"));
+    let shown = mine.body.replace("&#38;", "&");
+    let tombstone = shown
+        .split(prefix)
+        .nth(1)
+        .and_then(|rest| rest.split(['"', '&']).next())
+        .expect("a hiding to contest")
+        .to_owned();
+    let page = zora.browser.get(&format!("{prefix}{tombstone}"));
+    let mut form = form_to(&page, &format!("{APPEALS}/new"));
+    form.set("text", "I wrote this myself and it names nobody; please look again.");
+    let filed = zora.browser.submit(&form, None);
+    assert_eq!(filed.status, 303, "{}\n{}", filed.head, filed.body);
+    say("0.4.0: Zora appealed one of the hidings; the appeal waits for a decision");
+
+    // ---- a grant and a restriction
+    let account_of = |login: &str| -> String {
+        read_only(&store_file)
+            .query_row("SELECT id FROM accounts WHERE login = ?1", [login], |row| {
+                row.get(0)
+            })
+            .unwrap()
+    };
+    let rex_id = account_of("rex");
+    let page = ada.browser.get("/handbook/-/people/grant");
+    assert_eq!(page.status, 200, "{}", page.body);
+    let mut form = form_to(&page, "/handbook/-/people/grant");
+    form.set("who", &rex_id)
+        .set("reason", "Rex has been reading carefully");
+    form.check("role", "reviewer");
+    let granted = ada.browser.submit(&form, None);
+    assert_eq!(granted.status, 303, "{}\n{}", granted.head, granted.body);
+    let page = ada.browser.get("/handbook/-/people/restrict");
+    assert_eq!(page.status, 200, "{}", page.body);
+    let mut form = form_to(&page, "/handbook/-/people/restrict");
+    form.set("who", &rex_id)
+        .set("days", "7")
+        .set("reason", "posting the same link everywhere");
+    let restricted = ada.browser.submit(&form, None);
+    assert_eq!(restricted.status, 303, "{}\n{}", restricted.head, restricted.body);
+    let held = rex.browser.get("/handbook/-/proposals/new?page=Help");
+    eprintln!("RESTRICTED rex: {} {}", held.status, plain(&held.body));
+    say("0.4.0: an admin made Rex a reviewer and then restricted him for a week");
+
+    // ---- a protection of the page the rules were changed for
+    let page = maya.browser.get(&format!("{PROTECT}?page=Help"));
+    assert_eq!(page.status, 200, "{}", page.body);
+    let mut form = form_to(&page, PROTECT);
+    form.set("target", "page");
+    form.check("require", "rung")
+        .set("role", "admin")
+        .set("reason", "Edit war this week.")
+        .set("days", "1");
+    let protected = maya.browser.submit(&form, Some(("act", "set")));
+    assert_eq!(protected.status, 303, "{}\n{}", protected.head, protected.body);
+    let help = reader.get(HELP);
+    assert!(
+        plain(&help.body).contains("Edit war this week."),
+        "{}",
+        help.body
+    );
+    say("0.4.0: Help is protected for a day: only an admin may accept a change to it");
+    settled(&mut reader, started);
+    let _ = (&store_file, &mut world, &mut rex, &mut reader, rules, r3, revision(&r1), tombstone);
 }
