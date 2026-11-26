@@ -1,0 +1,350 @@
+# inklkunn's self-assessment against the Wiki Commons conformance profiles
+# (wiki-commons guidelines/16-Conformance_Profiles_and_Self_Assessment.md, schemas/self-assessment.schema.json), profiles at 0.4.
+#
+# How to read it. An item is "yes" only where a named test shows it: the note says which, as <file>::<test>, with the file's
+# path from the repository root, so that a claim is checked in one lookup. A "partial", "no" or "n/a" item gives its reason.
+# crates/inklkunn-core/tests/self_assessment.rs reads this file and fails on a "yes" with no test named, on a test that does not
+# exist, on a status that is not one of the schema's, on an unquoted yes or no (YAML reads those as booleans), on a profile
+# whose items are not the ones chapter 16 lists, and on a profile claim that says more than its items. Some named tests need
+# a real prikk on PATH (they print a skip line without one); the release workflow's tests run with it.
+#
+# Where a thing is not done, the note says so in the reader's words. To report a discrepancy: open an issue in the repository.
+format: wiki-commons-self-assessment
+version: "0.1"
+subject:
+  name: inklkunn
+  version: "0.4.0"
+  url: https://github.com/prikk-vcs/inklkunn
+  kind: engine
+assessed_at: "2026-11-26"
+profiles:
+  core-reading@0.4:
+    claim: partial
+    items:
+      MKUP-12:
+        status: partial
+        note: "Classes and targets of links (wikilink, wikilink-missing, data-wiki-target), rel nofollow ugc on external links and heading ids: crates/inklkunn-markup/src/render/tests.rs::wikilink_classes_and_targets, crates/inklkunn-markup/src/render/tests.rs::external_markdown_links_carry_rel, crates/inklkunn-markup/src/render/tests.rs::headings_get_ids_and_toc; the service's own pages keep landmarks, one h1 and a lang attribute: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english. Partial: the page view has no time element (the dates are on the history and changes pages)."
+      META-12:
+        status: partial
+        note: "The schema.org description of a page is a JSON-LD document of its own, linked from the page head with rel describedby: crates/inklkunn-web/tests/discovery/main.rs::a_pages_schema_org_description_is_a_json_ld_document_of_its_own, crates/inklkunn-web/tests/discovery/main.rs::a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is_what_it_was. Partial: it is not inline in the page (the page policy allows no script, so no JSON-LD block is embedded), and the page head has no microdata."
+      API-2:
+        status: partial
+        note: "A raw URL for every page, text/markdown with charset UTF-8, ETag and Last-Modified, conditional requests answered 304, advertised in the head as rel alternate type text/markdown: crates/inklkunn-web/tests/discovery/main.rs::the_raw_source_is_the_stored_file_byte_for_byte_on_the_content_origin, crates/inklkunn-web/tests/discovery/main.rs::a_conditional_request_gets_a_304_and_a_changed_page_a_new_tag, crates/inklkunn-web/tests/discovery/main.rs::a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is_what_it_was. Partial: no variant parameter, no content negotiation on the page's own URL, and the raw response's Link header carries canonical only (not edit, version-history, latest-version or license)."
+      A11Y-3:
+        status: "yes"
+        note: "Every page and state the web crate can produce, in English and in Japanese, is parsed and held to landmarks, one h1, heading order, a skip link, lang and dir, table headers, image alternatives and unique ids: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english, crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_japanese; each rule has a planted failure: crates/inklkunn-web/tests/structure/main.rs::every_rule_has_a_planted_failure_and_each_plant_trips_its_rule."
+      WEB-1:
+        status: "yes"
+        note: "A page carries no script and the page policy has no script-src: crates/inklkunn-web/tests/discovery/main.rs::a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is_what_it_was; no inline script or style anywhere is a structure rule: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english; every form works without script: crates/inklkunn-web/tests/language.rs::the_switcher_keeps_its_choice_without_a_script."
+      WEB-5:
+        status: partial
+        note: "Readable title URLs with views as ~name, and a canonical link in every page head: crates/inklkunn-web/tests/wiki_pages/main.rs::views_and_titles_follow_the_url_scheme, crates/inklkunn-web/tests/discovery/main.rs::a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is_what_it_was. Partial: HTTPS is the operator's reverse proxy and is not tested here, and no test shows that URLs survive an engine upgrade."
+      LIC-1:
+        status: "yes"
+        note: "The license is on every page (the License line), in the head as rel license, in the site description and in the page's description: crates/inklkunn-web/tests/wiki_pages/main.rs::a_page_is_shown_with_one_main_heading_its_body_and_the_honest_badge, crates/inklkunn-web/tests/discovery/main.rs::a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is_what_it_was, crates/inklkunn-web/tests/discovery/main.rs::the_site_description_names_what_the_wiki_offers; a page's own license wins: crates/inklkunn-web/tests/api/main.rs::a_page_is_metadata_and_a_sanitized_fragment."
+  portable-content@0.4:
+    claim: partial
+    items:
+      MKUP-1:
+        status: partial
+        note: "The manifest an export writes names the profile layer (portable-wiki-markdown/2, crates/inklkunn-core/src/bundle.rs) and is valid against wiki-commons' schema: crates/inklkunn-core/tests/bundle_manifest.rs::the_manifest_an_export_writes_is_valid_and_names_the_checksums_file. Partial: the raw source is served as text/markdown; charset=UTF-8 without a variant parameter."
+      MKUP-2:
+        status: partial
+        note: "Pages are read with pulldown-cmark and what inklkunn finds in them is held to its reading: crates/inklkunn-markup/tests/agreement.rs::code_regions_are_commonmarks, crates/inklkunn-markup/tests/agreement.rs::scan_anchors_are_the_rendered_ids_including_setext_and_duplicates. Partial: the CommonMark specification's own suite is not run here, and an export copies the files as stored, so the exported form is what the authors wrote."
+      MKUP-3:
+        status: "yes"
+        note: "Tables, task lists, strikethrough, footnotes, callouts and fenced code with its language class render, inside the vocabulary the sanitizer allows: crates/inklkunn-markup/tests/vocabulary.rs::everything_the_renderer_writes_for_every_construct_is_in_the_vocabulary. The native format is Markdown, so nothing is mapped."
+      MKUP-4:
+        status: "yes"
+        note: "Every form of the table is scanned to wiki-commons' own expectations (corpus cases 001 and 024): crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation; rendered with their classes: crates/inklkunn-markup/src/render/tests.rs::wikilink_classes_and_targets; not parsed in code: crates/inklkunn-markup/src/render/tests.rs::code_comments_and_escapes_stay_literal. An export copies the files as stored, so what is written is what was read."
+      MKUP-5:
+        status: partial
+        note: "Exact title, alias, case, normalized form, then the nearest in the hierarchy, and an ambiguity reported rather than hidden: crates/inklkunn-markup/src/resolve/tests.rs::the_mkup5_order, crates/inklkunn-markup/src/resolve/tests.rs::nearest_then_ambiguous, crates/inklkunn-markup/tests/agreement.rs::resolution_reports_ambiguity_instead_of_hiding_it; wiki-commons' resolution corpus passes: crates/inklkunn-markup/tests/corpus.rs::every_resolution_case_resolves_to_its_expectation. Partial: the order is documented in the design set, not stated in the bundle manifest."
+      MKUP-6:
+        status: "yes"
+        note: "Target first is the form; a label-first source is flipped when it declares so, and the lint says when an order looks reversed: crates/inklkunn-markup/src/scan/tests.rs::label_first_dialects_flip_the_pipe, crates/inklkunn-markup/src/lint/tests.rs::link_rules_need_an_index; corpus case 002: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation. The manifest declares target-first."
+      MKUP-7:
+        status: "yes"
+        note: "A slash is the separator of paths and link targets, and a hierarchy resolves nearest first: crates/inklkunn-markup/src/resolve/tests.rs::nearest_then_ambiguous, crates/inklkunn-markup/src/path/tests.rs::plain_and_hierarchical_titles; the manifest declares hierarchy_separator / (crates/inklkunn-core/src/bundle.rs)."
+      MKUP-8:
+        status: "yes"
+        note: "GitHub-style anchors, duplicates suffixed, non-ASCII headings kept, and a link's fragment is the heading text: crates/inklkunn-markup/src/anchor/tests.rs::github_style_anchors, crates/inklkunn-markup/src/anchor/tests.rs::duplicates_are_suffixed_and_every_id_is_unique, crates/inklkunn-markup/src/anchor/tests.rs::the_reduction_matches_what_the_renderer_shows; body headings move down under the page's title: crates/inklkunn-markup/tests/render_options.rs::headings_move_down_by_the_asked_number_and_never_below_h6; a leading level-1 heading is linted: crates/inklkunn-markup/src/lint/tests.rs::text_and_metadata_rules."
+      MKUP-10:
+        status: "yes"
+        note: "A page embedded alone on its line is included with its provenance, two deep at most, and a cycle is refused where it is: crates/inklkunn-markup/src/render/transclude/tests.rs::a_page_alone_on_its_line_is_included_with_its_provenance, crates/inklkunn-markup/src/render/transclude/tests.rs::inclusion_goes_two_deep_and_the_third_level_is_refused, crates/inklkunn-markup/src/render/transclude/tests.rs::a_cycle_is_refused_in_place_with_the_cycle_named_and_the_rest_of_the_page_renders; an embedded image renders with its alternative: crates/inklkunn-markup/src/render/tests.rs::wikilink_classes_and_targets."
+      MKUP-11:
+        status: "yes"
+        note: "An HTML comment stays hidden and a link in it is not a link: corpus case 021: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation, crates/inklkunn-markup/tests/author_html.rs::hidden_comments_stay_hidden_and_the_rest_of_the_line_is_text."
+      MKUP-13:
+        status: partial
+        note: "A prefix:Title link resolves through the wiki's interwiki map to its URL: crates/inklkunn-markup/src/resolve/tests.rs::the_mkup5_order; corpus case 004: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation. Partial: the map an export writes is still empty (crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history asserts interwiki: {}); the repository's map and its export are in the I-T4/I-T5 round."
+      MKUP-14:
+        status: partial
+        note: "tags in the frontmatter are read, and inline tags are scanned: crates/inklkunn-markup/src/frontmatter/tests.rs::metadata_lifts_the_vocabulary_and_keeps_the_rest, crates/inklkunn-markup/src/scan/tests.rs::headings_block_ids_and_tags; corpus case 008. Partial: the export copies the files as stored, so inline tags are not also listed in the frontmatter."
+      MKUP-17:
+        status: "yes"
+        note: "The HTML subset of this wiki's profile is empty: an author's raw HTML is shown as text, never as the renderer's elements and never run: crates/inklkunn-markup/tests/author_html.rs::a_forged_internal_link_is_visible_text, crates/inklkunn-markup/tests/author_html.rs::the_renderers_own_elements_are_untouched, crates/inklkunn-web/tests/wiki_pages/main.rs::an_authors_html_never_becomes_the_renderers_in_a_served_page. There is no subset to list in the manifest."
+      MKUP-19:
+        status: partial
+        note: "The lint says when a text has tabs or no final newline, and titles and link targets are compared in NFC: crates/inklkunn-markup/src/lint/tests.rs::text_and_metadata_rules, crates/inklkunn-markup/src/text/tests.rs::normalize_collapses_separators_and_case; a byte-order mark is kept first: crates/inklkunn-core/src/knowledge/tests/compose.rs::a_page_without_an_information_block_is_given_one_and_the_bom_stays_first. Partial: these are advice and comparison, not a rewrite of what authors write, and an export copies the files as stored."
+      META-1:
+        status: "yes"
+        note: "The frontmatter is the plain YAML subset: anchors, tags and repeated keys are refused and the pitfalls coerce where they can be seen: crates/inklkunn-markup/src/frontmatter/tests.rs::anchors_tags_and_duplicates_are_refused, crates/inklkunn-markup/src/frontmatter/tests.rs::coerces_like_yaml_so_the_pitfalls_are_visible, crates/inklkunn-markup/src/frontmatter/tests.rs::splits_frontmatter_and_body; corpus case 013: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation. TOML and JSON frontmatter are not read."
+      META-2:
+        status: partial
+        note: "title and id are read: crates/inklkunn-markup/src/frontmatter/tests.rs::metadata_lifts_the_vocabulary_and_keeps_the_rest; a page's history follows its id through removal and return: crates/inklkunn-core/tests/export_history.rs::a_page_removed_and_made_again_with_its_id_by_one_block_is_one_file_with_a_rename_record. Partial: no test shows that every page gets a UUID when it is made and keeps it under rename."
+      META-3:
+        status: partial
+        note: "The time and author of every revision are in the history records: crates/inklkunn-core/tests/export_history.rs::every_record_has_the_schemas_required_members_and_types_and_its_files_order, crates/inklkunn-core/tests/export_history.rs::the_time_of_a_record_is_when_the_block_was_first_seen_and_never_runs_backwards; an unquoted date is flagged: crates/inklkunn-markup/src/lint/tests.rs::text_and_metadata_rules. Partial: created, updated and contributors are not keys inklkunn reads or writes in the frontmatter; they are kept as unknown keys."
+      META-4:
+        status: partial
+        note: "aliases resolve, and a redirect page leads to its target with the reader told: crates/inklkunn-web/tests/wiki_pages/main.rs::an_alias_a_redirect_and_a_near_title_say_how_the_reader_got_there, crates/inklkunn-markup/src/resolve/tests.rs::the_mkup5_order; corpus resolution case 010: crates/inklkunn-markup/tests/corpus.rs::every_resolution_case_resolves_to_its_expectation. Partial: no test shows a former title kept as an alias after a rename."
+      META-5:
+        status: partial
+        note: "tags are read as a list, and a list written as a plain string is flagged: crates/inklkunn-markup/src/frontmatter/tests.rs::metadata_lifts_the_vocabulary_and_keeps_the_rest, crates/inklkunn-markup/src/lint/tests.rs::text_and_metadata_rules. Partial: inline hashtags are not merged into the list on export, and no test flattens hierarchical categories."
+      META-7:
+        status: partial
+        note: "kind is read (page when absent) and a page's status defaults to stable: crates/inklkunn-markup/src/frontmatter/tests.rs::metadata_lifts_the_vocabulary_and_keeps_the_rest; a redirect page is a kind: crates/inklkunn-web/tests/wiki_pages/main.rs::an_alias_a_redirect_and_a_near_title_say_how_the_reader_got_there. Partial: no test imports an unknown kind as an ordinary page."
+      META-9:
+        status: "yes"
+        note: "license is read as an SPDX identifier and a page's own wins over the wiki's: crates/inklkunn-web/tests/api/main.rs::a_page_is_metadata_and_a_sanitized_fragment; an attachment's own license is read from its sidecar and judged: crates/inklkunn-core/src/import/bundle/tests.rs::a_hand_written_bundle_shows_the_licence_of_each_sidecar. source, canonical and forked_from are kept as unknown keys."
+      META-10:
+        status: partial
+        note: "lang is read into a page's metadata (crates/inklkunn-markup/src/frontmatter.rs, Metadata.lang) and the pages of the service carry lang and dir: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_japanese. Partial: no test shows a page's own lang on its rendered body, and translations is not read."
+      META-11:
+        status: "yes"
+        note: "Keys the vocabulary does not name are kept: crates/inklkunn-markup/src/frontmatter/tests.rs::metadata_lifts_the_vocabulary_and_keeps_the_rest; the export copies the files as stored, so they survive an export and a re-import: crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history. Engine-specific keys under ext are the converters' work, not this engine's."
+      META-13:
+        status: partial
+        note: "visibility is read as an advisory key (crates/inklkunn-markup/src/frontmatter.rs, Metadata.visibility) and kept. Partial: no test names it, and nothing acts on it: who may read a page is the wiki's rungs, not the key."
+      XFER-1:
+        status: "yes"
+        note: "The manifest an export writes is valid against wiki-commons' schema and names its checksums file: crates/inklkunn-core/tests/bundle_manifest.rs::the_manifest_an_export_writes_is_valid_and_names_the_checksums_file, crates/inklkunn-core/tests/bundle_manifest.rs::the_manifest_a_new_wiki_gets_is_valid_against_wiki_commons_schema; it carries the fidelity, the counts and the block it is as of: crates/inklkunn-core/src/export/tests.rs::a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_the_checksums_file."
+      XFER-2:
+        status: "yes"
+        note: "An export states level 3 and what it left out (fidelity.dropped), and says when it was not given the service's records: crates/inklkunn-core/src/export/tests.rs::a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_the_checksums_file, crates/inklkunn-core/src/export/tests.rs::an_export_that_was_not_given_the_services_records_says_so_in_the_manifest. An import's report says the fidelity the bundle declares and the fidelity it found: crates/inklkunn-core/src/import/bundle/tests.rs::the_report_is_a_value_that_can_be_kept_and_says_what_it_is_made_of."
+      XFER-3:
+        status: partial
+        note: "One Markdown file per page under pages/, the path is the hierarchy and the title is in the frontmatter: crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history; titles collide on case-folding file systems by their collision key: crates/inklkunn-markup/tests/path_props.rs::collision_keys_fold_case_only. Partial: file names outside ASCII are percent-encoded, reversibly, until prikk reads Unicode paths (crates/inklkunn-markup/src/path/tests.rs::non_ascii_and_forbidden_characters_are_percent_encoded_reversibly)."
+      XFER-4:
+        status: partial
+        note: "An attachment's sidecar travels with it and its license is read and judged on import: crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history, crates/inklkunn-core/src/import/bundle/tests.rs::an_attachment_whose_sidecar_licence_the_wiki_cannot_take_refuses_and_goes_with_its_sidecar_when_left_out. Partial: inklkunn does not write the sidecar's media_type, sha256, size or alt itself; it keeps what the import brought."
+      XFER-5:
+        status: partial
+        note: "The export is the operator's copy of the whole wiki and is private on disk (mode checks in crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history); what moderation hides is not in it: crates/inklkunn-core/tests/export_suppression.rs::an_export_with_no_tombstone_is_the_frozen_bundle_byte_for_byte. Partial: it is not a selection by the reader's rights and does not mark each page with visibility."
+      XFER-6:
+        status: partial
+        note: "The manifest carries an interwiki key: crates/inklkunn-core/src/export/tests.rs::a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_the_checksums_file. Partial: the map is empty today (crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history asserts interwiki: {}) and there is no namespaces list; the interwiki map is the I-T4/I-T5 round."
+      XFER-12:
+        status: n/a
+        note: "inklkunn has no macros, queries or templates to materialize: a page is static Markdown, and a snapshot envelope from another engine is kept and shown as written (corpus case 011: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation)."
+      XFER-13:
+        status: partial
+        note: "An import plans first, writes nothing in a dry run, and says what comes in, what is left out and why, the keys it does not know, the fidelity declared and found, the checksums and the licence: crates/inklkunn-core/src/import/bundle/tests.rs::the_plan_reads_and_judges_and_writes_nothing_at_all, crates/inklkunn-core/src/import/bundle/tests.rs::the_report_is_a_value_that_can_be_kept_and_says_what_it_is_made_of, crates/inklkunn/src/admin/bundle_tests.rs::a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere. Partial: it lists link prefixes with no map but not each link left dangling, and nothing is degraded because nothing is converted."
+      XFER-15:
+        status: "yes"
+        note: "Export, import into a fresh wiki, export again, and the two agree on text, history, authors and times: crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history, crates/inklkunn/src/admin/tests/import_bundle_tests.rs::an_exported_wiki_imported_and_exported_again_keeps_its_times_as_the_sources_and_its_authors_as_names (both need a real prikk)."
+      NAV-2:
+        status: "yes"
+        note: "A page is linked by its title alone, in the forms of MKUP-4: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation, crates/inklkunn-markup/src/render/tests.rs::wikilink_classes_and_targets; explicit brackets are the only link syntax (no CamelCase)."
+      NAV-3:
+        status: partial
+        note: "A link to a page that is not there is saved, rendered with its own class and leads to the form that proposes the page: crates/inklkunn-web/tests/wiki_pages/main.rs::a_page_is_shown_with_one_main_heading_its_body_and_the_honest_badge, crates/inklkunn-web/tests/wiki_pages/main.rs::a_missing_page_is_a_404_that_invites_and_leads_to_the_form_that_proposes_it; wanted pages are listed: crates/inklkunn-web/tests/search_health/main.rs::every_health_list_shows_its_planted_case_with_what_would_resolve_it. Partial: the stylesheet draws nothing yet to tell such a link without colour (see A11Y-4)."
+      NAV-8:
+        status: "yes"
+        note: "A redirect and an alias lead to the page and the page says how the reader got there: crates/inklkunn-web/tests/wiki_pages/main.rs::an_alias_a_redirect_and_a_near_title_say_how_the_reader_got_there; the raw source and the API follow them too: crates/inklkunn-web/tests/discovery/main.rs::the_raw_source_is_the_stored_file_byte_for_byte_on_the_content_origin, crates/inklkunn-web/tests/api/main.rs::an_alias_and_a_redirect_lead_to_their_page_and_say_so."
+  living-history@0.4:
+    claim: partial
+    items:
+      HIST-1:
+        status: "yes"
+        note: "Every change is a signed block that nothing overwrites, and the history is a page any reader of the wiki may open: crates/inklkunn-web/tests/wiki_history/main.rs::a_pages_history_lists_the_changes_that_touched_it_newest_first; the export carries every revision with its full text: crates/inklkunn-core/tests/export_history.rs::a_page_edited_renamed_and_removed_has_five_records_in_order_each_with_its_text_in_the_file_of_its_last_id (real prikk)."
+      HIST-2:
+        status: "yes"
+        note: "A diff between any two changes, with text marks and a summary, not colour alone: crates/inklkunn-web/tests/wiki_history/main.rs::the_lines_are_prikks_the_marks_are_inkklkunns_and_ins_and_del_carry_text_alternatives; the tip against the change before it is one request: crates/inklkunn-web/tests/api/past.rs::a_diff_without_its_points_compares_the_tip_with_the_change_before_it."
+      HIST-3:
+        status: partial
+        note: "An undo is a rollback proposal that makes a new change and names the block it undoes: crates/inklkunn-core/src/proposal/tests/rollback.rs::a_rollback_proposal_is_a_rollback_from_its_creation_and_names_the_block_it_undoes, crates/inklkunn-core/src/acceptance/tests.rs::a_rollback_proposal_is_signed_as_a_rollback_with_the_undone_block_as_its_base; a removed page comes back the same way: crates/inklkunn-core/tests/soft_deletion.rs::criterion_10_a_removed_page_is_found_by_its_history_and_is_restored_by_a_rollback_when_it_merges_cleanly. Partial: it is a proposal that is accepted, not one action, and only a change is undone, not any earlier revision restored."
+      HIST-4:
+        status: partial
+        note: "Every change names its people as its signed message says: crates/inklkunn-web/tests/api/past.rs::the_people_of_a_change_are_what_its_message_says_and_never_a_signature, crates/inklkunn-web/tests/wiki_history/main.rs::a_change_page_says_signed_into_the_history_and_who_the_service_signed_for. Partial: the page view itself does not show last edited by, only a link to the history."
+      HIST-5:
+        status: "yes"
+        note: "Every revision has a permalink that says it is old and links to the current page, and the head offers it as rel bookmark: crates/inklkunn-web/tests/wiki_history/main.rs::a_permalink_shows_the_page_as_it_was_with_a_banner_that_links_to_the_current_page, crates/inklkunn-web/tests/discovery/main.rs::a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is_what_it_was; the revision id is the block id in the API and in the export: crates/inklkunn-core/tests/export_history.rs::every_record_has_the_schemas_required_members_and_types_and_its_files_order."
+      HIST-6:
+        status: partial
+        note: "A rename is recorded as an event in the page's history and the history file follows the page: crates/inklkunn-core/tests/export_history.rs::a_page_removed_and_made_again_with_its_id_by_one_block_is_one_file_with_a_rename_record, crates/inklkunn-core/src/acceptance/prepare/tests.rs::a_rename_alone_is_a_rename_and_writes_no_file. Partial: no test shows the old title kept as an alias."
+      HIST-7:
+        status: "yes"
+        note: "A removed page answers 410 with when, which proposal and why, is found by its history and comes back by a rollback; the log shows it: crates/inklkunn-web/tests/removed_pages/main.rs::a_removed_page_answers_410_with_when_which_proposal_and_why, crates/inklkunn-web/tests/removed_pages/main.rs::the_history_of_a_removed_page_shows_the_removal, crates/inklkunn-core/tests/soft_deletion.rs::criterion_10_a_removed_page_is_found_by_its_history_and_is_restored_by_a_rollback_when_it_merges_cleanly (real prikk); hiding is separate from removal: crates/inklkunn-web/tests/tombstones/acts.rs::the_text_of_a_tip_cannot_be_hidden_but_its_summary_and_author_can."
+      HIST-8:
+        status: partial
+        note: "A change carries flags (minor among them), the changes page, the feeds and the read API filter on them: crates/inklkunn-web/tests/change_flags/main.rs::the_changes_page_labels_flags_and_filters_on_them_and_says_so, crates/inklkunn-web/tests/change_flags/main.rs::the_feed_filters_on_the_flags_and_carries_them_as_categories_and_words, crates/inklkunn-web/tests/change_flags/main.rs::the_read_api_filters_on_minor_for_real_and_reports_the_flags. Partial: a page's own history and the inbox are not tested for the filter."
+      HIST-11:
+        status: "no"
+        note: "A page does not show when it was created and last changed, or by whom, near its content: the page view carries the license, the badge and links to the history and the why page (crates/inklkunn-web/templates/wiki_page.html); the dates are on the history and changes pages."
+      XFER-7:
+        status: "yes"
+        note: "One JSON Lines file per page under history/, named by id, one wiki-commons history record per revision, oldest first, each with its full text and checked against wiki-commons' schema: crates/inklkunn-core/tests/export_history.rs::every_record_has_the_schemas_required_members_and_types_and_its_files_order, crates/inklkunn-core/tests/export_history.rs::a_page_edited_renamed_and_removed_has_five_records_in_order_each_with_its_text_in_the_file_of_its_last_id (real prikk); an undo is a revert record: crates/inklkunn-core/tests/export_history.rs::an_undo_is_a_revert_and_a_page_that_comes_back_with_its_id_is_one_file."
+      XFER-8:
+        status: partial
+        note: "users.yaml lists the people the history names, by the names they had, and a person is listed only for what is not hidden; no address of any kind is written: crates/inklkunn-core/tests/export_suppression.rs::nothing_hidden_or_hiding_a_person_is_in_any_file_and_a_person_is_listed_only_for_what_is_not_hidden. Partial: no pseudonymization is offered."
+      API-4:
+        status: partial
+        note: "A page's history is listable by cursor with each change's id, time, people and summary, and a diff is one unified diff of one page: crates/inklkunn-web/tests/api/past.rs::a_pages_history_lists_the_changes_that_touched_it_newest_first_with_what_each_did, crates/inklkunn-web/tests/api/past.rs::a_diff_is_one_diff_with_the_pages_path_and_the_title_is_the_address, crates/inklkunn-web/tests/api/past.rs::a_long_history_is_walked_by_cursor_in_steps_of_at_most_twenty_rows. Partial: the revision-relation Link headers (predecessor-version, successor-version, latest-version) are not sent."
+      HIST-9:
+        status: "yes"
+        note: "A change made on an older base is merged by blocks, two edits to one block are an overlap that shows both texts, and nothing is discarded: crates/inklkunn-core/src/merge/tests.rs::a_block_edited_without_an_id_beside_an_edit_of_another_block_is_clean, crates/inklkunn-core/src/merge/tests.rs::a_block_changed_differently_on_both_sides_is_an_overlap_with_both_texts, crates/inklkunn-core/src/merge/tests.rs::an_overlap_stops_the_whole_page_and_every_overlap_is_reported. No lock is used."
+      HIST-10:
+        status: "no"
+        note: "No real-time co-editing: a change is a proposal and a signed block. Encouraged only where collaboration is intense."
+      HIST-12:
+        status: "yes"
+        note: "A revision's text, summary or author can be hidden by a role that acts, with a reason category, the revision's place and id kept and the act logged and undoable: crates/inklkunn-web/tests/tombstones/acts.rs::the_text_of_a_tip_cannot_be_hidden_but_its_summary_and_author_can, crates/inklkunn-web/tests/tombstones/acts.rs::an_unhide_restores_every_surface_exactly, crates/inklkunn-web/tests/tombstones/acts.rs::the_log_lists_the_item_the_category_the_role_and_the_date_never_the_content; the export keeps the revision and omits the part: crates/inklkunn-core/tests/export_suppression.rs::nothing_hidden_or_hiding_a_person_is_in_any_file_and_a_person_is_listed_only_for_what_is_not_hidden."
+  accessible-authoring@0.4:
+    claim: partial
+    items:
+      A11Y-1:
+        status: partial
+        note: "Contrast of every colour pair in both schemes, one visible focus style, reduced motion, logical properties, target size and forced colours are tests of the stylesheet: crates/inklkunn-web/tests/stylesheet/main.rs::every_colour_pair_the_stylesheet_uses_has_enough_contrast_in_both_schemes, crates/inklkunn-web/tests/stylesheet/main.rs::focus_has_one_explicit_visible_style_and_is_never_removed, crates/inklkunn-web/tests/stylesheet/main.rs::every_standalone_target_is_at_least_24_css_px; the About page is the accessibility statement and says what the tests do not cover: crates/inklkunn-web/tests/wiki_pages/main.rs::the_about_page_states_the_license_and_what_the_accessibility_tests_do_not_cover. Partial: WCAG 2.2 AA is the aim, not a claim; no person who uses assistive technology has tested the site."
+      A11Y-2:
+        status: partial
+        note: "The editor is a plain form without script, so it has no time limit that discards work, and its controls pass the structure rules for labels and button text: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english. Partial: it does not prompt for alternative text, heading order or empty link text; no test drives it with a keyboard or a screen reader."
+      A11Y-3:
+        status: "yes"
+        note: "Landmarks, one h1, heading order, skip link, lang and dir, table headers, image alternatives, unique ids, in both languages: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english, crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_japanese."
+      A11Y-4:
+        status: partial
+        note: "The verification badge is words, not an icon (crates/inklkunn-web/tests/wiki_pages/main.rs::a_page_is_shown_with_one_main_heading_its_body_and_the_honest_badge), and the structure rules refuse an icon glyph as the only text (crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english). Partial: a link to a missing page has its class (crates/inklkunn-markup/src/render/tests.rs::wikilink_classes_and_targets) but the stylesheet draws nothing for it yet, so it is not told apart without colour or by description; there are no graph views and no drag and drop."
+      A11Y-5:
+        status: partial
+        note: "ins and del each begin with a hidden text alternative, a summary says how many lines were added and removed, and marked words are not colour alone: crates/inklkunn-web/tests/wiki_history/main.rs::the_lines_are_prikks_the_marks_are_inkklkunns_and_ins_and_del_carry_text_alternatives. Partial: no test moves from change to change by keyboard."
+      A11Y-6:
+        status: partial
+        note: "An embedded image renders with an alternative and the structure rules refuse an image without one on the service's pages: crates/inklkunn-markup/src/render/tests.rs::wikilink_classes_and_targets, crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english. Partial: the editor does not prompt for it, and inklkunn does not write an attachment's alt into its sidecar."
+      A11Y-7:
+        status: partial
+        note: "One visible focus style that is never removed, targets of at least 24 px, and the structure rules for focusable elements: crates/inklkunn-web/tests/stylesheet/main.rs::focus_has_one_explicit_visible_style_and_is_never_removed, crates/inklkunn-web/tests/stylesheet/main.rs::every_standalone_target_is_at_least_24_css_px, crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english. Partial: no test drives the site by keyboard alone."
+      A11Y-8:
+        status: "yes"
+        note: "Nothing moves without a reduced-motion guard, and a page carries no script that could time out: crates/inklkunn-web/tests/stylesheet/main.rs::nothing_moves_without_a_reduced_motion_guard, crates/inklkunn-web/tests/discovery/main.rs::a_pages_head_carries_the_link_relations_and_no_script_and_the_policy_is_what_it_was."
+      A11Y-9:
+        status: n/a
+        note: "There are no presence indicators, remote cursors, mentions or live regions; comments are pages."
+      A11Y-10:
+        status: partial
+        note: "Code is text with its language as a class and tables render with their header cells: crates/inklkunn-markup/tests/vocabulary.rs::everything_the_renderer_writes_for_every_construct_is_in_the_vocabulary; the service's own tables are held to caption, header cells and scope: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english. Partial: mathematics is not rendered (the TeX stays literal text), and an author's table is not held to captions or scope."
+      A11Y-11:
+        status: partial
+        note: "Automated checks of structure and the stylesheet run on every build, in both languages: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_japanese, crates/inklkunn-web/tests/stylesheet/main.rs::the_good_stylesheet_passes_every_check. Partial: no test with a keyboard or a screen reader by a person yet, as the About page says."
+      AUTH-12:
+        status: partial
+        note: "The editor is a form of labelled controls that passes the structure rules and the stylesheet's focus, contrast and target-size checks: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english, crates/inklkunn-web/tests/stylesheet/main.rs::focus_has_one_explicit_visible_style_and_is_never_removed. Partial: it does not help authors produce accessible content (no alt prompt, no table-header control), and a screen-reader test is yet to be made."
+      AUTH-13:
+        status: partial
+        note: "What the markup lint finds is shown as suggestions beside the preview and never stops a save: crates/inklkunn-web/tests/proposals/safety.rs::preview_draws_the_text_through_the_sanitizer_and_shows_the_suggestions, crates/inklkunn-markup/src/lint/tests.rs::body_rules. Partial: no test shows syntax help one step from the editor."
+      HIST-2:
+        status: "yes"
+        note: "A diff between any two changes, with text marks and a summary, not colour alone: crates/inklkunn-web/tests/wiki_history/main.rs::the_lines_are_prikks_the_marks_are_inkklkunns_and_ins_and_del_carry_text_alternatives; the tip against the change before it is one request: crates/inklkunn-web/tests/api/past.rs::a_diff_without_its_points_compares_the_tip_with_the_change_before_it."
+      I18N-1:
+        status: "yes"
+        note: "Titles, link targets, tags and anchors take any Unicode text and are compared in NFC, a Japanese title is found by a substring, and width variants and diacritics fold: crates/inklkunn-markup/src/anchor/tests.rs::github_style_anchors, crates/inklkunn-markup/src/text/tests.rs::normalize_collapses_separators_and_case, crates/inklkunn-markup/tests/path_props.rs::inverse_recovers_every_title_that_has_a_path, crates/inklkunn-web/tests/search_health/main.rs::search_folds_width_variants_and_diacritics_and_finds_a_japanese_title_by_a_substring; the author's title is what is shown and corpus case 014 passes: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation."
+      I18N-3:
+        status: partial
+        note: "Every page of the service carries lang and dir, rendered from the language the reader chose: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_japanese, crates/inklkunn-web/tests/language.rs::accept_language_and_the_cookie_choose_the_language_like_any_signed_off_language. Partial: a page's own lang is read and set on its body in the code, but no test names it, and fragments in another language have no markup of their own."
+      I18N-7:
+        status: partial
+        note: "The editor is a plain text area with no script, so nothing intercepts a composition; crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english shows the service's pages carry no script. Partial: no test or reviewer has tried it with an input method editor."
+  many-languages@0.4:
+    claim: partial
+    items:
+      I18N-1:
+        status: "yes"
+        note: "Titles, link targets, tags and anchors take any Unicode text and are compared in NFC, a Japanese title is found by a substring, and width variants and diacritics fold: crates/inklkunn-markup/src/anchor/tests.rs::github_style_anchors, crates/inklkunn-markup/src/text/tests.rs::normalize_collapses_separators_and_case, crates/inklkunn-markup/tests/path_props.rs::inverse_recovers_every_title_that_has_a_path, crates/inklkunn-web/tests/search_health/main.rs::search_folds_width_variants_and_diacritics_and_finds_a_japanese_title_by_a_substring; the author's title is what is shown and corpus case 014 passes: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation."
+      I18N-2:
+        status: partial
+        note: "A title outside ASCII addresses its page by its UTF-8 percent-encoding, including in a hierarchy: crates/inklkunn-web/tests/discovery/main.rs::the_raw_source_is_the_stored_file_byte_for_byte_on_the_content_origin; the stored path is percent-encoded and reversible: crates/inklkunn-markup/src/path/tests.rs::non_ascii_and_forbidden_characters_are_percent_encoded_reversibly. Partial: the repository path is encoded until prikk reads Unicode paths, and no test decodes a title liberally on input."
+      I18N-3:
+        status: partial
+        note: "Every page of the service carries lang and dir, rendered from the language the reader chose: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_japanese, crates/inklkunn-web/tests/language.rs::accept_language_and_the_cookie_choose_the_language_like_any_signed_off_language. Partial: a page's own lang is read and set on its body in the code, but no test names it, and fragments in another language have no markup of their own."
+      I18N-4:
+        status: partial
+        note: "Search folds width variants and diacritics and finds a Japanese title by a substring, not by words: crates/inklkunn-web/tests/search_health/main.rs::search_folds_width_variants_and_diacritics_and_finds_a_japanese_title_by_a_substring, crates/inklkunn-core/src/read/search/tests.rs::folding_makes_width_variants_diacritics_and_case_one_letter. Partial: titles are not sorted by a locale's collation, and no test covers bidirectional text."
+      I18N-5:
+        status: partial
+        note: "Every interface string is a catalog entry in English and Japanese with the same placeholders, the language comes from the reader's choice or the browser, and the stylesheet uses logical properties only: crates/inklkunn-web/tests/language.rs::the_japanese_catalog_has_every_key_with_the_same_placeholders_and_no_markup, crates/inklkunn-web/tests/language.rs::accept_language_and_the_cookie_choose_the_language_like_any_signed_off_language, crates/inklkunn-web/tests/stylesheet/main.rs::the_stylesheet_uses_logical_properties_only. Partial: two languages only, no CLDR plural rules, no right-to-left language to try the layout with, and no translation platform."
+      I18N-6:
+        status: "no"
+        note: "translations is not read, no hreflang alternates are written, and a language version of a page is an ordinary page."
+      I18N-7:
+        status: partial
+        note: "The editor is a plain text area with no script, so nothing intercepts a composition; crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_english shows the service's pages carry no script. Partial: no test or reviewer has tried it with an input method editor."
+      I18N-8:
+        status: partial
+        note: "Explicit brackets are the only link syntax, and a non-ASCII heading makes its anchor: crates/inklkunn-markup/src/anchor/tests.rs::github_style_anchors; corpus case 014: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation. Partial: emphasis next to CJK punctuation is not tested or documented, and non-ASCII tags and block identifiers are not named by a test."
+      I18N-9:
+        status: partial
+        note: "Times are stored and exported as RFC 3339 and a manifest or history time that is not one is refused: crates/inklkunn-core/tests/bundle_manifest.rs::a_time_that_is_not_a_date_time_is_what_the_schema_check_catches, crates/inklkunn-core/src/import/bundle/tests.rs::times_are_instants_and_a_text_that_is_not_a_date_time_is_not_one; pages show UTC to the minute: crates/inklkunn-web/src/time/tests.rs::known_moments_are_formatted_as_utc_to_the_minute. Partial: times are shown in UTC, not in the reader's zone."
+      META-10:
+        status: partial
+        note: "lang is read into a page's metadata (crates/inklkunn-markup/src/frontmatter.rs, Metadata.lang) and the pages of the service carry lang and dir: crates/inklkunn-web/tests/structure/main.rs::every_state_passes_every_rule_in_japanese. Partial: no test shows a page's own lang on its rendered body, and translations is not read."
+  bundle-exporter@0.4:
+    claim: partial
+    items:
+      XFER-1:
+        status: "yes"
+        note: "The manifest an export writes is valid against wiki-commons' schema and names its checksums file: crates/inklkunn-core/tests/bundle_manifest.rs::the_manifest_an_export_writes_is_valid_and_names_the_checksums_file, crates/inklkunn-core/tests/bundle_manifest.rs::the_manifest_a_new_wiki_gets_is_valid_against_wiki_commons_schema; it carries the fidelity, the counts and the block it is as of: crates/inklkunn-core/src/export/tests.rs::a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_the_checksums_file."
+      XFER-2:
+        status: "yes"
+        note: "An export states level 3 and what it left out (fidelity.dropped), and says when it was not given the service's records: crates/inklkunn-core/src/export/tests.rs::a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_the_checksums_file, crates/inklkunn-core/src/export/tests.rs::an_export_that_was_not_given_the_services_records_says_so_in_the_manifest."
+      XFER-3:
+        status: partial
+        note: "One Markdown file per page under pages/, the path is the hierarchy and the title is in the frontmatter: crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history; titles collide on case-folding file systems by their collision key: crates/inklkunn-markup/tests/path_props.rs::collision_keys_fold_case_only. Partial: file names outside ASCII are percent-encoded, reversibly, until prikk reads Unicode paths (crates/inklkunn-markup/src/path/tests.rs::non_ascii_and_forbidden_characters_are_percent_encoded_reversibly)."
+      XFER-4:
+        status: partial
+        note: "An attachment's sidecar travels with it and its license is read and judged on import: crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history, crates/inklkunn-core/src/import/bundle/tests.rs::an_attachment_whose_sidecar_licence_the_wiki_cannot_take_refuses_and_goes_with_its_sidecar_when_left_out. Partial: inklkunn does not write the sidecar's media_type, sha256, size or alt itself; it keeps what the import brought."
+      XFER-5:
+        status: partial
+        note: "The export is the operator's copy of the whole wiki and is private on disk (mode checks in crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history); what moderation hides is not in it: crates/inklkunn-core/tests/export_suppression.rs::an_export_with_no_tombstone_is_the_frozen_bundle_byte_for_byte. Partial: it is not a selection by the reader's rights and does not mark each page with visibility."
+      XFER-6:
+        status: partial
+        note: "The manifest carries an interwiki key: crates/inklkunn-core/src/export/tests.rs::a_manifest_carries_the_fidelity_the_counts_the_block_the_interwiki_map_and_the_checksums_file. Partial: the map is empty today (crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history asserts interwiki: {}) and there is no namespaces list; the interwiki map is the I-T4/I-T5 round."
+      XFER-7:
+        status: "yes"
+        note: "One JSON Lines file per page under history/, named by id, one wiki-commons history record per revision, oldest first, each with its full text and checked against wiki-commons' schema: crates/inklkunn-core/tests/export_history.rs::every_record_has_the_schemas_required_members_and_types_and_its_files_order, crates/inklkunn-core/tests/export_history.rs::a_page_edited_renamed_and_removed_has_five_records_in_order_each_with_its_text_in_the_file_of_its_last_id (real prikk); an undo is a revert record: crates/inklkunn-core/tests/export_history.rs::an_undo_is_a_revert_and_a_page_that_comes_back_with_its_id_is_one_file."
+      XFER-8:
+        status: partial
+        note: "users.yaml lists the people the history names, by the names they had, and a person is listed only for what is not hidden; no address of any kind is written: crates/inklkunn-core/tests/export_suppression.rs::nothing_hidden_or_hiding_a_person_is_in_any_file_and_a_person_is_listed_only_for_what_is_not_hidden. Partial: no pseudonymization is offered."
+      XFER-9:
+        status: "no"
+        note: "links.json is not written; the content is authoritative and an importer reads the links from the pages."
+      XFER-10:
+        status: "no"
+        note: "A page's discussion is not exported under discussions/: inklkunn's claim threads travel in its own extension under extensions/inklkunn-knowledge/ instead: crates/inklkunn-core/tests/export_discussions.rs::a_claims_thread_is_exported_in_the_knowledge_extension_beside_the_claim_and_changes_nothing_of_it. Level 4 is not claimed."
+      XFER-11:
+        status: "no"
+        note: "No structured/ directory: a page's properties stay in its frontmatter as an unknown key and travel as stored."
+      XFER-12:
+        status: n/a
+        note: "inklkunn has no macros, queries or templates to materialize: a page is static Markdown, and a snapshot envelope from another engine is kept and shown as written (corpus case 011: crates/inklkunn-markup/tests/corpus.rs::every_markup_case_scans_to_its_expectation)."
+  bundle-importer@0.4:
+    claim: partial
+    items:
+      XFER-13:
+        status: partial
+        note: "An import plans first, writes nothing in a dry run, and says what comes in, what is left out and why, the keys it does not know, the fidelity declared and found, the checksums and the licence: crates/inklkunn-core/src/import/bundle/tests.rs::the_plan_reads_and_judges_and_writes_nothing_at_all, crates/inklkunn-core/src/import/bundle/tests.rs::the_report_is_a_value_that_can_be_kept_and_says_what_it_is_made_of, crates/inklkunn/src/admin/bundle_tests.rs::a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere. Partial: it lists link prefixes with no map but not each link left dangling, and nothing is degraded because nothing is converted."
+      XFER-14:
+        status: partial
+        note: "Checksums are verified for every file when the bundle has them: crates/inklkunn-core/src/import/bundle/tests.rs::checksums_that_are_present_are_verified_for_every_file_and_a_lie_a_gap_and_a_stranger_each_refuse_by_name. Partial: whole bundles only (no single page, namespace or time range), and an import is not resumable: a killed import leaves nothing a reader can reach and a person discards what it left: crates/inklkunn-core/tests/import_replay.rs::an_import_stopped_after_any_step_leaves_nothing_a_reader_can_reach_and_what_the_sweep_keeps_a_person_discards (real prikk)."
+      META-11:
+        status: "yes"
+        note: "Keys the vocabulary does not name are kept: crates/inklkunn-markup/src/frontmatter/tests.rs::metadata_lifts_the_vocabulary_and_keeps_the_rest; pages come in as the files they are, so unknown keys survive an import and an export: crates/inklkunn-core/tests/export_roundtrip.rs::export_import_export_agrees_on_text_links_metadata_and_history; what the manifest says that this build does not know is kept in the report and never read: crates/inklkunn-core/src/import/bundle/tests.rs::what_the_bundle_says_that_this_build_does_not_know_is_kept_in_the_report_and_never_read."
+      LIC-4:
+        status: "yes"
+        note: "Every revision of an imported page names who wrote it at the source and when, as text and never as an account, and the page says where it came from: crates/inklkunn-web/tests/imported_history/main.rs::an_imported_revision_says_who_wrote_it_at_the_source_and_when_and_the_page_says_where_it_came_from, crates/inklkunn-web/tests/imported_history/main.rs::a_source_name_is_text_and_is_never_linked_to_an_account_even_one_of_the_same_name_or_one_with_markup; the authors survive an export and a re-import: crates/inklkunn/src/admin/tests/import_bundle_tests.rs::an_exported_wiki_imported_and_exported_again_keeps_its_times_as_the_sources_and_its_authors_as_names (real prikk)."
+      LIC-5:
+        status: "yes"
+        note: "The wiki takes the bundle's licence and nothing else, a page or an attachment under a licence the wiki cannot take refuses the import or goes out with --leave-out-incompatible, an old revision counts too, and there is no override: crates/inklkunn-core/src/import/bundle/tests.rs::the_licence_matrix_has_wiki_commons_cells_and_nothing_else_can_be_a_default, crates/inklkunn-core/src/import/bundle/tests.rs::a_page_whose_licence_the_wiki_cannot_take_refuses_and_leaving_out_leaves_exactly_it_out, crates/inklkunn-core/src/import/bundle/tests.rs::an_old_revision_under_a_licence_the_wiki_cannot_take_makes_its_page_incompatible_too, crates/inklkunn-core/src/import/bundle/tests.rs::the_wiki_takes_the_bundles_licence_and_never_another, crates/inklkunn/src/admin/bundle_tests.rs::import_bundle_parses_with_create_options_and_its_own_and_has_no_way_to_skip_checksums_or_change_the_licence."
+      SEC-7:
+        status: partial
+        note: "A symbolic link, a reserved or too long name and a walk out of the bundle are refused, checksums that are present are verified, the revision count is capped and every revision text is judged as a page is, and a dry run is offered: crates/inklkunn-core/src/import/bundle/tests.rs::a_hostile_walk_is_refused_by_the_folder_imports_rules_for_the_files_a_bundle_shares_with_it, crates/inklkunn-core/src/import/bundle/tests.rs::checksums_that_are_present_are_verified_for_every_file_and_a_lie_a_gap_and_a_stranger_each_refuse_by_name, crates/inklkunn-core/src/import/bundle/tests.rs::a_bundle_over_the_revision_cap_is_refused_with_the_count_the_cap_and_the_way_on, crates/inklkunn-core/src/import/bundle/tests.rs::every_revision_text_is_judged_as_a_page_is_by_its_frontmatter_and_the_page_cap, crates/inklkunn/src/admin/bundle_tests.rs::a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere. Partial: an attachment's content is not checked against its declared type, and sanitizing happens when a page is shown, not when it is imported."
