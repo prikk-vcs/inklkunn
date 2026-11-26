@@ -11,6 +11,8 @@
 
 use super::*;
 
+mod repair;
+
 const FORM: &str = "/handbook/-/policy/edit";
 const POLICY: &str = "/handbook/-/policy";
 
