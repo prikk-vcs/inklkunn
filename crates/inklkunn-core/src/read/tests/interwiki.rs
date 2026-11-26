@@ -22,9 +22,29 @@ fn world() -> World {
 }
 
 fn put_map(w: &World, text: &str) {
+    put_map_unannounced(w, text);
+    w.service.forget_wiki(&w.wiki);
+}
+
+/// The same world, whose tip is never held: a change that another process made is seen at the next request, and nothing here
+/// tells the service to forget what it holds (a seal in this process does).
+fn world_that_is_told_nothing() -> World {
+    let w = World::pages_with(
+        &[(
+            "Home",
+            &[],
+            "A [[wp:Rust (language)]] link, a [[search:a/b c]] one, an [[nope:Thing]] one and [[Other]].\n",
+        )],
+        ttl_zero(),
+    );
+    w.fake().derive_changes();
+    w
+}
+
+/// Write the map in a new block **without telling the service**: the way a change made by another process arrives.
+fn put_map_unannounced(w: &World, text: &str) {
     w.fake()
         .set_files(&[("governance/interwiki.yaml".to_owned(), text.to_owned())]);
-    w.service.forget_wiki(&w.wiki);
 }
 
 #[test]
@@ -110,7 +130,7 @@ fn a_change_to_the_map_changes_the_links_at_the_next_tip_and_taking_the_file_awa
 #[test]
 fn an_alternative_view_forked_before_a_map_change_follows_the_new_map() {
     // The view is forked while the wiki has no map at all, and keeps the files it was forked with.
-    let w = world();
+    let w = world_that_is_told_nothing();
     w.fake().add_view("heads/draft");
     let draft = |w: &World| {
         found(
@@ -121,7 +141,7 @@ fn an_alternative_view_forked_before_a_map_change_follows_the_new_map() {
     let before = draft(&w);
     assert!(!before.html.as_str().contains("wikilink-interwiki"));
     // The default view gets a map: the draft's own tree has none, and its links are the wiki's.
-    put_map(&w, MAP);
+    put_map_unannounced(&w, MAP);
     let after = draft(&w);
     assert!(
         after
@@ -138,7 +158,7 @@ fn an_alternative_view_forked_before_a_map_change_follows_the_new_map() {
     );
     assert!(!after.cached, "a row drawn without the map is not read back");
     // And the map changes again: the draft's index, held for its tip, never holds the map of an earlier default tip.
-    put_map(&w, "wp: https://de.wikipedia.org/wiki/{title}\n");
+    put_map_unannounced(&w, "wp: https://de.wikipedia.org/wiki/{title}\n");
     let later = draft(&w);
     assert!(later.html.as_str().contains("de.wikipedia.org"));
     assert!(!later.html.as_str().contains("en.wikipedia.org"));
@@ -221,9 +241,9 @@ fn a_permalink_of_an_old_state_follows_the_current_map() {
 
 #[test]
 fn a_map_change_at_the_default_tip_is_seen_by_the_next_read_of_every_held_index() {
-    let w = world();
+    let w = world_that_is_told_nothing();
     w.fake().add_view("heads/draft");
-    put_map(&w, MAP);
+    put_map_unannounced(&w, MAP);
     // Held: the draft's index, and the graph of the draft.
     let held = w.service.title_index(&w.wiki, Some("heads/draft")).unwrap();
     assert_eq!(held.interwiki().len(), 2);
@@ -234,7 +254,7 @@ fn a_map_change_at_the_default_tip_is_seen_by_the_next_read_of_every_held_index(
         "a prefix the map lacks is a wanted page"
     );
     assert!(graph.wanted_backlinks("wp:Rust (language)").is_empty());
-    put_map(&w, "nope: https://nope.example.org/{title}\n");
+    put_map_unannounced(&w, "nope: https://nope.example.org/{title}\n");
     let again = w.service.title_index(&w.wiki, Some("heads/draft")).unwrap();
     assert_eq!(again.interwiki().len(), 1);
     assert_eq!(
@@ -430,4 +450,29 @@ fn a_map_larger_than_a_file_may_be_is_no_map_for_the_links_and_a_fault_for_the_r
     assert!(!view.html.as_str().contains("wikilink-interwiki"));
     let rules = w.service.rules_of(&w.wiki).expect("the rules");
     assert_eq!(rules.fault().map(|f| f.refusal()), Some(Refusal::TooLong));
+}
+
+#[test]
+fn what_is_drawn_is_kept_under_the_name_of_the_map_it_was_drawn_with() {
+    use crate::governance::{Interwiki, read_interwiki};
+    let map = |text: &str| read_interwiki(text.as_bytes()).expect("a map");
+    let en = map("wp: https://en.wikipedia.org/wiki/{title}\n");
+    let de = map("wp: https://de.wikipedia.org/wiki/{title}\n");
+    let none = cache_presentation(&Env::EN, &Interwiki::empty());
+    // A wiki with no map has the key it always had.
+    assert!(!none.contains("|m"), "{none}");
+    let (key_en, key_de) = (
+        cache_presentation(&Env::EN, &en),
+        cache_presentation(&Env::EN, &de),
+    );
+    assert_ne!(key_en, none);
+    assert_ne!(key_en, key_de);
+    // The same content is the same key, however the map was read.
+    assert_eq!(
+        key_en,
+        cache_presentation(
+            &Env::EN,
+            &map("wp: \"https://en.wikipedia.org/wiki/{title}\"\n")
+        )
+    );
 }
