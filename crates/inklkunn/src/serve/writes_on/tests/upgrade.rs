@@ -287,6 +287,12 @@ pub(super) fn masked(html: &str, ports: [u16; 2]) -> String {
         .replace(
             "<p>The Japanese translation was reviewed by the owner of the inklkunn project on 2026-11-19 (the messages of 0.3.0); messages added later are reviewed at each release.</p>\n",
             "",
+        )
+        // A fourth, named too (0.5.0, I-T5; RFC 007 D-9): every wiki page's head says where the API's description is
+        // (`service-desc`), which no earlier release's pages did. Only that one line is taken out.
+        .replace(
+            "<link rel=\"service-desc\" href=\"http://localhost:PORT/-/api/v1/openapi.json\" type=\"application/vnd.oai.openapi+json;version=3.1.0\">\n",
+            "",
         );
     let mut from = 0;
     while let Some(at) = out
