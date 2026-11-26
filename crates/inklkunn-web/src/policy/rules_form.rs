@@ -1518,7 +1518,9 @@ fn changed_files(rules: &Rules, built: &Built, in_force: &Interwiki) -> Vec<File
     }
     // The interwiki map (RFC 007 D-8, W-6). When it is the file that cannot be read, the repair writes what the rows say, or takes
     // the file away when there is none: the wiki is writable again, with that map, or with none (every prefix is then dangling as
-    // before). A path the fault lists is already removed above.
+    // before). A path the fault lists is already removed above, **and that is all the removal there is to ask**: where the map's
+    // place holds a directory, the file at the map's own path is not there to be removed (the acceptance would find nothing to
+    // read), and what is below it, once removed, leaves no directory (Y-1).
     let map_path = GovernanceFile::Interwiki.path();
     let text = (!built.map.is_empty()).then(|| built.map.to_yaml());
     if text.is_some() && (built.map != *in_force || broken == Some(GovernanceFile::Interwiki)) {
@@ -1528,7 +1530,9 @@ fn changed_files(rules: &Rules, built: &Built, in_force: &Interwiki) -> Vec<File
         });
     } else if text.is_none()
         && (!in_force.is_empty() || broken == Some(GovernanceFile::Interwiki))
-        && !files.iter().any(|c| c.path == map_path)
+        && !files
+            .iter()
+            .any(|c| GovernanceFile::at_or_below(&c.path) == Some(GovernanceFile::Interwiki))
     {
         files.push(FileChange {
             path: map_path.to_owned(),
