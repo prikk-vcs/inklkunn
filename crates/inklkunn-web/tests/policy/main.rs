@@ -19,6 +19,7 @@ mod closed;
 mod decisions;
 mod form;
 mod interwiki;
+mod interwiki_form;
 mod page;
 
 pub(crate) const PAGE: &str = "/handbook/-/policy";

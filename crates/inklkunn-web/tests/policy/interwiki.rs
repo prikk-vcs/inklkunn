@@ -8,11 +8,11 @@ use inklkunn_store::{FileChange, ProposalFilter, ProposalStore, Visibility, Wiki
 
 use super::*;
 
-const MAP_FILE: &str = "governance/interwiki.yaml";
-const MAP: &str = "wikipedia: https://en.wikipedia.org/wiki/{title}\ndocs: \"https://example.org/docs?page={title}\"\n";
+pub(crate) const MAP_FILE: &str = "governance/interwiki.yaml";
+pub(crate) const MAP: &str = "wikipedia: https://en.wikipedia.org/wiki/{title}\ndocs: \"https://example.org/docs?page={title}\"\n";
 
 /// A public wiki that holds the map, under the default rules.
-fn env_with_map(map: &str) -> Env {
+pub(crate) fn env_with_map(map: &str) -> Env {
     let w = common::World::with_visibility(
         "handbook",
         "The Handbook",

@@ -23,14 +23,14 @@ fn canonical(change: impl FnOnce(&mut PolicyDraft)) -> String {
         .to_yaml()
 }
 
-fn proposals_made(e: &Env) -> usize {
+pub(crate) fn proposals_made(e: &Env) -> usize {
     e.w.store
         .proposals(&e.w.wiki.id, &ProposalFilter::default(), None)
         .unwrap()
         .len()
 }
 
-fn value<'a>(fields: &'a [(String, String)], name: &str) -> &'a str {
+pub(crate) fn value<'a>(fields: &'a [(String, String)], name: &str) -> &'a str {
     fields
         .iter()
         .find(|(n, _)| n == name)
