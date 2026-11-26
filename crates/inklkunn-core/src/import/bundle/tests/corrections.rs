@@ -830,3 +830,68 @@ fn a_name_that_is_not_an_spdx_id_is_refused_with_the_id_it_probably_means_and_ne
     assert_refused(&p, "pages/Home.md", "GFDL");
     assert!(!p.render().contains("did you mean"), "{}", p.render());
 }
+
+// ---------------------------------------------------------------------------------------------------------------- W-2
+
+#[test]
+fn the_report_says_the_wiki_it_was_imported_from_and_never_a_source() {
+    let options = BundleOptions {
+        bundle_license: Some("CC-BY-SA-4.0".to_owned()),
+        ..BundleOptions::default()
+    };
+    let p = plan_with(&fixture("mediawiki/bundle"), &options);
+    assert_importable(&p);
+    let text = p.render();
+    for needle in [
+        "the wiki it was imported from: Garden Notes (text; not checked)",
+        "its address:     https://garden.example.org/wiki (text, never a link)",
+        "what the wiki it was imported from says its export degraded:",
+        "what the wiki it was imported from says its export dropped:",
+        "hidden at the wiki it was imported from (not replayed)",
+        "the names the wiki it was imported from gives, as text",
+    ] {
+        assert!(text.contains(needle), "no `{needle}` in\n{text}");
+    }
+    // *Source* is a claim's source in this product (and the manifest's own key): the report uses the word for neither.
+    assert!(
+        !text.to_ascii_lowercase().contains("source"),
+        "the word is in\n{text}"
+    );
+    // The JSON a person reads says the same: no key of it has the word.
+    let json = p.report.to_json();
+    assert_eq!(
+        json.pointer("/bundle/imported_from_name"),
+        Some(&serde_json::json!("Garden Notes"))
+    );
+    assert!(json.pointer("/bundle/imported_from_url").is_some());
+    assert_eq!(
+        json.pointer("/fidelity/degraded_in_the_export")
+            .and_then(|v| v.as_array())
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        json.pointer("/fidelity/dropped_in_the_export")
+            .and_then(|v| v.as_array())
+            .map(Vec::len),
+        Some(2)
+    );
+    fn keys(v: &serde_json::Value, out: &mut Vec<String>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                for (k, x) in m {
+                    out.push(k.clone());
+                    keys(x, out);
+                }
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| keys(x, out)),
+            _ => {}
+        }
+    }
+    let mut all = Vec::new();
+    keys(&json, &mut all);
+    assert!(
+        !all.iter().any(|k| k.contains("source")),
+        "a key says source: {all:?}"
+    );
+}

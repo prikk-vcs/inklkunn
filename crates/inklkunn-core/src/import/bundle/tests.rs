@@ -518,9 +518,9 @@ fn the_mediawiki_fixture_reports_its_history_people_suppressions_and_unmapped_pr
     assert_eq!(r.bundle_version, "0.1");
     assert_eq!(r.fidelity_declared, Some(3));
     assert_eq!(r.fidelity_found, Found::History);
-    assert_eq!(r.source_name.as_deref(), Some("Garden Notes"));
+    assert_eq!(r.imported_from_name.as_deref(), Some("Garden Notes"));
     assert_eq!(
-        r.source_url.as_deref(),
+        r.imported_from_url.as_deref(),
         Some("https://garden.example.org/wiki")
     );
     assert_eq!(r.languages, vec!["en"]);
@@ -576,8 +576,8 @@ fn the_mediawiki_fixture_reports_its_history_people_suppressions_and_unmapped_pr
     assert_eq!(r.unmapped_prefixes.get("wikipedia"), Some(&1));
     assert!(r.incompatible.is_empty() && r.left_out.is_empty());
     assert_eq!(r.estimate_seconds, Some(BundleReport::estimate_for(7)));
-    assert_eq!(r.degraded_at_source.len(), 2);
-    assert_eq!(r.dropped_at_source.len(), 2);
+    assert_eq!(r.degraded_in_the_export.len(), 2);
+    assert_eq!(r.dropped_in_the_export.len(), 2);
     // The text says it, and says what the estimate is of.
     let text = p.render();
     for needle in [
@@ -624,7 +624,7 @@ fn the_bookstack_fixture_comes_in_as_pages_and_attachments_in_one_change_with_no
     assert_eq!(r.pages_without_history.len(), 5);
     assert_eq!(r.estimate_seconds, None);
     assert_eq!(r.people.total, 0);
-    assert_eq!(r.dropped_at_source, vec!["revision history"]);
+    assert_eq!(r.dropped_in_the_export, vec!["revision history"]);
     assert!(r.checksums != Checksums::None);
     // Every file the first change writes: five pages, two attachments, their two sidecars.
     assert_eq!(p.plan.files.len(), 9);

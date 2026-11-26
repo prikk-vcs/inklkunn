@@ -342,7 +342,7 @@ fn a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere() {
         "licence of the wiki: CC-BY-SA-4.0 (the bundle declares none; declared by the importing admin",
         "checksums: verified, every file against `sha256sums.txt` (9 file(s)",
         "7 revision(s) would be replayed, one block each (the cap is 1000)",
-        "suppressions kept: 1 record(s) with their text hidden at the source",
+        "suppressions kept: 1 record(s) with their text hidden at the wiki it was imported from",
         "people named: 3",
         "wikipedia: 1 link(s)",
         "dry run: nothing was written",

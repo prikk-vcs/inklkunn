@@ -254,10 +254,10 @@ in every file of a deployment).
 **A new wiki from a bundle, with its history** (`import-bundle`, RFC 007). `inklkunn wiki import-bundle <new-wiki> <bundle-dir> --name
 "<name>" [--dry-run] [--bundle-license <SPDX id>] [--leave-out-incompatible] [--no-history]` reads a Portable Wiki Bundle (a directory:
 unpack an archive first) and makes **a new wiki** of it, one change for every revision the bundle has, one block each, each signed by
-the wiki and carrying what the source said (the revision, its time, its author's name and kind, its summary) as data: the history
-says *Imported. Originally by {name}, {date}: {summary}*, with the source's date labelled *originally*, and the wiki's history and each
-imported page's history say *Imported from {source} on {date}*. **Nothing says a person signed what they did not**, and a source's
-name is text: it is never linked to an account of the wiki, even one of the same name. `--dry-run` prints the plan (the report: what comes
+the wiki and carrying what the wiki it was imported from said (the revision, its time, its author's name and kind, its summary) as data: the history
+says *Imported. Originally by {name}, {date}: {summary}*, with the date that wiki gave labelled *originally*, and the wiki's history and each
+imported page's history say *Imported from {origin} on {date}*. **Nothing says a person signed what they did not**, and the name of the wiki it was imported from is
+text: it is never linked to an account of the wiki, even one of the same name. `--dry-run` prints the plan (the report: what comes
 in and what does not, the people the history names, the licences, the checksums, the time it will take) and writes nothing; a run prints
 the same plan first. The wiki takes **the bundle's licence** (`--bundle-license` declares one for a bundle that has none, and the notice
 says the admin declared it); files whose licence the wiki cannot take refuse the run unless `--leave-out-incompatible`, which leaves
