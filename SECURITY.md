@@ -263,9 +263,18 @@ yet (it is planned in the operations RFC and is not part of 0.4.0).
   part out: an entry of `history/<page id>.jsonl` or of a claim thread whose content, summary or author is hidden is marked
   `suppressed` (a list of `content`, `summary` and `author`) with its `reasons` (the same reason categories the moderation
   log shows), omits that part, and names the person only for what is not hidden (`users.yaml`). The manifest says that the
-  bundle carries such entries (`inklkunn.tombstones`, and a `fidelity.dropped` line), and the import of a bundle that says
-  so is refused until tombstones can be imported. A bundle made **before** the hide, and every `--archive` (prikk's own,
+  bundle carries such entries (`inklkunn.tombstones`, and a `fidelity.dropped` line); `wiki import-folder` refuses a
+  bundle that says so (it imports no tombstones), while `wiki import-bundle` reads the history as the bundle gives it and
+  says of a part the other wiki hid that it was *hidden in the wiki it was imported from*, never receiving the hidden text.
+  A bundle made **before** the hide, and every `--archive` (prikk's own,
   which holds every object), still hold what was hidden.
+- **What an import brings, and what it keeps for good.** `inklkunn wiki import-bundle` makes a new wiki from a bundle's
+  folder, and it is the operator's act (never a web route). **Its checksums show that the files are the ones that were
+  written, never who made them or that what they say is true**: anyone can write them. **The names a bundle's history
+  carries become part of the repository's signed history**, as text and never as an account, and **nothing inklkunn
+  offers removes them** (only the operator's removal procedure, P-1, not offered yet, would): the dry run (`--dry-run`)
+  says how many people the history names before anything is written, and a `users.yaml` entry with an e-mail address
+  refuses the import.
 - **A tip's content cannot be hidden.** The files a wiki serves now are in every export as they are; its summary and its
   author can be hidden, and its content is first reverted or removed by a proposal.
 

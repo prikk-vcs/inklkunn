@@ -1423,3 +1423,18 @@ fn security_md_and_the_operator_docs_say_what_still_holds_hidden_content_in_the_
     }
     assert!(document("docs/RECOVERY.md").contains("What still holds hidden content"));
 }
+
+/// Threat model C-5g and C-15g (v0.5): SECURITY.md says what an import's checksums do not show, and that the names of an imported
+/// history are permanent, and that `import-folder` and `import-bundle` differ in what they do with a bundle that carries tombstones.
+#[test]
+fn security_md_says_what_an_import_keeps_for_good_and_what_its_checksums_do_not_show() {
+    let security = document("SECURITY.md");
+    for sentence in [
+        "**Its checksums show that the files are the ones that were written, never who made them or that what they say is true**",
+        "**The names a bundle's history carries become part of the repository's signed history**",
+        "`wiki import-folder` refuses a bundle that says so (it imports no tombstones), while `wiki import-bundle` reads the history",
+        "*hidden in the wiki it was imported from*",
+    ] {
+        assert!(security.contains(sentence), "SECURITY.md: {sentence}");
+    }
+}
