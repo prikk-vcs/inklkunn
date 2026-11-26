@@ -13,7 +13,7 @@
 //! uses. Its name never starts with `PRIKK_VERSION` or `PRIKK_SHA256_`, so the floor rules above do not read it;
 //! [`test_prikk`] and [`test_prikk_shape_violations`] hold it instead.
 //!
-//! **The releases the upgrade tests start from (0.3.0 readiness R-3; 0.4.0 G-T1).** The workflows also install earlier
+//! **The releases the upgrade tests start from (0.3.0 readiness R-3; 0.4.0 G-T1; 0.5.0 readiness RU).** The workflows also install earlier
 //! *inklkunn* releases, one pinned asset each: `UPGRADE_FROM_<version>_SHA256_X86_64`, with the version spelled in the
 //! name (`UPGRADE_FROM_0_3_0_SHA256_X86_64` is 0.3.0's), the checksum of its release asset. A test has that binary make a
 //! data directory and this tree open it. Each is a pinned release asset like the test-only prikk (recorded checksum,
@@ -79,8 +79,8 @@ pub fn test_prikk(yaml: &str) -> Option<(String, String)> {
 /// `prikk not on PATH` (prikk is always on `PATH` in that run, so the line can only be a silent skip; M41) and the
 /// confined tests' lines (`bubblewrap cannot confine` carries bubblewrap's own reason; `the confined policy`; `bwrap or
 /// curl not available` is the real vector's; M43), and the upgrade tests' (`inklkunn 0.2.0 not found`, `inklkunn 0.3.0
-/// not found`: the release the workflow installs for it is not on `PATH`; R-3, G-T1).
-pub const WITH_PRIKK_GUARDED: [&str; 9] = [
+/// not found`, `inklkunn 0.4.0 not found`: the release the workflow installs for it is not on `PATH`; R-3, G-T1).
+pub const WITH_PRIKK_GUARDED: [&str; 10] = [
     "prikk 0\\.57\\.0 or newer not found",
     "no prikk older than 0\\.57\\.0",
     "PID namespaces unavailable",
@@ -90,6 +90,7 @@ pub const WITH_PRIKK_GUARDED: [&str; 9] = [
     "bwrap or curl not available",
     "inklkunn 0\\.2\\.0 not found",
     "inklkunn 0\\.3\\.0 not found",
+    "inklkunn 0\\.4\\.0 not found",
 ];
 
 /// What is wrong with the way a workflow uses its test-only prikk (M25); empty when it is installed and
