@@ -1,17 +1,79 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
-//! 0.5.0 readiness, part RU (0.5.0 plan section 4, item 6): **the upgrade from 0.4.0**, end to end, on a real prikk. A data
-//! directory of the 0.4.0 release binary is opened by this tree, and its wikis behave as before.
+//! 0.5.0 readiness, part RU (`docs/releases/0.5.0-plan.md` section 4, item 6: *an upgrade from 0.4.0 is shown*): **the upgrade
+//! from 0.4.0**, end to end, on a real prikk. A data directory made by the 0.4.0 release binary is opened by this tree, and its
+//! wikis behave as before. **No migration runs: the store's schema is 19 in both**, so the upgrade is an opening, and the test
+//! shows that nothing is written by it.
+//!
+//! **The data directory is made by the 0.4.0 release binary** (the asset `ci.yml` and `release.yml` install and check against a
+//! recorded checksum, built from commit `162f0cc`), run as a process, through `upgrade.rs` (the one file that starts a release
+//! binary). It makes a wiki and six accounts by invitation (a maintainer, two contributors and a third, a reviewer, an admin)
+//! and, through the pages and its API as people use them, **everything 0.4.0 stores**: an accepted change; a claim with its
+//! source, a curation and two comments in its thread; **a change of the rules** made through the policy form (one approval from
+//! someone other than the proposer) and accepted under the old rules; three revisions of a page, each held until it is approved;
+//! two new pages through the API, one **renamed** and one **removed** (`410 Gone`); a proposal left open on the renamed page,
+//! with a comment; **moderation**: the text of one revision hidden, the summary and the author of another, and the body and
+//! author of a comment in the claim's thread; **an appeal** against the first hiding, left undecided; **a grant** of a role and
+//! **a restriction** (an admin makes a contributor a reviewer and restricts him for a week); and **a protection** of the page for
+//! a day (only an admin may accept a change to it). The five tables RFC 006 added (`grant_decisions`, `restrictions`,
+//! `protections`, `tombstones`, `appeals`) hold real rows, and the writes index and the derived rules exist.
+//!
+//! **0.4.0's own output is captured before it stops**: 95 pages for five readers (anonymous, the maintainer, the author of what
+//! was hidden, the admin, the restricted person): the page, its history, a change, the page as of a block, a diff, the policy
+//! page and its form, the moderation log, the people, the appeals, the claim's pages, the sections, `site.json`, the changes feed
+//! and the API's members for them.
+//!
+//! **Then this tree's server opens that same directory**, as `serve` does. The store's schema is 19, **the repository is
+//! byte for byte what it was** (every file of it, compared), **the five governance tables hold exactly the rows 0.4.0 wrote**
+//! (every column, compared), the accounts sign in with the passwords chosen in 0.4.0, and the signer opens over the key store
+//! 0.4.0 made.
+//!
+//! **The pages are compared with 0.4.0's own output**, after what differs on every page for no reason of the page's is masked
+//! (`upgrade.rs`'s `masked`: the ports of the two servers, the stylesheet's content-addressed name, a form's per-request token,
+//! the footer's version, and 0.5.0's `service-desc` head line, I-T5, taken out exactly; and 0.4.0's own footer version, which
+//! this tree shares until its version moves). **Three places differ, each a change `CHANGELOG.md`'s `[Unreleased]` declares, each
+//! taken out exactly, once, and on that page only (`undo_what_0_5_0_adds`):** the policy page's section for the interwiki map
+//! (I-T4, which says *This wiki has no interwiki map.*), the policy form's section for it with the hidden count of its rows (W-6),
+//! and `describedby` in `site.json` (I-T5). The test asserts that these three, for these readers, are the only places, and that
+//! the stylesheet holds every line of 0.4.0's, in order. A page that differed for a reason not declared there would be a defect
+//! and is reported, not masked.
+//!
+//! **What 0.4.0 made behaves as before**: a hidden revision, summary, author and comment are on no page of either server for any
+//! of the five readers; the restriction still restricts (the page, and the API with `restricted` and its reason); the protection
+//! protects (a maintainer is refused, an admin accepts); the proposal 0.4.0 left open needs the approval the rules ask for and
+//! is accepted once it is given, the record naming the block of the rules 0.4.0 wrote; a new proposal is held by the same rule;
+//! the appeal 0.4.0 left is decided on this tree and the hiding is reversed. The five tables are not written by reading, by
+//! accepting, by exporting or by importing.
+//!
+//! **And what 0.5.0 adds works on the old directory**: `listProposals` lists the twelve proposals of 0.4.0 in pages, each page
+//! but the last with its `Link` header's `rel="next"`; the open proposal's comments are listed; the feed lists them, with no
+//! hidden summary; the export of the migrated wiki is a bundle whose ten history records carry `rev`, `at`, the author,
+//! `content` and `sha256` (the hidden parts left out and named by `reasons`, the rename and the removal records of their own,
+//! every history file in the checksums); the policy form edits the interwiki map through a proposal that is accepted under
+//! 0.4.0's rules, and a page's `[[wikipedia:Grafting]]` then leads there; **the bundle is imported as a second wiki**, with the
+//! history of its pages.
+//!
+//! **A gap this found, reported and not hidden (RU-1):** the importer refuses the bundle **as the export wrote it**, at the
+//! first change, for the claim's files: a claim names a paragraph of a page whose history has not been replayed at that change
+//! (`an expression names a page the view does not have`), and a claim with a community status or a review is a curation, which an
+//! import is not (`community_status`). So an inklkunn wiki that has a claim on a page with a history cannot be imported from its
+//! own export. The test prints that refusal and imports **the bundle with the claim's files taken out** (the files and their
+//! lines in `sha256sums.txt`), which is a bundle the importer takes; nothing else of it is changed.
+//!
+//! The run prints each of its stages (`upgrade 0.4.0 -> this tree: ...`), a transcript under `--nocapture`.
+//!
+//! Needs prikk and the 0.4.0 binary. Without prikk the test prints `skipping: prikk not on PATH` (counted by `EXPECTED_SKIPS`);
+//! with prikk and without the binary it prints `skipping: inklkunn 0.4.0 not found`, a line the with-prikk run in CI fails on
+//! (`WITH_PRIKK_GUARDED`), because CI installs the binary.
 
 use std::collections::BTreeMap;
 
 use super::api::{API, json_field, json_quote};
 use super::knowledge::{
-    SURVEY, approve_and_accept, attach, curate, ids_after, main_of, signed_into_history,
+    SURVEY, approve_and_accept, attach, curate, ids_after, signed_into_history,
 };
 use super::upgrade::{
-    OldServer, bare_world, binary_0_4_0, first_difference, masked, old_cli, old_invite, pages_to_compare,
-    redeem,
-    schema_of, settled, stylesheet_of,
+    OldServer, bare_world, binary_0_4_0, first_difference, masked, old_cli, old_invite,
+    pages_to_compare, redeem, schema_of, settled, stylesheet_of,
 };
 use super::*;
 
@@ -114,10 +176,7 @@ fn snapshot(dir: &Path) -> BTreeMap<String, Vec<u8>> {
 fn blocks_after(html: &str, marker: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for chunk in html.split(marker).skip(1) {
-        let id: String = chunk
-            .chars()
-            .take_while(char::is_ascii_hexdigit)
-            .collect();
+        let id: String = chunk.chars().take_while(char::is_ascii_hexdigit).collect();
         if id.len() == 64 && !out.contains(&id) {
             out.push(id);
         }
@@ -249,7 +308,13 @@ fn api_on(
     if body.is_some() {
         headers.push(("Content-Type".into(), "application/json".into()));
     }
-    wire(port, method, path, &headers, body.unwrap_or_default().as_bytes())
+    wire(
+        port,
+        method,
+        path,
+        &headers,
+        body.unwrap_or_default().as_bytes(),
+    )
 }
 
 /// The state id of the default view's tip, which a proposal sent through the API names.
@@ -416,11 +481,6 @@ fn differences(
             declared.push(format!("{who} {path}"));
         }
         if o != n {
-            if let Some(dump) = std::env::var_os("RU_DUMP_DIR") {
-                let name = path.replace(['/', '?', '&', '='], "_");
-                std::fs::write(Path::new(&dump).join(format!("{who}{name}.old")), &o).unwrap();
-                std::fs::write(Path::new(&dump).join(format!("{who}{name}.new")), &n).unwrap();
-            }
             out.push(format!(
                 "{who} {path}: renders differently ({} bytes to {}): {}",
                 o.len(),
@@ -491,7 +551,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     let mut zora = redeem(&server, &links[4], "zora", "Zora Quokka");
     let mut rex = redeem(&server, &links[5], "rex", "Rex Restricted");
     let mut reader = server.browser();
-    say("six accounts made by invitation: a maintainer, two contributors and a third, a reviewer and an admin");
+    say(
+        "six accounts made by invitation: a maintainer, two contributors and a third, a reviewer and an admin",
+    );
 
     // ---- history: an accepted change, a claim with a source, a curation and a comment in the claim's thread
     let p1 = propose_edit(&mut noor, "Help", "Say which brackets", clarify_reading);
@@ -524,7 +586,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         let made = who.browser.submit(&form, None);
         assert_eq!(made.status, 303, "{}\n{}", made.head, made.body);
     }
-    say("0.4.0: an accepted change, a claim with its source, a curation, two comments in the claim's thread");
+    say(
+        "0.4.0: an accepted change, a claim with its source, a curation, two comments in the claim's thread",
+    );
 
     // ---- a change of the rules, made through the policy form and accepted under the old rules
     let page = maya.browser.get(POLICY_FORM);
@@ -560,13 +624,18 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         refused.body
     );
     reviewed_and_accepted(&mut quinn, &mut maya, &r1);
-    let r2 = propose_edit(&mut noor, "Help", "WALRUSSUMMARY say it as it was", |text| {
-        text.replacen(
-            "It never claims more than it checked, QUOKKATEXT.",
-            TRUST_AFTER,
-            1,
-        )
-    });
+    let r2 = propose_edit(
+        &mut noor,
+        "Help",
+        "WALRUSSUMMARY say it as it was",
+        |text| {
+            text.replacen(
+                "It never claims more than it checked, QUOKKATEXT.",
+                TRUST_AFTER,
+                1,
+            )
+        },
+    );
     reviewed_and_accepted(&mut quinn, &mut maya, &r2);
     let r3 = propose_edit(&mut noor, "Help", "Name the licence's place", |text| {
         text.replacen(
@@ -616,7 +685,10 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
 
     // ---- an open proposal, with a comment of Zora's on it
     let open = propose_edit(&mut noor, "Notes", "Say more about the notes", |text| {
-        format!("{}\nA second line, said after the rename.\n", text.trim_end())
+        format!(
+            "{}\nA second line, said after the rename.\n",
+            text.trim_end()
+        )
     });
     let said = comment(&mut zora, &open, "This reads better with the second line.");
     assert_eq!(said.status, 303, "{}\n{}", said.head, said.body);
@@ -625,18 +697,16 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     // ---- moderation: a hidden revision (the text of one, the summary and the author of another) and a hidden comment
     let revision = |id: &str| format!("kind=proposal-revision&proposal={id}&seq=1");
     hide(&mut maya, &revision(&r1), &["part_content"]);
-    hide(
-        &mut maya,
-        &revision(&r2),
-        &["part_summary", "part_author"],
-    );
+    hide(&mut maya, &revision(&r2), &["part_summary", "part_author"]);
     let on_claim = maya.browser.get(&claim_page);
     hide(
         &mut maya,
         &moderate_query(&on_claim, "claim-comment"),
         &["part_content", "part_author"],
     );
-    say("0.4.0: moderation hid the text of Zora's revision, the summary and author of Noor's, and Zora's comment in the claim's thread");
+    say(
+        "0.4.0: moderation hid the text of Zora's revision, the summary and author of Noor's, and Zora's comment in the claim's thread",
+    );
 
     // ---- an appeal against a hiding (the text of her revision), left for a decision
     let prefix = "/handbook/-/appeals/new?kind=tombstone&id=";
@@ -649,13 +719,18 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         .unwrap();
     let mine = zora.browser.get(&format!("{APPEALS}/mine"));
     assert!(
-        mine.body.replace("&#38;", "&").contains(&format!("{prefix}{tombstone}")),
+        mine.body
+            .replace("&#38;", "&")
+            .contains(&format!("{prefix}{tombstone}")),
         "Zora is offered *Contest this* for the hiding of her revision's text: {}",
         mine.body
     );
     let page = zora.browser.get(&format!("{prefix}{tombstone}"));
     let mut form = form_to(&page, &format!("{APPEALS}/new"));
-    form.set("text", "I wrote this myself and it names nobody; please look again.");
+    form.set(
+        "text",
+        "I wrote this myself and it names nobody; please look again.",
+    );
     let filed = zora.browser.submit(&form, None);
     assert_eq!(filed.status, 303, "{}\n{}", filed.head, filed.body);
     say("0.4.0: Zora appealed the hiding of her revision's text; the appeal waits for a decision");
@@ -684,9 +759,19 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         .set("days", "7")
         .set("reason", "posting the same link everywhere");
     let restricted = ada.browser.submit(&form, None);
-    assert_eq!(restricted.status, 303, "{}\n{}", restricted.head, restricted.body);
+    assert_eq!(
+        restricted.status, 303,
+        "{}\n{}",
+        restricted.head, restricted.body
+    );
     let held = rex.browser.get("/handbook/-/proposals/new?page=Help");
-    eprintln!("RESTRICTED rex: {} {}", held.status, plain(&held.body));
+    assert_eq!(held.status, 403, "{}", held.body);
+    assert!(
+        plain(&held.body).contains("You are restricted in this wiki")
+            && plain(&held.body).contains("posting the same link everywhere"),
+        "{}",
+        held.body
+    );
     say("0.4.0: an admin made Rex a reviewer and then restricted him for a week");
 
     // ---- a protection of the page the rules were changed for
@@ -699,7 +784,11 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         .set("reason", "Edit war this week.")
         .set("days", "1");
     let protected = maya.browser.submit(&form, Some(("act", "set")));
-    assert_eq!(protected.status, 303, "{}\n{}", protected.head, protected.body);
+    assert_eq!(
+        protected.status, 303,
+        "{}\n{}",
+        protected.head, protected.body
+    );
     let help = reader.get(HELP);
     assert!(
         plain(&help.body).contains("Edit war this week."),
@@ -719,8 +808,7 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         on_help.get(2).cloned().unwrap(),
         on_help.get(3).cloned().unwrap(),
     );
-    let hidden_pages = |who: &str| -> Vec<String> {
-        let _ = who;
+    let hidden_pages = || -> Vec<String> {
         vec![
             "/handbook/-/history/Help".to_owned(),
             format!("/handbook/-/change/{b1}"),
@@ -737,7 +825,7 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         ]
     };
     let mut anonymous_paths = pages_to_compare(&b3);
-    anonymous_paths.extend(hidden_pages("anonymous"));
+    anonymous_paths.extend(hidden_pages());
     anonymous_paths.extend(
         [
             POLICY.to_owned(),
@@ -771,7 +859,7 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         ]
         .into_iter(),
     );
-    let mut maya_paths = hidden_pages("maya");
+    let mut maya_paths = hidden_pages();
     maya_paths.extend([
         format!("{MODERATE}?{}", revision(&r1)),
         format!("{PROTECT}?page=Help"),
@@ -780,7 +868,7 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         "/handbook/-/people".to_owned(),
         format!("{APPEALS}/mine"),
     ]);
-    let mut zora_paths = hidden_pages("zora");
+    let mut zora_paths = hidden_pages();
     zora_paths.extend([
         format!("{APPEALS}/mine"),
         format!("{API}/appeals/mine"),
@@ -814,7 +902,16 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         ("rex", &before.4),
     ] {
         for (path, (status, _, _)) in shown {
-            eprintln!("  0.4.0 answers {who} {path}: {status}");
+            // 0.4.0 answers every page of the sample but four with `200`: the wiki's address redirects, a removed page is
+            // `410 Gone`, a page that was renamed away is `404`, and a restricted person's form is refused.
+            let expected = match path.as_str() {
+                "/handbook" => 303,
+                "/handbook/Sandbox" => 410,
+                "/handbook/Scratch" => 404,
+                "/handbook/-/proposals/new?page=Help" if who == "rex" => 403,
+                _ => 200,
+            };
+            assert_eq!(*status, expected, "0.4.0 answers {who} {path}");
         }
     }
     let old_css = reader
@@ -824,7 +921,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     let old_ports = [server.port, server.content_port];
     let old_log = server.stop();
     assert_eq!(schema_of(&store_file), 19, "0.4.0 writes store schema 19");
-    say("0.4.0's server is stopped; the store is at schema 19 with the rows of governance and moderation");
+    say(
+        "0.4.0's server is stopped; the store is at schema 19 with the rows of governance and moderation",
+    );
 
     // The five tables hold what 0.4.0 wrote: one row of each at least, and the derived ones exist.
     let governance_before: Vec<(&str, Vec<String>)> = GOVERNANCE_TABLES
@@ -875,7 +974,14 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         .by_slug(&Slug::new("handbook").unwrap())
         .unwrap();
     let first_blocks = world.blocks();
-    say("this tree's server opened the directory: schema 19, no migration, the repository untouched, the five governance tables as they were");
+    assert_eq!(
+        first_blocks.len(),
+        12,
+        "the repository holds the blocks 0.4.0 wrote: the first, and eleven accepted changes"
+    );
+    say(
+        "this tree's server opened the directory: schema 19, no migration, the repository untouched, the five governance tables as they were",
+    );
 
     let new_ports = [running.port, running.content_port];
     let mut anonymous = running.browser();
@@ -981,11 +1087,7 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         browser: running.browser(),
     };
     sign_in(&mut quinn_now.browser, "quinn", &password_for("quinn"), "/");
-    let must_not_serve = [
-        "QUOKKATEXT",
-        "WALRUSSUMMARY",
-        "QUOKKANOTE",
-    ];
+    let must_not_serve = ["QUOKKATEXT", "WALRUSSUMMARY", "QUOKKANOTE"];
     for (whose, shown) in [("0.4.0", &before), ("this tree", &after)] {
         for (viewer, set) in [
             ("anonymous", &shown.0),
@@ -1013,7 +1115,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
             "{whose}: the hidden comment's author is named on the claim's page"
         );
     }
-    say("hidden stays hidden: the revision's text, the other's summary and author, and the comment's body and author are on no page of either server, for a reader, the moderator, the author or the admin");
+    say(
+        "hidden stays hidden: the revision's text, the other's summary and author, and the comment's body and author are on no page of either server, for a reader, the moderator, the author or the admin",
+    );
 
     // ---- a restriction still restricts: the page, and the API with a token the restricted person made
     let rex_token = token_for(&mut rex_now, Scope::Propose);
@@ -1040,7 +1144,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         json_field(&refused.body, "restriction_reason").as_deref(),
         Some("posting the same link everywhere")
     );
-    say("the restriction of 0.4.0 still restricts: the page says so (as 0.4.0's did) and the API refuses with `restricted`");
+    say(
+        "the restriction of 0.4.0 still restricts: the page says so (as 0.4.0's did) and the API refuses with `restricted`",
+    );
 
     // ---- what 0.5.0 adds, on the old directory, with the hides in place: the lists of proposals, the comments, the feed
     let mut listed: Vec<String> = Vec::new();
@@ -1077,9 +1183,17 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
             }
         }
     }
-    assert!(next_links >= 2, "the list was paged: {next_links} next links");
-    for id in [&p1, &attached, &curated, &rules, &r1, &r2, &r3, &renamed, &removed, &open] {
-        assert!(listed.contains(id), "listProposals lacks the proposal {id} of 0.4.0: {listed:?}");
+    assert!(
+        next_links >= 2,
+        "the list was paged: {next_links} next links"
+    );
+    for id in [
+        &p1, &attached, &curated, &rules, &r1, &r2, &r3, &renamed, &removed, &open,
+    ] {
+        assert!(
+            listed.contains(id),
+            "listProposals lacks the proposal {id} of 0.4.0: {listed:?}"
+        );
     }
     let comments = api_on(
         running.port,
@@ -1091,7 +1205,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     );
     assert_eq!(comments.status, 200, "{}\n{}", comments.head, comments.body);
     assert!(
-        comments.body.contains("This reads better with the second line."),
+        comments
+            .body
+            .contains("This reads better with the second line."),
         "{}",
         comments.body
     );
@@ -1152,10 +1268,7 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         assert!(has(record, "rev") && has(record, "at"), "{record}");
         if !hidden && has(record, "content") {
             assert_eq!(
-                record
-                    .get("sha256")
-                    .and_then(|v| v.as_str())
-                    .map(str::len),
+                record.get("sha256").and_then(|v| v.as_str()).map(str::len),
                 Some(64),
                 "a record with its content carries the content's checksum: {record}"
             );
@@ -1188,7 +1301,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     );
     let on_sandbox: Vec<&serde_json::Value> = history
         .iter()
-        .filter(|l| l.pointer("/inklkunn/path").and_then(|v| v.as_str()) == Some("pages/Sandbox.md"))
+        .filter(|l| {
+            l.pointer("/inklkunn/path").and_then(|v| v.as_str()) == Some("pages/Sandbox.md")
+        })
         .collect();
     assert!(
         on_sandbox.len() == 2 && on_sandbox.iter().any(|l| !has(l, "content")),
@@ -1199,13 +1314,18 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         .find(|(name, _)| name == "sha256sums.txt")
         .unwrap()
         .1;
-    for (name, _) in files.iter().filter(|(name, _)| name.starts_with("history/")) {
+    for (name, _) in files
+        .iter()
+        .filter(|(name, _)| name.starts_with("history/"))
+    {
         assert!(
             checksums.lines().any(|l| l.ends_with(&format!("  {name}"))),
             "the checksums file names {name}"
         );
     }
-    say("the export of the migrated wiki: ten history records with rev, at, author, content and sha256, the hidden parts left out and named, the rename and the removal as records of their own, every history file in the checksums");
+    say(
+        "the export of the migrated wiki: ten history records with rev, at, author, content and sha256, the hidden parts left out and named, the rename and the removal as records of their own, every history file in the checksums",
+    );
 
     // ---- the import of that bundle into a new wiki. The importer refuses the claim's files of an inklkunn wiki's own bundle at
     //      the first change (a claim names a paragraph of a page whose history has not been replayed yet, and a claim with a
@@ -1219,7 +1339,15 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         "--name",
         "Handbook Again",
     ]);
-    eprintln!("importing the bundle as it was exported: status {status}: {err}");
+    say(&format!(
+        "the bundle as it was exported is refused by the importer (status {status}), for the claim's files: {}",
+        err.lines()
+            .last()
+            .unwrap_or_default()
+            .chars()
+            .take(160)
+            .collect::<String>()
+    ));
     let copy = world.tmp.0.join("export-without-claims");
     copy_dir(&dest, &copy);
     let mut kept = String::new();
@@ -1263,7 +1391,11 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     for table in GOVERNANCE_TABLES {
         assert_eq!(
             dump(&store_file, table),
-            governance_before.iter().find(|(t, _)| *t == table).unwrap().1,
+            governance_before
+                .iter()
+                .find(|(t, _)| *t == table)
+                .unwrap()
+                .1,
             "{table}: exporting and importing wrote one of the five tables"
         );
     }
@@ -1273,13 +1405,18 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         .into_iter()
         .next()
         .expect("the policy page lists the change of the rules");
-    let held = propose_edit(&mut noor_now, "Help", "Say where the defaults are", |text| {
-        text.replacen(
-            "in its header",
-            "in its header, or in the wiki's defaults",
-            1,
-        )
-    });
+    let held = propose_edit(
+        &mut noor_now,
+        "Help",
+        "Say where the defaults are",
+        |text| {
+            text.replacen(
+                "in its header",
+                "in its header, or in the wiki's defaults",
+                1,
+            )
+        },
+    );
     approve(&mut quinn_now, &held, "Fine.");
     let blocks_now = world.blocks();
     let refused = accept(&mut maya_now, &held);
@@ -1292,7 +1429,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     assert_eq!(world.blocks(), blocks_now, "nothing was signed");
     signed_into_history(&accept(&mut ada_now, &held));
     assert_eq!(world.blocks().len(), blocks_now.len() + 1);
-    say("the protection of 0.4.0 protects: the maintainer is refused (an admin is asked for), the admin accepts");
+    say(
+        "the protection of 0.4.0 protects: the maintainer is refused (an admin is asked for), the admin accepts",
+    );
     // The proposal 0.4.0 left open: it needs the approval the rules ask for, whoever accepts.
     let refused = accept(&mut maya_now, &open);
     assert_eq!(refused.status, 409, "{}\n{}", refused.head, refused.body);
@@ -1317,7 +1456,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         rules_block.get(..12).unwrap_or_default()
     );
     assert!(record.body.contains(&named), "{named}: {}", record.body);
-    say("the proposal 0.4.0 left open is accepted once the approval its rules ask for is given, and the record names the block of 0.4.0's rules");
+    say(
+        "the proposal 0.4.0 left open is accepted once the approval its rules ask for is given, and the record names the block of 0.4.0's rules",
+    );
     // A new one, proposed here, is held by the same rule.
     let fresh = propose_edit(&mut noor_now, "Notes", "Add a closing line", |text| {
         format!("{}\nA closing line.\n", text.trim_end())
@@ -1325,7 +1466,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     let refused = accept(&mut maya_now, &fresh);
     assert_eq!(refused.status, 409, "{}\n{}", refused.head, refused.body);
     reviewed_and_accepted(&mut quinn_now, &mut maya_now, &fresh);
-    say("a proposal made on this tree is held by the rule 0.4.0's change made, reviewed and accepted");
+    say(
+        "a proposal made on this tree is held by the rule 0.4.0's change made, reviewed and accepted",
+    );
 
     // ---- 0.5.0's own things on the old directory: the policy form edits the interwiki map, through a proposal
     let wikipedia = "https://en.wikipedia.org/wiki/{title}";
@@ -1345,7 +1488,9 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     assert!(
         policy.body.contains("<dt>wikipedia</dt>")
             && policy.body.contains(wikipedia)
-            && policy.body.contains("1 approval from someone other than the proposer"),
+            && policy
+                .body
+                .contains("1 approval from someone other than the proposer"),
         "the map is in force and the rules of 0.4.0 still are: {}",
         policy.body
     );
@@ -1355,9 +1500,12 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         "{}",
         site.body
     );
-    let linked = propose_edit(&mut noor_now, "Notes", "Point at the encyclopedia", |text| {
-        format!("{}\nSee [[wikipedia:Grafting]].\n", text.trim_end())
-    });
+    let linked = propose_edit(
+        &mut noor_now,
+        "Notes",
+        "Point at the encyclopedia",
+        |text| format!("{}\nSee [[wikipedia:Grafting]].\n", text.trim_end()),
+    );
     reviewed_and_accepted(&mut quinn_now, &mut maya_now, &linked);
     let notes = anonymous.get("/handbook/Notes");
     assert!(
@@ -1367,11 +1515,17 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         "{}",
         notes.body
     );
-    say("the policy form's interwiki map is accepted through a proposal under 0.4.0's rules, and a page's [[wikipedia:Grafting]] leads there");
+    say(
+        "the policy form's interwiki map is accepted through a proposal under 0.4.0's rules, and a page's [[wikipedia:Grafting]] leads there",
+    );
     for table in GOVERNANCE_TABLES {
         assert_eq!(
             dump(&store_file, table),
-            governance_before.iter().find(|(t, _)| *t == table).unwrap().1,
+            governance_before
+                .iter()
+                .find(|(t, _)| *t == table)
+                .unwrap()
+                .1,
             "{table}: accepting changes and the map wrote one of the five tables"
         );
     }
@@ -1386,9 +1540,16 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         queue.body
     );
     let mut decide = form_to(&queue, &format!("{APPEALS}/decide"));
-    decide.set("reason", "The record supports the appeal: nothing in it is personal.");
+    decide.set(
+        "reason",
+        "The record supports the appeal: nothing in it is personal.",
+    );
     let press = ("decision", "overturned");
-    let decision = if decide.buttons.iter().any(|b| b.0 == press.0 && b.1 == press.1) {
+    let decision = if decide
+        .buttons
+        .iter()
+        .any(|b| b.0 == press.0 && b.1 == press.1)
+    {
         ada_now.browser.submit(&decide, Some(press))
     } else {
         decide.check(press.0, press.1);
@@ -1403,7 +1564,11 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     );
     assert_ne!(
         dump(&store_file, "appeals"),
-        governance_before.iter().find(|(t, _)| *t == "appeals").unwrap().1,
+        governance_before
+            .iter()
+            .find(|(t, _)| *t == "appeals")
+            .unwrap()
+            .1,
         "the decision is recorded"
     );
     say("the appeal 0.4.0 left is decided by an admin on this tree: the hiding is reversed");
@@ -1431,7 +1596,6 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         assert!(!printed.contains(&secret), "a secret reached a log");
         assert!(!stderr.contains(&secret), "a secret reached stderr");
     }
-    let _ = (&world.tmp, first_blocks, b3, b0);
 }
 
 /// `from` and everything under it, copied to `to` (a bundle's directory).

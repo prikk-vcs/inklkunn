@@ -339,14 +339,14 @@ fn the_upgrade_from_shape_rules_catch_planted_failures() {
             ),
             (
                 "not downloaded from this project's release",
-                broken(&download, &format!("someone/else/releases/download/{second}")),
+                broken(
+                    &download,
+                    &format!("someone/else/releases/download/{second}"),
+                ),
             ),
             (
                 "downloaded from another release than the one it is checked as",
-                broken(
-                    &download,
-                    "prikk-vcs/inklkunn/releases/download/9.9.9",
-                ),
+                broken(&download, "prikk-vcs/inklkunn/releases/download/9.9.9"),
             ),
             (
                 "not checked",
@@ -369,9 +369,8 @@ fn the_upgrade_from_shape_rules_catch_planted_failures() {
             ),
             ("checked after it is unpacked", {
                 let check = format!("  echo \"${{{variable}}}  old.tar.gz\" | sha256sum -c -\n");
-                let unpack = format!(
-                    "  mkdir -p {dir} && tar -xzf \"old.tar.gz\" -C {dir} inklkunn\n"
-                );
+                let unpack =
+                    format!("  mkdir -p {dir} && tar -xzf \"old.tar.gz\" -C {dir} inklkunn\n");
                 broken(&format!("{check}{unpack}"), &format!("{unpack}{check}"))
             }),
             (
