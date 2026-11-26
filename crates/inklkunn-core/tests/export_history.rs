@@ -1238,6 +1238,66 @@ fn the_files_of_pages_with_no_id_are_named_so_that_a_file_system_that_ignores_ca
     assert_eq!(records(&files, "~a%42").len(), 1);
 }
 
+#[test]
+fn the_files_of_pages_whose_ids_differ_only_in_case_are_named_by_their_paths_and_the_others_by_their_ids()
+ {
+    // `Ab` and `aB` are two pages' ids; a bundle unpacked on a file system that does not tell them apart must keep two files (W-3).
+    // The page whose id has no twin keeps its id's name.
+    let with_id = |title: &str, id: &str, word: &str| {
+        format!("---\nid: {id}\ntitle: {title}\n---\n\n{word}\n")
+    };
+    let pages = [
+        ("pages/First.md", with_id("First", "Ab", "one")),
+        ("pages/Second.md", with_id("Second", "aB", "two")),
+        ("pages/Third.md", with_id("Third", "cd", "three")),
+    ];
+    let blocks = vec![block(
+        &b(0),
+        1,
+        "a0",
+        &system("Create the wiki"),
+        &[
+            ("add", "pages/First.md"),
+            ("add", "pages/Second.md"),
+            ("add", "pages/Third.md"),
+        ],
+    )];
+    let mut stand = Stand::new(
+        pages
+            .iter()
+            .map(|(p, t)| ((*p).to_owned(), t.clone()))
+            .collect(),
+        blocks,
+    );
+    for (path, text) in &pages {
+        stand = stand.giving(&b(0), path, text);
+    }
+    let r = rig("case-ids");
+    let files = export(&r, &stand, "bundle");
+    let names: Vec<&String> = files.keys().filter(|k| k.starts_with("history/")).collect();
+    assert_eq!(
+        names,
+        [
+            "history/cd.jsonl",
+            "history/~%46irst.jsonl",
+            "history/~%53econd.jsonl"
+        ],
+        "the two ids that fold to one are named by the pages' paths, the third by its id"
+    );
+    let folded: std::collections::BTreeSet<String> =
+        names.iter().map(|n| n.to_ascii_lowercase()).collect();
+    assert_eq!(folded.len(), names.len(), "{names:?}");
+    assert_eq!(records(&files, "~%46irst").len(), 1);
+    assert_eq!(records(&files, "~%53econd").len(), 1);
+    assert_eq!(records(&files, "cd").len(), 1);
+    // The manifest says every history was written.
+    let manifest = text(&files, "wiki-bundle.yaml");
+    assert!(
+        manifest.contains("  histories_not_written: 0\n"),
+        "{manifest}"
+    );
+}
+
 // ------------------------------------------------------------------------------------------------ not yet and never (X-1)
 
 #[test]

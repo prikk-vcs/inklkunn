@@ -948,6 +948,65 @@ fn a_page_whose_id_cannot_name_a_file_has_its_history_in_a_file_named_by_its_pat
 }
 
 #[test]
+fn the_histories_of_two_ids_that_differ_only_in_case_are_two_files_that_stay_two_and_both_are_imported_again()
+ {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    // W-3: `Ab` and `aB` are two pages' ids; a bundle unpacked on a file system that does not tell them apart must keep two files, so
+    // both histories are named by their pages' paths, and an import of the bundle reads each by the path its name codes.
+    let w = world("foldedids", Sandbox::Unconfined);
+    let a = create(&w, "theta");
+    let folder = dir_in(&w.tmp, "folder-fold");
+    for (title, id) in [("First", "Ab"), ("Second", "aB"), ("Third", "cd")] {
+        put(
+            &folder.0,
+            &format!("pages/{title}.md"),
+            page_with_id(title, id).as_bytes(),
+        );
+    }
+    do_import(&w, &a, &folder.0, false);
+    let out = dir_in(&w.tmp, "out-fold");
+    let dest = out.0.join("bundle");
+    let done = export_bundle(&w, &w.storage, &w.layout, &a.record, &dest, "0.0.0", 1)
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(done.histories_not_written, 0);
+    let files = files_of(&dest);
+    let names: Vec<&String> = files.keys().filter(|k| k.starts_with("history/")).collect();
+    let folded: std::collections::BTreeSet<String> =
+        names.iter().map(|n| n.to_ascii_lowercase()).collect();
+    assert_eq!(folded.len(), names.len(), "no two names are one: {names:?}");
+    assert!(
+        files.contains_key("history/~%46irst.jsonl")
+            && files.contains_key("history/~%53econd.jsonl")
+            && files.contains_key("history/cd.jsonl"),
+        "{names:?}"
+    );
+    // Nothing else in the bundle is two files for a file system that ignores case either.
+    let all: std::collections::BTreeSet<String> =
+        files.keys().map(|n| n.to_ascii_lowercase()).collect();
+    assert_eq!(all.len(), files.len());
+    // The bundle is read again: each of the three pages has its history (the page the wiki makes with `create` too).
+    let plan = inklkunn_core::import::bundle::plan_bundle(
+        &dest,
+        &ReadConfig::default(),
+        &inklkunn_core::import::bundle::BundleOptions::default(),
+    )
+    .unwrap();
+    assert!(plan.is_importable(), "{}", plan.render());
+    for page in ["pages/First.md", "pages/Second.md", "pages/Third.md"] {
+        assert!(
+            plan.histories
+                .iter()
+                .any(|h| h.page.as_deref() == Some(page) && !h.revisions.is_empty()),
+            "no history of {page}:\n{}",
+            plan.render()
+        );
+    }
+}
+
+#[test]
 fn an_export_begins_by_sweeping_what_a_killed_one_left_and_touches_nothing_else() {
     if !prikk_on_path() {
         println!("skipping: prikk not on PATH");

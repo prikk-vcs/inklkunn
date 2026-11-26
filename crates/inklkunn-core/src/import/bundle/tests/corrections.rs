@@ -895,3 +895,54 @@ fn the_report_says_the_wiki_it_was_imported_from_and_never_a_source() {
         "a key says source: {all:?}"
     );
 }
+
+// ---------------------------------------------------------------------------------------------------------------- W-3
+
+/// A bundle of two pages whose ids are `Ab` and `aB`, each with a one-revision history in the file named `first` and `second`.
+fn two_ids_that_fold(tag: &str, first: &str, second: &str) -> Dir {
+    let d = dir(tag);
+    manifest(
+        &d.0,
+        &["license: CC-BY-SA-4.0", "checksums: sha256sums.txt"],
+    );
+    let text = |title: &str, id: &str| format!("---\nid: {id}\ntitle: {title}\n---\n\nbody\n");
+    for (title, id, file) in [("First", "Ab", first), ("Second", "aB", second)] {
+        put(
+            &d.0,
+            &format!("pages/{title}.md"),
+            text(title, id).as_bytes(),
+        );
+        put(
+            &d.0,
+            &format!("history/{file}.jsonl"),
+            (record("r1", None, "2025-01-01T00:00:00Z", Some(&text(title, id))) + "\n").as_bytes(),
+        );
+    }
+    seal(&d.0);
+    d
+}
+
+#[test]
+fn history_files_named_by_two_ids_that_fold_are_read_by_their_paths_and_two_that_fold_alike_are_both_read()
+ {
+    // The names the export gives them (W-3: both pages by their paths): two files, two pages, each history read by the path its name codes.
+    let p = plan(&two_ids_that_fold("w3-paths", "~%46irst", "~%53econd").0);
+    assert_importable(&p);
+    assert_eq!(p.report.revisions, 2, "{}", p.render());
+    assert!(
+        p.histories
+            .iter()
+            .all(|h| h.page.as_deref().is_some() && h.revisions.len() == 1),
+        "{}",
+        p.render()
+    );
+    // One page by its id and the other by its path is as good: the names do not fold.
+    assert_importable(&plan(&two_ids_that_fold("w3-mixed", "Ab", "~%53econd").0));
+    // A bundle that already holds two history files that are one name when case is ignored (it can, on a file system that tells them
+    // apart): the plan reads each history by its own id and the replay never uses a file's name, so both come in. (A bundle's own files
+    // are inventoried, not judged as repository paths; the export is what keeps them apart, as above.)
+    let p = plan(&two_ids_that_fold("w3-fold", "Ab", "aB").0);
+    assert_importable(&p);
+    assert_eq!(p.histories.len(), 2, "{}", p.render());
+    assert_eq!(p.report.revisions, 2, "{}", p.render());
+}

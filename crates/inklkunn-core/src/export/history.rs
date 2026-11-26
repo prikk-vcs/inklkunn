@@ -1155,37 +1155,68 @@ pub(super) fn histories(
     // A page whose id cannot name a file (a character a file name may not have, as `mw:101` has, or too long) or that another page
     // shares is **named by its path, as a page with no id is** (the I-T2 review's V-11): its history is kept, one file to one page
     // still, and an import reads the file's name as the path it codes.
-    let by_id_or_path = |id: &String, path: &str| {
-        let carried = carriers.get(id.as_str()).copied().unwrap_or(0);
-        if history_file_allowed(id, carried) {
-            Key::Id(id.clone())
-        } else {
-            Key::Path(path.to_owned())
+    // Which id each chain's page has, with the path it is named by when its id cannot name its file.
+    enum Pending {
+        Path(String),
+        Id(String, String),
+    }
+    let pending: Vec<(usize, Pending)> = by_chain
+        .iter()
+        .map(|(chain, records)| {
+            let last_path = records.last().map(|r| r.path.clone()).unwrap_or_default();
+            let named = match tracker.chains.get(*chain).and_then(|c| c.path.as_deref()) {
+                Some(path) => match tip_pages.get(path) {
+                    Some(Some(id)) => Pending::Id(id.clone(), path.to_owned()),
+                    _ => Pending::Path(path.to_owned()),
+                },
+                None => records
+                    .iter()
+                    .rev()
+                    .find_map(|r| match &r.text {
+                        Text::Given(text) => inklkunn_markup::parse_metadata(text)
+                            .ok()
+                            .and_then(|m| m.id),
+                        _ => None,
+                    })
+                    .map_or_else(
+                        || Pending::Path(last_path.clone()),
+                        |id| Pending::Id(id, last_path.clone()),
+                    ),
+            };
+            (*chain, named)
+        })
+        .collect();
+    // **Ids that are one name when case is ignored** (`Ab` and `aB`, two pages' ids): the files of a bundle that is unpacked on a file
+    // system that does not tell them apart would be one, so **both pages are named by their paths** (W-3), whose names never fold
+    // together (`path_file_name`). One id, written alike, is still one file (a page that comes back).
+    let mut folds: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (_, named) in &pending {
+        if let Pending::Id(id, _) = named
+            && history_file_allowed(id, carriers.get(id.as_str()).copied().unwrap_or(0))
+        {
+            folds
+                .entry(id.to_ascii_lowercase())
+                .or_default()
+                .insert(id.clone());
         }
-    };
+    }
     let mut by_key: BTreeMap<Key, Vec<usize>> = BTreeMap::new();
-    for (chain, records) in &by_chain {
-        let last_path = records.last().map(|r| r.path.clone()).unwrap_or_default();
-        let key = match tracker.chains.get(*chain).and_then(|c| c.path.as_deref()) {
-            Some(path) => match tip_pages.get(path) {
-                Some(Some(id)) => by_id_or_path(id, path),
-                _ => Key::Path(path.to_owned()),
-            },
-            None => records
-                .iter()
-                .rev()
-                .find_map(|r| match &r.text {
-                    Text::Given(text) => inklkunn_markup::parse_metadata(text)
-                        .ok()
-                        .and_then(|m| m.id),
-                    _ => None,
-                })
-                .map_or_else(
-                    || Key::Path(last_path.clone()),
-                    |id| by_id_or_path(&id, &last_path),
-                ),
+    for (chain, named) in pending {
+        let key = match named {
+            Pending::Path(path) => Key::Path(path),
+            Pending::Id(id, path) => {
+                let carried = carriers.get(id.as_str()).copied().unwrap_or(0);
+                let alone = folds
+                    .get(&id.to_ascii_lowercase())
+                    .is_none_or(|ids| ids.len() <= 1);
+                if history_file_allowed(&id, carried) && alone {
+                    Key::Id(id)
+                } else {
+                    Key::Path(path)
+                }
+            }
         };
-        by_key.entry(key).or_default().push(*chain);
+        by_key.entry(key).or_default().push(chain);
     }
     let mut out = Histories {
         files: BTreeMap::new(),

@@ -786,7 +786,9 @@ fn placement_error(errno: rustix::io::Errno) -> ExportError {
 /// and only when no more than one page of the tip has it (a shared id cannot say whose history a file holds; an id no page of
 /// the tip carries belongs to a page since removed or renamed, which has its history as the pages of the tip have theirs). A page
 /// whose id is refused is **named by its path** instead, as a page with no id is (`history/~….jsonl`), so its history is kept and an
-/// import reads the file's name as the page's path (V-11: a MediaWiki page's id is `mw:101`).
+/// import reads the file's name as the page's path (V-11: a MediaWiki page's id is `mw:101`). **Two ids that are one name when case is
+/// ignored** (`Ab`, `aB`) are not this function's to judge: the caller sees them all, and names both pages by their paths (W-3), so no two
+/// files of a bundle are one on a file system that ignores case.
 fn history_file_allowed(id: &str, carried: usize) -> bool {
     let safe = !id.is_empty()
         && id.len() <= 128
