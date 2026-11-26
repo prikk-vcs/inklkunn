@@ -887,3 +887,55 @@ fn the_joined_image_tag_is_attested_in_the_tag_run_and_in_rehearsal() {
     let good = "jobs:\n  manifest:\n    steps:\n      - name: attest\n        if: inputs.mode == 'rehearsal'\n        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2\n        with:\n          subject-name: ghcr.io/prikk-vcs/inklkunn-rehearsal\n";
     assert!(rehearsal_violations(good).is_empty());
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// Maintenance B-1: a workflow that GitHub cannot read starts nothing. M63's step name had `: ` in an unquoted value.
+// ---------------------------------------------------------------------------------------------------------
+
+#[test]
+fn every_workflow_value_is_one_yaml_can_read() {
+    for (name, yaml) in workflows() {
+        assert_eq!(
+            unreadable_plain_values(&yaml),
+            Vec::<(usize, String)>::new(),
+            "{name}: an unquoted value that YAML cannot read (GitHub would not load the workflow)"
+        );
+    }
+}
+
+#[test]
+fn the_unreadable_plain_value_rule_refuses_the_class_and_spares_what_yaml_reads() {
+    // The exact line that made release.yml unloadable is refused; its quoted form and a reworded form pass.
+    let bad = "jobs:\n  gates:\n    steps:\n      - name: Every crate packages and verifies (a dry run: nothing is uploaded; a crate that cannot be published fails here, before any tag)\n        run: cargo publish --workspace --dry-run --locked\n";
+    assert_eq!(unreadable_plain_values(bad).len(), 1);
+    assert_eq!(unreadable_plain_values(bad).first().map(|v| v.0), Some(4));
+    let quoted = "jobs:\n  gates:\n    steps:\n      - name: \"Every crate packages and verifies (a dry run: nothing is uploaded)\"\n        run: x\n";
+    assert!(unreadable_plain_values(quoted).is_empty());
+    let single = "      - name: 'a dry run: nothing'\n";
+    assert!(unreadable_plain_values(single).is_empty());
+    let reworded =
+        "      - name: Every crate packages and verifies (a dry run that uploads nothing)\n";
+    assert!(unreadable_plain_values(reworded).is_empty());
+    // A block scalar is not judged: a colon and a space in a script are a script's.
+    let block = "    steps:\n      - name: Gates\n        run: |\n          echo \"a: b\"\n          echo c: d\n      - name: next\n        run: echo ok\n";
+    assert!(
+        unreadable_plain_values(block).is_empty(),
+        "{:?}",
+        unreadable_plain_values(block)
+    );
+    // ...and a plain value after it is judged again.
+    let after_block = "    steps:\n      - run: |\n          echo a: b\n        name: bad: value\n";
+    assert_eq!(unreadable_plain_values(after_block).len(), 1);
+    // A folded scalar, comments, expressions, flow collections and a trailing comment.
+    let fine = "# a: comment\non:\n  workflow_dispatch:\n    inputs:\n      mode:\n        description: >\n          one: two\n        options: [rehearsal]\nenv:\n  X: ${{ github.event_name == 'push' && a || b }}\n  Y: plain # a: comment\n";
+    assert!(
+        unreadable_plain_values(fine).is_empty(),
+        "{:?}",
+        unreadable_plain_values(fine)
+    );
+    // A value that ends in a colon, or begins with an indicator, is refused.
+    assert_eq!(unreadable_plain_values("  name: ends with:\n").len(), 1);
+    assert_eq!(unreadable_plain_values("  name: *alias\n").len(), 1);
+    assert_eq!(unreadable_plain_values("  name: @home\n").len(), 1);
+    assert_eq!(unreadable_plain_values("  name: %percent\n").len(), 1);
+}

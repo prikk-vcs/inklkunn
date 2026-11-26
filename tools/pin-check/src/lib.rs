@@ -903,3 +903,76 @@ pub fn jobs_without_timeout(yaml: &str) -> Vec<(usize, String)> {
         .map(|j| (j.line, j.name))
         .collect()
 }
+
+/// **A plain value that YAML cannot read** (maintenance B-1; M63's step name, `name: Every crate packages … (a dry run: nothing
+/// …)`, made `release.yml` unloadable on `main`: GitHub saw no workflow, so no rehearsal or release could start). In a
+/// workflow file, a single-line `key: value` or `- key: value` whose value is **not quoted** must not contain `: ` (a colon
+/// and a space), must not end in `:`, and must not begin with a character a plain scalar cannot begin with (`&`, `*`, `!`, `%`,
+/// `@`, a backtick, `|`/`>` aside as block-scalar headers, and a flow `[`/`{` aside as a flow collection, which is judged by
+/// YAML itself). A `${{ … }}` expression and a trailing ` #` comment are taken out first; **a block scalar's lines (`run: |`,
+/// `>`) are not judged**, and neither is a comment line. The line (1-based) and the text of each offender are returned.
+pub fn unreadable_plain_values(yaml: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    // The indent of the key line whose block scalar is being skipped.
+    let mut block_of: Option<usize> = None;
+    for (i, raw) in yaml.lines().enumerate() {
+        let trimmed = raw.trim_start();
+        let indent = raw.len() - trimmed.len();
+        if let Some(key_indent) = block_of {
+            if trimmed.is_empty() || indent > key_indent {
+                continue;
+            }
+            block_of = None;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        // `- ` list markers (possibly several) are not part of the key.
+        let mut rest = trimmed;
+        let mut key_indent = indent;
+        while let Some(after) = rest.strip_prefix("- ") {
+            key_indent += 2;
+            rest = after.trim_start();
+        }
+        // The first `: ` (or a final `:`) splits the key from the value. A key that is quoted or has no colon is not a pair.
+        let split = rest.find(": ").map(|at| (at, at + 2)).or_else(|| {
+            rest.strip_suffix(':')
+                .filter(|k| !k.is_empty())
+                .map(|k| (k.len(), rest.len()))
+        });
+        let Some((key_end, value_start)) = split else {
+            continue;
+        };
+        let key = rest.get(..key_end).unwrap_or("");
+        if key.starts_with(['"', '\'']) || key.is_empty() {
+            continue;
+        }
+        let mut value = rest.get(value_start..).unwrap_or("").trim().to_owned();
+        // A `${{ … }}` expression is read by GitHub, not by YAML's plain-scalar rules for its inside.
+        while let Some(open) = value.find("${{") {
+            let Some(close) = value.get(open..).and_then(|v| v.find("}}")) else {
+                break;
+            };
+            value.replace_range(open..open + close + 2, "X");
+        }
+        if let Some(at) = value.find(" #") {
+            value.truncate(at);
+        }
+        let value = value.trim();
+        if value.is_empty() {
+            continue; // a mapping or a list follows
+        }
+        if value.starts_with(['|', '>']) {
+            block_of = Some(key_indent);
+            continue;
+        }
+        if value.starts_with(['"', '\'', '[', '{']) {
+            continue; // quoted, or a flow collection: YAML reads it by its own rules
+        }
+        let special_start = value.starts_with(['&', '*', '!', '%', '@', '`']);
+        if value.contains(": ") || value.ends_with(':') || special_start {
+            out.push((i + 1, trimmed.to_owned()));
+        }
+    }
+    out
+}

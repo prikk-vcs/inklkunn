@@ -146,7 +146,7 @@ jobs:
           cargo deny check
           cargo audit
           RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
-      - name: Every crate packages and verifies (a dry run: nothing is uploaded; a crate that cannot be published fails here, before any tag)
+      - name: Every crate packages and verifies (a dry run that uploads nothing, so a crate that cannot be published fails here, before any tag)
         run: cargo publish --workspace --dry-run --locked
       - name: Tests with prikk shimmed off PATH (every self-skip visible, and counted)
         run: |
