@@ -74,6 +74,10 @@ pub const DEFAULT_MAX_REVISIONS: u64 = 1_000;
 /// most. **Provisional** as the revision cap is.
 pub const DEFAULT_MAX_HISTORY_BYTES: u64 = 256 << 20;
 
+/// How many times the cap on the bytes of `history/` the patches of a bundle may handle in all (each patch spends the text it is
+/// applied to and its own size): a bound on the plan's work that does not depend on the revision cap.
+const PATCHED_BYTES_FACTOR: u64 = 4;
+
 /// What `--bundle-license`, `--leave-out-incompatible` and `--no-history` say, and the operator's two caps.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BundleOptions {
@@ -126,6 +130,8 @@ pub struct PageHistory {
     /// The digest of the text after the last revision that gave one, when the plan has it: what the page's own file is compared
     /// with.
     pub last_text: Option<Digest>,
+    /// The `rev` the history begins at when its first record names a `parent` the file does not hold (a partial dump).
+    pub begins_at: Option<String>,
 }
 
 /// What an import of a bundle would do, or why it cannot.
@@ -149,7 +155,11 @@ pub struct BundlePlan {
     /// The SHA-256 of each page's file of the bundle, by path: what the replay's last change is compared with, and what it reads the
     /// file again against.
     pub page_digests: BTreeMap<String, Digest>,
-    /// The SHA-256 of the manifest's bytes: the bundle's identity in the `Imported-From` of every change of the import.
+    /// The SHA-256 of **every other file the replay reads** (attachments, sidecars, knowledge files), by path, as the plan took it: the
+    /// replay checks each file it reads against its digest, as it checks a page (V-2). A planned file has one.
+    pub file_digests: BTreeMap<String, Digest>,
+    /// The bundle's identity in the `Imported-From` of every change of the import: the digest of the checksums file when the bundle was
+    /// verified against it, and otherwise a digest over the sorted list of the files the import read and their digests (V-6).
     pub bundle_digest: Digest,
     /// The people `users.yaml` names, by the source's id: the name to show and the kind (`unspecified` when it says none). What a
     /// record that names an author by id alone is read with.
@@ -211,6 +221,14 @@ pub(super) struct PageFacts {
     sha256: Digest,
     /// `[[prefix:target]]` links by prefix.
     prefixes: BTreeMap<String, usize>,
+}
+
+/// A history's own licences: the page it is of, when the bundle has the page, and the licences its records and texts declare, each
+/// with the first `rev` that declares it.
+#[derive(Debug, Clone)]
+struct HistoryLicences {
+    page: Option<String>,
+    licences: Vec<(String, String)>,
 }
 
 /// What the walk gathers in a bundle plan, beside the plan's own files.
@@ -357,7 +375,7 @@ impl Gathered {
         );
     }
 
-    /// An attachment: a sidecar is read (the licence is in it), and anything else is hashed when checksums are to be verified.
+    /// An attachment: a sidecar is read (the licence is in it), and anything else is hashed.
     pub(super) fn attachment(&mut self, rel: &str, file: File, cap: u64) -> Result<(), String> {
         if rel.ends_with(".meta.yaml") {
             let bytes = read_all(file, MAX_SIDECAR_BYTES)?;
@@ -369,7 +387,9 @@ impl Gathered {
                 },
             );
             self.sidecars.insert(rel.to_owned(), bytes);
-        } else if self.verify {
+        } else {
+            // Hashed whether or not checksums are to be verified: the replay reads the file again and goes on only if it is the
+            // file the plan read (V-2), and the bundle's identity is made of the digests of what the import reads (V-6).
             let digest = hash_all(file, cap)?;
             self.files.insert(
                 rel.to_owned(),
@@ -377,8 +397,6 @@ impl Gathered {
                     digest: Some(digest),
                 },
             );
-        } else {
-            self.files.insert(rel.to_owned(), Seen { digest: None });
         }
         Ok(())
     }
@@ -657,6 +675,7 @@ pub fn plan_bundle(
                 first_pages: Vec::new(),
                 final_pages: Vec::new(),
                 page_digests: BTreeMap::new(),
+                file_digests: BTreeMap::new(),
                 users: BTreeMap::new(),
                 bundle_digest: [0; 32],
                 source_name: None,
@@ -793,8 +812,9 @@ fn judge(
                 refusals.push(refusal(
                     whose,
                     format!(
-                        "gives the licence `{}`, which no wiki can have as its default (nothing could be imported into it: NonCommercial, NoDerivatives, GFDL and unknown licences go into none; CC0, CC BY and CC BY-SA are the licences of a wiki)",
-                        shown(id)
+                        "gives the licence `{}`{}, which no wiki can have as its default (nothing could be imported into it: NonCommercial, NoDerivatives, GFDL and unknown licences go into none; CC0, CC BY and CC BY-SA are the licences of a wiki)",
+                        shown(id),
+                        licence::hint(id)
                     ),
                 ));
                 None
@@ -870,7 +890,10 @@ fn judge(
 
     // --- histories (D-2, D-3, D-5)
     let mut histories: Vec<PageHistory> = Vec::new();
-    let mut history_licences: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new(); // page path → (licence, rev)
+    // Each history's own licences, **keyed by the history file** (a history of a page that is no longer among the bundle's files has no
+    // path to be looked up by, and its revisions are served from the history all the same): the page, when the bundle has it, and
+    // the licences with the first `rev` that declares each.
+    let mut history_licences: BTreeMap<String, HistoryLicences> = BTreeMap::new();
     let mut history_of_page: BTreeMap<String, String> = BTreeMap::new(); // page path → file
     let mut unknown_fields: BTreeSet<String> = BTreeSet::new();
     let mut unplaced: Vec<String> = Vec::new();
@@ -888,19 +911,39 @@ fn judge(
             ),
         ));
     }
+    // First every file is read as lines of records, and the revisions are counted from what the records say: **the cap is applied
+    // before a patch is applied, a text hashed or a frontmatter parsed**, so that a crafted history costs no more to refuse than to
+    // read (V-3).
+    let mut read_files: Vec<(&String, Vec<history::Record>)> = Vec::new();
+    let mut counted: u64 = 0;
     for (rel, bytes) in history_files {
+        match history::read(bytes) {
+            Ok(records) => {
+                report.records += records.len();
+                counted = counted.saturating_add(
+                    records.iter().filter(|r| history::makes_a_block(r)).count() as u64,
+                );
+                read_files.push((rel, records));
+            }
+            Err(fault) => {
+                refusals.push(refusal(rel, format!("{}: {}", fault.place(), fault.rule)));
+            }
+        }
+    }
+    if !options.no_history && counted > options.max_revisions {
+        refusals.push(refusal("history/", over_the_revision_cap(counted, options)));
+        // Nothing is judged: the count is the answer.
+        read_files.clear();
+    }
+    // What the patches of the whole bundle may handle in all.
+    let mut patched: u64 = options
+        .max_history_bytes
+        .saturating_mul(PATCHED_BYTES_FACTOR);
+    for (rel, records) in read_files {
         let stem = rel
             .strip_prefix("history/")
             .and_then(|n| n.strip_suffix(".jsonl"))
             .unwrap_or_default();
-        let records = match history::read(bytes) {
-            Ok(r) => r,
-            Err(fault) => {
-                refusals.push(refusal(rel, format!("{}: {}", fault.place(), fault.rule)));
-                continue;
-            }
-        };
-        report.records += records.len();
         // The page the file is of: by its id, or by the path its name codes.
         let page: Option<String> = match path_of_stem(stem) {
             Some(path) => gathered.pages.contains_key(&path).then_some(path),
@@ -919,7 +962,7 @@ fn judge(
             ));
             continue;
         }
-        let mut judged = match history::judge(&records, config.page_max_bytes) {
+        let mut judged = match history::judge(&records, config.page_max_bytes, &mut patched) {
             Ok(j) => j,
             Err((rev, rule)) => {
                 let at = rev.map_or(String::new(), |r| format!("rev `{}` ", shown(&r)));
@@ -975,11 +1018,14 @@ fn judge(
         unknown_fields.extend(judged.unknown_members.iter().map(|n| shown_up_to(n, 60)));
         if let Some(p) = &page {
             history_of_page.insert(p.clone(), rel.clone());
-            history_licences.insert(p.clone(), judged.licences.clone());
-        } else {
-            // A page that is not among the bundle's files (removed since): its revisions' licences count under the file's name.
-            history_licences.insert(rel.clone(), judged.licences.clone());
         }
+        history_licences.insert(
+            rel.clone(),
+            HistoryLicences {
+                page: page.clone(),
+                licences: judged.licences.clone(),
+            },
+        );
         let Some(source) = gathered.history_sources.get(rel).cloned() else {
             refusals.push(refusal(
                 rel,
@@ -993,6 +1039,7 @@ fn judge(
             page,
             revisions: judged.revisions,
             last_text: judged.last_text,
+            begins_at: judged.begins_at,
         });
     }
     if !unplaced.is_empty() {
@@ -1015,6 +1062,14 @@ fn judge(
         manifest,
         options,
         unknown_fields,
+    )
+}
+
+/// The refusal of a history that would make more blocks than the cap allows.
+fn over_the_revision_cap(blocks: u64, options: &BundleOptions) -> String {
+    format!(
+        "would make {blocks} blocks, and the cap is {} (INKLKUNN_IMPORT_MAX_REVISIONS); `--no-history` imports the pages as they are, in one change",
+        options.max_revisions
     )
 }
 
@@ -1100,6 +1155,168 @@ fn judge_checksums(
     }
 }
 
+/// Where a page is, and from when to when, as one history says it: the path, the revision that brought the page there and the one
+/// that took it away (`None` while it is there at the end of the history).
+struct Hold {
+    path: String,
+    from: time::Instant,
+    until: Option<time::Instant>,
+}
+
+/// The places one history holds its page at, in the order of the file: a text at another place than the page was, or a rename, moves
+/// the page, and a removal ends the hold. Revisions that are not replayed say nothing of where the page is.
+fn holds_of(history: &PageHistory) -> Vec<Hold> {
+    let mut holds: Vec<Hold> = Vec::new();
+    let mut current: Option<Hold> = None;
+    for r in &history.revisions {
+        let Some(path) = r.path.as_deref() else {
+            continue;
+        };
+        match &r.step {
+            Step::NotReplayed(_) => {}
+            Step::Text { .. } | Step::Rename { .. } => {
+                if current.as_ref().is_none_or(|c| c.path != path) {
+                    if let Some(mut ended) = current.take() {
+                        ended.until = Some(r.at);
+                        holds.push(ended);
+                    }
+                    current = Some(Hold {
+                        path: path.to_owned(),
+                        from: r.at,
+                        until: None,
+                    });
+                }
+            }
+            Step::Delete => {
+                if let Some(mut ended) = current.take() {
+                    ended.until = Some(r.at);
+                    holds.push(ended);
+                }
+            }
+        }
+    }
+    holds.extend(current);
+    holds
+}
+
+/// **The paths the replay would write, judged together** (the plan's, before anything is made):
+///
+/// * *case* (V-4): two paths of the pages' files and of every revision, a rename's `from` included, that differ and are one for a file
+///   system that ignores case (`collision_key`), which prikk would otherwise refuse partway through the replay;
+/// * *overlap* (V-7): two histories that hold one path at times that overlap (or touch: the order of two acts of one second is
+///   not the file's to say), which the replay would write one over the other. Each refusal names both files.
+fn refuse_conflicting_paths(
+    plan: &ImportPlan,
+    histories: &[PageHistory],
+    refusals: &mut Vec<Refusal>,
+) {
+    use inklkunn_markup::path::collision_key;
+    // case: path → who named it first
+    let mut by_key: BTreeMap<String, (String, String)> = BTreeMap::new();
+    let mut said: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut note = |path: &str, whose: &str, refusals: &mut Vec<Refusal>| {
+        let key = collision_key(path);
+        match by_key.get(&key) {
+            Some((first, first_whose)) if first != path => {
+                if said.insert((first.clone(), path.to_owned())) {
+                    refusals.push(refusal(
+                        whose,
+                        format!(
+                            "has the path `{}`, and {} has `{}`: a file system that ignores case cannot tell them apart",
+                            shown(path),
+                            first_whose,
+                            shown(first)
+                        ),
+                    ));
+                }
+            }
+            Some(_) => {}
+            None => {
+                by_key.insert(key, (path.to_owned(), whose.to_owned()));
+            }
+        }
+    };
+    for f in plan.files.iter().filter(|f| f.path.starts_with("pages/")) {
+        note(&f.path, "a page of the bundle", refusals);
+    }
+    for h in histories {
+        let whose = format!("`{}`", shown(&h.file));
+        for r in &h.revisions {
+            if matches!(r.step, Step::NotReplayed(_)) {
+                continue;
+            }
+            if let Some(path) = &r.path {
+                note(path, &whose, refusals);
+            }
+            if let Step::Rename { from, .. } = &r.step
+                && let Ok(path) = title_to_path(from)
+            {
+                note(&path, &whose, refusals);
+            }
+        }
+    }
+    // overlap
+    let mut by_path: BTreeMap<String, Vec<(&str, Hold)>> = BTreeMap::new();
+    for h in histories {
+        for hold in holds_of(h) {
+            by_path
+                .entry(hold.path.clone())
+                .or_default()
+                .push((h.file.as_str(), hold));
+        }
+    }
+    let mut said: BTreeSet<(&str, &str)> = BTreeSet::new();
+    for (path, mut holds) in by_path {
+        holds.sort_by(|a, b| a.1.from.cmp(&b.1.from).then_with(|| a.0.cmp(b.0)));
+        for (i, (first, a)) in holds.iter().enumerate() {
+            for (second, b) in holds.iter().skip(i + 1) {
+                // `b` begins no earlier than `a` does: they overlap unless `a` is over before `b` begins.
+                let over = a.until.is_some_and(|until| until < b.from);
+                if first != second && !over && said.insert((first, second)) {
+                    refusals.push(refusal(
+                        second,
+                        format!(
+                            "holds the page path `{}` at times that overlap those of `{}`: the replay would write one over the other",
+                            shown(&path),
+                            shown(first)
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// The bundle's identity (V-6), recorded in every change of the import as `Imported-From`: **the digest of the file of checksums** when
+/// the bundle's files were verified against it (it names every file the import reads, by digest, so it names the bundle), and
+/// otherwise a digest over the sorted list of `path`, digest of **every file the import read**. The manifest's alone said the same for
+/// two bundles with one manifest.
+fn bundle_identity(gathered: &Gathered, manifest: &Manifest, report: &BundleReport) -> Digest {
+    if matches!(report.checksums, Checksums::Verified { .. })
+        && let Some(sums) = manifest
+            .checksums
+            .as_deref()
+            .and_then(|named| gathered.read.get(named))
+    {
+        return sha256(sums);
+    }
+    let mut listing = String::from("inklkunn bundle identity v1\n");
+    for (path, seen) in &gathered.files {
+        if let Some(digest) = seen.digest
+            && gathered.reads(path)
+        {
+            listing.push_str(&format!(
+                "{path}\0{}\n",
+                digest
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>()
+            ));
+        }
+    }
+    sha256(listing.as_bytes())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn finish(
     mut plan: ImportPlan,
@@ -1107,7 +1324,7 @@ fn finish(
     mut report: BundleReport,
     mut refusals: Vec<Refusal>,
     mut histories: Vec<PageHistory>,
-    history_licences: &BTreeMap<String, Vec<(String, String)>>,
+    history_licences: &BTreeMap<String, HistoryLicences>,
     mut people: BTreeMap<String, (String, String)>,
     wiki_license: Option<&str>,
     manifest: &Manifest,
@@ -1129,26 +1346,42 @@ fn finish(
                         path: shown(&f.path),
                         license: shown(own),
                         rev: None,
-                    });
-                    left_out_paths.insert(f.path.clone());
-                    continue;
-                }
-                if !options.no_history
-                    && let Some((own, rev)) = history_licences
-                        .get(&f.path)
-                        .into_iter()
-                        .flatten()
-                        .find(|(l, _)| !licence::goes_into(l, wiki))
-                {
-                    incompatible.push(Incompatible {
-                        kind: FileKind::Page,
-                        path: shown(&f.path),
-                        license: shown(own),
-                        rev: Some(shown(rev)),
+                        meant: licence::did_you_mean(own),
                     });
                     left_out_paths.insert(f.path.clone());
                 }
             }
+        }
+        // **Every history's own licences, keyed by the history** (V-1): the history of a page the bundle's files do not have (removed
+        // since) is replayed into blocks and served under the wiki's licence like any other, so it is judged like any other.
+        for (file, own) in history_licences {
+            if options.no_history
+                || own
+                    .page
+                    .as_ref()
+                    .is_some_and(|p| left_out_paths.contains(p))
+            {
+                continue;
+            }
+            let Some((licence, rev)) = own
+                .licences
+                .iter()
+                .find(|(l, _)| !licence::goes_into(l, wiki))
+            else {
+                continue;
+            };
+            incompatible.push(Incompatible {
+                kind: if own.page.is_some() {
+                    FileKind::Page
+                } else {
+                    FileKind::History
+                },
+                path: shown(own.page.as_deref().unwrap_or(file)),
+                license: shown(licence),
+                rev: Some(shown(rev)),
+                meant: licence::did_you_mean(licence),
+            });
+            left_out_paths.insert(own.page.clone().unwrap_or_else(|| file.clone()));
         }
         // An attachment's own licence is in its sidecar.
         let planned: BTreeSet<&str> = plan.files.iter().map(|f| f.path.as_str()).collect();
@@ -1179,6 +1412,7 @@ fn finish(
                             path: shown(base),
                             license: shown(own),
                             rev: None,
+                            meant: licence::did_you_mean(own),
                         });
                         left_out_paths.insert(base.to_owned());
                         left_out_paths.insert(sidecar.clone());
@@ -1195,11 +1429,14 @@ fn finish(
             refusals.push(refusal(
                 &i.path,
                 format!(
-                    "has the licence `{}`{}, which cannot go into a wiki whose licence is `{}`; `--leave-out-incompatible` leaves such files out, and nothing imports them",
+                    "has the licence `{}`{}{}, which cannot go into a wiki whose licence is `{}`; `--leave-out-incompatible` leaves such files out, and nothing imports them",
                     i.license,
                     i.rev
                         .as_ref()
                         .map_or(String::new(), |r| format!(" at revision `{r}`")),
+                    i.meant.as_ref().map_or(String::new(), |id| format!(
+                        " (not an SPDX id; did you mean {id}?)"
+                    )),
                     shown(wiki)
                 ),
             ));
@@ -1208,13 +1445,20 @@ fn finish(
     report.incompatible = incompatible;
     if options.leave_out_incompatible && !left_out_paths.is_empty() {
         plan.files.retain(|f| !left_out_paths.contains(&f.path));
-        histories.retain(|h| !h.page.as_ref().is_some_and(|p| left_out_paths.contains(p)));
+        histories.retain(|h| {
+            !h.page.as_ref().is_some_and(|p| left_out_paths.contains(p))
+                && !left_out_paths.contains(&h.file)
+        });
         report.left_out.push(LeftOut {
             what: "files with an incompatible licence".to_owned(),
             files: left_out_paths.len(),
             why: "--leave-out-incompatible: left out with their history, named above".to_owned(),
         });
     }
+
+    // --- the paths the replay would write: no two the same on a file system that ignores case (V-4), none held by two histories at
+    // once (V-7)
+    refuse_conflicting_paths(&plan, &histories, &mut refusals);
 
     // --- the licences the attachments that come in declare, each in its sidecar
     for (sidecar, bytes) in &gathered.sidecars {
@@ -1303,6 +1547,7 @@ fn finish(
             page: shown(h.page.as_deref().unwrap_or(&h.file)),
             records: kept,
             revisions: replayed,
+            begins_at: h.begins_at.as_deref().map(shown),
         });
     }
     let users = people.clone();
@@ -1310,15 +1555,6 @@ fn finish(
         people.entry(k).or_insert(v);
     }
     report.unknown_record_fields = unknown_fields.into_iter().collect();
-    if !options.no_history && report.revisions as u64 > options.max_revisions {
-        refusals.push(refusal(
-            "history/",
-            format!(
-                "would make {} blocks, and the cap is {} (INKLKUNN_IMPORT_MAX_REVISIONS); `--no-history` imports the pages as they are, in one change",
-                report.revisions, options.max_revisions
-            ),
-        ));
-    }
     report.estimate_seconds = (!options.no_history && report.revisions > 0)
         .then(|| BundleReport::estimate_for(report.revisions as u64));
     report.fidelity_found = if report.revisions > 0 {
@@ -1541,6 +1777,8 @@ fn finish(
         key(a).cmp(&key(b))
     });
 
+    let plan_files: Vec<String> = plan.files.iter().map(|f| f.path.clone()).collect();
+    let bundle_digest = bundle_identity(gathered, manifest, &report);
     // The plan's refusals are the walk's and the judgement's together, by name.
     plan.refused.extend(refusals);
     plan.refused
@@ -1557,10 +1795,18 @@ fn finish(
             .iter()
             .filter_map(|p| gathered.pages.get(p).map(|f| (p.clone(), f.sha256)))
             .collect(),
-        bundle_digest: gathered
-            .read
-            .get(crate::bundle::MANIFEST)
-            .map_or([0; 32], |bytes| sha256(bytes)),
+        file_digests: plan_files
+            .iter()
+            .filter(|p| !p.starts_with("pages/"))
+            .filter_map(|p| {
+                gathered
+                    .files
+                    .get(p)
+                    .and_then(|seen| seen.digest)
+                    .map(|d| (p.clone(), d))
+            })
+            .collect(),
+        bundle_digest,
         source_name: manifest.source_name.clone(),
         source_address: manifest.source_url.clone(),
     }

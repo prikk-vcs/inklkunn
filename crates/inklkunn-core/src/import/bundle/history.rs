@@ -15,6 +15,23 @@ use super::safe::looks_like_an_address;
 use super::time::{Instant, parse};
 use crate::import::{Digest, inspect_page};
 
+/// The last second a change's message can write (`Imported-At`: four digits of year, 9999-12-31T23:59:59Z).
+const MAX_AT_SECS: i64 = 253_402_300_799;
+
+/// Does the replay make a block of this record, going by what the record says and **without applying a patch**? The count the plan
+/// checks against the revision cap before it judges any text (V-3). It is the same answer [`Walker::step`] gives for the step it
+/// makes (a text-bearing record with a `content` or a `patch`, a rename, a removal) and is never lower than the number of blocks.
+pub fn makes_a_block(r: &Record) -> bool {
+    if r.suppressed.contains(&Part::Content) || r.withheld.is_some() {
+        return false;
+    }
+    match r.kind.as_str() {
+        "rename" | "delete" => true,
+        "create" | "edit" | "restore" | "revert" => r.content.is_some() || r.patch.is_some(),
+        _ => false,
+    }
+}
+
 /// A part of a record that the source may have hidden (`suppressed`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Part {
@@ -412,6 +429,8 @@ pub struct Judged {
     pub unknown_members: BTreeSet<String>,
     /// Whether any record names an e-mail address as an author.
     pub address_in_author: Option<String>,
+    /// The `rev` the history begins at, when its first record names a `parent` that the file does not hold (a partial dump).
+    pub begins_at: Option<String>,
 }
 
 /// What a page's text is, as the replay's next record sees it.
@@ -447,6 +466,14 @@ impl Walker {
     pub(super) fn new() -> Self {
         Walker {
             text: Text::Nothing,
+        }
+    }
+
+    /// The size of the text the next record's patch would be applied to (0 when the walk has none).
+    pub(super) fn known_len(&self) -> u64 {
+        match &self.text {
+            Text::Known(t) => t.len() as u64,
+            _ => 0,
         }
     }
 
@@ -544,7 +571,15 @@ impl Walker {
 
 /// Judge one page's records as a history: the order, each text, each digest. `Err` is a refusal as `(rev, rule)`: the page is named
 /// by the caller, the rule never repeats a value.
-pub fn judge(records: &[Record], page_cap: u64) -> Result<Judged, (Option<String>, String)> {
+///
+/// `patched` is what the plan allows the patches of the whole bundle to handle in all: each patch spends the text it is applied to and
+/// its own size **before it is applied**, and the record that would spend more than is left is refused (the plan's cost is bounded
+/// before it is paid, V-3).
+pub fn judge(
+    records: &[Record],
+    page_cap: u64,
+    patched: &mut u64,
+) -> Result<Judged, (Option<String>, String)> {
     let mut judged = Judged::default();
     let mut walker = Walker::new();
     let mut before: Option<&Record> = None;
@@ -556,14 +591,24 @@ pub fn judge(records: &[Record], page_cap: u64) -> Result<Judged, (Option<String
         if at.secs < -62_135_596_800 {
             return Err(refuse("has an `at` before the year 1"));
         }
+        if at.secs > MAX_AT_SECS {
+            return Err(refuse("has an `at` after the year 9999"));
+        }
         if !seen.insert(r.rev.as_str()) {
             return Err(refuse("is used by an earlier record of the page"));
         }
         match before {
-            None if r.parent.is_some() => {
-                return Err(refuse(
-                    "is the first record of the page and names a `parent`",
-                ));
+            // A history may begin mid-way (a partial dump): its first record names a parent that the file does not hold. A parent
+            // that **is** in the file, further on, is an order that is broken.
+            None => {
+                if let Some(parent) = &r.parent {
+                    if records.iter().any(|other| other.rev == *parent) {
+                        return Err(refuse(
+                            "is the first record of the page and names a `parent` that comes after it in the file",
+                        ));
+                    }
+                    judged.begins_at = Some(r.rev.clone());
+                }
             }
             Some(b) if r.parent.as_deref() != Some(b.rev.as_str()) => {
                 return Err(refuse(
@@ -598,6 +643,20 @@ pub fn judge(records: &[Record], page_cap: u64) -> Result<Judged, (Option<String
             .copied()
             .filter(|p| *p != Part::Content)
             .collect();
+        if let (None, Some(patch)) = (&r.content, &r.patch)
+            && !hides_content
+            && !withheld
+        {
+            let spend = walker.known_len().saturating_add(patch.len() as u64);
+            match patched.checked_sub(spend) {
+                Some(left) => *patched = left,
+                None => {
+                    return Err(refuse(
+                        "has a `patch` that would take the patches of the bundle past what the plan applies in all (four times the cap on the bytes of the history)",
+                    ));
+                }
+            }
+        }
         let stepped = walker.step(r, page_cap).map_err(|rule| refuse(&rule))?;
         if let Some(licence) = stepped.licence {
             note_licence(&mut judged, licence, &r.rev);

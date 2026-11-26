@@ -1039,8 +1039,8 @@ impl Walk<'_> {
                 }
             }
         } else if let Some(gathered) = self.bundle.as_mut() {
-            // A bundle's attachment: its sidecar is read (the licence is there), and the rest is hashed when checksums are to be
-            // verified.
+            // A bundle's attachment: its sidecar is read (the licence is there), and the rest is hashed (the checksums, the replay's
+            // second look and the bundle's identity use the digest).
             if let Err(why) = gathered.attachment(rel, opened.file, cap) {
                 self.refuse(rel, why);
                 return;

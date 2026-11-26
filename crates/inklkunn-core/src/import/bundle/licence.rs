@@ -70,6 +70,56 @@ pub fn goes_into(file: &str, wiki: &str) -> bool {
     }
 }
 
+/// The SPDX identifier a name that is **not** one probably means (`CC0` is `CC0-1.0`, `CC-BY-SA` is `CC-BY-SA-4.0`, `cc by 3.0` is
+/// `CC-BY-3.0`), or `None` when the name is one the matrix knows, or is not close to any it knows (NonCommercial and NoDerivatives
+/// names, `GFDL`, text that is not a licence). **A name is never taken for the id it resembles**: the answer is only for the sentence
+/// that refuses it (*not an SPDX id; did you mean CC0-1.0?*), because a licence is never changed on the way in. Without a version the
+/// current one is suggested (4.0).
+pub fn did_you_mean(name: &str) -> Option<String> {
+    if family(name) != Family::Unknown {
+        return None;
+    }
+    let loud = name.trim().to_ascii_uppercase().replace([' ', '_'], "-");
+    let parts: Vec<&str> = loud.split('-').filter(|p| !p.is_empty()).collect();
+    let (first, rest) = parts.split_first()?;
+    // `CC0`, `CC0-1`, `CC0-1.0`, `CC-0`, `CC-0-1.0`.
+    if *first == "CC0" || (*first == "CC" && rest.first() == Some(&"0")) {
+        let version = rest.iter().find(|p| p.contains('.') || **p == "1");
+        return matches!(version, None | Some(&"1" | &"1.0")).then(|| "CC0-1.0".to_owned());
+    }
+    // `CC-BY`, `CC-BY-4`, `CC-BY-SA-3.0`, `CCBY`, with no NonCommercial or NoDerivatives part.
+    let mut tokens: Vec<&str> = Vec::new();
+    if *first == "CC" {
+        tokens.extend(rest);
+    } else if let Some(after) = first.strip_prefix("CC") {
+        tokens.push(after);
+        tokens.extend(rest);
+    } else {
+        return None;
+    }
+    let mut it = tokens.into_iter().peekable();
+    if it.next()? != "BY" {
+        return None;
+    }
+    let share_alike = it.next_if_eq(&"SA").is_some();
+    let version = match it.next() {
+        None => "4.0",
+        Some(v) => VERSIONS
+            .iter()
+            .find(|known| **known == v || known.strip_suffix(".0") == Some(v))?,
+    };
+    it.next()
+        .is_none()
+        .then(|| format!("CC-BY{}-{version}", if share_alike { "-SA" } else { "" }))
+}
+
+/// How a refusal says what a licence name that is not an identifier probably meant, or nothing when it is not close to one.
+pub fn hint(name: &str) -> String {
+    did_you_mean(name).map_or_else(String::new, |id| {
+        format!(" (not an SPDX id; did you mean {id}?)")
+    })
+}
+
 /// Is `text` the shape of an SPDX expression that a wiki record accepts (the same shape its creation checks: at most 128
 /// characters of letters, digits, `.`, `+`, `-`, `(`, `)` and spaces, with no space at either end)?
 pub fn has_the_shape_of_an_id(text: &str) -> bool {

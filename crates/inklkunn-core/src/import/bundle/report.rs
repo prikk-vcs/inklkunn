@@ -59,6 +59,8 @@ pub enum FileKind {
     Page,
     /// An attachment.
     Attachment,
+    /// The history of a page that is not among the bundle's files (removed since): its revisions' licences are judged as a page's.
+    History,
 }
 
 /// A file whose own licence no wiki with this default may take (LIC-5).
@@ -72,6 +74,9 @@ pub struct Incompatible {
     pub license: String,
     /// The revision that declares it, when it is a revision's and not the page's last text.
     pub rev: Option<String>,
+    /// The identifier the licence's name probably means when it is **not** an SPDX identifier (`CC0` for `CC0-1.0`): said in the
+    /// report, never taken for it.
+    pub meant: Option<String>,
 }
 
 /// Something in the bundle that is not imported, and why.
@@ -94,6 +99,9 @@ pub struct PageLine {
     pub records: usize,
     /// How many of them would be replayed, one block each.
     pub revisions: usize,
+    /// The `rev` the history begins at when its first record names a `parent` that is not in the file (a partial dump): the history
+    /// begins mid-way, and says so.
+    pub begins_at: Option<String>,
 }
 
 /// The people the history names, as the source says them. **Never linked to an account of this server.**
@@ -358,8 +366,13 @@ impl BundleReport {
             ));
             list(&mut out, "revisions by page:", &self.histories, |h| {
                 format!(
-                    "{}: {} revision(s) of {} record(s)",
-                    h.page, h.revisions, h.records
+                    "{}: {} revision(s) of {} record(s){}",
+                    h.page,
+                    h.revisions,
+                    h.records,
+                    h.begins_at
+                        .as_ref()
+                        .map_or(String::new(), |rev| format!(" (history begins at {rev})"))
                 )
             });
             list(
@@ -453,16 +466,20 @@ impl BundleReport {
             &self.incompatible,
             |i| {
                 format!(
-                    "{} {}: {}{} (the wiki's is {})",
+                    "{} {}: {}{}{} (the wiki's is {})",
                     match i.kind {
                         FileKind::Page => "page",
                         FileKind::Attachment => "attachment",
+                        FileKind::History => "history of a page not in the bundle",
                     },
                     i.path,
                     i.license,
                     i.rev
                         .as_ref()
                         .map_or(String::new(), |r| format!(", revision `{}`", r)),
+                    i.meant.as_ref().map_or(String::new(), |id| format!(
+                        " (not an SPDX id; did you mean {id}?)"
+                    )),
                     self.license.as_deref().unwrap_or("undecided")
                 )
             },
@@ -547,7 +564,7 @@ impl BundleReport {
                 "max_revisions": self.max_revisions,
                 "bytes": self.history_bytes,
                 "pages": self.histories.iter().map(|h| serde_json::json!({
-                    "page": h.page, "records": h.records, "revisions": h.revisions,
+                    "page": h.page, "records": h.records, "revisions": h.revisions, "begins_at": h.begins_at,
                 })).collect::<Vec<_>>(),
                 "pages_without_history": lines(&self.pages_without_history),
                 "final_state_pages": lines(&self.final_state_pages),
@@ -570,8 +587,8 @@ impl BundleReport {
             "incompatible": {
                 "left_out": self.incompatible_left_out,
                 "files": self.incompatible.iter().map(|i| serde_json::json!({
-                    "kind": match i.kind { FileKind::Page => "page", FileKind::Attachment => "attachment" },
-                    "path": i.path, "license": i.license, "rev": i.rev,
+                    "kind": match i.kind { FileKind::Page => "page", FileKind::Attachment => "attachment", FileKind::History => "history" },
+                    "path": i.path, "license": i.license, "rev": i.rev, "meant": i.meant,
                 })).collect::<Vec<_>>(),
             },
             "left_out": self.left_out.iter().map(|l| serde_json::json!({

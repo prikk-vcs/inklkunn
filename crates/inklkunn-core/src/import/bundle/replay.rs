@@ -25,8 +25,8 @@
 //! counts it.
 //!
 //! **The bundle is read again, and checked again.** The plan keeps no text. A history file is read from the directories the plan
-//! walked, through the inode it recorded, and must be the file it judged (the size and the digest); a page of the bundle is read the
-//! same way and must be the digest the plan took. A file that changed since the plan is a failed import, and nothing of it remains.
+//! walked, through the inode it recorded, and must be the file it judged (the size and the digest); a page of the bundle, an attachment, a sidecar and a
+//! knowledge file are read the same way and must each be the digest the plan took (V-2). A file that changed since the plan is a failed import, and nothing of it remains.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -330,6 +330,14 @@ fn text_at(cursor: &mut Cursor, at: usize, page_cap: u64) -> Result<Option<Strin
     Ok(text)
 }
 
+/// The digest the plan took of the file at `path` (a page's, or any other file the import reads): what the replay's read of it is
+/// checked against.
+fn plan_digest<'a>(plan: &'a BundlePlan, path: &str) -> Option<&'a Digest> {
+    plan.page_digests
+        .get(path)
+        .or_else(|| plan.file_digests.get(path))
+}
+
 fn hex(digest: &Digest) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -516,9 +524,10 @@ pub fn import_bundle(
         };
         for file in &files {
             let path = file.path.to_string_lossy().into_owned();
-            if let (true, Some(bytes)) = (path.starts_with("pages/"), &file.content) {
+            if let Some(bytes) = &file.content {
+                // **Every file read is the file the plan read** (V-2): a page, an attachment, a sidecar, a knowledge file.
                 let digest = sha256(bytes);
-                if plan.page_digests.get(&path) != Some(&digest) {
+                if plan_digest(plan, &path) != Some(&digest) {
                     abandon!(
                         "reading the files of the first change",
                         format!(
@@ -527,7 +536,9 @@ pub fn import_bundle(
                         )
                     );
                 }
-                run.live.insert(path, digest);
+                if path.starts_with("pages/") {
+                    run.live.insert(path, digest);
+                }
             }
         }
         let (pages, others) = first.iter().fold((0_usize, 0_usize), |(p, o), f| {
@@ -712,7 +723,7 @@ pub fn import_bundle(
                 let path = file.path.to_string_lossy().into_owned();
                 if let Some(bytes) = &file.content {
                     let digest = sha256(bytes);
-                    if plan.page_digests.get(&path) != Some(&digest) {
+                    if plan_digest(plan, &path) != Some(&digest) {
                         abandon!(
                             "reading the pages of the change at the end",
                             format!(
