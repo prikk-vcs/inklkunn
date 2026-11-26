@@ -50,7 +50,7 @@ use super::{Cause, ReadError, ReadService, Tip};
 use crate::authorize::{RulesSource, SourceError};
 use crate::governance::{
     Constitution, GovernanceFile, PlatformLimits, Policy, ReadFault, Refusal, Rules,
-    read_constitution, read_policy,
+    read_constitution, read_interwiki, read_policy,
 };
 
 /// How many of the newest blocks of the default view the walk for the rules' block looks at.
@@ -340,6 +340,7 @@ impl ReadService {
             match read {
                 Read::Constitution(c) => snapshot.constitution = Some(c.to_yaml()),
                 Read::Policy(p) => snapshot.policy = Some(p.to_yaml()),
+                Read::Interwiki => {}
             }
         }
         if snapshot.fault.is_some() {
@@ -443,6 +444,9 @@ impl ReadService {
         Ok(match file {
             GovernanceFile::Constitution => read_constitution(&bytes).map(Read::Constitution),
             GovernanceFile::Policy => read_policy(&bytes).map(Read::Policy),
+            // The map is judged here (a file that cannot be read makes the wiki refuse writes) and kept nowhere: it is read
+            // again, from the state a page is shown at, by `ReadService::interwiki_at`.
+            GovernanceFile::Interwiki => read_interwiki(&bytes).map(|_| Read::Interwiki),
         })
     }
 
@@ -591,6 +595,8 @@ fn found_at(entries: &[Entry], file: GovernanceFile) -> (Vec<String>, usize) {
 enum Read {
     Constitution(Constitution),
     Policy(Policy),
+    /// The interwiki map read whole. The snapshot keeps none of it (RFC 007 D-8; no stored row changes for it).
+    Interwiki,
 }
 
 /// The fault as the derived row keeps it: the file, the line and the rule's stable name.

@@ -97,6 +97,7 @@ mod constitution;
 pub mod defaults;
 pub mod draft;
 mod fault;
+mod interwiki;
 mod limits;
 mod locate;
 mod model;
@@ -110,6 +111,11 @@ mod warning;
 pub use constitution::{Constitution, GovernanceChange, Requirement};
 pub use fault::{Fault, GovernanceFile, Limit, MAX_FOUND, OrderingPair, ReadFault, Refusal};
 pub use limits::{LIMIT_DAYS_MAX, LIMIT_DAYS_MIN, Lowered, PlatformLimits};
+pub use interwiki::{
+    Interwiki, LeftOut, MAX_INTERWIKI_BYTES, MAX_INTERWIKI_PREFIXES, MAX_PREFIX_CHARS,
+    MAX_TEMPLATE_CHARS, judge_interwiki, namespaces_of_titles, read_interwiki,
+    validate_interwiki, validate_interwiki_bytes,
+};
 pub use model::{Acceptance, AppealRung, Entry, GrantUpTo, Rungs, SelfAcceptance};
 pub use policy::Policy;
 pub use protect::{
@@ -136,6 +142,9 @@ pub const CONSTITUTION_PATH: &str = "governance/constitution.yaml";
 
 /// The policy's path.
 pub const POLICY_PATH: &str = "governance/policy.yaml";
+
+/// The interwiki map's path (RFC 007 D-8).
+pub const INTERWIKI_PATH: &str = "governance/interwiki.yaml";
 
 /// The most bytes `governance/policy.yaml` may have. A file with [`MAX_PROTECT`] protections at the length limits and
 /// every promotion text at its limit fits even in four-byte characters.

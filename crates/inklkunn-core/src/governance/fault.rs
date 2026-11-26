@@ -8,26 +8,37 @@
 
 use inklkunn_markup::YamlError;
 
-use super::{CONSTITUTION_PATH, MAX_CONSTITUTION_BYTES, MAX_POLICY_BYTES, POLICY_PATH};
+use super::{
+    CONSTITUTION_PATH, INTERWIKI_PATH, MAX_CONSTITUTION_BYTES, MAX_INTERWIKI_BYTES,
+    MAX_POLICY_BYTES, POLICY_PATH,
+};
 
-/// One of the two governance files.
+/// One of the governance files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum GovernanceFile {
     /// `governance/constitution.yaml`: who may change `governance/`.
     Constitution,
     /// `governance/policy.yaml`: who may do what.
     Policy,
+    /// `governance/interwiki.yaml`: where a link with a prefix leads (RFC 007 D-8). Not a rule of who may do what, and still
+    /// a governance file: a change to it is a change to the rules, at the policy-change rung.
+    Interwiki,
 }
 
 impl GovernanceFile {
-    /// Both, constitution first.
-    pub const ALL: [GovernanceFile; 2] = [GovernanceFile::Constitution, GovernanceFile::Policy];
+    /// All, constitution first.
+    pub const ALL: [GovernanceFile; 3] = [
+        GovernanceFile::Constitution,
+        GovernanceFile::Policy,
+        GovernanceFile::Interwiki,
+    ];
 
     /// The file's path in the repository.
     pub const fn path(self) -> &'static str {
         match self {
             GovernanceFile::Constitution => CONSTITUTION_PATH,
             GovernanceFile::Policy => POLICY_PATH,
+            GovernanceFile::Interwiki => INTERWIKI_PATH,
         }
     }
 
@@ -36,16 +47,17 @@ impl GovernanceFile {
         match self {
             GovernanceFile::Constitution => MAX_CONSTITUTION_BYTES,
             GovernanceFile::Policy => MAX_POLICY_BYTES,
+            GovernanceFile::Interwiki => MAX_INTERWIKI_BYTES,
         }
     }
 
-    /// The file a repository path is, if it is one of the two.
+    /// The file a repository path is, if it is one of them.
     pub fn of_path(path: &str) -> Option<GovernanceFile> {
         GovernanceFile::ALL.into_iter().find(|f| f.path() == path)
     }
 
     /// The file a repository path is, **or whose place it is below** (a directory made where a file belongs): what a block
-    /// that changed the shape of one of the two paths is recognized by (handoff G-T1 correction C-5).
+    /// that changed the shape of one of the paths is recognized by (handoff G-T1 correction C-5).
     pub fn at_or_below(path: &str) -> Option<GovernanceFile> {
         GovernanceFile::ALL.into_iter().find(|f| {
             path == f.path()
@@ -133,12 +145,24 @@ pub enum Refusal {
     /// anything else): the rules of a wiki are read from files, so the wiki refuses every write until it is put right. (Found
     /// in a repository, never written by a proposal; handoff G-T1 correction C-5.)
     NotAFile,
+    /// An interwiki prefix is one of the wiki's own namespaces (RFC 007 D-8): a link `[[Help:Contents]]` would mean two things.
+    PrefixIsNamespace,
+    /// An interwiki template is not `https://`.
+    TemplateScheme,
+    /// An interwiki template has no host, or one that is not a host name (with an optional port).
+    TemplateHost,
+    /// An interwiki template names user information (`user@host`).
+    TemplateUserInfo,
+    /// An interwiki template does not have exactly one `{title}`, in its path or its query, and no other brace.
+    TemplatePlaceholder,
+    /// An interwiki template holds a character a URL is not written with here (a space, a non-ASCII character, `"<>\^`|`).
+    TemplateCharacter,
 }
 
 impl Refusal {
     /// Every refusal, in the order of the declaration. [`Refusal::from_name`] reads this list, and a test holds that it
     /// is complete (a refusal that is not here is one the stored name of a snapshot could not be read back as).
-    pub const ALL: [Refusal; 20] = [
+    pub const ALL: [Refusal; 26] = [
         Refusal::NotText,
         Refusal::TooLong,
         Refusal::WrongShape,
@@ -159,6 +183,12 @@ impl Refusal {
         Refusal::OutsideDefaultView,
         Refusal::UnknownFile,
         Refusal::NotAFile,
+        Refusal::PrefixIsNamespace,
+        Refusal::TemplateScheme,
+        Refusal::TemplateHost,
+        Refusal::TemplateUserInfo,
+        Refusal::TemplatePlaceholder,
+        Refusal::TemplateCharacter,
     ];
 
     /// The refusal a stable [`name`](Refusal::name) is of.
@@ -193,6 +223,12 @@ impl Refusal {
             Refusal::OutsideDefaultView => "outside-default-view",
             Refusal::UnknownFile => "unknown-file",
             Refusal::NotAFile => "not-a-file",
+            Refusal::PrefixIsNamespace => "prefix-is-namespace",
+            Refusal::TemplateScheme => "template-not-https",
+            Refusal::TemplateHost => "template-host",
+            Refusal::TemplateUserInfo => "template-userinfo",
+            Refusal::TemplatePlaceholder => "template-placeholder",
+            Refusal::TemplateCharacter => "template-character",
         }
     }
 
@@ -242,6 +278,16 @@ impl Refusal {
             Refusal::NotAFile => {
                 "there is something at the file's place that is not an ordinary file"
             }
+            Refusal::PrefixIsNamespace => "an interwiki prefix is one of the wiki's own namespaces",
+            Refusal::TemplateScheme => "an interwiki template does not start with https://",
+            Refusal::TemplateHost => "an interwiki template has no host, or one that is not a host name",
+            Refusal::TemplateUserInfo => "an interwiki template names user information",
+            Refusal::TemplatePlaceholder => {
+                "an interwiki template does not have exactly one {title}, in its path or its query"
+            }
+            Refusal::TemplateCharacter => {
+                "an interwiki template holds a character that a URL is not written with here"
+            }
         }
     }
 }
@@ -260,7 +306,7 @@ impl std::fmt::Display for Refusal {
 /// mapping on one line). It is a pointer for a person to follow, never a quotation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fault {
-    /// The file, or `None` for a proposal that touches a file under `governance/` that is neither of the two
+    /// The file, or `None` for a proposal that touches a file under `governance/` that is none of them
     /// ([`Refusal::OutsideDefaultView`] only).
     pub file: Option<GovernanceFile>,
     /// What was wrong.

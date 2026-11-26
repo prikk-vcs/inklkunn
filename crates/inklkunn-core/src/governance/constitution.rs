@@ -32,7 +32,8 @@ pub struct Requirement {
 /// Which governance file a change is to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum GovernanceChange {
-    /// A change to `governance/policy.yaml`.
+    /// A change to `governance/policy.yaml`, **or to `governance/interwiki.yaml`**: the map says where every link with a
+    /// prefix leads, which is more than one page's edit, and it needs what a change to the policy needs (RFC 007 D-8).
     Policy,
     /// A change to `governance/constitution.yaml`.
     Constitution,
@@ -48,10 +49,12 @@ impl GovernanceChange {
         }
     }
 
-    /// The kind of change a repository path is, if it is one of the two files.
+    /// The kind of change a repository path is, if it is one of the governance files.
     pub fn of_path(path: &str) -> Option<GovernanceChange> {
         match super::GovernanceFile::of_path(path)? {
-            super::GovernanceFile::Policy => Some(GovernanceChange::Policy),
+            super::GovernanceFile::Policy | super::GovernanceFile::Interwiki => {
+                Some(GovernanceChange::Policy)
+            }
             super::GovernanceFile::Constitution => Some(GovernanceChange::Constitution),
         }
     }
@@ -61,7 +64,9 @@ impl GovernanceChange {
     /// file needs; handoff G-T1 correction D-1).
     pub fn at_or_below(path: &str) -> Option<GovernanceChange> {
         match super::GovernanceFile::at_or_below(path)? {
-            super::GovernanceFile::Policy => Some(GovernanceChange::Policy),
+            super::GovernanceFile::Policy | super::GovernanceFile::Interwiki => {
+                Some(GovernanceChange::Policy)
+            }
             super::GovernanceFile::Constitution => Some(GovernanceChange::Constitution),
         }
     }

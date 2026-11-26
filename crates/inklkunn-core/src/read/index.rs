@@ -17,6 +17,8 @@ use inklkunn_markup::path::{PAGES_DIR, path_to_title};
 use inklkunn_markup::{Index, PageEntry, Via, frontmatter, nfc_trim, parse_metadata};
 use inklkunn_store::IndexEntry;
 
+use crate::governance::{Interwiki, MAX_INTERWIKI_BYTES, read_interwiki};
+
 /// How much of a page file is read to find its frontmatter. A frontmatter longer than this is a page whose
 /// metadata is not read ([`Problem::FrontmatterTooLong`]).
 pub const FRONTMATTER_READ_BYTES: usize = 64 * 1024;
@@ -66,6 +68,22 @@ impl std::fmt::Display for TreeError {
 }
 
 impl std::error::Error for TreeError {}
+
+/// The interwiki map of an extracted tree: `<root>/governance/interwiki.yaml` when it is an ordinary file of at most
+/// [`MAX_INTERWIKI_BYTES`] that reads, **else an empty map** (a link then stays dangling, which is what reading a wiki whose map
+/// cannot be read does; the fault is the rules' to report, and every write refuses while it stands).
+pub fn interwiki_in_tree(root: &Path) -> Interwiki {
+    let path = root.join(crate::governance::INTERWIKI_PATH);
+    let ordinary = std::fs::symlink_metadata(&path)
+        .is_ok_and(|m| m.is_file() && m.len() <= MAX_INTERWIKI_BYTES as u64);
+    if !ordinary {
+        return Interwiki::empty();
+    }
+    std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| read_interwiki(&bytes).ok())
+        .unwrap_or_default()
+}
 
 /// An entry for every page file under `<root>/pages`, by path. `max_entries` bounds the files and
 /// directories visited. Only regular files and directories are followed; a link, a device or a name that is
@@ -281,6 +299,7 @@ pub struct TitleIndex {
     entries: Vec<IndexEntry>,
     by_path: HashMap<String, usize>,
     resolver: Index,
+    interwiki: Interwiki,
 }
 
 impl TitleIndex {
@@ -306,7 +325,24 @@ impl TitleIndex {
             entries,
             by_path,
             resolver,
+            interwiki: Interwiki::empty(),
         }
+    }
+
+    /// The same index **with the interwiki map of its state** (RFC 007 D-8): a link whose prefix the map has resolves as an
+    /// external link, and a prefix it lacks stays dangling, as it was. The map is the state's own `governance/interwiki.yaml`
+    /// ([`interwiki_in_tree`], [`ReadService::interwiki_at`](super::ReadService)): nothing else changes in what the index answers.
+    #[must_use]
+    pub fn with_interwiki(mut self, map: Interwiki) -> Self {
+        self.resolver.interwiki = map.to_map();
+        self.interwiki = map;
+        self
+    }
+
+    /// The interwiki map the links of this state are resolved with (empty when the state has none, or its file cannot be read:
+    /// reading goes on, and the wiki refuses writes until the file is repaired).
+    pub fn interwiki(&self) -> &Interwiki {
+        &self.interwiki
     }
 
     /// The tip's state id.

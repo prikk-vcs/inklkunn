@@ -59,6 +59,7 @@ mod graph;
 mod history;
 mod holders;
 mod index;
+mod interwiki;
 mod linediff;
 mod links;
 mod past;
@@ -103,6 +104,7 @@ pub(crate) use rollback::quoted_summary;
 use scratch::Extract;
 use tip::Place;
 
+use crate::governance::Interwiki;
 use crate::knowledge::index::{self as knowledge_index, KnowledgeIndex};
 
 pub use changes::{
@@ -129,7 +131,7 @@ pub use holders::{
 };
 pub use index::{
     FRONTMATTER_READ_BYTES, Found, Lookup, MAX_REDIRECT_HOPS, Problem, RedirectProblem,
-    RedirectedBy, RedirectedFrom, TitleIndex, TreeError, entries_from_tree,
+    RedirectedBy, RedirectedFrom, TitleIndex, TreeError, entries_from_tree, interwiki_in_tree,
 };
 pub use inklkunn_markup::{TransclusionRefusal, Via};
 pub use inklkunn_store::SearchKind;
@@ -1150,7 +1152,7 @@ impl ReadService {
         if let Some(refusal) = self.recently_refused(&wiki.id, tip.state_id()) {
             return Err(refusal);
         }
-        let (entries, knowledge) = match self.build_entries(wiki, tip) {
+        let (entries, knowledge, interwiki) = match self.build_entries(wiki, tip) {
             Ok(built) => built,
             Err(e) => {
                 self.note_refusal(&wiki.id, tip.state_id(), &e);
@@ -1174,7 +1176,9 @@ impl ReadService {
         {
             self.store_failures.fetch_add(1, Ordering::Relaxed);
         }
-        let index = Arc::new(TitleIndex::new(tip.state_id().to_owned(), entries));
+        let index = Arc::new(
+            TitleIndex::new(tip.state_id().to_owned(), entries).with_interwiki(interwiki),
+        );
         self.remember(&wiki.id, &index);
         self.forget_the_past(wiki);
         Ok(index)
@@ -1230,7 +1234,12 @@ impl ReadService {
     fn stored_index(&self, wiki: &WikiRecord, tip: &impl Place) -> Option<Arc<TitleIndex>> {
         match self.derived.title_index(&wiki.id, tip.state_id()) {
             Ok(Some(entries)) => {
-                let index = Arc::new(TitleIndex::new(tip.state_id().to_owned(), entries));
+                // The stored row holds the pages and not the map: the state's own file is read again (RFC 007 D-8). A state
+                // whose file cannot be asked for is a miss, and the build tries again.
+                let interwiki = self.interwiki_at(wiki, tip.block_id()).ok()?;
+                let index = Arc::new(
+                    TitleIndex::new(tip.state_id().to_owned(), entries).with_interwiki(interwiki),
+                );
                 self.remember(&wiki.id, &index);
                 Some(index)
             }
@@ -1272,7 +1281,7 @@ impl ReadService {
         &self,
         wiki: &WikiRecord,
         tip: &impl Place,
-    ) -> Result<(Vec<IndexEntry>, Option<KnowledgeRows>), ReadError> {
+    ) -> Result<(Vec<IndexEntry>, Option<KnowledgeRows>, Interwiki), ReadError> {
         self.with_tree(wiki, tip, |root| {
             let entries =
                 entries_from_tree(root, self.config.index_max_files).map_err(|e| match e {
@@ -1290,7 +1299,7 @@ impl ReadService {
                 self.config.page_max_bytes,
             )
             .ok();
-            Ok((entries, knowledge))
+            Ok((entries, knowledge, interwiki_in_tree(root)))
         })
     }
 

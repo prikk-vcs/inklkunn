@@ -69,7 +69,7 @@ fn finish(text: &str, hit: Hit) -> Fault {
 }
 
 /// The text as a mapping: its size, its characters and the YAML subset judged.
-fn prepare(file: File, text: &str) -> Result<Value, Fault> {
+pub(super) fn prepare(file: File, text: &str) -> Result<Value, Fault> {
     if text.len() > file.max_bytes() {
         return Err(Fault::whole(file, Refusal::TooLong));
     }

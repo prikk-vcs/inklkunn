@@ -58,7 +58,8 @@ use crate::authorize::{Action, Principal};
 use crate::governance::{
     Fault, GovernanceChange, GovernanceFile, Requirement, Rules, ViewPlace, is_governance_path,
     mixes_rules_with_other_paths, only_governance_files, refuse_outside_default_view,
-    refuse_unknown_files, validate_constitution_bytes, validate_policy_bytes,
+    namespaces_of_titles, refuse_unknown_files, validate_constitution_bytes,
+    validate_interwiki_bytes, validate_policy_bytes,
 };
 use crate::proposal::{Invalid, ProposalError};
 use crate::protection::{Demand, Lack};
@@ -277,6 +278,9 @@ impl ProposalAcceptor {
         let written: Vec<String> = writes.chain(renamed).collect();
         faults.extend(refuse_unknown_files(written.iter().map(String::as_str)).err());
         let limits = self.parts.reads.platform_limits();
+        // The interwiki map's prefixes are judged against the wiki's namespaces (RFC 007 D-8): the titles of the default view's
+        // tip, asked only when the change writes the map.
+        let mut namespaces: Option<BTreeSet<String>> = None;
         for file in files {
             let Some(path) = file.path.to_str() else {
                 continue;
@@ -288,6 +292,13 @@ impl ProposalAcceptor {
             let verdict = match governance {
                 GovernanceFile::Policy => validate_policy_bytes(bytes, limits).map(drop),
                 GovernanceFile::Constitution => validate_constitution_bytes(bytes).map(drop),
+                GovernanceFile::Interwiki => {
+                    if namespaces.is_none() {
+                        namespaces = Some(self.wiki_namespaces(wiki)?);
+                    }
+                    let known = namespaces.get_or_insert_with(BTreeSet::new);
+                    validate_interwiki_bytes(bytes, known).map(drop)
+                }
             };
             faults.extend(verdict.err());
         }
@@ -296,6 +307,26 @@ impl ProposalAcceptor {
         } else {
             Err(AcceptFailure::GovernanceInvalid(faults))
         }
+    }
+}
+
+impl ProposalAcceptor {
+    /// The namespaces of the wiki as the interwiki map's prefixes are judged against them ([`namespaces_of_titles`]): from the
+    /// titles of the default view's tip. A tip that cannot be read now is *could not be done now*, never *no namespaces*.
+    fn wiki_namespaces(&self, wiki: &WikiRecord) -> Result<BTreeSet<String>, AcceptFailure> {
+        let index = self
+            .parts
+            .reads
+            .title_index(wiki, Some(&wiki.default_view))
+            .map_err(|e| AcceptFailure::Unavailable(e.to_string()))?;
+        let titles: Vec<String> = index
+            .entries()
+            .iter()
+            .map(|e| {
+                inklkunn_markup::path::path_to_title(&e.path).unwrap_or_else(|| e.path.clone())
+            })
+            .collect();
+        Ok(namespaces_of_titles(titles.iter().map(String::as_str)))
     }
 }
 

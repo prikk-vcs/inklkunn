@@ -160,7 +160,11 @@ impl ReadService {
             }
         }
         let filtered = if changed {
-            Arc::new(TitleIndex::new(whole.tip().to_owned(), entries))
+            // The state's own map goes on: a page at a base is read with the links it had.
+            Arc::new(
+                TitleIndex::new(whole.tip().to_owned(), entries)
+                    .with_interwiki(whole.interwiki().clone()),
+            )
         } else {
             whole
         };
