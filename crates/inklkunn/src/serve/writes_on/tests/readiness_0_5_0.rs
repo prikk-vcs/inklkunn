@@ -39,6 +39,7 @@ use super::api::{API, api, json_field, json_quote};
 use super::knowledge::approve_and_accept;
 use super::*;
 
+mod bookstack;
 mod mediawiki;
 
 const FIXTURES: &str = "../inklkunn-core/tests/fixtures/interchange";
@@ -341,6 +342,7 @@ fn the_interchange_works_end_to_end_on_a_real_prikk() {
     );
 
     p.a_mediawiki_dump_comes_in_with_its_history();
+    p.a_bookstack_export_comes_in();
 
     let steps = p.t.steps;
     p.t.say(format!("\n== end of the transcript: {steps} steps"));
