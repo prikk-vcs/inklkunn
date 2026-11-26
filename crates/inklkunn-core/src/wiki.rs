@@ -634,6 +634,93 @@ pub fn sweep_unfinished_creations(
     Ok(report)
 }
 
+/// Why `wiki discard-unfinished` did nothing (RFC 007 D-1). Each says what state things are in: **none of them removed anything.**
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiscardRefusal {
+    /// No creation mark of this id exists: there is no unfinished creation to discard, and nothing is removed without one (a wiki's
+    /// directories are never removed by their id alone).
+    NoUnfinishedCreation,
+    /// The creation is running right now, in another process or thread: it is left alone.
+    Alive,
+    /// **The record of this wiki is stored** (it was complete, and only its mark was left): it is a wiki, and no command removes a
+    /// wiki. The next start's sweep removes the mark.
+    Stored,
+    /// The record store could not say whether the wiki is stored, and removing a wiki that might exist is worse than waiting.
+    StoreCannotSay(String),
+    /// The creation marks could not be listed.
+    Marks(String),
+}
+
+impl std::fmt::Display for DiscardRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DiscardRefusal::NoUnfinishedCreation => write!(
+                f,
+                "no unfinished creation of that id exists (no creation mark): nothing was removed"
+            ),
+            DiscardRefusal::Alive => write!(
+                f,
+                "that creation is running right now in another process; it is left alone, and nothing was removed"
+            ),
+            DiscardRefusal::Stored => write!(
+                f,
+                "the record of that wiki is stored, so it is a wiki and not an unfinished creation; no command removes a wiki, and nothing was removed"
+            ),
+            DiscardRefusal::StoreCannotSay(e) => write!(
+                f,
+                "the record store could not say whether that wiki is stored ({e}); nothing was removed"
+            ),
+            DiscardRefusal::Marks(e) => {
+                write!(
+                    f,
+                    "the creation marks could not be listed ({e}); nothing was removed"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for DiscardRefusal {}
+
+/// **`wiki discard-unfinished`'s act** (RFC 007 D-1): remove, for a person who asked for it, what `sweep_unfinished_creations` would
+/// remove for a creation that never finished, **and nothing else**: the sealed key record, the repository, the scratch directory,
+/// what an import kept beside it, the lock file and the mark ([`discard`]). It is the same removal, reached by the one thing the sweep
+/// will not do: remove a repository that holds a sealed block (R9: only a person discards a history).
+///
+/// Refused, with nothing removed: when no mark of this id exists, when the creation is alive, and when the record of the wiki is in
+/// `store` (a wiki whose record was stored is never discarded, whatever its directories hold). `audit` is asked before the removal,
+/// as the sweep's is, and a refusal of the trail stops it.
+pub fn discard_unfinished_creation(
+    store: &dyn WikiStore,
+    layout: &RootLayout,
+    signer: &dyn RepositoryBootstrap,
+    id: &WikiId,
+    audit: &dyn SweepAudit,
+) -> Result<Cleanup, DiscardRefusal> {
+    let found = find_unfinished(layout).map_err(|e| DiscardRefusal::Marks(e.to_string()))?;
+    if found.live.contains(id) {
+        return Err(DiscardRefusal::Alive);
+    }
+    let Some(mark) = found.dead.into_iter().find(|m| m.id() == id) else {
+        return Err(DiscardRefusal::NoUnfinishedCreation);
+    };
+    match store.get(id) {
+        Ok(_) => return Err(DiscardRefusal::Stored),
+        Err(StoreError::NotFound) => {}
+        Err(e) => return Err(DiscardRefusal::StoreCannotSay(e.to_string())),
+    }
+    if let Err(why) = audit.before(id) {
+        audit.after(id, false);
+        return Ok(Cleanup::LeftBehind {
+            repo: layout.repo_dir(id),
+            error: format!("the audit trail did not take the act ({why}); nothing was removed"),
+        });
+    }
+    let cleanup = settle(mark, discard(layout, signer, id));
+    audit.after(id, cleanup == Cleanup::Removed);
+    Ok(cleanup)
+}
+
 /// Why the sweep must not remove the unfinished creation `id` (no record in the store), or `None` when it may.
 fn refuse_removal(
     storage: &dyn Storage,

@@ -126,7 +126,7 @@ pub use recovery::{
 };
 pub use routes::{Guard, RouteEntry, RouteError, RouteTable};
 pub use wiki::{
-    Cleanup, CreateWikiError, CreatedWiki, CreationStep, NoSweepAudit, RepositoryBootstrap,
-    SweepAudit, SweepReport, create_wiki, create_wiki_observed, creation_message,
-    sweep_unfinished_creations, system_message,
+    Cleanup, CreateWikiError, CreatedWiki, CreationStep, DiscardRefusal, NoSweepAudit,
+    RepositoryBootstrap, SweepAudit, SweepReport, create_wiki, create_wiki_observed,
+    creation_message, discard_unfinished_creation, sweep_unfinished_creations, system_message,
 };
