@@ -424,18 +424,24 @@ pub const CATALOG: &[Entry] = &[
         "people.imported_no_summary",
         "Imported. Originally by {name}, {date}",
     ),
-    msg("people.imported_name", "{name} (a name at the source)"),
-    msg("people.imported_hidden", "hidden at the source"),
+    msg(
+        "people.imported_name",
+        "{name} (a name in the wiki it was imported from)",
+    ),
+    msg(
+        "people.imported_hidden",
+        "hidden in the wiki it was imported from",
+    ),
     msg(
         "people.imported_unnamed",
-        "an author the source did not name",
+        "an author the imported wiki did not name",
     ),
     msg("people.imported_date", "{date} (originally)"),
-    msg("import.notice", "Imported from {source} on {date}."),
-    msg("import.notice_source", "{name} ({address})"),
+    msg("import.notice", "Imported from {origin} on {date}."),
+    msg("import.notice_origin", "{name} ({address})"),
     msg(
-        "import.notice_source_unnamed",
-        "a bundle that names no source",
+        "import.notice_origin_unnamed",
+        "a bundle that names no origin",
     ),
     msg(
         "import.notice_checks_verified",

@@ -293,18 +293,18 @@ pub(crate) fn notice_lines(
     let Some(notice) = notice else {
         return Vec::new();
     };
-    let source = match (notice.source_name(), notice.source_address()) {
+    let origin = match (notice.source_name(), notice.source_address()) {
         (Some(name), Some(address)) => t
-            .msg(Key::ImportNoticeSource)
+            .msg(Key::ImportNoticeOrigin)
             .with("name", name)
             .with("address", address)
             .text(),
         (Some(only), None) | (None, Some(only)) => only.to_owned(),
-        (None, None) => t.get(Key::ImportNoticeSourceUnnamed),
+        (None, None) => t.get(Key::ImportNoticeOriginUnnamed),
     };
     let mut lines = vec![
         t.msg(Key::ImportNotice)
-            .with("source", source)
+            .with("origin", origin)
             .with("date", crate::time::utc_minutes(notice.on()))
             .text(),
         t.get(match notice.checks() {
