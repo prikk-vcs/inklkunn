@@ -672,6 +672,19 @@ fn author_json(actor: &Actor) -> serde_json::Value {
     }
 }
 
+/// The author a replayed revision names, **as the source's** (RFC 007 D-3): a name and a kind, as data. It carries no `id` (nothing of
+/// the source's is an account of this service), so a reader never takes it for one.
+fn source_author_json(author: &inklkunn_signer::message::SourceAuthor) -> serde_json::Value {
+    use inklkunn_signer::message::SourceAuthorKind;
+    match author.kind() {
+        SourceAuthorKind::Anonymous => {
+            serde_json::json!({"anonymous": true, "label": author.name()})
+        }
+        SourceAuthorKind::Unspecified => serde_json::json!({"name": author.name()}),
+        kind => serde_json::json!({"name": author.name(), "kind": kind.as_str()}),
+    }
+}
+
 fn person_of(actor: &Actor) -> serde_json::Value {
     let mut p = person("", actor);
     if let Some(members) = p.as_object_mut() {
@@ -770,15 +783,51 @@ impl Parts {
             members.insert("from".to_owned(), from.into());
             members.insert("to".to_owned(), to.into());
         }
+        // What the source hid of a replayed revision stays hidden, said as the source's (`suppressed`, with no reason of moderation's).
+        let mut hidden_at_source: Vec<&str> = Vec::new();
         if let Some(message) = &self.message {
             // What is hidden is left out, not blanked, and the record says what and why (RFC 006 D-13).
+            // **A replayed revision's author and summary are the source's** (RFC 007 D-3): the wiki signed the change, the source said
+            // who wrote it, and the record carries what the source said, as data (a name and a kind, never an id of this service).
+            let source = message.source();
             if self.hidden.author.is_none() {
-                members.insert("author".to_owned(), author_json(message.proposed_by()));
+                match source {
+                    Some(s) => {
+                        if let Some(a) = s.author() {
+                            members.insert("author".to_owned(), source_author_json(a));
+                        } else if s.author_hidden() {
+                            hidden_at_source.push("author");
+                        }
+                    }
+                    None => {
+                        members.insert("author".to_owned(), author_json(message.proposed_by()));
+                    }
+                }
                 inklkunn.insert("proposed_by".to_owned(), person_of(message.proposed_by()));
                 inklkunn.insert("accepted_by".to_owned(), person_of(message.accepted_by()));
             }
             if self.hidden.summary.is_none() {
-                members.insert("summary".to_owned(), message.summary().as_str().into());
+                match source {
+                    Some(s) => {
+                        if let Some(summary) = s.summary() {
+                            members.insert("summary".to_owned(), summary.into());
+                        } else if s.summary_hidden() {
+                            hidden_at_source.push("summary");
+                        }
+                    }
+                    None => {
+                        members.insert("summary".to_owned(), message.summary().as_str().into());
+                    }
+                }
+            }
+            if let Some(s) = source {
+                if s.is_minor() {
+                    members.insert("minor".to_owned(), true.into());
+                }
+                if s.is_automated() {
+                    members.insert("automated".to_owned(), true.into());
+                }
+                inklkunn.insert("imported_rev".to_owned(), s.rev().into());
             }
         }
         if let Text::Given(text) = &self.text {
@@ -789,6 +838,18 @@ impl Parts {
             );
         }
         self.hidden.mark(members);
+        if !hidden_at_source.is_empty() {
+            let mut names: Vec<serde_json::Value> = match members.remove("suppressed") {
+                Some(serde_json::Value::Array(a)) => a,
+                _ => Vec::new(),
+            };
+            for part in hidden_at_source {
+                if !names.iter().any(|n| n == part) {
+                    names.push(part.into());
+                }
+            }
+            members.insert("suppressed".to_owned(), serde_json::Value::Array(names));
+        }
         members.insert("inklkunn".to_owned(), inklkunn.into());
         line
     }

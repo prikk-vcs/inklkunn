@@ -82,7 +82,8 @@ pub(crate) fn run(
         }
         [
             "wiki",
-            "create" | "import-folder" | "import-bundle" | "export" | "recover" | "metrics",
+            "create" | "import-folder" | "import-bundle" | "discard-unfinished" | "export"
+            | "recover" | "metrics",
             ..,
         ] => {
             let rest: Vec<String> = args.iter().skip(1).cloned().collect();

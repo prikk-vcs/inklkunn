@@ -399,38 +399,6 @@ fn a_dry_run_prints_the_plan_of_each_fixture_and_writes_nothing_anywhere() {
     assert!(!run.data.exists());
 }
 
-#[test]
-fn a_run_that_is_not_a_dry_run_says_the_import_is_not_built_yet_and_writes_nothing() {
-    let base = dir("notbuilt");
-    let run = Run::new(&base.0);
-    let bundle = good("notbuilt-bundle");
-    let argv = [
-        "wiki",
-        "import-bundle",
-        "garden",
-        bundle.0.to_str().unwrap(),
-        "--name",
-        "Garden",
-    ];
-    let (status, out, err) = run.cli(&[], &argv);
-    assert_eq!(status, 1, "{out}{err}");
-    assert!(
-        err.contains("the import itself is not built yet") && err.contains("nothing was written"),
-        "{err}"
-    );
-    // It printed the plan first, so that the operator sees what would happen.
-    assert!(
-        out.contains("3 revision(s) would be replayed") && !out.contains("dry run:"),
-        "{out}"
-    );
-    assert!(!run.data.exists() && all_files(&base.0).is_empty());
-    // The dry run of the same is clean.
-    let mut dry = argv.to_vec();
-    dry.push("--dry-run");
-    let (status, out, err) = run.cli(&[], &dry);
-    assert_eq!(status, 0, "{out}{err}");
-}
-
 /// Every refusal of the acceptance criterion's list, as a bundle, the rule it must name and (where the bundle alone does not
 /// do it) the settings that bring it about.
 struct Case {

@@ -517,6 +517,8 @@ exec "$REAL" "$@"
 
 use world::{all_files, dir, world};
 
+mod import_bundle_tests;
+
 fn contains(hay: &[u8], needle: &str) -> bool {
     !needle.is_empty() && hay.windows(needle.len()).any(|w| w == needle.as_bytes())
 }

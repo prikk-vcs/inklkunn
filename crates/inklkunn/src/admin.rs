@@ -15,6 +15,11 @@
 //! - `wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing]`: the folder as one accepted change under
 //!   the system principal. `--dry-run` prints the same report and writes nothing; a refusal anywhere refuses all;
 //!   a folder the wiki already has, byte for byte, is *nothing changed* (exit 0, no act begun).
+//! - `wiki import-bundle <new-wiki> <bundle-dir> --name <name> [--dry-run] [--bundle-license <spdx>] [--leave-out-incompatible]
+//!   [--no-history]`: a NEW wiki from a Portable Wiki Bundle, **with its history when it has one**, one revision a block (RFC 007 D-1
+//!   – D-3). It is *create wiki* extended: the wiki appears only when the whole import is done, and a killed one leaves what
+//!   `wiki discard-unfinished <id> --confirm <id>` removes by a person's act (refused for a wiki whose record was stored and for a
+//!   creation that is running).
 //! - `wiki export <wiki> [--bundle <dir>] [--archive <file>]`: a Portable Wiki Bundle at fidelity level 3, and/or
 //!   prikk's own archive, written by the signer's keyless writable mode, serialized with the wiki's writes.
 //! - `wiki recover <wiki> [--plan]`: recovery of a wiki that is flagged *needs recovery* or was left half-done
@@ -37,7 +42,10 @@ use inklkunn_core::export::is_checkpoint_not_recorded;
 use inklkunn_core::export::{
     ExportError, ExportNote, HistoryInputs, export_bundle_with, knowledge_records,
 };
-use inklkunn_core::import::bundle::{BundleOptions, plan_bundle, shown, shown_up_to};
+use inklkunn_core::import::bundle::{
+    BundleOptions, ImportBundleError, ImportStaging, ImportWorld, import_bundle, plan_bundle,
+    shown, shown_up_to,
+};
 use inklkunn_core::import::{ImportError, judge_knowledge, plan_folder, run_import, wiki_state};
 use inklkunn_core::proposal::{Period, operator_metrics};
 use inklkunn_core::read::ReadService;
@@ -46,7 +54,7 @@ use inklkunn_core::{
     Authorizer, LeaseConfig, Leased, Maintenance, NoLedger, Recover, RecoverOptions, Recovery,
     RecoveryError, RecoveryMode, RecoveryOutcome, RecoveryParts, RecoveryReport, Signer,
     SignerConfig, StoreAuthz, StoreLedger, SweepAudit, SystemActFailure, SystemActs, WikiLeases,
-    Witnesses, WriteLeases, create_wiki, sweep_unfinished_creations,
+    Witnesses, WriteLeases, create_wiki, discard_unfinished_creation, sweep_unfinished_creations,
 };
 use inklkunn_prikk::sandbox::Sandbox;
 use inklkunn_prikk::{Admission, PrikkCli, Storage};
@@ -82,6 +90,13 @@ pub(crate) enum Command {
     },
     /// `wiki import-bundle`: a new wiki from a Portable Wiki Bundle (RFC 007 D-1).
     ImportBundle(ImportBundleArgs),
+    /// `wiki discard-unfinished <id> --confirm <id>`: what a killed creation or import left, removed by a person's act (RFC 007 D-1).
+    DiscardUnfinished {
+        /// The id of the unfinished creation.
+        id: String,
+        /// The id again, typed: the confirmation. Without it the command says what it found and removes nothing.
+        confirm: Option<String>,
+    },
     Export {
         wiki: String,
         bundle: Option<String>,
@@ -146,10 +161,11 @@ pub(crate) struct Usage(pub String);
 pub(crate) const USAGE: &str = "usage: inklkunn [--dev-unconfined] wiki create <slug> --name <name> [--license <spdx>] [--lang <tag>]... [--visibility public|private]\n       \
 inklkunn [--dev-unconfined] wiki import-folder <wiki> <dir> [--dry-run] [--replace-existing] [--config <file>]\n       \
 inklkunn [--dev-unconfined] wiki import-bundle <new-wiki> <bundle-dir> --name <name> [--dry-run] [--bundle-license <spdx>] [--leave-out-incompatible] [--no-history] [--lang <tag>]... [--visibility public|internal|restricted] [--config <file>]\n       \
+inklkunn [--dev-unconfined] wiki discard-unfinished <wiki id> [--confirm <wiki id>]\n       \
 inklkunn [--dev-unconfined] wiki export <wiki> [--bundle <dir>] [--archive <file>]\n       \
 inklkunn [--dev-unconfined] wiki recover <wiki> [--plan] [--discard-queued-patch <patch id>]\n       \
 inklkunn [--dev-unconfined] wiki metrics <wiki> [--days <n> | --from <unix> --to <unix>]\n\
-<wiki> is the wiki's slug or id. `import-bundle` makes a NEW wiki from a Portable Wiki Bundle (a directory; unpack an archive first): the wiki takes the bundle's licence (`--bundle-license` declares it for a bundle that has none), `--dry-run` prints the plan and writes nothing, `--leave-out-incompatible` leaves out the files whose licence the wiki cannot take, `--no-history` imports the pages as they are, in one change; `wiki import-folder` adds pages to a wiki that exists. `import-folder --config <file>` reads the file `serve --config` reads (the environment still wins over it), so the import is judged under the same limits as the server. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing (prikk's own preview of taking a queued patch back is shown by a run, not by --plan). `--discard-queued-patch <patch id>` asks to take the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and the plan and the audit trail say whether it was used.";
+<wiki> is the wiki's slug or id. `import-bundle` makes a NEW wiki from a Portable Wiki Bundle (a directory; unpack an archive first): the wiki takes the bundle's licence (`--bundle-license` declares it for a bundle that has none), `--dry-run` prints the plan and writes nothing, `--leave-out-incompatible` leaves out the files whose licence the wiki cannot take, `--no-history` imports the pages as they are, in one change; `wiki import-folder` adds pages to a wiki that exists. `discard-unfinished` removes what a killed `create` or `import-bundle` left (a repository with sealed blocks, its keys, its mark): it is refused for a wiki whose record was ever stored and for a creation that is running, and **the id must be typed again** with `--confirm` (without it, the command says what it found and removes nothing). `import-folder --config <file>` reads the file `serve --config` reads (the environment still wins over it), so the import is judged under the same limits as the server. An export's destination must not exist. `recover --plan` shows what recovery would do and changes nothing (prikk's own preview of taking a queued patch back is shown by a run, not by --plan). `--discard-queued-patch <patch id>` asks to take the one queued patch back (prikk 0.57.0 and later) when no recorded act describes it; the id is the confirmation, and the plan and the audit trail say whether it was used.";
 
 /// Parse what follows `wiki` for `create`, `import-folder` and `export`.
 pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
@@ -289,6 +305,26 @@ pub(crate) fn parse(args: &[String]) -> Result<Command, Usage> {
             }
             args.name = name.ok_or_else(|| usage("a wiki needs a name: --name <name>"))?;
             Ok(Command::ImportBundle(args))
+        }
+        "discard-unfinished" => {
+            let mut confirm = None;
+            let mut it = flags.iter();
+            while let Some(flag) = it.next() {
+                match flag.as_str() {
+                    "--confirm" => {
+                        if confirm.is_some() {
+                            return Err(usage("--confirm is given once"));
+                        }
+                        confirm = Some(value("--confirm", &mut it)?);
+                    }
+                    other => {
+                        return Err(usage(&format!(
+                            "`{other}` is not an option of `discard-unfinished`"
+                        )));
+                    }
+                }
+            }
+            Ok(Command::DiscardUnfinished { id: first, confirm })
         }
         "export" => {
             let (mut bundle, mut archive) = (None, None);
@@ -552,7 +588,12 @@ fn run(
             out,
             err,
         ),
-        Command::ImportBundle(args) => import_bundle(settings, get_env, now, args, out),
+        Command::ImportBundle(args) => {
+            import_bundle_command(settings, get_env, now, args, out, err)
+        }
+        Command::DiscardUnfinished { id, confirm } => {
+            discard_unfinished(settings, now, id, confirm.as_deref(), out, err)
+        }
         Command::Export {
             wiki,
             bundle,
@@ -632,6 +673,7 @@ fn metrics(
 /// for the operator: the act has happened, and saying so is all that is left.
 struct SweepTrail<'a> {
     trail: Trail<'a>,
+    action: &'static str,
     problems: std::cell::RefCell<Vec<String>>,
 }
 
@@ -639,7 +681,16 @@ impl<'a> SweepTrail<'a> {
     fn new(sink: &'a dyn AuditSink, now: i64) -> Self {
         SweepTrail {
             trail: Trail { sink, now },
+            action: "creation-sweep",
             problems: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    /// The trail of `wiki discard-unfinished`: the same removal, by a person's act, under its own name.
+    fn discard(sink: &'a dyn AuditSink, now: i64) -> Self {
+        SweepTrail {
+            action: "wiki-discard-unfinished",
+            ..SweepTrail::new(sink, now)
         }
     }
 
@@ -652,7 +703,7 @@ impl<'a> SweepTrail<'a> {
 impl SweepAudit for SweepTrail<'_> {
     fn before(&self, id: &WikiId) -> Result<(), String> {
         self.trail
-            .begin("creation-sweep", &format!("wiki:{id}"), "removal begun")
+            .begin(self.action, &format!("wiki:{id}"), "removal begun")
     }
 
     fn after(&self, id: &WikiId, removed: bool) {
@@ -661,9 +712,9 @@ impl SweepAudit for SweepTrail<'_> {
         } else {
             (AuditOutcome::Failed, "unfinished creation not removed")
         };
-        if let Err(line) =
-            self.trail
-                .finish("creation-sweep", &format!("wiki:{id}"), outcome, detail)
+        if let Err(line) = self
+            .trail
+            .finish(self.action, &format!("wiki:{id}"), outcome, detail)
         {
             self.problems
                 .borrow_mut()
@@ -695,7 +746,7 @@ fn report_sweep(report: &inklkunn_core::SweepReport, err: &mut dyn Write) {
     for (id, why) in &report.left_behind {
         let _ = writeln!(
             err,
-            "inklkunn: the unfinished creation of wiki {id} could not be removed whole: {why}; it is tried again at the next start"
+            "inklkunn: the unfinished creation of wiki {id} could not be removed whole: {why}; a start never removes a history, so a person does: `inklkunn wiki discard-unfinished {id} --confirm {id}` removes exactly what this start would have removed, and nothing else"
         );
     }
 }
@@ -970,12 +1021,13 @@ fn import_folder(
 /// and reports, and does not replay**: `--dry-run` prints the plan and writes nothing, and a run without it prints the same plan
 /// and then says that the import itself is not built yet (the replay is the next task). Nothing is written either way: the plan
 /// needs neither prikk nor the signer, and a deployment without a store is as good as one without the wiki.
-fn import_bundle(
+fn import_bundle_command(
     settings: &Settings,
     get_env: &dyn Fn(&str) -> Option<OsString>,
     now: i64,
     args: &ImportBundleArgs,
     out: &mut dyn Write,
+    err: &mut dyn Write,
 ) -> Result<(), String> {
     // The request first, as `create` judges it: nothing is read for one that cannot be a wiki.
     let slug = Slug::new(&args.slug)
@@ -1067,10 +1119,221 @@ fn import_bundle(
         let _ = writeln!(out, "dry run: nothing was written");
         return Ok(());
     }
-    Err(
-        "the import itself is not built yet: this build plans a bundle's import and reports it (--dry-run), and cannot run it; nothing was written"
-            .to_owned(),
-    )
+    // The run (RFC 007 D-1): the same plan, and then *create wiki* extended to the whole history, stored last.
+    if new.languages.is_empty() {
+        new.languages.clone_from(&plan.report.languages);
+    }
+    new.visibility = visibility;
+    // The wiki takes the bundle's licence (D-4): the one the plan found, and never another.
+    new.default_license.clone_from(&plan.report.license);
+    let env = environment(settings, err)?;
+    make_private_directory(&settings.seed_dir).map_err(|e| {
+        format!(
+            "the seed directory could not be made private ({})",
+            e.kind()
+        )
+    })?;
+    let fresh = !settings.store_path().is_file();
+    std::fs::create_dir_all(&settings.data_dir)
+        .map_err(|e| format!("INKLKUNN_DATA_DIR could not be made ({})", e.kind()))?;
+    let store = Arc::new(
+        SqliteStore::open(&settings.store_path())
+            .map_err(|e| format!("the store could not be opened: {e}"))?,
+    );
+    if fresh {
+        let _ = writeln!(
+            err,
+            "inklkunn: made a new store at {}",
+            settings.store_path().display()
+        );
+    }
+    // The records of the history's own acts stay in this process until the wiki exists (see `import::bundle::replay`): the signer is
+    // opened over them, and over the same leases the command line and a running server take turns on.
+    let staging = ImportStaging::new();
+    let write_leases = WriteLeases::new(env.layout.clone());
+    let signer = Arc::new(
+        Signer::open_creating_store(signer_config(settings, &env), staging.ledger())
+            .map_err(|e| format!("the signer could not be opened: {e}"))?
+            .with_leases(&write_leases),
+    );
+    let swept = signer.leftover_call_directories_removed();
+    if swept > 0 {
+        let _ = writeln!(
+            err,
+            "inklkunn: removed {swept} leftover key directories of a call that was killed; look at how the service stopped"
+        );
+    }
+    // What an earlier, killed creation left goes first, as `wiki create` does it.
+    let sweep_trail = SweepTrail::new(&*store, now);
+    let swept = sweep_unfinished_creations(
+        &*store,
+        &*store,
+        &env.layout,
+        &*signer,
+        &env.storage,
+        fresh,
+        &sweep_trail,
+    )?;
+    report_sweep(&swept, err);
+    for line in sweep_trail.problems() {
+        let _ = writeln!(err, "{line}");
+    }
+    let storage: Arc<dyn Storage> = Arc::new(
+        PrikkCli::open(&settings.prikk, env.sandbox.clone(), admission())
+            .map_err(|e| format!("prikk is not usable ({e})"))?,
+    );
+    let leases = staging.leases(
+        write_leases,
+        &format!("inklkunn-cli-{}", std::process::id()),
+    );
+    let reads = staging.reads(storage.clone(), env.layout.clone(), read_config.clone());
+    let audit: Arc<dyn AuditSink> = store.clone();
+    let world = ImportWorld {
+        store: &*store,
+        acts: &*store,
+        layout: &env.layout,
+        signer: &signer,
+        storage: &storage,
+        staging: &staging,
+        leases,
+        audit,
+        reads: Some(reads),
+        authority: key_authority(),
+        version: env!("CARGO_PKG_VERSION"),
+        clock: inklkunn_store::record::now_secs,
+    };
+    let trail = Trail { sink: &*store, now };
+    trail.begin("wiki-import-bundle", "wiki:new", "begun")?;
+    let started = std::time::Instant::now();
+    match import_bundle(&world, new, &plan, &plan.render(), &|_| {}) {
+        Ok(done) => {
+            let finished = trail.finish(
+                "wiki-import-bundle",
+                &wiki_resource(&done.record),
+                AuditOutcome::Allowed,
+                "imported",
+            );
+            let _ = writeln!(
+                out,
+                "imported wiki {} ({}) from the bundle in {} s",
+                done.record.slug,
+                done.record.id,
+                started.elapsed().as_secs()
+            );
+            let _ = writeln!(out, "  name:            {}", done.record.display_name);
+            let _ = writeln!(out, "  repository:      {}", done.repo.display());
+            let _ = writeln!(out, "  licence:         {}", done.record.default_license);
+            let _ = writeln!(
+                out,
+                "  history:         {} revision(s), one block each{}{}",
+                done.revisions,
+                if done.first_change {
+                    ", after a first change of the files that have none"
+                } else {
+                    ""
+                },
+                if done.final_changes > 0 {
+                    format!(
+                        ", and {} change(s) at the end (the bundle's own files for {} page(s), {} removed)",
+                        done.final_changes, done.final_written, done.final_removed
+                    )
+                } else {
+                    String::new()
+                }
+            );
+            if done.not_applied > 0 {
+                let _ = writeln!(
+                    out,
+                    "  not applied:     {} move(s) and removal(s) of pages whose text the bundle did not give (nothing there to move)",
+                    done.not_applied
+                );
+            }
+            let _ = writeln!(out, "  first block:     {}", done.creation_block);
+            let _ = writeln!(out, "  last block:      {}", done.tip);
+            let _ = writeln!(
+                out,
+                "  report kept:     {}",
+                env.layout.import_report(&done.record.id).display()
+            );
+            finished
+        }
+        Err(e) => {
+            let detail = match &e {
+                ImportBundleError::Refused(_) => "refused; nothing was made",
+                ImportBundleError::Creation(_) => "creation failed; cleaned up",
+                ImportBundleError::Failed { .. } => "failed; the attempt was removed",
+            };
+            let finished = trail.finish(
+                "wiki-import-bundle",
+                "wiki:new",
+                AuditOutcome::Failed,
+                detail,
+            );
+            finished.and(Err(e.to_string()))
+        }
+    }
+}
+
+/// `inklkunn wiki discard-unfinished <id> --confirm <id>` (RFC 007 D-1): the one new removal, by a person's explicit act. It removes
+/// **exactly** what the start-up sweep removes for a creation that never finished (the repository with its history, the keys, the
+/// scratch directory, what an import kept beside it, the lock file and the mark) and nothing else, and it is refused for a wiki
+/// whose record was stored and for a creation that is running. **The id is typed again**: without `--confirm <id>` it says what it
+/// found and removes nothing. The act is audited before it is done (`wiki-discard-unfinished`).
+fn discard_unfinished(
+    settings: &Settings,
+    now: i64,
+    id: &str,
+    confirm: Option<&str>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), String> {
+    let wiki = WikiId::parse(id).ok_or_else(|| {
+        format!(
+            "`{}` is not a wiki id (the id the start-up sweep names)",
+            shown(id)
+        )
+    })?;
+    let store = existing_store(settings)?;
+    let env = environment(settings, err)?;
+    let repo = env.layout.repo_dir(&wiki);
+    // What there is, said first: a person decides on what is there.
+    let _ = writeln!(
+        out,
+        "an unfinished creation of wiki {wiki}: its repository is {}",
+        repo.display()
+    );
+    let Some(typed) = confirm else {
+        return Err(format!(
+            "nothing was removed: this removes the repository (with every block sealed in it), the wiki's keys and everything else that creation made, for good; type the id again to say it is meant: `inklkunn wiki discard-unfinished {wiki} --confirm {wiki}`"
+        ));
+    };
+    if typed != wiki.as_str() {
+        return Err(
+            "nothing was removed: the id typed again is not the id of the creation".to_owned(),
+        );
+    }
+    make_private_directory(&settings.seed_dir).map_err(|e| {
+        format!(
+            "the seed directory could not be made private ({})",
+            e.kind()
+        )
+    })?;
+    // Only the signer that holds the key store can remove the sealed key record: the same one the sweep uses.
+    let signer = Signer::open(signer_config(settings, &env), Arc::new(NoLedger))
+        .map_err(|e| format!("the signer could not be opened: {e}"))?;
+    let trail = SweepTrail::discard(&store, now);
+    let done = discard_unfinished_creation(&store, &env.layout, &signer, &wiki, &trail);
+    for line in trail.problems() {
+        let _ = writeln!(err, "{line}");
+    }
+    match done {
+        Ok(inklkunn_core::Cleanup::Removed) => {
+            let _ = writeln!(out, "removed: nothing of the unfinished creation is left");
+            Ok(())
+        }
+        Ok(left) => Err(format!("not removed whole: {left}")),
+        Err(refusal) => Err(refusal.to_string()),
+    }
 }
 
 /// One export of the bundle, saying on `out` what the history's records cost and when it waits (RFC 007 D-7): the number of
