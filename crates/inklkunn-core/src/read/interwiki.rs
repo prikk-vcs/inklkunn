@@ -1,42 +1,47 @@
-//! The interwiki map of a state, read from the repository when no extract is at hand (RFC 007 D-8; handoff I-T4).
+//! The interwiki map of a state, and where an index of the derived store may not stand in for it (RFC 007 D-8; handoff I-T4).
 //!
 //! **The map is part of the state.** A title index is of one state of one view, and the map it resolves links with is that
 //! state's own `governance/interwiki.yaml`: a page at a permalink is read with the links it had, and an alternative view (which
 //! cannot change `governance/`, RFC 006 D-1) carries the map it was made from. Nothing is held beside the index: the map is in
-//! it ([`TitleIndex::interwiki`](super::TitleIndex::interwiki)), found by the build in the extract it already reads, or here
-//! when the index came from the derived store (a row that holds pages and not the map).
+//! it ([`TitleIndex::interwiki`](super::TitleIndex::interwiki)), found by the build in the extract it already reads. An index that
+//! came from the derived store (a row that holds pages and not the map) is used only for a state that has no map file
+//! ([`ReadService::has_interwiki_at`]); one that has is built again.
 //!
 //! **Reading is lenient and writing is not.** A file that is absent, too large, not an ordinary file or not sound is an empty
 //! map here, so that every page is still shown, with its prefixed links dangling as before. The rules' loader judges the same file
 //! and a fault of it makes every write refuse until it is repaired ([`GovernanceFile::Interwiki`](crate::governance)).
 
-use inklkunn_prikk::{Point, StorageError};
+use inklkunn_prikk::Point;
 use inklkunn_store::WikiRecord;
 
 use super::{ReadError, ReadService};
-use crate::governance::{INTERWIKI_PATH, Interwiki, MAX_INTERWIKI_BYTES, read_interwiki};
+use crate::governance::{GOVERNANCE_DIR, INTERWIKI_PATH, Interwiki};
 
 impl ReadService {
-    /// The interwiki map of the state at `block_id`: its `governance/interwiki.yaml`, or an empty map (see the module's account).
-    /// An error is *the repository could not be asked*, never an empty map.
-    pub(super) fn interwiki_at(
+    /// Does the state at `block_id` have anything at the place of `governance/interwiki.yaml`: one listing of `governance/`, which
+    /// is what the rules' loader asks too. **No file's bytes are read here** (the one reader of a block's content is `text_at`, and
+    /// the governance files are read by the rules' loader and by the extract of a build): an index that came from the derived store
+    /// holds pages and not the map, and a state that has a file there is **built again from the extract**, which reads it, so
+    /// that the derived row never has to hold what it does not (and no stored row changes for the map). A state with none, which is
+    /// every wiki that has no map, costs the listing and nothing more.
+    pub(super) fn has_interwiki_at(
         &self,
         wiki: &WikiRecord,
         block_id: &str,
-    ) -> Result<Interwiki, ReadError> {
-        let max = u64::try_from(MAX_INTERWIKI_BYTES).map_or(u64::MAX, |n| n.saturating_add(1));
-        let read = self.storage.read(
-            &self.layout.repo_dir(&wiki.id),
-            &Point::Block(block_id.to_owned()),
-            INTERWIKI_PATH,
-            max,
-        );
-        match read {
-            Ok(bytes) => Ok(read_interwiki(&bytes).unwrap_or_default()),
-            // Not there, or larger than a map may be: no map.
-            Err(StorageError::Refused { .. }) => Ok(Interwiki::empty()),
-            Err(e) => Err(self.storage_error(wiki, e)),
-        }
+    ) -> Result<bool, ReadError> {
+        let listing = self
+            .storage
+            .tree(
+                &self.layout.repo_dir(&wiki.id),
+                &Point::Block(block_id.to_owned()),
+                Some(GOVERNANCE_DIR),
+            )
+            .map_err(|e| self.storage_error(wiki, e))?;
+        let below = format!("{INTERWIKI_PATH}/");
+        Ok(listing
+            .entries
+            .iter()
+            .any(|e| e.path == INTERWIKI_PATH || e.path.starts_with(&below)))
     }
 
     /// The interwiki map the links of the view's tip are resolved with: the map of the state the title index is of.

@@ -106,19 +106,44 @@ fn the_map_is_of_the_state_so_a_change_to_it_changes_the_links_at_the_next_tip()
 }
 
 #[test]
-fn the_map_comes_back_with_an_index_the_derived_store_holds() {
+fn an_index_the_derived_store_holds_stands_in_only_for_a_state_that_has_no_map() {
+    // A state with a map: the stored row holds the pages and not the map, so a service that starts builds it again (one extract), and
+    // has the map.
     let w = world();
     put_map(&w, MAP);
     let built = w.service.title_index(&w.wiki, None).expect("built");
     assert_eq!(built.interwiki().len(), 2);
-    // A service that starts has the pages from the store and reads the file again: two prefixes, with no extract.
     let restarted = World::service_over(&w.counting, &w.store, &w.layout, ReadConfig::default());
     let before = w.counting.inner().materialized();
-    let again = restarted.title_index(&w.wiki, None).expect("from the store");
-    assert_eq!(w.counting.inner().materialized(), before, "no extract");
+    let again = restarted.title_index(&w.wiki, None).expect("built again");
+    assert_eq!(w.counting.inner().materialized(), before + 1, "one extract");
     assert_eq!(again.interwiki(), built.interwiki());
     let view = found(restarted.page(&w.wiki, None, "Home", &Env::EN));
     assert!(view.html.as_str().contains("en.wikipedia.org"));
+    // A state with none: the stored row is used, with no extract and no map, as before.
+    let bare = world();
+    bare.service.title_index(&bare.wiki, None).expect("built");
+    let restarted = World::service_over(&bare.counting, &bare.store, &bare.layout, ReadConfig::default());
+    let before = bare.counting.inner().materialized();
+    let index = restarted.title_index(&bare.wiki, None).expect("from the store");
+    assert_eq!(bare.counting.inner().materialized(), before, "no extract");
+    assert!(index.interwiki().is_empty());
+}
+
+#[test]
+fn a_stale_page_of_a_state_that_has_a_map_still_asks_prikk_nothing() {
+    let w = world();
+    put_map(&w, MAP);
+    let fresh = read_page(&w, "Home");
+    w.service.forget_wiki(&w.wiki);
+    w.fake().fail_views(Some(inklkunn_prikk::StorageError::Unavailable {
+        verb: "branch",
+        reason: inklkunn_prikk::Unavailable::Busy,
+    }));
+    let (stale, calls) = w.counted(|| w.service.stale_page(&w.wiki, None, "Home", &Env::EN));
+    let stale = stale.expect("the last tip's page, with its links as they were rendered");
+    assert_eq!(stale.html, fresh.html);
+    assert_eq!(calls.total(), 0, "{calls:?}");
 }
 
 #[test]

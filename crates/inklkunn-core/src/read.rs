@@ -1007,9 +1007,10 @@ impl ReadService {
         title_to_path(title).ok()?;
         let view = view.unwrap_or(&wiki.default_view);
         let state_id = self.tips.last_known(&wiki.id, view)?;
+        // The stored row's pages, whatever the state's map is: a lookup of a title never reads it, and the page is the cached one.
         let index = self
             .remembered(&wiki.id, &state_id)
-            .or_else(|| self.stored_index(wiki, &Tip::unpinned(view, &state_id)))?;
+            .or_else(|| self.stored_pages(wiki, &state_id).map(Arc::new))?;
         let Lookup::Found(found) = index.lookup(title) else {
             return None;
         };
@@ -1231,18 +1232,24 @@ impl ReadService {
     }
 
     /// The index the derived store has for the tip, put in memory. A store that cannot answer is a miss.
+    ///
+    /// The stored row holds the pages and not the interwiki map (RFC 007 D-8): it serves a state that has none, and a state that
+    /// has one (or whose listing cannot be asked for) is a miss, built again from its extract, which reads the file.
     fn stored_index(&self, wiki: &WikiRecord, tip: &impl Place) -> Option<Arc<TitleIndex>> {
-        match self.derived.title_index(&wiki.id, tip.state_id()) {
-            Ok(Some(entries)) => {
-                // The stored row holds the pages and not the map: the state's own file is read again (RFC 007 D-8). A state
-                // whose file cannot be asked for is a miss, and the build tries again.
-                let interwiki = self.interwiki_at(wiki, tip.block_id()).ok()?;
-                let index = Arc::new(
-                    TitleIndex::new(tip.state_id().to_owned(), entries).with_interwiki(interwiki),
-                );
-                self.remember(&wiki.id, &index);
-                Some(index)
-            }
+        let pages = self.stored_pages(wiki, tip.state_id())?;
+        if !matches!(self.has_interwiki_at(wiki, tip.block_id()), Ok(false)) {
+            return None;
+        }
+        let index = Arc::new(pages);
+        self.remember(&wiki.id, &index);
+        Some(index)
+    }
+
+    /// The pages of the tip's stored index, **with no map and not put in memory**: what a lookup of a title needs, and all that
+    /// [`ReadService::stale_page`] may use, which asks prikk nothing.
+    fn stored_pages(&self, wiki: &WikiRecord, state_id: &str) -> Option<TitleIndex> {
+        match self.derived.title_index(&wiki.id, state_id) {
+            Ok(Some(entries)) => Some(TitleIndex::new(state_id.to_owned(), entries)),
             Ok(None) => None,
             Err(_) => {
                 self.store_failures.fetch_add(1, Ordering::Relaxed);
