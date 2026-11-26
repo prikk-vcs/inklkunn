@@ -209,7 +209,7 @@ fn sections(t: T, ctx: &Ctx, data: &RulesData) -> Vec<SectionView> {
     ]
 }
 
-/// The interwiki map, read-only: each prefix and the address it leads to (RFC 007 D-8). It is changed by a proposal of its own, like
+/// The interwiki map, read-only: each prefix and the address it leads to (RFC 007 D-8). It is changed by a proposal made with the policy form (W-6), like
 /// the rest of the rules, and this page is where it is shown. **While the map is the file that cannot be read** nothing is listed
 /// as if the wiki had none: the section says it could not be read.
 fn interwiki_section(t: T, data: &RulesData) -> SectionView {

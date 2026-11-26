@@ -34,9 +34,8 @@ use inklkunn_core::governance::draft::{
 };
 use inklkunn_core::governance::{
     Constitution, Fault, GovernanceFile, Interwiki, Limit, MAX_INTERWIKI_PREFIXES,
-    MAX_PREFIX_CHARS, MAX_TEMPLATE_CHARS, OrderingPair, PlatformLimits, Policy, ReadFault,
-    Refusal, Rules, namespaces_of_titles, validate_constitution, validate_interwiki,
-    validate_policy,
+    MAX_PREFIX_CHARS, MAX_TEMPLATE_CHARS, OrderingPair, PlatformLimits, Policy, ReadFault, Refusal,
+    Rules, namespaces_of_titles, validate_constitution, validate_interwiki, validate_policy,
 };
 use inklkunn_core::proposal::{Invalid, ProposalEdit, ProposalError};
 use inklkunn_store::{Base, FileChange, Role};
@@ -521,7 +520,11 @@ fn wiki_namespaces(ctx: &Ctx) -> Result<BTreeSet<String>, ()> {
         .services
         .read
         .title_index(&ctx.wiki, Some(&ctx.wiki.default_view))
-        .map_err(|e| ctx.log(&format!("the titles of the wiki could not be read now: {e}")))?;
+        .map_err(|e| {
+            ctx.log(&format!(
+                "the titles of the wiki could not be read now: {e}"
+            ))
+        })?;
     let titles: Vec<String> = index
         .entries()
         .iter()

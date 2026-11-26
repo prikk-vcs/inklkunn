@@ -34,10 +34,8 @@ fn canonical(rows: &[(&str, &str)]) -> String {
 fn env_with_help(map: Option<&str>) -> Env {
     let help = common::page(&["title: Help/Contents"], "Help.\n");
     let home = common::home_with("The bridge opened in 1950.");
-    let mut files: Vec<(&str, &str)> = vec![
-        ("pages/Home.md", &home),
-        ("pages/Help/Contents.md", &help),
-    ];
+    let mut files: Vec<(&str, &str)> =
+        vec![("pages/Home.md", &home), ("pages/Help/Contents.md", &help)];
     if let Some(map) = map {
         files.push((MAP_FILE, map));
     }
@@ -159,7 +157,8 @@ async fn rows_are_added_and_removed_keeping_what_was_typed_and_a_blank_row_is_no
     assert_eq!(value(&after, "map-1-prefix"), "gh");
     assert_eq!(value(&after, "map-2-prefix"), "");
     // The blank row is no prefix: sent as it is, the map is `gh` alone.
-    let id = proposal_of(&post_fields(&e.w, Some(&e.maintainer), &with(&after, "act", "send")).await);
+    let id =
+        proposal_of(&post_fields(&e.w, Some(&e.maintainer), &with(&after, "act", "send")).await);
     assert_eq!(
         files_of(&e.w, &id),
         vec![(MAP_FILE.to_owned(), Some(canonical(&[("gh", OK)])))]
@@ -174,7 +173,12 @@ async fn rows_are_added_and_removed_keeping_what_was_typed_and_a_blank_row_is_no
     assert_eq!(value(&after, "map_rows"), "1");
     assert_eq!(value(&after, "map-1-prefix"), "b");
     // A number that is no row removes nothing.
-    let a = post_fields(&e.w, Some(&e.maintainer), &with(&two, "act", "map-remove-9")).await;
+    let a = post_fields(
+        &e.w,
+        Some(&e.maintainer),
+        &with(&two, "act", "map-remove-9"),
+    )
+    .await;
     assert_eq!(value(&form_fields(&main_of(&a)), "map_rows"), "2");
     // Neither button makes a proposal.
     assert_eq!(proposals_made(&e), 1);
@@ -702,11 +706,9 @@ async fn while_the_policy_cannot_be_read_the_map_in_force_stays_and_is_not_writt
 
 #[test]
 fn the_form_and_the_validator_agree_on_what_a_canonical_map_is() {
-    let map: Interwiki = validate_interwiki(
-        &format!("b: \"{OK}\"\na: \"{WIKI}\"\n"),
-        &BTreeSet::new(),
-    )
-    .expect("a map");
+    let map: Interwiki =
+        validate_interwiki(&format!("b: \"{OK}\"\na: \"{WIKI}\"\n"), &BTreeSet::new())
+            .expect("a map");
     assert_eq!(
         canonical(&[("b", OK), ("a", WIKI)]),
         map.to_yaml(),

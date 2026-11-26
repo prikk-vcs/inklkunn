@@ -199,7 +199,11 @@ fn a_typed_prefix_or_template_never_becomes_syntax() {
     }
     // A template that tries to end its value and write a second key is a template that breaks a rule, at the template.
     let fault = validate_interwiki(
-        &row("a", "https://x.example/{title}\"\nb: \"https://y.example/{title}").to_text(),
+        &row(
+            "a",
+            "https://x.example/{title}\"\nb: \"https://y.example/{title}",
+        )
+        .to_text(),
         &none,
     )
     .expect_err("a template that is not one");
@@ -218,8 +222,8 @@ fn a_typed_prefix_or_template_never_becomes_syntax() {
 #[test]
 fn the_fields_of_the_interwiki_map_are_the_ones_its_faults_name() {
     let none = std::collections::BTreeSet::new();
-    let prefix =
-        validate_interwiki("\"a b\": \"https://x.example/{title}\"\n", &none).expect_err("a prefix");
+    let prefix = validate_interwiki("\"a b\": \"https://x.example/{title}\"\n", &none)
+        .expect_err("a prefix");
     let template =
         validate_interwiki("a: \"http://x.example/{title}\"\n", &none).expect_err("a template");
     assert_eq!(prefix.field, fields::INTERWIKI_PREFIX);

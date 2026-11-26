@@ -4747,22 +4747,13 @@ pub const CATALOG: &[Entry] = &[
         "policy_edit.interwiki_row",
         "Wiki 間リンクの接頭辞 {number}",
     ),
-    msg(
-        "policy_edit.interwiki_prefix_label",
-        "接頭辞",
-    ),
+    msg("policy_edit.interwiki_prefix_label", "接頭辞"),
     msg(
         "policy_edit.interwiki_template_label",
         "アドレス（ページのタイトルを入れる場所に {placeholder} を書きます）",
     ),
-    msg(
-        "policy_edit.interwiki_remove",
-        "この接頭辞を削除",
-    ),
-    msg(
-        "policy_edit.interwiki_add",
-        "Wiki 間リンクの接頭辞を追加",
-    ),
+    msg("policy_edit.interwiki_remove", "この接頭辞を削除"),
+    msg("policy_edit.interwiki_add", "Wiki 間リンクの接頭辞を追加"),
     msg(
         "policy_edit.interwiki_prefix_characters",
         "接頭辞に使えるのは、英字（a から z）、数字、ハイフンだけです。",

@@ -4695,26 +4695,14 @@ pub const CATALOG: &[Entry] = &[
         "policy_edit.interwiki_intro",
         "A link whose prefix is in this map goes to the address given, with the page title put in where {placeholder} stands. A prefix is made of letters, digits and hyphens, and cannot be how the titles of some pages of this wiki begin. An address is a web address that begins with https, and holds {placeholder} once. Remove every row for a wiki with no map.",
     ),
-    msg(
-        "policy_edit.interwiki_row",
-        "Interwiki prefix {number}",
-    ),
-    msg(
-        "policy_edit.interwiki_prefix_label",
-        "Prefix",
-    ),
+    msg("policy_edit.interwiki_row", "Interwiki prefix {number}"),
+    msg("policy_edit.interwiki_prefix_label", "Prefix"),
     msg(
         "policy_edit.interwiki_template_label",
         "Address, with {placeholder} where the page title goes",
     ),
-    msg(
-        "policy_edit.interwiki_remove",
-        "Remove this prefix",
-    ),
-    msg(
-        "policy_edit.interwiki_add",
-        "Add an interwiki prefix",
-    ),
+    msg("policy_edit.interwiki_remove", "Remove this prefix"),
+    msg("policy_edit.interwiki_add", "Add an interwiki prefix"),
     msg(
         "policy_edit.interwiki_prefix_characters",
         "A prefix is made of letters (a to z), digits and hyphens only.",
