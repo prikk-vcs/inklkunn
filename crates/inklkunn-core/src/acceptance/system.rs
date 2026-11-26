@@ -322,10 +322,11 @@ impl SystemActs {
                     .to_owned(),
             ));
         }
-        // **The rules of a wiki are not a system act's to write** (RFC 006 D-1: `governance/` is changed by an accepted proposal, at a
-        // rung). One exception, the narrowest there is: **an import writes the interwiki map** (RFC 007 D-8), and only that file, as a
-        // write, and not renamed: a bundle's own policy and constitution are never imported, and an import writes no other path below
-        // `governance/`. The map's bytes are judged below, on the tip the change is written on, as an acceptance judges them.
+        // **An import writes one path below `governance/`, the interwiki map** (RFC 007 D-8), and nothing else there: not as another
+        // file, not renamed, not removed. A bundle's own policy and constitution are never imported (the plan leaves them out and the
+        // replay writes none), and this is the second lock on that door, for an import and no other act: a plain `System` change is as it
+        // was, so that the tests that plant a governance file the way a hand edit would still can. The map's own bytes are judged below,
+        // on the tip the change is written on, as an acceptance judges them.
         let in_governance =
             |p: &std::path::Path| p.to_str().is_none_or(crate::governance::is_governance_path);
         let governance_files: Vec<&PreparedFile> = request
@@ -337,26 +338,25 @@ impl SystemActs {
             .renames
             .iter()
             .any(|(from, to)| in_governance(from) || in_governance(to));
-        let writes_map = match governance_files.as_slice() {
-            [] if !governance_renamed => false,
-            [only]
-                if request.kind == SystemActKind::Import
-                    && !governance_renamed
-                    && only.content.is_some()
-                    && only.path == std::path::Path::new(crate::governance::INTERWIKI_PATH) =>
-            {
-                true
+        let writes_map = if request.kind == SystemActKind::Import {
+            match governance_files.as_slice() {
+                [] if !governance_renamed => false,
+                [only]
+                    if !governance_renamed
+                        && only.content.is_some()
+                        && only.path == std::path::Path::new(crate::governance::INTERWIKI_PATH) =>
+                {
+                    true
+                }
+                _ => {
+                    return Err(SystemActFailure::Invalid(
+                        "an import writes no path below governance/ but the interwiki map: the rules of a wiki are its own"
+                            .to_owned(),
+                    ));
+                }
             }
-            _ => {
-                return Err(SystemActFailure::Invalid(
-                    if request.kind == SystemActKind::Import {
-                        "an import writes no file below governance/ but the interwiki map: the rules of a wiki are its own"
-                    } else {
-                        "a system change does not write governance/: the rules of a wiki are changed by proposals"
-                    }
-                    .to_owned(),
-                ));
-            }
+        } else {
+            false
         };
         // The message first: a request that cannot be described is refused before anything else is touched.
         let described =
