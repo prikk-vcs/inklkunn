@@ -156,3 +156,75 @@ fn every_field_a_fault_can_name_is_in_the_list_of_fields() {
         assert!(known.contains(&fault.field), "{field}");
     }
 }
+
+#[test]
+fn an_interwiki_map_made_a_draft_and_read_again_is_the_map() {
+    use crate::governance::draft::InterwikiDraft;
+    let none = std::collections::BTreeSet::new();
+    for text in [
+        "",
+        "wikipedia: https://en.wikipedia.org/wiki/{title}\ndocs: \"https://example.org/docs?page={title}&x=1#top\"\n",
+    ] {
+        let map = validate_interwiki(text, &none).expect("a map");
+        let draft = InterwikiDraft::of(&map);
+        let read = validate_interwiki(&draft.to_text(), &none).expect("a draft of a map is a map");
+        assert_eq!(read, map);
+        // The canonical text is what the proposal carries, and it reads back the same.
+        assert_eq!(map.to_yaml(), read.to_yaml());
+    }
+}
+
+#[test]
+fn a_typed_prefix_or_template_never_becomes_syntax() {
+    use crate::governance::draft::InterwikiDraft;
+    let none = std::collections::BTreeSet::new();
+    let row = |prefix: &str, template: &str| InterwikiDraft {
+        rows: vec![(prefix.to_owned(), template.to_owned())],
+    };
+    // A prefix that tries to end its key and write another, or a comment, is one key the schema does not have.
+    for prefix in [
+        "a\": \"https://x.example/{title}\"\nb",
+        "a: b",
+        "a # b",
+        "a\nb",
+        "",
+    ] {
+        let fault = validate_interwiki(&row(prefix, "https://x.example/{title}").to_text(), &none)
+            .expect_err("a prefix that is not one");
+        assert_eq!(
+            (fault.refusal, fault.field),
+            (Refusal::UnknownKey, fields::INTERWIKI_PREFIX),
+            "{prefix:?}"
+        );
+    }
+    // A template that tries to end its value and write a second key is a template that breaks a rule, at the template.
+    let fault = validate_interwiki(
+        &row("a", "https://x.example/{title}\"\nb: \"https://y.example/{title}").to_text(),
+        &none,
+    )
+    .expect_err("a template that is not one");
+    assert_eq!(fault.field, fields::INTERWIKI_TEMPLATE);
+    // Written twice, a prefix is one the validator refuses by name.
+    let twice = InterwikiDraft {
+        rows: vec![
+            ("a".to_owned(), "https://x.example/{title}".to_owned()),
+            ("a".to_owned(), "https://y.example/{title}".to_owned()),
+        ],
+    };
+    let fault = validate_interwiki(&twice.to_text(), &none).expect_err("a repeated key");
+    assert_eq!(fault.refusal, Refusal::RepeatedKey);
+}
+
+#[test]
+fn the_fields_of_the_interwiki_map_are_the_ones_its_faults_name() {
+    let none = std::collections::BTreeSet::new();
+    let prefix =
+        validate_interwiki("\"a b\": \"https://x.example/{title}\"\n", &none).expect_err("a prefix");
+    let template =
+        validate_interwiki("a: \"http://x.example/{title}\"\n", &none).expect_err("a template");
+    assert_eq!(prefix.field, fields::INTERWIKI_PREFIX);
+    assert_eq!(template.field, fields::INTERWIKI_TEMPLATE);
+    assert!(
+        fields::INTERWIKI.contains(&prefix.field) && fields::INTERWIKI.contains(&template.field)
+    );
+}

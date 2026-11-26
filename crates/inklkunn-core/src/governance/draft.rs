@@ -19,8 +19,9 @@
 use inklkunn_store::Role;
 
 use super::chars::quoted;
+use super::interwiki::{PREFIX_FIELD, TEMPLATE_FIELD};
 use super::protect::{Require, Target};
-use super::{Constitution, Policy};
+use super::{Constitution, Interwiki, Policy};
 
 /// The fields of the schema, as a [`Fault`](super::Fault) names them: one list, in the order of the files.
 pub mod fields {
@@ -100,6 +101,14 @@ pub mod fields {
         PROTECT_REQUIRE,
         PROTECT_REQUIRE_RUNG,
     ];
+
+    /// `prefix`: a prefix of the interwiki map (every key of that file is one).
+    pub const INTERWIKI_PREFIX: &str = super::PREFIX_FIELD;
+    /// `template`: the address template a prefix of the interwiki map leads to.
+    pub const INTERWIKI_TEMPLATE: &str = super::TEMPLATE_FIELD;
+
+    /// Every field a draft of the interwiki map can be refused at: the prefix and the template of a row.
+    pub const INTERWIKI: [&str; 2] = [INTERWIKI_PREFIX, INTERWIKI_TEMPLATE];
 
     /// Every field a draft of the constitution can be refused at.
     pub const CONSTITUTION: [&str; 3] = [
@@ -277,5 +286,38 @@ impl ConstitutionDraft {
             self.policy_approvals,
             self.constitution_approvals,
         )
+    }
+}
+
+/// The interwiki map as a form sends it: **one row for each prefix, the prefix and its address template as typed** (the form
+/// trims them). The file has no key of its own, so there is nothing else to say.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct InterwikiDraft {
+    /// The rows, in the order the form lists them: `(prefix, template)`.
+    pub rows: Vec<(String, String)>,
+}
+
+impl InterwikiDraft {
+    /// The draft that says what `map` says: what the form is filled with, by prefix.
+    pub fn of(map: &Interwiki) -> InterwikiDraft {
+        InterwikiDraft {
+            rows: map
+                .iter()
+                .map(|(prefix, template)| (prefix.to_owned(), template.to_owned()))
+                .collect(),
+        }
+    }
+
+    /// The text of a `governance/interwiki.yaml` that says what the draft says, for the validator to read
+    /// ([`validate_interwiki`](super::validate_interwiki)): **each prefix and each template double-quoted**, so that nothing a
+    /// person typed is YAML syntax. A prefix that holds a character no prefix has is therefore a key the validator refuses
+    /// ([`Refusal::UnknownKey`](super::Refusal)), never a second key. A candidate, not a map: the empty draft is the empty text,
+    /// an empty map.
+    pub fn to_text(&self) -> String {
+        let mut out = String::new();
+        for (prefix, template) in &self.rows {
+            out.push_str(&format!("{}: {}\n", quoted(prefix), quoted(template)));
+        }
+        out
     }
 }

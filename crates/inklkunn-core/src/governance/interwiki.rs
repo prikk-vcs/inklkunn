@@ -62,10 +62,10 @@ pub const MAX_INTERWIKI_BYTES: usize = 160 * 1024;
 const PLACEHOLDER: &str = "{title}";
 
 /// The field of the schema a refusal about a prefix names.
-const PREFIX_FIELD: &str = "prefix";
+pub(super) const PREFIX_FIELD: &str = "prefix";
 
 /// The field of the schema a refusal about a template names.
-const TEMPLATE_FIELD: &str = "template";
+pub(super) const TEMPLATE_FIELD: &str = "template";
 
 /// An interwiki map that was read or judged sound: **prefix to template, each template ready for the resolver**.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
