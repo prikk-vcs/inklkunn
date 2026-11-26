@@ -372,6 +372,56 @@ fn a_file_that_changed_since_the_plan_fails_the_import_in_the_middle_and_nothing
 }
 
 #[test]
+fn an_attachment_or_a_sidecar_rewritten_at_the_same_size_after_the_plan_fails_the_import_as_a_page_does()
+ {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    // V-2: every file the replay reads is the file the plan read, not only the pages and the histories. A sidecar whose licence
+    // changed from `CC-BY-4.0` to `CC-BY-3.0` is the same size and the same inode; so is an attachment with one byte changed.
+    for (n, (rel, from, to)) in [
+        (
+            "attachments/notes.txt.meta.yaml",
+            "CC-BY-4.0".as_bytes(),
+            "CC-BY-3.0".as_bytes(),
+        ),
+        ("attachments/notes.txt", b"a", b"b"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let copy = dir_in(&std::env::temp_dir(), &format!("rewritten-after-plan-{n}"));
+        copy_tree(&fixture("sidecars/bundle"), &copy.0);
+        let plan = plan_of(&copy.0, None);
+        assert!(
+            plan.file_digests.contains_key(rel),
+            "{rel}: the plan took a digest"
+        );
+        let path = copy.0.join(rel);
+        let mut bytes = std::fs::read(&path).unwrap();
+        let at = bytes
+            .windows(from.len())
+            .position(|w| w == from)
+            .unwrap_or_else(|| panic!("{rel} has {from:?}"));
+        bytes
+            .get_mut(at..at + to.len())
+            .unwrap()
+            .copy_from_slice(to);
+        std::fs::write(&path, &bytes).unwrap();
+        let w = world(&format!("rewritten{n}"));
+        let failed = run(&w, &plan, "rewritten", "CC-BY-SA-4.0", &|_| {}).expect_err(rel);
+        let said = failed.to_string();
+        assert!(
+            said.contains(&format!("`{rel}` is not the file that was planned")),
+            "{rel}: {said}"
+        );
+        assert_eq!(leftovers(&w), Vec::<String>::new(), "{rel}");
+        assert!(w.store.list().unwrap().is_empty());
+    }
+}
+
+#[test]
 fn a_creation_that_is_alive_is_not_discarded_and_an_import_counts_for_no_participation() {
     if !prikk_on_path() {
         println!("skipping: prikk not on PATH");

@@ -7,6 +7,8 @@ use sha2::{Digest as _, Sha256};
 
 use super::*;
 
+mod corrections;
+
 // ------------------------------------------------------------------------------------------------ helpers
 
 fn fixture(rel: &str) -> PathBuf {
@@ -1054,17 +1056,65 @@ fn a_history_files_own_order_is_its_history_and_times_are_compared_as_instants()
         "history/home.jsonl",
         "rev `r3` has a `parent` that is not the record before it",
     );
-    // A first record that names a parent; a rev used twice.
+    // A first record that names a parent the file does not hold begins the history mid-way (V-10, a partial dump); every later
+    // record still names the one before it, and a parent that is in the file but later on is an order that is broken.
     let d = with_history(
         "ord-first",
-        &[rec(
-            "r1",
-            Some("r0"),
-            "2025-01-01T00:00:00Z",
-            Some(&text(1)),
-        )],
+        &[
+            rec("r5", Some("r4"), "2025-01-01T00:00:00Z", Some(&text(1))),
+            rec("r6", Some("r5"), "2025-01-02T00:00:00Z", Some(&text(2))),
+        ],
     );
-    assert_refused(&plan(&d.0), "history/home.jsonl", "names a `parent`");
+    let p = plan(&d.0);
+    assert_importable(&p);
+    assert_eq!(
+        p.report.histories.first().and_then(|h| h.begins_at.clone()),
+        Some("r5".to_owned())
+    );
+    assert!(
+        p.render().contains("(history begins at r5)"),
+        "{}",
+        p.render()
+    );
+    assert_eq!(
+        p.histories.first().and_then(|h| h.begins_at.clone()),
+        Some("r5".to_owned())
+    );
+    let d = with_history(
+        "ord-first-later",
+        &[
+            rec("r1", Some("r2"), "2025-01-01T00:00:00Z", Some(&text(1))),
+            rec("r2", Some("r1"), "2025-01-02T00:00:00Z", Some(&text(2))),
+        ],
+    );
+    assert_refused(
+        &plan(&d.0),
+        "history/home.jsonl",
+        "names a `parent` that comes after it in the file",
+    );
+    // The records after the first still name the one before them.
+    let d = with_history(
+        "ord-mid-broken",
+        &[
+            rec("r5", Some("r4"), "2025-01-01T00:00:00Z", Some(&text(1))),
+            rec("r6", Some("r4"), "2025-01-02T00:00:00Z", Some(&text(2))),
+        ],
+    );
+    assert_refused(
+        &plan(&d.0),
+        "history/home.jsonl",
+        "rev `r6` has a `parent` that is not the record before it",
+    );
+    // A whole history says nothing of a beginning.
+    let whole = with_history("ord-whole", &three());
+    assert_eq!(
+        plan(&whole.0)
+            .report
+            .histories
+            .first()
+            .and_then(|h| h.begins_at.clone()),
+        None
+    );
     let d = with_history(
         "ord-dup",
         &[

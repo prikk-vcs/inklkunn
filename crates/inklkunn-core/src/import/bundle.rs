@@ -1214,13 +1214,17 @@ fn refuse_conflicting_paths(
     // case: path → who named it first
     let mut by_key: BTreeMap<String, (String, String)> = BTreeMap::new();
     let mut said: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut note = |path: &str, whose: &str, refusals: &mut Vec<Refusal>| {
+    let mut note = |path: &str, file: Option<&str>, refusals: &mut Vec<Refusal>| {
         let key = collision_key(path);
+        let whose = file.map_or_else(
+            || "a page of the bundle".to_owned(),
+            |f| format!("`{}`", shown(f)),
+        );
         match by_key.get(&key) {
             Some((first, first_whose)) if first != path => {
                 if said.insert((first.clone(), path.to_owned())) {
                     refusals.push(refusal(
-                        whose,
+                        file.unwrap_or(path),
                         format!(
                             "has the path `{}`, and {} has `{}`: a file system that ignores case cannot tell them apart",
                             shown(path),
@@ -1232,26 +1236,25 @@ fn refuse_conflicting_paths(
             }
             Some(_) => {}
             None => {
-                by_key.insert(key, (path.to_owned(), whose.to_owned()));
+                by_key.insert(key, (path.to_owned(), whose));
             }
         }
     };
     for f in plan.files.iter().filter(|f| f.path.starts_with("pages/")) {
-        note(&f.path, "a page of the bundle", refusals);
+        note(&f.path, None, refusals);
     }
     for h in histories {
-        let whose = format!("`{}`", shown(&h.file));
         for r in &h.revisions {
             if matches!(r.step, Step::NotReplayed(_)) {
                 continue;
             }
             if let Some(path) = &r.path {
-                note(path, &whose, refusals);
+                note(path, Some(&h.file), refusals);
             }
             if let Step::Rename { from, .. } = &r.step
                 && let Ok(path) = title_to_path(from)
             {
-                note(&path, &whose, refusals);
+                note(&path, Some(&h.file), refusals);
             }
         }
     }
