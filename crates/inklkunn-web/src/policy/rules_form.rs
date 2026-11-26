@@ -1254,7 +1254,7 @@ fn map_in_force(ctx: &Ctx, rules: &Rules) -> Result<Interwiki, ()> {
     }
     ctx.services
         .read
-        .interwiki_of(&ctx.wiki, None)
+        .interwiki_of(&ctx.wiki)
         .map_err(|e| ctx.log(&format!("the interwiki map could not be read now: {e}")))
 }
 

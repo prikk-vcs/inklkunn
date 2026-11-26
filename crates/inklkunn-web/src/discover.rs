@@ -300,7 +300,7 @@ pub(crate) async fn site_description(
     // The wiki's interwiki map (RFC 007 D-8) is the one its links are resolved with, at the tip. A map that cannot be asked for
     // is no document, never an empty one: a tool would take *none* for the answer.
     let for_work = wiki.clone();
-    let interwiki = blocking(move || services.read.interwiki_of(&for_work, None)).await;
+    let interwiki = blocking(move || services.read.interwiki_of(&for_work)).await;
     let Some(Ok(interwiki)) = interwiki else {
         return pages::plain(
             StatusCode::SERVICE_UNAVAILABLE,

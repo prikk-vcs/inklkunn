@@ -101,7 +101,7 @@ fn a_wiki_with_no_map_resolves_every_prefix_as_before() {
             .iter()
             .any(|t| t == "wp:Rust (language)")
     );
-    assert!(w.service.interwiki_of(&w.wiki, None).unwrap().is_empty());
+    assert!(w.service.interwiki_of(&w.wiki).unwrap().is_empty());
     assert!(
         w.service
             .title_index(&w.wiki, None)
@@ -174,12 +174,10 @@ fn an_alternative_view_forked_before_a_map_change_follows_the_new_map() {
         index.interwiki().get("wp"),
         Some("https://de.wikipedia.org/wiki/{title}")
     );
-    // The wiki's map is one: the default view and the draft agree, and `interwiki_of` says it for any view.
+    // The wiki's map is one: the draft's index carries the same map as `interwiki_of`, which names no view.
     assert_eq!(
-        w.service
-            .interwiki_of(&w.wiki, Some("heads/draft"))
-            .unwrap(),
-        w.service.interwiki_of(&w.wiki, None).unwrap()
+        index.interwiki().get("wp"),
+        w.service.interwiki_of(&w.wiki).unwrap().get("wp")
     );
 }
 

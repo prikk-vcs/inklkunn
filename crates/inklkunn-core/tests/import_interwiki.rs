@@ -124,7 +124,7 @@ fn the_bundles_map_comes_in_with_the_first_change_in_its_canonical_bytes_and_the
     // The wiki's own reader has the map, and renders a mapped prefix as an external link and an unmapped one as it was: a missing page.
     let reads = reads_of(&w);
     assert_eq!(
-        reads.interwiki_of(&done.record, None).unwrap().to_yaml(),
+        reads.interwiki_of(&done.record).unwrap().to_yaml(),
         FIXTURE_MAP
     );
     let PageOutcome::Found(view) = reads

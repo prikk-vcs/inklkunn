@@ -123,16 +123,10 @@ impl ReadService {
         }
     }
 
-    /// The interwiki map the links of every view and state are resolved with: the wiki's, **the one of the default view's tip**.
-    ///
-    /// `view` is **not used**: the map does not depend on it (correction W-4). The parameter stays so that a caller written for the
-    /// map of a view's state needs no change; [`ReadService::interwiki`] is the same without it.
-    pub fn interwiki_of(
-        &self,
-        wiki: &WikiRecord,
-        view: Option<&str>,
-    ) -> Result<Interwiki, ReadError> {
-        let _ = view;
+    /// The interwiki map the links of every view and state are resolved with: the wiki's, **the one of the default view's tip**
+    /// (correction W-4), as an owned value; [`ReadService::interwiki`] is the same shared. There is no view to name: the wiki has one
+    /// map, and a parameter that said otherwise would say what is not so (readiness item Y-3).
+    pub fn interwiki_of(&self, wiki: &WikiRecord) -> Result<Interwiki, ReadError> {
         Ok(self.interwiki(wiki)?.as_ref().clone())
     }
 }

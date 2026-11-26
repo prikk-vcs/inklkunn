@@ -239,8 +239,9 @@ pub(crate) fn people(t: T, provenance: &Provenance) -> Vec<String> {
 }
 
 /// **The sentence an imported revision says in place of its people** (RFC 007 D-3): *Imported. Originally by {name}, {date}: {summary}*.
-/// The name is the source's, said so and never linked to or matched with an account; the date is the source's, labelled
-/// *originally*; what the source hid is said *hidden at the source*, and what moderation of this wiki hides is not said at all.
+/// The name is the one the wiki it was imported from gave, said so and never linked to or matched with an account; the date is that
+/// wiki's, labelled *originally*; what that wiki hid is said *hidden at the wiki it was imported from*, and what moderation of this
+/// wiki hides is not said at all.
 pub(crate) fn imported_sentence(t: T, revision: &ImportedRevision) -> String {
     let name = match &revision.author {
         Said::Given(author) => t
@@ -268,7 +269,7 @@ pub(crate) fn imported_sentence(t: T, revision: &ImportedRevision) -> String {
 }
 
 /// **The notice of an import** (RFC 007 D-3; LIC-4's *imported from*), from the first imported change among `provenances`: where the
-/// bundle came from (the source's name and address, as text), the day, whether its checksums were checked, and whether the license is the
+/// bundle came from (the name and address the wiki it was imported from gives, as text), the day, whether its checksums were checked, and whether the license is the
 /// importing admin's word. Empty when none of the changes was imported from a bundle.
 pub(crate) fn import_notice<'a>(
     t: T,

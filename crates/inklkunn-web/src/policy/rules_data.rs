@@ -69,7 +69,7 @@ pub(crate) fn gather(
     } else {
         None
     };
-    let interwiki = match services.read.interwiki_of(wiki, None) {
+    let interwiki = match services.read.interwiki_of(wiki) {
         Ok(map) => Some(map),
         Err(error) => {
             (services.log)(&format!(
