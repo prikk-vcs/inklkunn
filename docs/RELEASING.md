@@ -36,7 +36,9 @@ released from M0; this document exists so that the first release is a rehearsed 
    dev-dependency that has a version in the published manifest, and a crate that names itself, or a crate that depends on the one that
    depends on it, cannot then be published (`no matching package named …`); without a version cargo drops the line when it packages.
    `deny.toml`'s `allow-wildcard-paths` covers them, so the wildcard rule is not loosened for normal dependencies;
-   `README.md` and `docs/STATUS.md` say so.
+   `README.md` and `docs/STATUS.md` say so. **`wiki-commons.yaml`** (the self-assessment, RFC 007 D-10) carries the same version in
+   `subject.version`; `crates/inklkunn-core/tests/self_assessment.rs` fails until it does. At a release the architect also
+   re-reads every `partial` and `no` in it (and every `yes`) against what the release now does.
 6. **Dry run**: `release.yml` in rehearsal mode (`workflow_dispatch`, `mode: rehearsal`) on the candidate
    commit; it builds everything, attests under a rehearsal label and pushes only the throwaway image
    package; the real image name is never touched (the `pin-check` test proves the guard).
@@ -103,7 +105,9 @@ and is named explicitly on every command (`cargo +1.89.0 check ...`), because a 
 
 `release.yml` on a tag: the gates job (fmt, clippy, the tests **with prikk at the floor on PATH (and the test-only
 prikk beside it) and shimmed off**, deny, audit, pin-check, floor-check) → the binaries (Linux x86_64 and aarch64, `--locked`, the pinned
-toolchain) with a build-info file naming the commit, the toolchain and the prikk floor → the container image
+toolchain) with a build-info file naming the commit, the toolchain and the prikk floor, and the self-assessment
+`wiki-commons.yaml` as it is at the tag, added to the x86_64 job's `dist/` so that the release carries it beside the tarballs (the
+rehearsal's artifact `dist-x86_64-unknown-linux-gnu` shows it) → the container image
 per architecture (`…:X.Y.Z-amd64`, `…:X.Y.Z-arm64`, from a digest-pinned base, carrying prikk at the floor
 checked against the recorded checksum, bubblewrap and prlimit; **each image is run once before it is pushed**, with the
 settings SECURITY.md gives for confinement, and the job fails unless `wiki create` on a scratch volume succeeds, which it

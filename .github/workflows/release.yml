@@ -209,6 +209,9 @@ jobs:
             echo "toolchain: ${RUST_TOOLCHAIN} ($(rustc --version))"
             echo "requires: glibc >= 2.35, prikk >= ${PRIKK_VERSION}, bubblewrap, prlimit (util-linux)"
           } > "dist/${NAME}.build-info.txt"
+      - name: "The self-assessment travels with the release (RFC 007 D-10; one file, so only the first target adds it; the rehearsal's artifact shows it)"
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cp wiki-commons.yaml dist/wiki-commons.yaml
       - name: Attest the tarball
         if: github.event_name == 'push'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
