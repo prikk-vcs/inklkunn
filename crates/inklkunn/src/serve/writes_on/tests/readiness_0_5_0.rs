@@ -43,6 +43,7 @@ mod bookstack;
 mod mediawiki;
 mod refusals;
 mod roundtrip;
+mod surfaces;
 mod sha;
 
 const FIXTURES: &str = "../inklkunn-core/tests/fixtures/interchange";
@@ -348,6 +349,7 @@ fn the_interchange_works_end_to_end_on_a_real_prikk() {
     p.a_bookstack_export_comes_in();
     p.a_round_trip();
     p.refusals_are_named_and_write_nothing();
+    p.the_new_surfaces();
 
     let steps = p.t.steps;
     p.t.say(format!("\n== end of the transcript: {steps} steps"));

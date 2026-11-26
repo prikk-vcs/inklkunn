@@ -21,7 +21,7 @@ fn page(title: &str, body: &str) -> String {
 }
 
 /// The member of a JSON value at a pointer, `null` when there is none (a test may not index).
-fn member<'a>(v: &'a serde_json::Value, pointer: &str) -> &'a serde_json::Value {
+pub(super) fn member<'a>(v: &'a serde_json::Value, pointer: &str) -> &'a serde_json::Value {
     v.pointer(pointer).unwrap_or(&serde_json::Value::Null)
 }
 
@@ -61,7 +61,7 @@ fn essence(record: &serde_json::Value) -> String {
 
 impl Proof {
     /// A script's bearer token.
-    fn token(&self, login: &str, scope: Scope) -> String {
+    pub(super) fn token(&self, login: &str, scope: Scope) -> String {
         let auth = self.running.services.auth.clone().expect("sign-in");
         auth.issue_token(&self.world.account_of(login), scope, "r5-proof", 3600, now())
             .unwrap()
@@ -71,7 +71,7 @@ impl Proof {
     }
 
     /// The tip's state id, which a proposal sent through the API names.
-    fn tip(&self) -> String {
+    pub(super) fn tip(&self) -> String {
         let info = api(
             &self.running,
             "GET",
@@ -85,7 +85,7 @@ impl Proof {
     }
 
     /// A proposal of `handbook` sent for review through the API by `who`: its id.
-    fn sent(&self, who: &str, summary: &str, files: &str, renames: &str) -> String {
+    pub(super) fn sent(&self, who: &str, summary: &str, files: &str, renames: &str) -> String {
         let token = self.token(who, Scope::Propose);
         let body = format!(
             "{{\"summary\":{},\"submit\":true,\"files\":[{files}],\"renames\":[{renames}]}}",
@@ -104,14 +104,14 @@ impl Proof {
     }
 
     /// Maya (a maintainer) approves proposal `id` and accepts it.
-    fn accepted(&self, maya: &mut Person, id: &str) {
+    pub(super) fn accepted(&self, maya: &mut Person, id: &str) {
         let accepted = approve_and_accept(maya, id);
         assert_eq!(accepted.status, 200, "{}\n{}", accepted.head, accepted.body);
         assert!(accepted.body.contains("Signed into the history"), "{}", accepted.body);
     }
 
     /// Hide `parts` of the item whose moderation form is at `query`, as Maya, through the form.
-    fn hide(&self, maya: &mut Person, query: &str, parts: &[&str]) {
+    pub(super) fn hide(&self, maya: &mut Person, query: &str, parts: &[&str]) {
         let page = maya.browser.get(&format!("{MODERATE}?{query}"));
         assert_eq!(page.status, 200, "{query}: {}", page.body);
         let mut form = form_to(&page, MODERATE);
