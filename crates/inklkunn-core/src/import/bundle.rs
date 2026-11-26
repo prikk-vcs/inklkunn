@@ -804,6 +804,7 @@ fn judge(
     let mut history_licences: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new(); // page path → (licence, rev)
     let mut history_of_page: BTreeMap<String, String> = BTreeMap::new(); // page path → file
     let mut unknown_fields: BTreeSet<String> = BTreeSet::new();
+    let mut unplaced: Vec<String> = Vec::new();
     let history_files: Vec<(&String, &Vec<u8>)> = gathered
         .read
         .iter()
@@ -871,6 +872,15 @@ fn judge(
             refusals.push(refusal(rel, format!("rev `{}` {rule}", shown(&rev))));
             continue;
         }
+        // A page that the bundle's files do not have and whose records say no path cannot be placed: it is left out, said.
+        if judged
+            .revisions
+            .iter()
+            .any(|r| !matches!(r.step, Step::NotReplayed(_)) && r.path.is_none())
+        {
+            unplaced.push(rel.clone());
+            continue;
+        }
         let mut bad_path = false;
         for r in &judged.revisions {
             if matches!(r.step, Step::NotReplayed(_)) {
@@ -906,6 +916,14 @@ fn judge(
             page,
             revisions: judged.revisions,
             last_text: judged.last_text,
+        });
+    }
+    if !unplaced.is_empty() {
+        report.left_out.push(LeftOut {
+            what: "history files of pages the bundle does not have".to_owned(),
+            files: unplaced.len(),
+            why: "no page of the bundle has them and their records say no path, so the replay could not place them"
+                .to_owned(),
         });
     }
     finish(

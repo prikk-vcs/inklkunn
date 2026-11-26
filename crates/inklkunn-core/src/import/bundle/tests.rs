@@ -2023,3 +2023,33 @@ fn the_report_is_a_value_that_can_be_kept_and_says_what_it_is_made_of() {
         "none-in-the-bundle"
     );
 }
+
+#[test]
+fn the_history_of_a_page_the_bundle_does_not_have_and_cannot_place_is_left_out_and_said() {
+    let d = small("ghost");
+    // Records of a page with no file and no path of their own: nothing says where the replay would put it.
+    put(
+        &d.0,
+        "history/ghost.jsonl",
+        (record(
+            "g1",
+            None,
+            "2025-01-01T00:00:00Z",
+            Some("---\nid: ghost\ntitle: Ghost\n---\n\nx\n"),
+        ) + "\n")
+            .as_bytes(),
+    );
+    seal(&d.0);
+    let p = plan(&d.0);
+    assert_importable(&p);
+    assert!(p.histories.is_empty());
+    assert_eq!(p.report.revisions, 0);
+    assert!(
+        p.report
+            .left_out
+            .iter()
+            .any(|l| l.what == "history files of pages the bundle does not have" && l.files == 1),
+        "{}",
+        p.render()
+    );
+}
