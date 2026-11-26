@@ -154,14 +154,17 @@ impl Broken {
     /// wait until the policy page says it, as a person would see it.
     fn server_sees_the_break(&mut self) {
         let browser = &mut self.noor.browser;
-        until_seeing("the policy page to name the map that cannot be read", || {
-            let page = browser.get(POLICY);
-            if page.body.contains("The rules cannot be read") {
-                Ok(())
-            } else {
-                Err(page.body)
-            }
-        });
+        until_seeing(
+            "the policy page to name the map that cannot be read",
+            || {
+                let page = browser.get(POLICY);
+                if page.body.contains("The rules cannot be read") {
+                    Ok(())
+                } else {
+                    Err(page.body)
+                }
+            },
+        );
     }
 
     /// Every kind of write the wiki refuses while the map cannot be read, each said by the sentence and naming the map's file;
@@ -221,14 +224,16 @@ impl Broken {
         let told = self.maya.browser.get(FORM);
         assert_eq!(told.status, 403, "{}", told.body);
         assert!(
-            told.body.contains("Only an admin of the wiki can propose the repair"),
+            told.body
+                .contains("Only an admin of the wiki can propose the repair"),
             "{}",
             told.body
         );
         let page = self.ada.browser.get(FORM);
         assert_eq!(page.status, 200, "{}", page.body);
         assert!(
-            page.body.contains("The rules cannot be read, so the form starts from the default rules")
+            page.body
+                .contains("The rules cannot be read, so the form starts from the default rules")
                 && page.body.contains(MAP),
             "{}",
             page.body
@@ -239,8 +244,24 @@ impl Broken {
     /// The admin sends the map `rows` (none: the form as it is) and gets one proposal, which she accepts: the block it makes is
     /// signed by the hatch (an admin, the rules unreadable), and is the next block of the wiki.
     fn is_repaired_by(&mut self, rows: &[(&str, &str)]) {
-        let before = self.world.blocks();
         let sent = send_map(&mut self.ada, rows);
+        self.sent_is_accepted(sent);
+    }
+
+    /// As [`Broken::is_repaired_by`], by *Back to the default rules*: the files of the rules that are there are removed, the map
+    /// that cannot be read with them.
+    fn is_repaired_by_the_defaults(&mut self) {
+        let page = self.ada.browser.get(FORM);
+        assert_eq!(page.status, 200, "{}", page.body);
+        let sent = self
+            .ada
+            .browser
+            .submit(&form_to(&page, FORM), Some(("act", "defaults")));
+        self.sent_is_accepted(sent);
+    }
+
+    fn sent_is_accepted(&mut self, sent: Reply) {
+        let before = self.world.blocks();
         assert_eq!(sent.status, 303, "{}\n{}", sent.head, sent.body);
         let repair = proposal_id(&sent.location());
         assert_eq!(self.world.blocks(), before, "proposing writes nothing");
@@ -283,7 +304,8 @@ impl Broken {
 const UNSOUND: &[u8] = b"wikipedia: http://en.wikipedia.org/wiki/{title}\n";
 
 #[test]
-fn a_map_that_is_not_sound_refuses_every_write_and_the_form_repairs_it_with_rows_and_then_with_none() {
+fn a_map_that_is_not_sound_refuses_every_write_and_the_form_repairs_it_with_rows_and_then_with_none()
+ {
     let Some(mut w) = broken("y1-unsound", &[(MAP, Some(UNSOUND.to_vec()))]) else {
         return;
     };
@@ -332,7 +354,10 @@ fn a_map_that_is_not_sound_refuses_every_write_and_the_form_repairs_it_with_rows
 
 #[test]
 fn a_map_that_is_not_text_or_is_too_long_is_repaired_by_the_form_like_one_that_is_not_sound() {
-    let Some(mut w) = broken("y1-bytes", &[(MAP, Some(vec![0xff, 0xfe, b'a', b':', b' ']))]) else {
+    let Some(mut w) = broken(
+        "y1-bytes",
+        &[(MAP, Some(vec![0xff, 0xfe, b'a', b':', b' ']))],
+    ) else {
         return;
     };
     w.refuses_writes_and_reads();
@@ -350,7 +375,10 @@ fn a_map_that_is_not_text_or_is_too_long_is_repaired_by_the_form_like_one_that_i
 
     // A file one byte over the bound: a proposal is made while the wiki is well, the file arrives, and typed rows repair it.
     w.open = propose_edit(&mut w.noor, "Help", "Say that it says so", say_so);
-    w.broke = plant(&w.world, &[(MAP, Some(vec![b'#'; MAX_INTERWIKI_BYTES + 1]))]);
+    w.broke = plant(
+        &w.world,
+        &[(MAP, Some(vec![b'#'; MAX_INTERWIKI_BYTES + 1]))],
+    );
     w.refuses_writes_and_reads();
     w.form_is_the_repair();
     w.is_repaired_by(&[("wikipedia", WIKI)]);
@@ -446,6 +474,97 @@ fn a_directory_where_the_map_belongs_is_repaired_by_the_form_with_no_row_and_the
             .get(POLICY)
             .body
             .contains("<dt>wikipedia</dt>")
+    );
+    w.running.stop();
+}
+
+#[test]
+fn back_to_the_default_rules_repairs_a_map_that_cannot_be_read_whether_it_is_a_file_or_a_directory()
+{
+    let Some(mut w) = broken("y1-defaults", &[(MAP, Some(UNSOUND.to_vec()))]) else {
+        return;
+    };
+    w.refuses_writes_and_reads();
+    w.is_repaired_by_the_defaults();
+    w.writes_work(READING_AFTER);
+    assert!(
+        w.noor
+            .browser
+            .get(POLICY)
+            .body
+            .contains("This wiki has no interwiki map.")
+    );
+
+    // The same where a directory stands in its place.
+    w.open = propose_edit(&mut w.noor, "Help", "Say that it says so", say_so);
+    w.broke = plant(&w.world, &directory());
+    w.refuses_writes_and_reads();
+    says_what_stands_there(&mut w);
+    w.is_repaired_by_the_defaults();
+    w.writes_work(TRUST_AFTER);
+    assert!(
+        w.noor
+            .browser
+            .get(POLICY)
+            .body
+            .contains("This wiki has no interwiki map.")
+    );
+    w.running.stop();
+}
+
+#[test]
+fn a_directory_with_more_files_than_the_fault_lists_is_repaired_by_the_form_in_as_many_rounds_as_it_takes()
+ {
+    let files: Vec<(String, Option<Vec<u8>>)> = (0..53)
+        .map(|n| {
+            (
+                format!("governance/interwiki.yaml/f{n:02}.txt"),
+                Some(b"x\n".to_vec()),
+            )
+        })
+        .collect();
+    let planted: Vec<(&str, Option<Vec<u8>>)> =
+        files.iter().map(|(p, c)| (p.as_str(), c.clone())).collect();
+    let Some(mut w) = broken("y1-dir-many", &planted) else {
+        return;
+    };
+    w.refuses_writes_and_reads();
+    // The fault lists the first fifty and counts the rest.
+    let page = w.ada.browser.get(FORM);
+    assert!(
+        page.body.contains("governance/interwiki.yaml/f49.txt")
+            && !page.body.contains("governance/interwiki.yaml/f50.txt")
+            && page.body.contains("and 3 more"),
+        "{}",
+        page.body
+    );
+    // The first round removes those, and the wiki still cannot be read: what is left is said, and the writes are still refused.
+    w.is_repaired_by(&[]);
+    let policy = w.noor.browser.get(POLICY);
+    assert!(
+        policy.body.contains("The rules cannot be read")
+            && policy.body.contains("governance/interwiki.yaml/f50.txt")
+            && policy.body.contains("governance/interwiki.yaml/f52.txt")
+            && !policy.body.contains("governance/interwiki.yaml/f49.txt")
+            && !policy.body.contains("more."),
+        "{}",
+        policy.body
+    );
+    let held = press_accept(&mut w.maya, &w.open);
+    assert!(
+        held.status >= 400 && held.body.contains(REFUSED),
+        "{}",
+        held.body
+    );
+    // The second removes the rest.
+    w.is_repaired_by(&[]);
+    w.writes_work(READING_AFTER);
+    assert!(
+        w.noor
+            .browser
+            .get(POLICY)
+            .body
+            .contains("This wiki has no interwiki map.")
     );
     w.running.stop();
 }
