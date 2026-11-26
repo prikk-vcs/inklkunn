@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+# cargo cannot package a file whose name has a colon, and the MediaWiki converter names a history file by the page's id (`mw:101.jsonl`):
+# the fixture's history files stay in the repository, where the tests read them, and are not part of the published crate.
+exclude = ["tests/fixtures/interchange/mediawiki/bundle/history/"]
 description = "inklkunn's domain: wikis and views, pages, proposals and review, acceptance orchestration, the single default-deny authorize(), honesty, merge, export."
 
 [features]

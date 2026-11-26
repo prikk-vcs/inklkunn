@@ -38,8 +38,9 @@ python3 -m venv /tmp/wc-venv && /tmp/wc-venv/bin/pip install PyYAML
 the checksums file does not name it, and the import refuses the bundle by name (a file in the bundle that the checksums do not
 name). The refusal says so, and says how to fix it. (The converters' output is otherwise unchanged by the flag.)
 
-The converters stamp `exported_at` with the day they ran, so a regeneration gives other bytes there and in the checksums of
-nothing else: the page, history and `users.yaml` files are the same bytes. The tests read counts and rules, never that date.
+The converters stamp `exported_at` with the day they ran, so a regeneration gives other bytes in the manifest and nowhere else:
+the page, history and `users.yaml` files, and so the checksums, are the same bytes. The tests read counts and rules, never that
+date.
 Pandoc was **not** installed when these were made, so the converter's built-in wikitext reader and its "HTML page kept as HTML"
 rule are in the output (`fidelity.degraded` says so).
 
@@ -50,7 +51,9 @@ Findings about the converters' output that the import's plan depends on, or that
 - neither converter's final page file equals its last history record's `content` (the file carries `id`, `source`, `ext` and the
   like; the record only the title, tags and kind), so every page of a converted bundle ends with the change *final state of the
   bundle* (D-2);
-- a history file is named by the page's `id` (`mw:101`), colon included.
+- a history file is named by the page's `id` (`mw:101`), colon included. **`cargo package` refuses a file name with a colon**, so
+  `inklkunn-core`'s `Cargo.toml` excludes `mediawiki/bundle/history/` from the published crate (the tests that read it run in the
+  repository, never from the package).
 
 ## inklkunn's own export
 
