@@ -111,7 +111,11 @@ impl ReadService {
         let point = Point::Block(block_id.to_owned());
         let listing = self
             .storage
-            .tree(&self.layout.repo_dir(&wiki.id), &point, Some(GOVERNANCE_DIR))
+            .tree(
+                &self.layout.repo_dir(&wiki.id),
+                &point,
+                Some(GOVERNANCE_DIR),
+            )
             .map_err(|e| self.storage_error(wiki, e))?;
         match shape_at(&listing.entries, GovernanceFile::Interwiki) {
             Shape::File(entry) => self.interwiki_file_at(wiki, &point, entry),

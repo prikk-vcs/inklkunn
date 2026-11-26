@@ -132,6 +132,10 @@ impl Request {
             ProposalError::OwnedKeys(keys) => {
                 self.unacceptable_with("front-owned", words::owned_keys_text(self.t, &keys))
             }
+            ProposalError::NamespaceMapped(taken) => self.unacceptable_with(
+                "namespace-mapped",
+                words::namespace_mapped_text(self.t, &taken),
+            ),
             ProposalError::Quota(q) => self.quota(&q),
             ProposalError::AlreadyDecided => Problem::new(Code::AlreadyDecided),
             ProposalError::OwnProposal => Problem::new(Code::OwnProposal),

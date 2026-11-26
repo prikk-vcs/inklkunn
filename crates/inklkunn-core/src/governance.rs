@@ -114,8 +114,8 @@ pub use constitution::{Constitution, GovernanceChange, Requirement};
 pub use fault::{Fault, GovernanceFile, Limit, MAX_FOUND, OrderingPair, ReadFault, Refusal};
 pub use interwiki::{
     Interwiki, LeftOut, MAX_INTERWIKI_BYTES, MAX_INTERWIKI_PREFIXES, MAX_PREFIX_CHARS,
-    MAX_TEMPLATE_CHARS, judge_interwiki, namespaces_of_titles, read_interwiki, validate_interwiki,
-    validate_interwiki_bytes,
+    MAX_TEMPLATE_CHARS, MappedNamespace, judge_interwiki, namespaces_of_titles, read_interwiki,
+    validate_interwiki, validate_interwiki_bytes,
 };
 pub use limits::{LIMIT_DAYS_MAX, LIMIT_DAYS_MIN, Lowered, PlatformLimits};
 pub use model::{Acceptance, AppealRung, Entry, GrantUpTo, Rungs, SelfAcceptance};

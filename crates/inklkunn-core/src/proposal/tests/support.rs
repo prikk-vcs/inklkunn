@@ -40,6 +40,8 @@ pub(super) struct Bases {
     fail_ids: Mutex<Option<BaseError>>,
     /// The pages the repository holds at every base (path and text).
     pages: Mutex<BTreeMap<String, String>>,
+    /// The wiki's interwiki map (correction W-5); none until a test puts one.
+    interwiki: Mutex<crate::governance::Interwiki>,
 }
 
 impl Bases {
@@ -57,6 +59,15 @@ impl Bases {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(path.to_owned(), text.to_owned());
+    }
+
+    /// Give the wiki an interwiki map: the one every proposal's pages are judged against.
+    pub(super) fn put_interwiki(&self, text: &str) {
+        let map = crate::governance::read_interwiki(text.as_bytes()).expect("a sound map");
+        *self
+            .interwiki
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = map;
     }
 
     pub(super) fn fail_with(&self, e: Option<BaseError>) {
@@ -107,6 +118,15 @@ impl BaseSource for Bases {
             .unwrap_or_else(PoisonError::into_inner)
             .get(path)
             .cloned())
+    }
+
+    fn interwiki(&self, _: &WikiRecord) -> Result<Arc<crate::governance::Interwiki>, BaseError> {
+        Ok(Arc::new(
+            self.interwiki
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
+        ))
     }
 
     fn pages_with_id(&self, _: &WikiRecord, _: &Base, id: &str) -> Result<Vec<String>, BaseError> {

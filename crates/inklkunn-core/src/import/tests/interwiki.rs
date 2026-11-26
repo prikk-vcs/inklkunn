@@ -155,11 +155,7 @@ fn the_maps_path_is_the_exact_string_every_other_spelling_of_it_is_refused() {
         // As a write, alone.
         refused(
             "no path below governance/ but the interwiki map",
-            request(
-                SystemActKind::Import,
-                vec![file(spelled, MAP)],
-                Vec::new(),
-            ),
+            request(SystemActKind::Import, vec![file(spelled, MAP)], Vec::new()),
         );
         // As the `to` of a rename.
         refused(

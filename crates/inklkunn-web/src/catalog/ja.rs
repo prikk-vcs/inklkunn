@@ -3533,6 +3533,10 @@ pub const CATALOG: &[Entry] = &[
         "この Wiki のルールの変更は、それだけで提案します。constitution.yaml、policy.yaml、interwiki.yaml を変更する提案では、ページなどほかのものを変更できません。",
     ),
     msg(
+        "invalid.namespace_mapped",
+        "{prefix} は、この Wiki の Wiki 間リンクの対応表で {host} につながる接頭辞です。この接頭辞で始まるタイトルのページは、そのタイトルでは開けなくなるため、別のタイトルにしてください。",
+    ),
+    msg(
         "proposal.approvals_unreachable",
         "この Wiki のルールでは、提案者以外の人からの承認が {count} 件必要ですが、承認できる人がまだ足りません。レビューできる役割を持つ人が増えるまで、どの提案も受け入れられません。",
     ),

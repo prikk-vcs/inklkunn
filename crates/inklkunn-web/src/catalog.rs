@@ -1762,6 +1762,7 @@ keys! {
     GovernanceFoundMore => "governance.found_more",
     InvalidGovernancePath => "invalid.governance_path",
     InvalidGovernanceMixed => "invalid.governance_mixed",
+    InvalidNamespaceMapped => "invalid.namespace_mapped",
     ProposalApprovalsUnreachable => "proposal.approvals_unreachable",
     // governance: the refusals of acceptance and the approvals warning (RFC 006 D-1, D-4; handoff G-T1 part C): end
     // protections (RFC 006 D-7; handoff G-T3): the one display, the refusals and the moderation form

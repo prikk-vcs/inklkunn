@@ -311,6 +311,65 @@ impl ProposalAcceptor {
 }
 
 impl ProposalAcceptor {
+    /// **A new page is not titled in a namespace the interwiki map has taken** (correction W-5), judged again where it counts, under
+    /// the lease, on what is about to be signed: a page written where the proposal's view has none, and the place a page is moved to
+    /// (a move onto a page that is there collides, and is refused as it was). The same rule, by the same definition of a namespace, as
+    /// the proposing's ([`crate::governance::Interwiki::takes_namespace_of`]): the map is the wiki's, the default view's tip's, whichever
+    /// view the proposal is in. **A page that is there is not touched**, whatever its title: it was made before the map or by another
+    /// way, and an edit of it is an edit. Only the paths whose title is in a taken namespace are looked up in the view's index.
+    pub(super) fn check_namespaces(
+        &self,
+        wiki: &WikiRecord,
+        proposal: &ProposalRecord,
+        files: &[PreparedFile],
+        renames: &[(PathBuf, PathBuf)],
+    ) -> Result<(), AcceptFailure> {
+        let page_path = |p: &std::path::Path| {
+            p.to_str()
+                .filter(|p| crate::proposal::files::is_page_path(p))
+                .map(str::to_owned)
+        };
+        let written = files
+            .iter()
+            .filter(|f| f.content.is_some())
+            .filter_map(|f| page_path(&f.path))
+            .map(|path| (path, false));
+        let moved = renames
+            .iter()
+            .filter_map(|(_, to)| page_path(to))
+            .map(|path| (path, true));
+        let candidates: Vec<(String, bool)> = written.chain(moved).collect();
+        if candidates.is_empty() {
+            return Ok(());
+        }
+        let unavailable = |e: crate::read::ReadError| AcceptFailure::Unavailable(e.to_string());
+        let map = self.parts.reads.interwiki(wiki).map_err(unavailable)?;
+        let mut taken = Vec::new();
+        for (path, moved) in candidates {
+            if let Some(found) = inklkunn_markup::path::path_to_title(&path)
+                .and_then(|title| map.takes_namespace_of(&title))
+            {
+                taken.push((path, moved, found));
+            }
+        }
+        if taken.is_empty() {
+            return Ok(());
+        }
+        let index = self
+            .parts
+            .reads
+            .title_index(wiki, Some(&proposal.view))
+            .map_err(unavailable)?;
+        for (path, moved, found) in taken {
+            if moved || index.entry(&path).is_none() {
+                return Err(AcceptFailure::Proposal(ProposalError::NamespaceMapped(
+                    found,
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// The namespaces of the wiki as the interwiki map's prefixes are judged against them ([`namespaces_of_titles`]): from the
     /// titles of the default view's tip. A tip that cannot be read now is *could not be done now*, never *no namespaces*.
     fn wiki_namespaces(&self, wiki: &WikiRecord) -> Result<BTreeSet<String>, AcceptFailure> {

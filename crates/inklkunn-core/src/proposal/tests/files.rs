@@ -1385,3 +1385,150 @@ mod unreadable {
         });
     }
 }
+
+// ---------------------------------------------------------------------------------------------------- W-5
+
+const GH: &str = "gh: https://github.com/org/repo/wiki/{title}\n";
+
+fn path_of(title: &str) -> String {
+    inklkunn_markup::path::title_to_path(title).expect("a path")
+}
+
+fn namespace_taken(result: Result<(), ProposalError>) -> (String, String) {
+    match result {
+        Err(ProposalError::NamespaceMapped(taken)) => {
+            (taken.prefix().to_owned(), taken.host().to_owned())
+        }
+        other => panic!("not refused as a mapped namespace: {other:?}"),
+    }
+}
+
+#[test]
+fn a_new_page_whose_namespace_is_a_mapped_prefix_is_refused_naming_the_prefix_and_where_it_leads() {
+    on_both(|e| {
+        e.bases.put_interwiki(GH);
+        // The directory and the colon, in any case: both ways a title has a namespace.
+        for title in [
+            "GH:Notes",
+            "gh:Notes",
+            "Gh/Notes",
+            "gh/Deep/Notes",
+            "GH:Notes/Sub",
+        ] {
+            let path = path_of(title);
+            assert_eq!(
+                namespace_taken(create(
+                    e,
+                    &e.author,
+                    proposal(vec![change(&path, Some("x\n"))], vec![])
+                )),
+                ("gh".to_owned(), "github.com".to_owned()),
+                "{title}"
+            );
+        }
+        // Titles that only look like it: another prefix, a longer word, no namespace at all.
+        for title in [
+            "Notes",
+            "GHost:Notes",
+            "github/Notes",
+            "Gh Notes",
+            "Help:gh",
+        ] {
+            let path = path_of(title);
+            assert_eq!(
+                create(
+                    e,
+                    &e.author,
+                    proposal(vec![change(&path, Some("x\n"))], vec![])
+                ),
+                Ok(()),
+                "{title}"
+            );
+        }
+    });
+}
+
+#[test]
+fn a_page_moved_into_a_mapped_namespace_is_refused_and_a_page_that_is_already_there_is_not_touched()
+{
+    on_both(|e| {
+        e.bases.put_page("pages/Old.md", "old\n");
+        // A page made before the map, in the namespace the map now takes.
+        let legacy = path_of("GH:Legacy");
+        e.bases.put_page(&legacy, "legacy\n");
+        e.bases.put_interwiki(GH);
+        let into = path_of("gh:Moved");
+        assert_eq!(
+            namespace_taken(create(
+                e,
+                &e.author,
+                proposal(vec![], vec![rename("pages/Old.md", &into)])
+            )),
+            ("gh".to_owned(), "github.com".to_owned())
+        );
+        // The page that is there is edited, removed and moved away as before: reads are as they were, the map wins in the resolver.
+        assert_eq!(
+            create(
+                e,
+                &e.author,
+                proposal(vec![change(&legacy, Some("edited\n"))], vec![])
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            create(e, &e.author, proposal(vec![change(&legacy, None)], vec![])),
+            Ok(())
+        );
+        assert_eq!(
+            create(
+                e,
+                &e.author,
+                proposal(vec![], vec![rename(&legacy, "pages/Elsewhere.md")])
+            ),
+            Ok(())
+        );
+    });
+}
+
+#[test]
+fn the_rule_is_made_again_at_each_revision_and_when_the_draft_is_sent() {
+    on_both(|e| {
+        // A draft written while the wiki had no map, and a map that comes after it.
+        let path = path_of("gh:Notes");
+        let draft = e
+            .service
+            .create(
+                &e.author.principal,
+                &e.wiki,
+                None,
+                proposal(vec![change(&path, Some("x\n"))], vec![]),
+            )
+            .expect("a draft before the map");
+        e.bases.put_interwiki(GH);
+        let sent = e.service.submit(&e.author.principal, &e.wiki, &draft.id);
+        assert!(
+            matches!(sent, Err(ProposalError::NamespaceMapped(_))),
+            "{sent:?}"
+        );
+        // A proposal that was sound is revised into the namespace.
+        let fine = e
+            .service
+            .create_and_submit(
+                &e.author.principal,
+                &e.wiki,
+                None,
+                proposal(vec![change(&path_of("Fine"), Some("x\n"))], vec![]),
+            )
+            .expect("a sound proposal");
+        let revised = e.service.revise(
+            &e.author.principal,
+            &e.wiki,
+            &fine.id,
+            proposal(vec![change(&path, Some("x\n"))], vec![]),
+        );
+        assert!(
+            matches!(revised, Err(ProposalError::NamespaceMapped(_))),
+            "{revised:?}"
+        );
+    });
+}

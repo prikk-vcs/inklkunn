@@ -32,8 +32,9 @@ use inklkunn_store::{
 
 use crate::authorize::{Action, Authorizer, Principal, Resource, RestrictionNotice, Standing};
 use crate::governance::{
-    ApprovalsWarning, Fault, GovernanceFile, ReadFault, Rules, approvals_warning,
-    is_below_governance, is_governance_path, mixes_rules_with_other_paths, only_governance_files,
+    ApprovalsWarning, Fault, GovernanceFile, Interwiki, MappedNamespace, ReadFault, Rules,
+    approvals_warning, is_below_governance, is_governance_path, mixes_rules_with_other_paths,
+    only_governance_files,
 };
 use crate::knowledge::Readability;
 use crate::notify::Notifier;
@@ -115,6 +116,14 @@ pub trait BaseSource: Send + Sync {
             .map(|text| crate::knowledge::readability(path, text.len() as u64, text.as_bytes())))
     }
 
+    /// **The wiki's interwiki map** (correction W-5): the prefixes a page's title may not have as its namespace, which is the
+    /// default view's tip's, whichever view the proposal is in ([`ReadService::interwiki`]). **The default is no map**, which is right
+    /// for a source that has none (a double); [`ReadService`] reads it.
+    fn interwiki(&self, wiki: &WikiRecord) -> std::result::Result<Arc<Interwiki>, BaseError> {
+        let _ = wiki;
+        Ok(Arc::new(Interwiki::empty()))
+    }
+
     /// The paths of the pages whose `id` is `id` at `base`: where an expression's page is when a new source link is
     /// judged on the wording of its paragraph (K25). **The default reads every page**, which is right and slow;
     /// [`ReadService`] answers from the title index of exactly that state.
@@ -183,6 +192,10 @@ impl BaseSource for ReadService {
     ) -> std::result::Result<Option<Readability>, BaseError> {
         self.knowledge_readability_at(wiki, &base.block_id, path)
             .map_err(|e| BaseError::Unavailable(e.to_string()))
+    }
+
+    fn interwiki(&self, wiki: &WikiRecord) -> std::result::Result<Arc<Interwiki>, BaseError> {
+        ReadService::interwiki(self, wiki).map_err(|e| BaseError::Unavailable(e.to_string()))
     }
 
     fn pages_with_id(
@@ -360,6 +373,11 @@ pub enum ProposalError {
     },
     /// What was sent is not acceptable.
     Invalid(Invalid),
+    /// **A new page, or the place a page is moved to, is titled in a namespace the interwiki map has taken** (correction W-5): a link
+    /// `[[gh:Notes]]` leads to the map's `gh`, so a page `GH:Notes` could never be reached by its own title. Names the prefix and
+    /// where it leads (never the title). Refused when a draft is saved, when it is sent, at each revision, and again when the proposal
+    /// is accepted; a page that was there before the map is not touched.
+    NamespaceMapped(MappedNamespace),
     /// The proposal touches `governance/` in a view that is not the wiki's default view (RFC 006 D-1; threat model C-3e): the
     /// rules of a wiki are changed in the default view only. Refused when a draft is saved, when it is sent and at each
     /// revision, **by the rule the acceptance uses** ([`crate::governance::refuse_outside_default_view`]), and so told as the acceptance tells it
@@ -413,6 +431,7 @@ impl std::fmt::Display for ProposalError {
                 write!(f, "`{op}` is not possible while the proposal is {state}")
             }
             ProposalError::Invalid(why) => write!(f, "not acceptable: {why:?}"),
+            ProposalError::NamespaceMapped(taken) => write!(f, "not acceptable: {taken}"),
             ProposalError::GovernanceInvalid(faults) => {
                 write!(
                     f,

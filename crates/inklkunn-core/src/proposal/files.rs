@@ -232,6 +232,22 @@ impl Pages for ProposedPages<'_> {
     }
 }
 
+/// The paths that are new at the base: a page written where there was none, and where a page is moved to.
+fn new_page_paths<'a>(
+    content: &'a RevisionContent,
+    present: &BTreeSet<String>,
+) -> BTreeSet<&'a str> {
+    content
+        .files
+        .iter()
+        .filter(|f| is_page_path(&f.path))
+        .filter(|f| f.text.is_some())
+        .map(|f| f.path.as_str())
+        .chain(content.renames.iter().map(|r| r.to.as_str()))
+        .filter(|p| !present.contains(*p))
+        .collect()
+}
+
 impl ProposalService {
     /// Judge the files of `content`, a proposal in `view`, against the repository at its base: a governance file in a view
     /// that is not the default one (C-3e), new paths (P4) and owned keys (P5). The syntactic rule (every path is a page path)
@@ -258,6 +274,7 @@ impl ProposalService {
         }
         let present = self.bases.page_paths(wiki, &content.base)?;
         self.judge_paths(content, &present)?;
+        self.judge_namespaces(wiki, content, &present)?;
         self.judge_owned_keys(principal, wiki, content, &present)
     }
 
@@ -342,6 +359,32 @@ impl ProposalService {
         Ok(verdict?)
     }
 
+    /// **A new page is not titled in a namespace the interwiki map has taken** (correction W-5): the other direction of the rule that
+    /// a map's prefix is none of the wiki's namespaces, by the same definition of a namespace
+    /// ([`crate::governance::Interwiki::takes_namespace_of`]). Judged for the paths that are new at the base, a page written where
+    /// there was none and the place a page is moved to; a page that is there is not touched, whatever its title. The map is the wiki's
+    /// (the default view's tip), whichever view the proposal is in.
+    fn judge_namespaces(
+        &self,
+        wiki: &WikiRecord,
+        content: &RevisionContent,
+        present: &BTreeSet<String>,
+    ) -> Result<()> {
+        let new = new_page_paths(content, present);
+        if new.is_empty() {
+            return Ok(());
+        }
+        let map = self.bases.interwiki(wiki)?;
+        for path in new {
+            if let Some(taken) =
+                path_to_title(path).and_then(|title| map.takes_namespace_of(&title))
+            {
+                return Err(ProposalError::NamespaceMapped(taken));
+            }
+        }
+        Ok(())
+    }
+
     fn judge_paths(&self, content: &RevisionContent, present: &BTreeSet<String>) -> Result<()> {
         // Only pages are judged here; a knowledge file's place and name are the knowledge layer's (K-T2).
         let pages = || content.files.iter().filter(|f| is_page_path(&f.path));
@@ -351,12 +394,7 @@ impl ProposalService {
             .chain(content.renames.iter().map(|r| r.from.as_str()))
             .collect();
         // The paths that are new at the base: a page written where there was none, and where a page is moved to.
-        let new: BTreeSet<&str> = pages()
-            .filter(|f| f.text.is_some())
-            .map(|f| f.path.as_str())
-            .chain(content.renames.iter().map(|r| r.to.as_str()))
-            .filter(|p| !present.contains(*p))
-            .collect();
+        let new = new_page_paths(content, present);
         // A move onto a page that stays is no new page; it is a collision too (the page would be replaced).
         let landing: BTreeSet<&str> = content.renames.iter().map(|r| r.to.as_str()).collect();
         let unchanged: BTreeSet<&str> = present

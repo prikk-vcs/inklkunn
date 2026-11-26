@@ -28,8 +28,8 @@ use inklkunn_markup::{Page, Via, nfc_trim, normalize};
 use inklkunn_store::{IndexEntry, WikiRecord};
 
 use super::index::{MAX_REDIRECT_HOPS, TitleIndex};
-use crate::governance::Interwiki;
 use super::{ReadError, ReadService};
+use crate::governance::Interwiki;
 
 /// The most links read from one page.
 const MAX_LINKS_PER_PAGE: usize = 1_000;

@@ -3475,6 +3475,10 @@ pub const CATALOG: &[Entry] = &[
         "invalid.governance_mixed",
         "A change to the rules of this wiki is proposed on its own: a proposal that changes constitution.yaml, policy.yaml or interwiki.yaml cannot change a page or anything else.",
     ),
+    msg(
+        "invalid.namespace_mapped",
+        "{prefix} is a prefix of this wiki's interwiki map and leads to {host}. A page whose title begins with it (as {prefix}/ or {prefix}:) could not be reached by its own title, so choose another title.",
+    ),
     plural_msg(
         "proposal.approvals_unreachable",
         "The rules of this wiki ask for {count} approval from someone other than the proposer, and not enough people can give it yet. No proposal can be accepted until more people hold the role that reviews.",

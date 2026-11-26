@@ -114,6 +114,26 @@ impl Interwiki {
         self.map.clone()
     }
 
+    /// **Does a page titled `title` have a namespace the map has taken?** The rule of correction W-5, the other direction of
+    /// [`validate_interwiki`]'s clash of a prefix with a namespace: a link `[[gh:Notes]]` leads to the map's `gh`, so a page `GH:Notes`
+    /// (or `gh/Notes`, a directory `gh`) could never be reached by its own title, and one name would mean two things. A namespace is
+    /// what [`namespaces_of_titles`] calls one, and it is compared with the prefixes **without regard to the case of ASCII letters**
+    /// (`GH` is `gh`). The answer is the first namespace of the title (the directory, then the part before the colon) that the map has.
+    pub fn takes_namespace_of(&self, title: &str) -> Option<MappedNamespace> {
+        if self.map.is_empty() {
+            return None;
+        }
+        namespaces_of_title(title).find_map(|namespace| {
+            self.map
+                .iter()
+                .find(|(prefix, _)| prefix.to_ascii_lowercase() == namespace)
+                .map(|(prefix, template)| MappedNamespace {
+                    prefix: prefix.clone(),
+                    host: host_of(template),
+                })
+        })
+    }
+
     /// A short name for this map's content (the first 16 hex digits of the SHA-256 of [`Interwiki::to_yaml`]): two maps with the
     /// same prefixes and templates have the same one. For a key under which something resolved with the map is kept; empty for an
     /// empty map.
@@ -123,11 +143,7 @@ impl Interwiki {
             return String::new();
         }
         let digest = Sha256::digest(self.to_yaml().as_bytes());
-        digest
-            .iter()
-            .take(8)
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        digest.iter().take(8).map(|b| format!("{b:02x}")).collect()
     }
 
     /// The canonical text of the file: every template quoted, in prefix order. Reading it back gives the map again.
@@ -146,6 +162,37 @@ impl Interwiki {
     }
 }
 
+/// **A page title that is in a namespace the interwiki map has taken** (correction W-5): the prefix as the map spells it and the host
+/// of the template it leads to. Both are the map's, validated when the map was read (a prefix is ASCII letters, digits and `-`; a
+/// host is dot-separated labels and an optional port), and **never the title's own words**: a surface may say them as they are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MappedNamespace {
+    prefix: String,
+    host: String,
+}
+
+impl MappedNamespace {
+    /// The prefix, as the map spells it.
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    /// Where the prefix leads: the host of its template (with its port, when it has one).
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+}
+
+impl std::fmt::Display for MappedNamespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the interwiki map has the prefix `{}`, which leads to {}: a page cannot have it as its namespace",
+            self.prefix, self.host
+        )
+    }
+}
+
 /// A prefix of a bundle's map that the wiki did not take, and why: **the prefix as the bundle wrote it** (untrusted text: a
 /// surface escapes it) and the rule it broke.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,27 +203,29 @@ pub struct LeftOut {
     pub refusal: Refusal,
 }
 
-/// The namespaces a wiki has, as the clash rule asks them: from its page titles, **the first segment of a title that has a
-/// `/`** (a directory is a namespace) **and the part before the first `:`** of a title's first segment (`Help:Contents` is in
-/// `Help`), each in lower case, kept only when it could be a prefix. The titles are the wiki's (the caller reads them from
-/// the title index of the state the change is accepted on).
+/// The namespaces of **one title**, as the clash rule asks them: **the first segment of a title that has a `/`** (a directory is a
+/// namespace) **and the part before the first `:`** of the title's first segment (`Help:Contents` is in `Help`), each in lower case,
+/// kept only when it could be a prefix; in that order, none, one or two. **The one definition both directions of the rule use**: the
+/// clash of a prefix with the wiki's namespaces ([`namespaces_of_titles`]) and the clash of a page's title with a mapped prefix
+/// ([`Interwiki::takes_namespace_of`]), so that the two cannot disagree.
+fn namespaces_of_title(title: &str) -> impl Iterator<Item = String> {
+    let (first, nested) = match title.split_once('/') {
+        Some((first, _)) => (first, true),
+        None => (title, false),
+    };
+    let directory = (nested && is_prefix(first)).then(|| first.to_ascii_lowercase());
+    let colon = first
+        .split_once(':')
+        .map(|(before, _)| before)
+        .filter(|before| is_prefix(before))
+        .map(str::to_ascii_lowercase);
+    directory.into_iter().chain(colon)
+}
+
+/// The namespaces a wiki has, as the clash rule asks them: from its page titles ([`namespaces_of_title`] of each, in lower case).
+/// The titles are the wiki's (the caller reads them from the title index of the state the change is accepted on).
 pub fn namespaces_of_titles<'a>(titles: impl IntoIterator<Item = &'a str>) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for title in titles {
-        let (first, nested) = match title.split_once('/') {
-            Some((first, _)) => (first, true),
-            None => (title, false),
-        };
-        if nested && is_prefix(first) {
-            out.insert(first.to_ascii_lowercase());
-        }
-        if let Some((before, _)) = first.split_once(':')
-            && is_prefix(before)
-        {
-            out.insert(before.to_ascii_lowercase());
-        }
-    }
-    out
+    titles.into_iter().flat_map(namespaces_of_title).collect()
 }
 
 /// Is `s` a prefix by its characters and length: one to [`MAX_PREFIX_CHARS`] ASCII letters, digits and `-`?
@@ -203,6 +252,13 @@ fn prefix_rule(prefix: &str, namespaces: Option<&BTreeSet<String>>) -> Option<Re
         return Some(Refusal::PrefixIsNamespace);
     }
     None
+}
+
+/// The host of a template that [`template_rule`] accepted: what stands between `https://` and the first `/`, `?` or `#`.
+fn host_of(template: &str) -> String {
+    let rest = template.strip_prefix("https://").unwrap_or(template);
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    rest.get(..end).unwrap_or_default().to_owned()
 }
 
 /// The rule a template breaks, or `None`. In this order: its length, its characters, its scheme, user information, where

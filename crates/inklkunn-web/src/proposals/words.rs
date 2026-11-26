@@ -112,6 +112,18 @@ pub(crate) fn owned_keys_text(t: T, keys: &[&str]) -> String {
         .text()
 }
 
+/// The sentence that names the prefix of the interwiki map a new page's title begins with, and where it leads (correction W-5). Both
+/// words are the map's, validated when it was read, and never the title's.
+pub(crate) fn namespace_mapped_text(
+    t: T,
+    taken: &inklkunn_core::governance::MappedNamespace,
+) -> String {
+    t.msg(Key::InvalidNamespaceMapped)
+        .with("prefix", taken.prefix())
+        .with("host", taken.host())
+        .text()
+}
+
 /// What went wrong with what a person sent, in one sentence.
 pub(crate) fn invalid_text(t: T, why: Invalid) -> String {
     match why {
@@ -228,6 +240,11 @@ pub(crate) fn refusal(t: T, error: &ProposalError) -> Option<Refusal> {
             StatusCode::UNPROCESSABLE_ENTITY,
             Key::RefusedInvalidHeading,
             super::governance::fault_paragraphs(t, faults),
+        ),
+        ProposalError::NamespaceMapped(taken) => page(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Key::RefusedInvalidHeading,
+            vec![namespace_mapped_text(t, taken)],
         ),
         ProposalError::OwnedKeys(keys) => page(
             StatusCode::UNPROCESSABLE_ENTITY,

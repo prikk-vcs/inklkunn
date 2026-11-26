@@ -510,3 +510,74 @@ fn the_same_judgement_serves_the_file_and_the_import() {
         assert_eq!(left.first().map(|l| l.refusal), Some(file), "{template}");
     }
 }
+
+// ---------------------------------------------------------------------------------------------------- W-5
+
+#[test]
+fn a_title_is_in_a_taken_namespace_by_the_definition_the_prefixes_clash_is_judged_by() {
+    // One definition of a namespace, used in both directions: a prefix is refused when a title has it as a namespace, and a title is
+    // refused when the map has its namespace as a prefix. They cannot disagree, whatever the title.
+    let titles = [
+        "Help:Contents",
+        "help/Sowing",
+        "HELP:Contents/Sub",
+        "Gh/Deep/Notes",
+        "GH:Notes",
+        "Notes",
+        "Notes: with a space",
+        "A b:c",
+        "ghost:Notes",
+        "gh",
+        "gh/",
+        "/gh/x",
+        "x/gh:y",
+        "gh:y/x",
+        "",
+        ":x",
+        "a:b:c",
+    ];
+    for prefix in ["help", "gh", "ghost", "a", "x", "notes"] {
+        let text = format!("{prefix}: https://example.org/{{title}}\n");
+        let m = map(&text);
+        for title in titles {
+            let is_a_namespace = namespaces(&[title]).contains(prefix);
+            assert_eq!(
+                m.takes_namespace_of(title).is_some(),
+                is_a_namespace,
+                "{prefix} / {title:?}"
+            );
+            // And the clash the map's own rule makes is the same fact.
+            assert_eq!(
+                validate_interwiki(&text, &namespaces(&[title])).is_err(),
+                is_a_namespace,
+                "{prefix} / {title:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_prefix_is_compared_without_the_case_of_ascii_letters_and_is_named_as_the_map_spells_it() {
+    let m = map(
+        "GH: https://github.com:8443/org/repo/wiki/{title}\nwp: https://en.wikipedia.org/wiki/{title}\n",
+    );
+    for title in ["gh:Notes", "GH:Notes", "Gh/Notes", "gH/Deep/Notes"] {
+        let taken = m.takes_namespace_of(title).expect(title);
+        assert_eq!(taken.prefix(), "GH", "{title}");
+        assert_eq!(taken.host(), "github.com:8443", "{title}");
+    }
+    // The first namespace of the title the map has: the directory, then the part before the colon.
+    let taken = m
+        .takes_namespace_of("wp/gh:x")
+        .expect("the directory first");
+    assert_eq!(taken.prefix(), "wp");
+    assert!(m.takes_namespace_of("Ghost:Notes").is_none());
+    assert!(m.takes_namespace_of("Notes").is_none());
+    assert!(Interwiki::empty().takes_namespace_of("gh:Notes").is_none());
+    // What a surface says holds nothing of the title.
+    let said = m
+        .takes_namespace_of("gh:ZZ-secret-ZZ")
+        .expect("taken")
+        .to_string();
+    assert!(!said.contains("secret"), "{said}");
+}

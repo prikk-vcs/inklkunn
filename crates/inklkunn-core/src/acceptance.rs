@@ -143,6 +143,9 @@ pub mod words {
     /// A change that touches `governance/` and something else is refused: a change to the rules is its own proposal
     /// (RFC 006 D-4; handoff G-T1 correction C-1). It is the word of [`Invalid::GovernanceMixed`](crate::proposal::Invalid).
     pub const GOVERNANCE_MIXED: &str = "governance-mixed";
+    /// A new page is titled in a namespace the wiki's interwiki map has taken (RFC 007 D-8; correction W-5): refused before the signer is
+    /// asked. Nothing was committed and the proposal stays open.
+    pub const NAMESPACE_MAPPED: &str = "namespace-mapped";
 
     /// **Every word an acceptance that ended without its change in the history carries as a failure**: the words of
     /// [`AcceptFailure::Failed`](super::AcceptFailure) (what the signer's answer settles to: [`REFUSED`], [`UNAVAILABLE`],
@@ -448,6 +451,7 @@ impl AcceptFailure {
             AcceptFailure::Proposal(ProposalError::GovernanceInvalid(_)) => {
                 words::GOVERNANCE_INVALID
             }
+            AcceptFailure::Proposal(ProposalError::NamespaceMapped(_)) => words::NAMESPACE_MAPPED,
             AcceptFailure::Proposal(_)
             | AcceptFailure::InProgress { .. }
             | AcceptFailure::Unavailable(_)
@@ -1213,6 +1217,8 @@ impl ProposalAcceptor {
         // files, which a change to `governance/` has none of); then who may accept what is about to be signed, by the rules in
         // force *now*, which the lease has kept from changing under it.
         self.check_governance(wiki, &proposal, &files, &renames)?;
+        // A new page is not titled in a namespace the interwiki map has taken (correction W-5).
+        self.check_namespaces(wiki, &proposal, &files, &renames)?;
         // The rules are those of the default view's state read just now, with the lease held: the state the change is signed on
         // when it is the default view's, and never the tip the service holds (C-2).
         let rules = self.rules_now(wiki, &proposal.view, (&tip, &tip_state))?;

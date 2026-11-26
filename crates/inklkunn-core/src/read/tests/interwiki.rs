@@ -112,7 +112,8 @@ fn a_wiki_with_no_map_resolves_every_prefix_as_before() {
 }
 
 #[test]
-fn a_change_to_the_map_changes_the_links_at_the_next_tip_and_taking_the_file_away_takes_them_away() {
+fn a_change_to_the_map_changes_the_links_at_the_next_tip_and_taking_the_file_away_takes_them_away()
+{
     let w = world();
     put_map(&w, MAP);
     let first = read_page(&w, "Home");
@@ -156,7 +157,10 @@ fn an_alternative_view_forked_before_a_map_change_follows_the_new_map() {
         before.at.state_id(),
         "the view did not move"
     );
-    assert!(!after.cached, "a row drawn without the map is not read back");
+    assert!(
+        !after.cached,
+        "a row drawn without the map is not read back"
+    );
     // And the map changes again: the draft's index, held for its tip, never holds the map of an earlier default tip.
     put_map_unannounced(&w, "wp: https://de.wikipedia.org/wiki/{title}\n");
     let later = draft(&w);
