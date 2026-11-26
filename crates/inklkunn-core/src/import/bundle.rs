@@ -12,14 +12,24 @@
 //!    against the lines (a missing, an extra and a wrong file each refuse by name), and *none in the bundle* said when there
 //!    are none; there is no way to skip them;
 //! 4. `users.yaml`: an e-mail address in any entry refuses, naming the entry;
-//! 5. every history file (`history`): each record by the schema's types, **the file's own order as the history** (a `parent`,
-//!    `rev` or `at` that breaks it refuses, naming the page and the `rev`; times as instants), `content` or `patch` with its
-//!    `sha256` checked, every revision's text judged as the folder import judges a page (frontmatter, the page cap), and the
-//!    licence each declares;
-//! 6. each page's and attachment's own licence by the matrix of chapter 15 (`licence`): files it cannot go into refuse the
-//!    run unless `--leave-out-incompatible`, which leaves **exactly those** out (a page with all its history), and nothing
-//!    imports them;
-//! 7. the revision cap and the bytes of `history/` (C-5e), with the way on (`--no-history`).
+//! 5. every history file (`history`): each record by the schema's types, then **the revisions counted from what the records say
+//!    and refused at the cap before any patch is applied** (a crafted history costs no more to refuse than to read), then the
+//!    file's own order as the history (a `parent`, `rev` or `at` that breaks it refuses, naming the page and the `rev`; times as
+//!    instants, not after the year 9999; **a first record whose `parent` is not in the file begins the history mid-way**, which
+//!    the report says), `content` or `patch` with its `sha256` checked (what the patches of the whole bundle handle is bounded
+//!    too), every revision's text judged as the folder import judges a page (frontmatter, the page cap), and the licence each
+//!    declares;
+//! 6. each page's, attachment's and **history's** own licence by the matrix of chapter 15 (`licence`), a history keyed by its file
+//!    (the history of a page removed since has no page file to look up): files it cannot go into refuse the run unless
+//!    `--leave-out-incompatible`, which leaves **exactly those** out (a page with all its history, or a history), and nothing
+//!    imports them; a name that is not an SPDX id but is close to one is refused with the id it probably means, never taken for it;
+//! 7. the paths the replay would write, judged together: none the same as another for a file system that ignores case (the
+//!    pages' and **every revision's**), and no two histories holding one path at times that overlap;
+//! 8. the revision cap and the bytes of `history/` (C-5e), with the way on (`--no-history`).
+//!
+//! **The plan keeps what it took of every file it reads** (`BundlePlan::file_digests` beside `page_digests`) and the replay reads
+//! each file again against it. The bundle's identity (`bundle_digest`) is the digest of the checksums file when the bundle was
+//! verified against it, and otherwise a digest over the sorted list of the files read and their digests.
 //!
 //! **Nothing is written, anywhere**, and **no byte of a refused file is repeated**: a refusal names a path (or a page and a
 //! `rev`) and a rule, and every name in it or in the report is display-safe and bounded (`safe::shown`).
