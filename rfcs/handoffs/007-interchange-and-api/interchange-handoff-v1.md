@@ -216,3 +216,18 @@ independent review found no way for hidden content to leave in an export. **Corr
 Hand back as `007-interchange-i-t1-corrections-review-request.md`. **I-T2 is assigned now** (the section above), beside
 the corrections, built on X-1, X-2 and X-9's shape. It is handed back with I-T3 as
 `007-interchange-i-t2-i-t3-review-request.md`.
+
+## I-T1's corrections reviewed; I-T3 assigned (2026-11-26)
+
+**X-1 – X-10: Approved** (`.git-exclude/reviewed/007-interchange-i-t1-corrections-review-result.md`), and pushed up to
+`1b8e2c0`. I-T2's commits stay local until they are reviewed with I-T3.
+- **The time of an imported change: the source's `at` wins over the seal** (decision 2). It is one line in `best_time`,
+  with its test, in I-T3.
+- **For I-T2 (in advance):**
+  - **(a)** the *extra file* rule is about what is read. Every file the import reads must be in the checksums. A file
+    it does not read (a converter's `import-report.md`) is listed as not imported and does not refuse.
+  - **(b)** sidecar licences are shown by a fixture made by hand.
+  - **(c)** the excluded MediaWiki history files in the package are accepted.
+- **I-T3 is assigned now** (the I-T3 section above), and handed back with I-T2 as
+  `007-interchange-i-t2-i-t3-review-request.md`.
+- **First, alone: B-1** (the maintenance handoff's last section): `release.yml` does not load on `main`.

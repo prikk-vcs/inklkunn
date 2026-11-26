@@ -677,3 +677,16 @@ One CHANGELOG entry goes under `## [Unreleased]`.
 **M63: Approved** (`.git-exclude/reviewed/010-maintenance-2026-11-m63-review-result.md`), and pushed. The crates package
 and verify, and the rehearsal now proves it. Publishing waits for 0.5.0's cut and the owner's `CARGO_REGISTRY_TOKEN`
 secret. The two load-dependent tests seen in its gates are assigned with I-T1's corrections (X-10, handoff 007).
+
+## B-1: `release.yml` does not load (2026-11-26; binding, first and alone)
+
+M63's new step name, `Every crate packages and verifies (a dry run: nothing is uploaded; …)`, is an unquoted YAML value
+containing `: `. GitHub cannot read the workflow on `main` since `3b67fc0` (push run `45721720894`, no job), so no
+rehearsal or release can start.
+- **Quote or reword the name.**
+- **Give `pin-check` a rule for the class:** in every workflow file, a single-line `key: value` whose value is not
+  quoted contains no `: ` and does not begin with a character YAML treats as special. Planted cases: this exact line
+  is refused, its quoted form passes, and a block scalar (`run: |`) is not judged.
+
+Hand back as `010-maintenance-2026-11-m63-corrections-review-request.md`. The architect pushes it and runs the
+rehearsal on `main`. **From now on, the architect rehearses every change to `release.yml` before approving it.**
