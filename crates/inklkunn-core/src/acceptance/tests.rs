@@ -1220,6 +1220,7 @@ mod author_moderate;
 mod governance;
 mod hatch;
 mod hidden;
+mod interwiki;
 mod lease_rung;
 mod protections;
 mod restricted_reviewer;
