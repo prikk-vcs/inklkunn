@@ -56,6 +56,18 @@ fn rows_in(store: &Path, table: &str) -> i64 {
         .unwrap()
 }
 
+/// A cell of a row as text (text as text, a blob in hexadecimal): what a failure message shows and a comparison compares.
+fn cell(value: rusqlite::types::ValueRef<'_>) -> String {
+    use rusqlite::types::ValueRef;
+    match value {
+        ValueRef::Null => "NULL".to_owned(),
+        ValueRef::Integer(i) => i.to_string(),
+        ValueRef::Real(r) => r.to_string(),
+        ValueRef::Text(t) => String::from_utf8_lossy(t).into_owned(),
+        ValueRef::Blob(b) => b.iter().map(|x| format!("{x:02x}")).collect(),
+    }
+}
+
 /// Every row of `table` as text, in the order the store keeps them: what a comparison of two states of the table is made
 /// of.
 fn dump(store: &Path, table: &str) -> Vec<String> {
@@ -67,7 +79,7 @@ fn dump(store: &Path, table: &str) -> Vec<String> {
     statement
         .query_map([], |row| {
             Ok((0..columns)
-                .map(|i| format!("{:?}", row.get_ref(i).unwrap()))
+                .map(|i| cell(row.get_ref(i).unwrap()))
                 .collect::<Vec<_>>()
                 .join(" | "))
         })
@@ -626,22 +638,27 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     );
     say("0.4.0: moderation hid the text of Zora's revision, the summary and author of Noor's, and Zora's comment in the claim's thread");
 
-    // ---- an appeal against a hiding, left for a decision
+    // ---- an appeal against a hiding (the text of her revision), left for a decision
     let prefix = "/handbook/-/appeals/new?kind=tombstone&id=";
+    let tombstone: String = read_only(&store_file)
+        .query_row(
+            "SELECT id FROM tombstones WHERE item_kind = 'page-revision' AND event = 'hide' AND hides_content = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
     let mine = zora.browser.get(&format!("{APPEALS}/mine"));
-    let shown = mine.body.replace("&#38;", "&");
-    let tombstone = shown
-        .split(prefix)
-        .nth(1)
-        .and_then(|rest| rest.split(['"', '&']).next())
-        .expect("a hiding to contest")
-        .to_owned();
+    assert!(
+        mine.body.replace("&#38;", "&").contains(&format!("{prefix}{tombstone}")),
+        "Zora is offered *Contest this* for the hiding of her revision's text: {}",
+        mine.body
+    );
     let page = zora.browser.get(&format!("{prefix}{tombstone}"));
     let mut form = form_to(&page, &format!("{APPEALS}/new"));
     form.set("text", "I wrote this myself and it names nobody; please look again.");
     let filed = zora.browser.submit(&form, None);
     assert_eq!(filed.status, 303, "{}\n{}", filed.head, filed.body);
-    say("0.4.0: Zora appealed one of the hidings; the appeal waits for a decision");
+    say("0.4.0: Zora appealed the hiding of her revision's text; the appeal waits for a decision");
 
     // ---- a grant and a restriction
     let account_of = |login: &str| -> String {
@@ -949,9 +966,529 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     say(&format!(
         "{paths_asked} pages compared with 0.4.0's own output for five readers: byte for byte after the masks; three places differ, as named"
     ));
-    let _ = (
-        old_log, first_blocks, rex, ada, zora, quinn, maya, noor, b3, b2, b1, b0, running,
+    // ---- hidden stays hidden: 0.4.0's own pages say it, and this tree's say the same, for a reader and for the people it concerns
+    let mut noor_now = Person {
+        login: "noor",
+        name: "Noor Contributor",
+        password: password_for("noor"),
+        browser: running.browser(),
+    };
+    sign_in(&mut noor_now.browser, "noor", &password_for("noor"), "/");
+    let mut quinn_now = Person {
+        login: "quinn",
+        name: "Quinn Reviewer",
+        password: password_for("quinn"),
+        browser: running.browser(),
+    };
+    sign_in(&mut quinn_now.browser, "quinn", &password_for("quinn"), "/");
+    let must_not_serve = [
+        "QUOKKATEXT",
+        "WALRUSSUMMARY",
+        "QUOKKANOTE",
+    ];
+    for (whose, shown) in [("0.4.0", &before), ("this tree", &after)] {
+        for (viewer, set) in [
+            ("anonymous", &shown.0),
+            ("maya", &shown.1),
+            ("zora", &shown.2),
+            ("ada", &shown.3),
+        ] {
+            for (path, (_, body, _)) in set {
+                for word in must_not_serve {
+                    assert!(
+                        !body.contains(word),
+                        "{whose}: {viewer} was shown {word} at {path}"
+                    );
+                }
+            }
+        }
+        let change = &shown.0.get(&format!("/handbook/-/change/{b1}")).unwrap().1;
+        assert!(
+            plain(change).contains("Hidden by moderation"),
+            "{whose}: the change that was hidden says so: {change}"
+        );
+        let claim_seen = &shown.0.get(&claim_page).unwrap().1;
+        assert!(
+            !claim_seen.contains("Zora Quokka"),
+            "{whose}: the hidden comment's author is named on the claim's page"
+        );
+    }
+    say("hidden stays hidden: the revision's text, the other's summary and author, and the comment's body and author are on no page of either server, for a reader, the moderator, the author or the admin");
+
+    // ---- a restriction still restricts: the page, and the API with a token the restricted person made
+    let rex_token = token_for(&mut rex_now, Scope::Propose);
+    let body = format!(
+        "{{\"summary\":\"Let me in\",\"submit\":true,\"files\":[{{\"path\":\"pages/Help.md\",\"text\":{}}}]}}",
+        json_quote(&scratch("Help", "Rex writes."))
     );
+    let refused = api_on(
+        running.port,
+        "POST",
+        &format!("{API}/proposals"),
+        Some(&rex_token),
+        Some(&tip(running.port)),
+        Some(&body),
+    );
+    assert_eq!(refused.status, 403, "{}\n{}", refused.head, refused.body);
+    assert_eq!(
+        json_field(&refused.body, "reason").as_deref(),
+        Some("restricted"),
+        "{}",
+        refused.body
+    );
+    assert_eq!(
+        json_field(&refused.body, "restriction_reason").as_deref(),
+        Some("posting the same link everywhere")
+    );
+    say("the restriction of 0.4.0 still restricts: the page says so (as 0.4.0's did) and the API refuses with `restricted`");
+
+    // ---- what 0.5.0 adds, on the old directory, with the hides in place: the lists of proposals, the comments, the feed
+    let mut listed: Vec<String> = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut next_links = 0;
+    loop {
+        let path = match &cursor {
+            Some(c) => format!("{API}/proposals?limit=4&cursor={c}"),
+            None => format!("{API}/proposals?limit=4"),
+        };
+        let page = api_on(running.port, "GET", &path, None, None, None);
+        assert_eq!(page.status, 200, "{}\n{}", page.head, page.body);
+        let links = page.headers("link");
+        let more = links.iter().any(|l| l.contains("rel=\"next\""));
+        next_links += usize::from(more);
+        for id in ids_after(&page.body, "\"id\":\"") {
+            if !listed.contains(&id) {
+                listed.push(id);
+            }
+        }
+        assert!(
+            !page.body.contains("WALRUSSUMMARY"),
+            "a hidden summary is in the list: {}",
+            page.body
+        );
+        match json_field(&page.body, "next_cursor").filter(|c| c != "null") {
+            Some(c) => {
+                assert!(more, "a next_cursor without a Link header: {}", page.head);
+                cursor = Some(c);
+            }
+            None => {
+                assert!(!more, "a Link header without a next_cursor: {}", page.head);
+                break;
+            }
+        }
+    }
+    assert!(next_links >= 2, "the list was paged: {next_links} next links");
+    for id in [&p1, &attached, &curated, &rules, &r1, &r2, &r3, &renamed, &removed, &open] {
+        assert!(listed.contains(id), "listProposals lacks the proposal {id} of 0.4.0: {listed:?}");
+    }
+    let comments = api_on(
+        running.port,
+        "GET",
+        &format!("{API}/proposals/{open}/comments"),
+        None,
+        None,
+        None,
+    );
+    assert_eq!(comments.status, 200, "{}\n{}", comments.head, comments.body);
+    assert!(
+        comments.body.contains("This reads better with the second line."),
+        "{}",
+        comments.body
+    );
+    let feed = anonymous.get("/handbook/-/proposals.atom");
+    assert_eq!(feed.status, 200, "{}\n{}", feed.head, feed.body);
+    assert!(
+        feed.body.contains(&format!("/handbook/-/proposals/{open}"))
+            && feed.body.contains("Say more about the notes")
+            && !feed.body.contains("WALRUSSUMMARY"),
+        "{}",
+        feed.body
+    );
+    say(&format!(
+        "{} proposals of 0.4.0 are in listProposals ({} pages; every page but the last has its Link rel=next), the open one's comments are listed, and the feed lists them without a hidden summary",
+        listed.len(),
+        next_links + 1
+    ));
+
+    // ---- the export of the migrated wiki: the history records carry what 0.4.0 wrote, and not what moderation hid
+    let dest = world.tmp.0.join("export-0-4-0");
+    let (status, out, err) = world.cli(&[
+        "wiki",
+        "export",
+        "handbook",
+        "--bundle",
+        dest.to_str().unwrap(),
+    ]);
+    assert_eq!(status, 0, "{err}");
+    assert!(
+        out.contains("hidden by moderation"),
+        "the export says what moderation left out: {out}"
+    );
+    let files = bundle_files(&dest);
+    for (name, text) in &files {
+        for word in must_not_serve {
+            assert!(!text.contains(word), "the bundle's {name} carries {word}");
+        }
+    }
+    let lines = |prefix: &str| -> Vec<serde_json::Value> {
+        files
+            .iter()
+            .filter(|(name, _)| name.starts_with(prefix) && name.ends_with(".jsonl"))
+            .flat_map(|(_, text)| text.lines())
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    };
+    let history = lines("history/");
+    assert_eq!(history.len(), 10, "ten revisions of three pages");
+    let line_of = |block: &str| -> &serde_json::Value {
+        history
+            .iter()
+            .find(|l| l.pointer("/rev").and_then(|v| v.as_str()) == Some(block))
+            .unwrap_or_else(|| panic!("no history record of {block}"))
+    };
+    let has = |line: &serde_json::Value, member: &str| line.get(member).is_some();
+    for record in &history {
+        let hidden = record.get("suppressed").is_some();
+        assert!(has(record, "rev") && has(record, "at"), "{record}");
+        if !hidden && has(record, "content") {
+            assert_eq!(
+                record
+                    .get("sha256")
+                    .and_then(|v| v.as_str())
+                    .map(str::len),
+                Some(64),
+                "a record with its content carries the content's checksum: {record}"
+            );
+        }
+    }
+    let first = line_of(&b1);
+    assert!(
+        !has(first, "content") && has(first, "author") && has(first, "at"),
+        "the hidden text is left out, not blanked, and the rest stays: {first}"
+    );
+    assert_eq!(
+        first.pointer("/reasons/content").and_then(|v| v.as_str()),
+        Some("personal-data"),
+        "{first}"
+    );
+    let second = line_of(&b2);
+    assert!(
+        has(second, "content") && !has(second, "author") && !has(second, "summary"),
+        "the hidden summary and author are left out: {second}"
+    );
+    let on_notes: Vec<&serde_json::Value> = history
+        .iter()
+        .filter(|l| l.pointer("/inklkunn/path").and_then(|v| v.as_str()) == Some("pages/Notes.md"))
+        .collect();
+    assert!(
+        on_notes
+            .iter()
+            .any(|l| l.get("from").and_then(|v| v.as_str()) == Some("Scratch")),
+        "the rename is a record of its own, carrying where the page came from: {on_notes:?}"
+    );
+    let on_sandbox: Vec<&serde_json::Value> = history
+        .iter()
+        .filter(|l| l.pointer("/inklkunn/path").and_then(|v| v.as_str()) == Some("pages/Sandbox.md"))
+        .collect();
+    assert!(
+        on_sandbox.len() == 2 && on_sandbox.iter().any(|l| !has(l, "content")),
+        "the removal is a record with no content: {on_sandbox:?}"
+    );
+    let checksums = &files
+        .iter()
+        .find(|(name, _)| name == "sha256sums.txt")
+        .unwrap()
+        .1;
+    for (name, _) in files.iter().filter(|(name, _)| name.starts_with("history/")) {
+        assert!(
+            checksums.lines().any(|l| l.ends_with(&format!("  {name}"))),
+            "the checksums file names {name}"
+        );
+    }
+    say("the export of the migrated wiki: ten history records with rev, at, author, content and sha256, the hidden parts left out and named, the rename and the removal as records of their own, every history file in the checksums");
+
+    // ---- the import of that bundle into a new wiki. The importer refuses the claim's files of an inklkunn wiki's own bundle at
+    //      the first change (a claim names a paragraph of a page whose history has not been replayed yet, and a claim with a
+    //      community status is a curation, which an import is not): reported, and see the head of this file. The copy of the bundle
+    //      without the claim's own files, which is a bundle the importer takes, is imported.
+    let (status, _, err) = world.cli(&[
+        "wiki",
+        "import-bundle",
+        "again",
+        dest.to_str().unwrap(),
+        "--name",
+        "Handbook Again",
+    ]);
+    eprintln!("importing the bundle as it was exported: status {status}: {err}");
+    let copy = world.tmp.0.join("export-without-claims");
+    copy_dir(&dest, &copy);
+    let mut kept = String::new();
+    for line in checksums.lines() {
+        if line.contains("  knowledge/") {
+            continue;
+        }
+        kept.push_str(line);
+        kept.push('\n');
+    }
+    std::fs::write(copy.join("sha256sums.txt"), kept).unwrap();
+    std::fs::remove_dir_all(copy.join("knowledge")).unwrap();
+    let (status, out, err) = world.cli(&[
+        "wiki",
+        "import-bundle",
+        "copy",
+        copy.to_str().unwrap(),
+        "--name",
+        "Handbook Copy",
+    ]);
+    assert_eq!(status, 0, "{out}\n{err}");
+    assert!(out.contains("imported wiki copy"), "{out}");
+    let copied = anonymous.get("/copy/-/history/Help");
+    assert_eq!(copied.status, 200, "{}", copied.body);
+    let revisions = blocks_after(&copied.body, "/copy/-/change/");
+    assert!(
+        revisions.len() >= 4,
+        "the second wiki has the history of Help (the hidden text is not replayed): {revisions:?}"
+    );
+    let notes = anonymous.get("/copy/Notes");
+    assert_eq!(notes.status, 200, "{}", notes.body);
+    assert_eq!(
+        anonymous.get("/copy/Sandbox").status,
+        410,
+        "the removed page is removed in the copy too (410 Gone)"
+    );
+    say(&format!(
+        "the bundle was imported as a second wiki: {} changes of Help in its history, the page Notes, and Sandbox removed",
+        revisions.len()
+    ));
+    for table in GOVERNANCE_TABLES {
+        assert_eq!(
+            dump(&store_file, table),
+            governance_before.iter().find(|(t, _)| *t == table).unwrap().1,
+            "{table}: exporting and importing wrote one of the five tables"
+        );
+    }
+
+    // ---- the rules of 0.4.0 bind, under 0.5.0's server: the protection, the approval and the record
+    let rules_block = blocks_after(&before.0.get(POLICY).unwrap().1, "/handbook/-/change/")
+        .into_iter()
+        .next()
+        .expect("the policy page lists the change of the rules");
+    let held = propose_edit(&mut noor_now, "Help", "Say where the defaults are", |text| {
+        text.replacen(
+            "in its header",
+            "in its header, or in the wiki's defaults",
+            1,
+        )
+    });
+    approve(&mut quinn_now, &held, "Fine.");
+    let blocks_now = world.blocks();
+    let refused = accept(&mut maya_now, &held);
+    assert_eq!(refused.status, 403, "{}\n{}", refused.head, refused.body);
+    assert!(
+        plain(&refused.body).contains("Not signed: a protection holds it"),
+        "{}",
+        refused.body
+    );
+    assert_eq!(world.blocks(), blocks_now, "nothing was signed");
+    signed_into_history(&accept(&mut ada_now, &held));
+    assert_eq!(world.blocks().len(), blocks_now.len() + 1);
+    say("the protection of 0.4.0 protects: the maintainer is refused (an admin is asked for), the admin accepts");
+    // The proposal 0.4.0 left open: it needs the approval the rules ask for, whoever accepts.
+    let refused = accept(&mut maya_now, &open);
+    assert_eq!(refused.status, 409, "{}\n{}", refused.head, refused.body);
+    assert!(
+        refused.body.contains("it needs more approvals"),
+        "{}",
+        refused.body
+    );
+    approve(&mut quinn_now, &open, "Read it.");
+    let before_open = world.blocks();
+    signed_into_history(&accept(&mut maya_now, &open));
+    assert_eq!(world.blocks().len(), before_open.len() + 1);
+    let notes = anonymous.get("/handbook/Notes");
+    assert!(
+        notes.body.contains("A second line, said after the rename."),
+        "{}",
+        notes.body
+    );
+    let record = maya_now.browser.get(&proposal_page(&open));
+    let named = format!(
+        "under the rules as of <a href=\"/handbook/-/change/{rules_block}\">{}</a>.",
+        rules_block.get(..12).unwrap_or_default()
+    );
+    assert!(record.body.contains(&named), "{named}: {}", record.body);
+    say("the proposal 0.4.0 left open is accepted once the approval its rules ask for is given, and the record names the block of 0.4.0's rules");
+    // A new one, proposed here, is held by the same rule.
+    let fresh = propose_edit(&mut noor_now, "Notes", "Add a closing line", |text| {
+        format!("{}\nA closing line.\n", text.trim_end())
+    });
+    let refused = accept(&mut maya_now, &fresh);
+    assert_eq!(refused.status, 409, "{}\n{}", refused.head, refused.body);
+    reviewed_and_accepted(&mut quinn_now, &mut maya_now, &fresh);
+    say("a proposal made on this tree is held by the rule 0.4.0's change made, reviewed and accepted");
+
+    // ---- 0.5.0's own things on the old directory: the policy form edits the interwiki map, through a proposal
+    let wikipedia = "https://en.wikipedia.org/wiki/{title}";
+    let sent_map = send_map(&mut maya_now, &[("wikipedia", wikipedia)]);
+    assert_eq!(sent_map.status, 303, "{}\n{}", sent_map.head, sent_map.body);
+    let map = proposal_id(&sent_map.location());
+    let shown = maya_now.browser.get(&proposal_page(&map));
+    assert!(
+        shown
+            .body
+            .contains(&format!("Interwiki prefix added: wikipedia → {wikipedia}")),
+        "{}",
+        shown.body
+    );
+    reviewed_and_accepted(&mut quinn_now, &mut maya_now, &map);
+    let policy = anonymous.get(POLICY);
+    assert!(
+        policy.body.contains("<dt>wikipedia</dt>")
+            && policy.body.contains(wikipedia)
+            && policy.body.contains("1 approval from someone other than the proposer"),
+        "the map is in force and the rules of 0.4.0 still are: {}",
+        policy.body
+    );
+    let site = anonymous.get("/handbook/-/site.json");
+    assert!(
+        site.body.contains("\"interwiki\":{\"wikipedia\":"),
+        "{}",
+        site.body
+    );
+    let linked = propose_edit(&mut noor_now, "Notes", "Point at the encyclopedia", |text| {
+        format!("{}\nSee [[wikipedia:Grafting]].\n", text.trim_end())
+    });
+    reviewed_and_accepted(&mut quinn_now, &mut maya_now, &linked);
+    let notes = anonymous.get("/handbook/Notes");
+    assert!(
+        notes
+            .body
+            .contains("href=\"https://en.wikipedia.org/wiki/Grafting\""),
+        "{}",
+        notes.body
+    );
+    say("the policy form's interwiki map is accepted through a proposal under 0.4.0's rules, and a page's [[wikipedia:Grafting]] leads there");
+    for table in GOVERNANCE_TABLES {
+        assert_eq!(
+            dump(&store_file, table),
+            governance_before.iter().find(|(t, _)| *t == table).unwrap().1,
+            "{table}: accepting changes and the map wrote one of the five tables"
+        );
+    }
+
+    // ---- the appeal 0.4.0 left is decided by this tree: the hidden text is back, on the pages that showed the tombstone
+    let queue = ada_now.browser.get(APPEALS);
+    assert!(
+        queue
+            .body
+            .contains("I wrote this myself and it names nobody; please look again."),
+        "{}",
+        queue.body
+    );
+    let mut decide = form_to(&queue, &format!("{APPEALS}/decide"));
+    decide.set("reason", "The record supports the appeal: nothing in it is personal.");
+    let press = ("decision", "overturned");
+    let decision = if decide.buttons.iter().any(|b| b.0 == press.0 && b.1 == press.1) {
+        ada_now.browser.submit(&decide, Some(press))
+    } else {
+        decide.check(press.0, press.1);
+        ada_now.browser.submit(&decide, None)
+    };
+    assert_eq!(decision.status, 303, "{}\n{}", decision.head, decision.body);
+    let back = anonymous.get(&format!("/handbook/-/at/{b1}/Help"));
+    assert!(
+        back.body.contains("QUOKKATEXT"),
+        "the hiding the appeal reversed is lifted: {}",
+        back.body
+    );
+    assert_ne!(
+        dump(&store_file, "appeals"),
+        governance_before.iter().find(|(t, _)| *t == "appeals").unwrap().1,
+        "the decision is recorded"
+    );
+    say("the appeal 0.4.0 left is decided by an admin on this tree: the hiding is reversed");
+
+    // ---- nothing secret was printed by either half
+    let printed = [
+        old_log,
+        running.notes.join("\n"),
+        running.banner.join("\n"),
+        running.log.lock().unwrap().join("\n"),
+    ]
+    .join("\n");
+    let stderr = running.stop();
+    for secret in [
+        SECRET.to_owned(),
+        password_for("maya"),
+        password_for("noor"),
+        password_for("quinn"),
+        password_for("ada"),
+        password_for("zora"),
+        password_for("rex"),
+        noor_token,
+        rex_token,
+    ] {
+        assert!(!printed.contains(&secret), "a secret reached a log");
+        assert!(!stderr.contains(&secret), "a secret reached stderr");
+    }
+    let _ = (&world.tmp, first_blocks, b3, b0);
+}
+
+/// `from` and everything under it, copied to `to` (a bundle's directory).
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+/// The policy form with the map rows `rows` typed (it is opened, a row is added for each, and what was typed is sent).
+fn send_map(person: &mut Person, rows: &[(&str, &str)]) -> Reply {
+    let mut page = person.browser.get(POLICY_FORM);
+    assert_eq!(page.status, 200, "{}", page.body);
+    let have: usize = form_to(&page, POLICY_FORM)
+        .get("map_rows")
+        .parse()
+        .expect("a count");
+    for _ in have..rows.len() {
+        let form = form_to(&page, POLICY_FORM);
+        page = person.browser.submit(&form, Some(("act", "map-add")));
+        assert_eq!(page.status, 200, "{}", page.body);
+    }
+    let mut form = form_to(&page, POLICY_FORM);
+    for (n, (prefix, template)) in rows.iter().enumerate() {
+        form.set(&format!("map-{}-prefix", n + 1), prefix);
+        form.set(&format!("map-{}-template", n + 1), template);
+    }
+    person.browser.submit(&form, Some(("act", "send")))
+}
+
+/// Every file of a bundle: its path under the bundle's directory, and what it holds.
+fn bundle_files(root: &Path) -> Vec<(String, String)> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                let name = path.strip_prefix(root).unwrap().display().to_string();
+                out.push((
+                    name,
+                    String::from_utf8_lossy(&std::fs::read(&path).unwrap()).into_owned(),
+                ));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out.sort();
+    out
 }
 
 /// The one repository under the wikis root (`<shard>/<wiki id>`), while the directory holds one wiki.
