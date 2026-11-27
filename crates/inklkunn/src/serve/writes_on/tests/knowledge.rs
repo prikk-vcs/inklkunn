@@ -171,8 +171,20 @@ pub(super) fn attach(
     cited: &Cited,
     summary: &str,
 ) -> String {
+    attach_at(person, view, CLAIMED, relation, cited, summary)
+}
+
+/// [`attach`] to the part of *Help* at `ordinal` (counting from 0, headings too).
+pub(super) fn attach_at(
+    person: &mut Person,
+    view: Option<&str>,
+    ordinal: usize,
+    relation: &str,
+    cited: &Cited,
+    summary: &str,
+) -> String {
     let mut uri = format!(
-        "/handbook/-/proposals/new?page=Help&part=block&ordinal={CLAIMED}&attach={relation}"
+        "/handbook/-/proposals/new?page=Help&part=block&ordinal={ordinal}&attach={relation}"
     );
     if let Some(view) = view {
         uri.push_str(&format!("&view={view}"));
