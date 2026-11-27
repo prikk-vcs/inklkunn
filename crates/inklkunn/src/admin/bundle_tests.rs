@@ -903,3 +903,35 @@ fn the_two_caps_are_settings_that_a_file_sets_and_a_bad_value_names() {
     assert!(crate::config::KNOWN.contains(&"INKLKUNN_IMPORT_MAX_REVISIONS"));
     assert!(crate::config::KNOWN.contains(&"INKLKUNN_IMPORT_MAX_HISTORY_MIB"));
 }
+
+#[test]
+fn the_knowledge_lines_say_what_came_in_and_what_was_left_out_and_say_so_when_every_file_was_retired()
+ {
+    use inklkunn_core::knowledge::Unsettled;
+    // Files and nothing left out: the one line. Nothing at all: no line.
+    assert_eq!(
+        knowledge_lines(3, 2, &Unsettled::default()),
+        "  knowledge:       3 claim or source file(s) in 2 change(s), after the history\n"
+    );
+    assert_eq!(knowledge_lines(0, 0, &Unsettled::default()), "");
+    // Files, a status left out and retired claims: the line, then one sentence a line.
+    let some = Unsettled {
+        statuses: 1,
+        retired_claims: 2,
+        ..Unsettled::default()
+    };
+    assert_eq!(
+        knowledge_lines(1, 1, &some),
+        "  knowledge:       1 claim or source file(s) in 1 change(s), after the history\n                   1 community status was not imported: a status is set here only by a curation proposal.\n                   2 retired claims were not imported: retiring is a curation here.\n"
+    );
+    // Every file retired: no change was made, and the line says so before the sentence.
+    let all = Unsettled {
+        retired_claims: 1,
+        retired_sources: 1,
+        ..Unsettled::default()
+    };
+    assert_eq!(
+        knowledge_lines(0, 0, &all),
+        "  knowledge:       no claim or source file came in\n                   1 retired claim and 1 retired source were not imported: retiring is a curation here.\n"
+    );
+}

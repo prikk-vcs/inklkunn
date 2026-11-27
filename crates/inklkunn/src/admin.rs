@@ -1241,19 +1241,15 @@ fn import_bundle_command(
                     String::new()
                 }
             );
-            if done.knowledge_files > 0 {
-                let _ = writeln!(
-                    out,
-                    "  knowledge:       {} claim or source file(s) in {} change(s), after the history",
-                    done.knowledge_files, done.knowledge_changes
-                );
-            } else if !done.knowledge_not_imported.is_none() {
-                // Every file was retired (Z-6): no change was made, and the line still says what was left out.
-                let _ = writeln!(out, "  knowledge:       no claim or source file came in");
-            }
-            for sentence in done.knowledge_not_imported.sentences() {
-                let _ = writeln!(out, "                   {sentence}");
-            }
+            let _ = write!(
+                out,
+                "{}",
+                knowledge_lines(
+                    done.knowledge_files,
+                    done.knowledge_changes,
+                    &done.knowledge_not_imported,
+                )
+            );
             if done.not_applied > 0 {
                 let _ = writeln!(
                     out,
@@ -1285,6 +1281,29 @@ fn import_bundle_command(
             finished.and(Err(e.to_string()))
         }
     }
+}
+
+/// The `knowledge:` lines of a finished `wiki import-bundle`: how many claim and source files came in, and **what was left out** (the
+/// keys only a curation sets, and the retired files, Z-6), one sentence a line. **A bundle whose every claim and source is retired
+/// writes no knowledge change**, and the line says that no file came in, so that the sentences are not a report of nothing.
+/// Nothing at all when there was no knowledge file and nothing was left out.
+fn knowledge_lines(
+    files: usize,
+    changes: usize,
+    left_out: &inklkunn_core::knowledge::Unsettled,
+) -> String {
+    let mut out = String::new();
+    if files > 0 {
+        out.push_str(&format!(
+            "  knowledge:       {files} claim or source file(s) in {changes} change(s), after the history\n"
+        ));
+    } else if !left_out.is_none() {
+        out.push_str("  knowledge:       no claim or source file came in\n");
+    }
+    for sentence in left_out.sentences() {
+        out.push_str(&format!("                   {sentence}\n"));
+    }
+    out
 }
 
 /// `inklkunn wiki discard-unfinished <id> --confirm <id>` (RFC 007 D-1): the one new removal, by a person's explicit act. It removes
