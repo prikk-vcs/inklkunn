@@ -26,7 +26,7 @@ pub(super) fn member<'a>(v: &'a serde_json::Value, pointer: &str) -> &'a serde_j
 }
 
 /// Every history file of a bundle: its name, and its lines as JSON.
-fn histories(bundle: &Path) -> BTreeMap<String, Vec<serde_json::Value>> {
+pub(super) fn histories(bundle: &Path) -> BTreeMap<String, Vec<serde_json::Value>> {
     let mut out = BTreeMap::new();
     for (name, bytes) in files_under(&bundle.join("history")) {
         let lines = String::from_utf8(bytes)
@@ -148,7 +148,7 @@ impl Proof {
     }
 
     /// Every file of the bundle `dir` is named by its checksums with the SHA-256 it has (the independent function), and every name is a file.
-    fn assert_checksums(&mut self, dir: &Path, which: &str) {
+    pub(super) fn assert_checksums(&mut self, dir: &Path, which: &str) {
         let sums = std::fs::read_to_string(dir.join("sha256sums.txt")).unwrap();
         let mut named: BTreeMap<String, String> = BTreeMap::new();
         for line in sums.lines() {

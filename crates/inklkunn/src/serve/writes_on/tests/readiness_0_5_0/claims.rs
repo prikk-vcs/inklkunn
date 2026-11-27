@@ -7,6 +7,7 @@
 //! claim's status can afterwards be set by a curation proposal like any other (INV-11 is untouched).
 
 use super::super::knowledge::{SURVEY, attach, curate, group_of, ids_after, signed_into_history};
+use super::roundtrip::{histories, member};
 use super::*;
 
 /// The slug the claims come back in.
@@ -121,9 +122,13 @@ impl Proof {
             "the bundle's claim file says `status: accepted` and the proposal that decided it, and its source says when it was reviewed and that it is available",
             &format!("{claim_text}\n{source_text}"),
         );
-        let help_history = histories(&first)
-            .get("~%48elp.jsonl")
-            .cloned()
+        let help_history: Vec<serde_json::Value> = histories(&first)
+            .into_values()
+            .find(|records| {
+                records
+                    .iter()
+                    .any(|r| member(r, "/inklkunn/path") == "pages/Help.md")
+            })
             .unwrap_or_default();
         self.t.saw(
             help_history.len() >= 2,

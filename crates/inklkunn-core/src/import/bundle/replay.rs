@@ -126,7 +126,7 @@ impl ImportStaging {
         )
     }
 
-    /// A read service over the staging store, to judge the knowledge files of the first change as an acceptance judges them.
+    /// A read service over the staging store, to judge the knowledge files of the import as an acceptance judges them.
     pub fn reads(
         &self,
         storage: Arc<dyn Storage>,
@@ -162,7 +162,7 @@ pub struct ImportWorld<'a> {
     pub leases: Arc<WikiLeases>,
     /// Where the system principal's decisions are recorded (the real audit trail).
     pub audit: Arc<dyn AuditSink>,
-    /// A read service over the staging store, for the knowledge files of the first change.
+    /// A read service over the staging store, for the knowledge files of the import.
     pub reads: Option<Arc<ReadService>>,
     /// The process's authority to make a wiki's keys.
     pub authority: &'a KeyAuthority,
