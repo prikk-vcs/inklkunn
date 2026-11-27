@@ -988,6 +988,30 @@
     sentence says the review was done.
   - The architect tags `0.5.0` and runs the release.
 
+- **2026-11-27 — 0.5.0 released** (M5: interchange), eighteen days ahead of the target. The tag `0.5.0` is signed by
+  the owner's git configuration, on `0229025` (CI 45946035576 green). Release run 45947790876 is green **on its first
+  attempt**: gates, both binaries, both images confined and pushed (Z-7's retry in place, none needed), attestations,
+  the manifest, and the GitHub release (https://github.com/prikk-vcs/inklkunn/releases/tag/0.5.0, titled `0.5.0`, with
+  `wiki-commons.yaml` attached).
+  - **The crates step skipped,** as decided: the owner publishes the nine crates by hand from the tag, and Trusted
+    Publishing follows.
+  - **Verified by the architect as a reader would:**
+    - the tag's signature;
+    - the x86_64 tarball's checksum and its provenance attestation;
+    - `inklkunn --version` names 0.5.0 at `0229025`;
+    - the attached `wiki-commons.yaml` says `subject.version` 0.5.0;
+    - `ghcr.io/prikk-vcs/inklkunn:0.5.0` pulls anonymously as a list of amd64 and arm64, and runs as 0.5.0 with prikk
+      0.54.0;
+    - the joined tag and both architectures' tags verify their attestations.
+  - **Next:** the architect drafts the 0.6.0 plan. Recorded for it:
+    - **attachments served (the content origin), first;**
+    - the operations work (backup and a rehearsed restore, the removal procedure, IS-15's `recover`, observability);
+    - a claim citing a retired source;
+    - the proposal windows' indexes (W-9);
+    - the import notice on the page view;
+    - the glossary's five 0.5.0 terms marked as ruled;
+    - Trusted Publishing in `release.yml`.
+
 ## Pending on the owner
 
 - **After the 0.5.0 release:** publish the nine crates by hand, once, from the tag (the commands are in the architect's
@@ -1011,7 +1035,7 @@ M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and h
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **0.3.0 released 2026-11-19.** **The dev team's order now:**
-**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). G-T2 – G-T3 and D-1 conditionally approved (2026-11-23). F-1 – E-1 approved; G-T5 – G-T6 conditionally approved; G-T4 changes requested (2026-11-24). G-T4 – G-T6's corrections approved but for H-1, and G-T7 conditionally approved (2026-11-24). Readiness, the P round, the Q round and R-7, the candidate, approved, and **0.4.0 released (2026-11-25)**. 0.5.0's plan authorized (2026-11-25); RFC 007 accepted, threat model v0.5 and the handoff (2026-11-26). Now: the 0.5.0 release; then G-T2 – G-T7. The test by a person using
+**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). G-T2 – G-T3 and D-1 conditionally approved (2026-11-23). F-1 – E-1 approved; G-T5 – G-T6 conditionally approved; G-T4 changes requested (2026-11-24). G-T4 – G-T6's corrections approved but for H-1, and G-T7 conditionally approved (2026-11-24). Readiness, the P round, the Q round and R-7, the candidate, approved, and **0.4.0 released (2026-11-25)**. 0.5.0's plan authorized (2026-11-25); RFC 007 accepted, threat model v0.5 and the handoff (2026-11-26). **0.5.0 released (2026-11-27).** Now: the owner's first crates publish, and the 0.6.0 plan; then G-T2 – G-T7. The test by a person using
 assistive technology is planned before 1.0 or the first public deployment (owner, 2026-11-18).
 
 ## Issue register

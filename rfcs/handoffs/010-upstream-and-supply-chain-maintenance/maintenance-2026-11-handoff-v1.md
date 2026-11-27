@@ -697,3 +697,15 @@ rehearsal on `main`. **From now on, the architect rehearses every change to `rel
 Its changes, alone on `origin/main`, were rehearsed on a temporary branch: run 45750463743, every job green, with M63's
 publish dry run passing on CI. The branch was deleted. **`3c161f7` is pushed with I-T2 – I-T3's corrections**, on which
 it sits. Until then `main`'s `release.yml` stays unreadable, and no release is due.
+
+## Recorded for the next cycle: Trusted Publishing (2026-11-27; not assigned yet)
+
+The owner publishes 0.5.0's nine crates by hand, once, and then configures **Trusted Publishing** on crates.io. The
+release workflow then follows it:
+- the crates job takes a short-lived token through crates.io's OpenID Connect exchange, with `id-token: write` on that
+  job only, instead of the `CARGO_REGISTRY_TOKEN` secret;
+- the notice for a missing token becomes one for a missing trust;
+- `pin-check` holds the shape;
+- the rehearsal still uploads nothing.
+
+It is assigned with the 0.6.0 plan, once the owner says Trusted Publishing is set up.

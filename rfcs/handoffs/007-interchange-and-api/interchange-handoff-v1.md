@@ -341,3 +341,8 @@ Hand Z-6 and the candidate back together, in two commits, as `0.5.0-candidate-re
 **Z-6, Z-7 and R-7: Approved** (`.git-exclude/reviewed/0.5.0-candidate-review-result.md`), and pushed. **Nothing more is
 asked of the dev team for 0.5.0.** R-8 is done on the candidate: the rehearsal (run 45938330445, green on the first
 attempt) and the 0.54.0 floor (4,395 passed). The cut is proposed to the owner (R-9).
+
+## 0.5.0 released (2026-11-27)
+
+The owner authorized the cut, and **0.5.0 was released on 2026-11-27** (tag on `0229025`). This handoff is complete.
+`main` is open again. Nothing is assigned until the 0.6.0 plan.
