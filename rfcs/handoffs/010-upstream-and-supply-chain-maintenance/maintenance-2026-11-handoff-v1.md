@@ -709,3 +709,45 @@ release workflow then follows it:
 - the rehearsal still uploads nothing.
 
 It is assigned with the 0.6.0 plan, once the owner says Trusted Publishing is set up.
+
+## 0.6.0's R-0: M64 – M68 (2026-11-28; binding)
+
+0.6.0's plan is authorized (`docs/releases/0.6.0-plan.md`, the owner, 2026-11-28). Its P-5 runs these now, while RFCs
+011 and 012 are written. Each is reviewed as a correction is, and **none touches the read path's rules or the schema's
+version.**
+
+- **M64 — planeter 0.9.0's re-baseline** (released 2026-11-24; the last re-baseline was 0.8.0, ledger v1.12).
+  - Read its notes, and test nothing inklkunn depends on unless the notes call for it.
+  - Write the ledger's PL rows as 0.8.0's were, including anything that bears on RFC 008, OQ-4, or the trust and key
+    behaviour (PL-16).
+  - The ledger goes to v1.15. No inklkunn code changes unless a row says one must, and then say it in the request.
+- **M65 — the five 0.5.0 terms marked as ruled.** In `docs/glossary.md`, the rows for バンドル, チェックサム, インポート元,
+  Wiki 間リンクの対応表 and 接頭辞 move from *Drafted* to *ruled by the owner, 2026-11-27*, as earlier rulings are written.
+  Whatever test reads the glossary still passes, and no message changes.
+- **M66 — the proposal windows' indexes (W-9), with no schema change.**
+  - Create the two indexes the windows need (`(wiki_id, submitted_at, id)` and `(wiki_id, closed_at, id)`, or what the
+    queries' `ORDER BY` needs) **when the store is opened**, with `CREATE INDEX IF NOT EXISTS`, **without changing
+    `SCHEMA_VERSION`** (19).
+  - **Tests:**
+    - `EXPLAIN QUERY PLAN` of each window uses its index;
+    - a store a 0.5.0 binary made is opened, gets the indexes, and is then opened again by the 0.5.0 release binary
+      (`~/.pgtmp`-style asset, or the upgrade test's), which reads it;
+    - the schema test still holds version 19.
+- **M67 — the import notice on an imported page's own view.** An imported page says it is imported where the page is
+  read: the same notice as on its history (*Imported from {origin} on {date}*, the checksums' state, the licence
+  declared by the admin when it was).
+  - It is read from the history the view already has, with no new read of a block's text. If it needs more, say so
+    before it is code.
+  - A page with no imported change shows nothing.
+  - **Tests:** an imported page shows the notice in both languages, a page edited after the import still does, and a
+    wiki that was not imported shows none.
+  - New messages are listed for the owner, if any (reuse the existing ones where they fit).
+- **M68 — Trusted Publishing in `release.yml`, only once the owner says crates.io is set up.** The crates job exchanges
+  GitHub's OIDC token for a short-lived crates.io token (with `id-token: write` on that job only) instead of reading
+  `CARGO_REGISTRY_TOKEN`. The skip notice becomes one for a missing trust, `pin-check` holds the shape, and a rehearsal
+  uploads nothing. **Until the owner's word, do not touch it;** the architect will name it.
+- **prikk 0.59.0's re-baseline** (the section *For the prikk 0.59.0 re-baseline* above) **is assigned too, if prikk
+  0.59.0 is released in 0.6.0's cycle**, as a request of its own.
+
+Hand back M64 – M67 as `010-maintenance-2026-11-m64-m67-review-request.md`, with the gates. (The architect rehearses
+any change to `release.yml`.) One CHANGELOG entry each goes under `## [Unreleased]`.
