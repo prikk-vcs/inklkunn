@@ -179,8 +179,9 @@ pub struct BundleReport {
     pub attachment_licenses: BTreeMap<String, usize>,
     /// Claim and source files of the knowledge layer that come in.
     pub knowledge_files: usize,
-    /// **What only a curation sets, left out of those files** (Z-1): the community statuses, the review days and the availabilities the
-    /// bundle's claim and source files had and the import does not write. A file with any of them is written without them.
+    /// **What only a curation sets, left out** (Z-1, Z-6): the community statuses, the review days and the availabilities the bundle's
+    /// claim and source files had and the import does not write (a file with any of them is written without them), and the **retired**
+    /// claims and sources, whose files are not written at all (*retiring is a curation here*). They are not in [`BundleReport::knowledge_files`].
     pub knowledge_not_imported: Unsettled,
     /// `--no-history`: the history was not replayed.
     pub no_history: bool,
@@ -378,7 +379,7 @@ impl BundleReport {
             out.push_str(&sentence);
             out.push('\n');
         }
-        if !self.knowledge_not_imported.is_none() {
+        if self.knowledge_not_imported.has_keys_left_out() {
             out.push_str(Unsettled::DIFFERENCE);
             out.push('\n');
         }
@@ -631,6 +632,8 @@ impl BundleReport {
                     "community_statuses": self.knowledge_not_imported.statuses,
                     "review_days": self.knowledge_not_imported.review_days,
                     "availabilities": self.knowledge_not_imported.availabilities,
+                    "retired_claims": self.knowledge_not_imported.retired_claims,
+                    "retired_sources": self.knowledge_not_imported.retired_sources,
                 },
             },
             "history": {

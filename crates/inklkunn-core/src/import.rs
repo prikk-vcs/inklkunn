@@ -51,8 +51,9 @@
 //! import is no exception. The folder import refuses a claim that arrives with a community status, a source with a review day or
 //! an availability, and a link that names wording the claim does not have. **A bundle's import does not refuse the three keys, it
 //! leaves them out** ([`crate::knowledge::unsettle`]; RFC 007, Z-1): its claims and sources arrive *unsettled*, in changes after the
-//! history (so that every page a claim anchors to is there), and the plan, the run and the report say how many were not imported; a
-//! retirement is not taken out and still refuses, by name. The claim threads
+//! history (so that every page a claim anchors to is there), and the plan, the run and the report say how many were not imported. **A
+//! retired claim or source is left out whole, counted and said** (Z-6: retiring is a curation here), before the files are ordered and
+//! cut; a file that names one is refused at the plan, by name. The claim threads
 //! and the records of the views that a bundle carries under `extensions/` are the exporting service's own; they are not
 //! imported. The manifest's `directory:` for the extension says where the exporting service kept that data; the import
 //! reads `knowledge/` and nothing under `extensions/`, whatever the manifest names.
@@ -1045,6 +1046,20 @@ impl Walk<'_> {
                         // with the same step the replay writes them with, and keeps what each file names, for the order they are
                         // written in.
                         match crate::knowledge::unsettle(rel, &bytes) {
+                            // A retired file is left out whole (Z-6): read and counted, and not a file the plan writes.
+                            Ok(done) if done.retired => {
+                                gathered.retired_file(
+                                    PlannedFile {
+                                        path: rel.to_owned(),
+                                        size,
+                                        action: Action::Add,
+                                        source: source.to_path_buf(),
+                                        identity,
+                                    },
+                                    done.left_out,
+                                );
+                                return;
+                            }
                             Ok(done) => gathered.knowledge(rel, file.references(), done.left_out),
                             Err(fault) => {
                                 self.refuse(rel, fault.to_string());

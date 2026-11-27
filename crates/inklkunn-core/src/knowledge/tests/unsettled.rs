@@ -3,7 +3,7 @@
 
 use super::check::sound_claim;
 use super::*;
-use crate::knowledge::check::{Curated, Retirement};
+use crate::knowledge::check::Curated;
 use crate::knowledge::unsettled::{Unsettled, unsettle};
 
 const PROPOSAL_ID: &str = "01930000-aaaa-7000-8000-000000000001";
@@ -53,7 +53,8 @@ fn a_claim_with_a_status_is_written_unsettled_and_keeps_everything_else() {
         Unsettled {
             statuses: 1,
             review_days: 0,
-            availabilities: 0
+            availabilities: 0,
+            ..Unsettled::default()
         }
     );
     let text = String::from_utf8(rewritten.expect("rewritten")).expect("text");
@@ -108,7 +109,8 @@ fn a_source_that_was_checked_is_written_without_the_review_and_the_availability(
         Unsettled {
             statuses: 0,
             review_days: 1,
-            availabilities: 1
+            availabilities: 1,
+            ..Unsettled::default()
         }
     );
     let text = String::from_utf8(rewritten.expect("rewritten")).expect("text");
@@ -163,48 +165,85 @@ fn what_is_written_is_no_departure_from_a_file_that_was_never_there_and_what_the
 }
 
 #[test]
-fn a_retirement_is_not_taken_out_and_stays_a_departure() {
+fn a_retired_claim_and_a_retired_source_are_left_out_whole_and_counted_as_retired_and_nothing_else()
+{
+    // A retired claim that also has a status: one retired claim. The file is not written, so there is no status of it to leave out.
     let mut claim = settled_claim();
     claim.lifecycle = Lifecycle::Retired;
     claim.retired_reason = Some("Withdrawn.".to_owned());
     let done = unsettle(&claim_path(&claim.id), claim.to_yaml().as_bytes()).expect("unsettled");
-    assert_eq!(done.left_out.statuses, 1);
-    let after =
-        read_file(&claim_path(&claim.id), &done.rewritten.expect("rewritten")).expect("read");
-    let File::Claim(kept) = &after else {
-        panic!("a claim");
-    };
-    assert_eq!(kept.lifecycle, Lifecycle::Retired, "not un-retired");
-    assert_eq!(kept.retired_reason.as_deref(), Some("Withdrawn."));
+    assert!(done.retired);
+    assert_eq!(done.rewritten, None);
     assert_eq!(
-        Curated::of(&after).departure(&Curated::baseline(&after)),
-        Some("lifecycle")
+        done.left_out,
+        Unsettled {
+            retired_claims: 1,
+            ..Unsettled::default()
+        }
     );
 
+    // A retired source that was reviewed and checked: one retired source, no review day, no availability.
     let mut source = checked_source();
     source.lifecycle = SourceLife::Retired;
     source.retired_reason = Some("Gone.".to_owned());
     let done = unsettle(&source_path(&source.id), source.to_yaml().as_bytes()).expect("unsettled");
-    let after = read_file(
-        &source_path(&source.id),
-        &done.rewritten.expect("rewritten"),
-    )
-    .expect("read");
-    let File::Source(kept) = &after else {
-        panic!("a source");
-    };
-    assert_eq!(kept.lifecycle, SourceLife::Retired, "not un-retired");
+    assert!(done.retired);
+    assert_eq!(done.rewritten, None);
     assert_eq!(
-        Curated::of(&after).departure(&Curated::baseline(&after)),
-        Some("lifecycle")
-    );
-    assert!(matches!(
-        Curated::of(&after),
-        Curated::Source {
-            retirement: Retirement::Retired { .. },
-            ..
+        done.left_out,
+        Unsettled {
+            retired_sources: 1,
+            ..Unsettled::default()
         }
-    ));
+    );
+}
+
+#[test]
+fn a_retired_file_without_a_reason_is_retired_too() {
+    // A file retired before the reason existed says no reason, and it is as retired as any.
+    let mut claim = sound_claim(1);
+    claim.lifecycle = Lifecycle::Retired;
+    let done = unsettle(&claim_path(&claim.id), claim.to_yaml().as_bytes()).expect("unsettled");
+    assert!(done.retired);
+    assert_eq!(done.left_out.retired_claims, 1);
+}
+
+#[test]
+fn a_file_that_is_not_retired_is_never_left_out_whatever_else_it_says() {
+    // Every lifecycle but *retired*, with every key that only a curation sets: written, with the keys left out and nothing more.
+    for lifecycle in [Lifecycle::Proposed, Lifecycle::Adopted] {
+        let mut claim = settled_claim();
+        claim.lifecycle = lifecycle;
+        let done = unsettle(&claim_path(&claim.id), claim.to_yaml().as_bytes()).expect("unsettled");
+        assert!(!done.retired, "{lifecycle:?}");
+        assert!(done.rewritten.is_some(), "{lifecycle:?}");
+        assert_eq!(
+            done.left_out,
+            Unsettled {
+                statuses: 1,
+                ..Unsettled::default()
+            }
+        );
+    }
+    let mut source = checked_source();
+    source.availability = Availability::Unavailable;
+    source.lifecycle = SourceLife::Active;
+    let done = unsettle(&source_path(&source.id), source.to_yaml().as_bytes()).expect("unsettled");
+    assert!(!done.retired);
+    assert_eq!(done.left_out.retired_sources, 0);
+    assert_eq!(
+        (done.left_out.review_days, done.left_out.availabilities),
+        (1, 1)
+    );
+}
+
+#[test]
+fn an_active_file_that_needs_no_change_keeps_the_bundles_bytes_and_counts_nothing() {
+    let claim = sound_claim(1);
+    let done = unsettle(&claim_path(&claim.id), claim.to_yaml().as_bytes()).expect("unsettled");
+    assert!(!done.retired);
+    assert_eq!(done.rewritten, None);
+    assert!(done.left_out.is_none());
 }
 
 #[test]
@@ -226,6 +265,7 @@ fn the_sentences_say_each_kind_in_its_own_words_one_and_many() {
         statuses: 1,
         review_days: 1,
         availabilities: 1,
+        ..Unsettled::default()
     };
     assert_eq!(
         one.sentences(),
@@ -239,6 +279,7 @@ fn the_sentences_say_each_kind_in_its_own_words_one_and_many() {
         statuses: 12,
         review_days: 2,
         availabilities: 0,
+        ..Unsettled::default()
     };
     assert_eq!(
         many.sentences(),
@@ -251,7 +292,8 @@ fn the_sentences_say_each_kind_in_its_own_words_one_and_many() {
         Unsettled {
             statuses: 0,
             review_days: 0,
-            availabilities: 3
+            availabilities: 3,
+            ..Unsettled::default()
         }
         .sentences(),
         [
@@ -278,6 +320,7 @@ fn the_summary_is_the_sentence_for_one_kind_a_short_line_for_several_and_always_
         statuses: 999,
         review_days: 999,
         availabilities: 999,
+        ..Unsettled::default()
     };
     assert_eq!(
         all.summary(1),
@@ -292,7 +335,8 @@ fn the_summary_is_the_sentence_for_one_kind_a_short_line_for_several_and_always_
         Unsettled {
             statuses: 1,
             review_days: 1,
-            availabilities: 0
+            availabilities: 0,
+            ..Unsettled::default()
         }
         .summary(2),
         "1 community status and 1 review day were not imported: only a curation proposal sets them."
@@ -305,13 +349,155 @@ fn counts_add_up() {
         statuses: 1,
         review_days: 2,
         availabilities: 3,
+        ..Unsettled::default()
     };
     assert_eq!(
         a.plus(a),
         Unsettled {
             statuses: 2,
             review_days: 4,
-            availabilities: 6
+            availabilities: 6,
+            ..Unsettled::default()
+        }
+    );
+}
+
+#[test]
+fn the_retired_sentence_names_each_kind_that_has_any_with_the_verb_that_agrees() {
+    let said = |claims: usize, sources: usize| {
+        Unsettled {
+            retired_claims: claims,
+            retired_sources: sources,
+            ..Unsettled::default()
+        }
+        .sentences()
+    };
+    assert!(said(0, 0).is_empty());
+    assert_eq!(
+        said(1, 0),
+        ["1 retired claim was not imported: retiring is a curation here."]
+    );
+    assert_eq!(
+        said(0, 1),
+        ["1 retired source was not imported: retiring is a curation here."]
+    );
+    assert_eq!(
+        said(3, 0),
+        ["3 retired claims were not imported: retiring is a curation here."]
+    );
+    assert_eq!(
+        said(0, 2),
+        ["2 retired sources were not imported: retiring is a curation here."]
+    );
+    assert_eq!(
+        said(2, 1),
+        ["2 retired claims and 1 retired source were not imported: retiring is a curation here."]
+    );
+    assert_eq!(
+        said(1, 1),
+        ["1 retired claim and 1 retired source were not imported: retiring is a curation here."]
+    );
+    // After the sentences of the keys, in the report's order.
+    let both = Unsettled {
+        statuses: 1,
+        retired_claims: 1,
+        ..Unsettled::default()
+    };
+    let sentences = both.sentences();
+    assert_eq!(sentences.len(), 2);
+    assert!(
+        sentences[0].starts_with("1 community status was"),
+        "{sentences:?}"
+    );
+    assert!(
+        sentences[1].starts_with("1 retired claim was"),
+        "{sentences:?}"
+    );
+}
+
+#[test]
+fn only_a_key_left_out_of_a_written_file_makes_the_difference_sentence_true() {
+    let retired = Unsettled {
+        retired_claims: 4,
+        retired_sources: 1,
+        ..Unsettled::default()
+    };
+    assert!(
+        !retired.has_keys_left_out(),
+        "a retired file is not written"
+    );
+    assert!(!retired.is_none());
+    for keyed in [
+        Unsettled {
+            statuses: 1,
+            ..Unsettled::default()
+        },
+        Unsettled {
+            review_days: 1,
+            ..Unsettled::default()
+        },
+        Unsettled {
+            availabilities: 1,
+            ..Unsettled::default()
+        },
+    ] {
+        assert!(keyed.has_keys_left_out());
+    }
+}
+
+#[test]
+fn the_summary_carries_the_retired_counts_with_the_keys_and_stays_one_message_line() {
+    let retired = Unsettled {
+        retired_claims: 2,
+        retired_sources: 1,
+        ..Unsettled::default()
+    };
+    assert_eq!(
+        retired.summary(5),
+        "2 retired claims and 1 retired source were not imported: retiring is a curation here."
+    );
+    let with_status = Unsettled {
+        statuses: 3,
+        retired_claims: 1,
+        ..Unsettled::default()
+    };
+    assert_eq!(
+        with_status.summary(5),
+        "3 community statuses and 1 retired claim were not imported: only a curation proposal sets them."
+    );
+    // The most one change can say (a change of the sources, whose own family has the review days and the availabilities, with the
+    // retired claims of a family that has no file to write): the counts are kept whole and the reason is what goes.
+    let most = Unsettled {
+        review_days: 99_999,
+        availabilities: 99_999,
+        retired_claims: 99_999,
+        retired_sources: 99_999,
+        ..Unsettled::default()
+    };
+    assert_eq!(
+        most.summary(1),
+        "99999 review days, 99999 availabilities, 99999 retired claims and 99999 retired sources were not imported."
+    );
+    for counts in [most, retired, with_status] {
+        let summary =
+            inklkunn_signer::message::Summary::new(&counts.summary(5)).expect("a summary");
+        assert!(summary.as_str().chars().count() <= inklkunn_signer::message::SUMMARY_MAX_CHARS);
+    }
+}
+
+#[test]
+fn counts_of_retired_files_add_up_too() {
+    let a = Unsettled {
+        retired_claims: 1,
+        retired_sources: 2,
+        ..Unsettled::default()
+    };
+    assert_eq!(
+        a.plus(a),
+        Unsettled {
+            retired_claims: 2,
+            retired_sources: 4,
+            ..Unsettled::default()
         }
     );
 }

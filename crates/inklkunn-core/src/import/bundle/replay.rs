@@ -29,8 +29,11 @@
 //! and judged exactly as an acceptance judges a change that is not a curation proposal. **They arrive unsettled** (Z-1,
 //! [`crate::knowledge::unsettle`]): what only an accepted curation proposal sets, a community status, a review day and an availability,
 //! is not written (an import is the service writing, never a curation), the summary of the change and the report say how many, and a
-//! file that had any of them is written as its canonical text without them; **a retirement is not taken out**, so a retired claim or
-//! source still stops the import, by name and rule.
+//! file that had any of them is written as its canonical text without them; **a retired claim or source is not written at all** (Z-6:
+//! *retiring is a curation here*): the plan leaves it out of the files and out of the changes, the replay reads it again, checks its
+//! digest and counts it by the same step (the count must be the plan's), and the summary of the change of its family says how many were
+//! left out (that of the other family's change, or the report alone, when its own family has no file to write). A file that names one is
+//! refused at the plan, by name, so the replay never meets it.
 //!
 //! **The bundle is read again, and checked again.** The plan keeps no text. A history file is read from the directories the plan
 //! walked, through the inode it recorded, and must be the file it judged (the size and the digest); a page of the bundle, an attachment, a sidecar and a
@@ -791,7 +794,57 @@ pub fn import_bundle(
     // The claim and source files, last (Z-1): the pages they anchor to are there now, and each file comes after the files it names. They
     // are judged as an acceptance judges a change that is not a curation, and written without what only a curation sets.
     let mut knowledge_files = 0_usize;
-    let mut knowledge_not_imported = Unsettled::default();
+    // The retired files are read again and counted by the step that counted them at the plan (Z-6): each must be the file the plan read,
+    // and must still be retired.
+    let mut retired = Unsettled::default();
+    if !plan.retired_knowledge.is_empty() {
+        let files = match read_some(&plan.plan, plan.retired_knowledge.iter()) {
+            Ok(f) => f,
+            Err(e) => abandon!("reading the retired knowledge files", e),
+        };
+        for file in &files {
+            let path = file.path.to_string_lossy().into_owned();
+            let Some(bytes) = &file.content else {
+                continue;
+            };
+            if plan_digest(plan, &path) != Some(&sha256(bytes)) {
+                abandon!(
+                    "reading the retired knowledge files",
+                    format!(
+                        "`{}` is not the file that was planned (it changed since the plan)",
+                        super::shown(&path)
+                    )
+                );
+            }
+            match crate::knowledge::unsettle(&path, bytes) {
+                Ok(done) if done.retired => retired = retired.plus(done.left_out),
+                Ok(_) => abandon!(
+                    "reading the retired knowledge files",
+                    format!("`{}` is no longer retired", super::shown(&path))
+                ),
+                Err(fault) => abandon!(
+                    "reading the retired knowledge files",
+                    format!("`{}` {fault}", super::shown(&path))
+                ),
+            }
+        }
+    }
+    // The count of the retired claims is said by the first change of the claims, and that of the retired sources by the first change of
+    // the sources; a family with no file to write has no change, and then its count is said by the first change there is. With no change
+    // at all, only the report says it.
+    let first_change_of = |directory: &str| {
+        plan.knowledge_changes
+            .iter()
+            .position(|group| group.first().is_some_and(|p| p.starts_with(directory)))
+            .or_else(|| (!plan.knowledge_changes.is_empty()).then_some(0))
+    };
+    let claims_say_retired = first_change_of("knowledge/claims/");
+    let sources_say_retired = first_change_of("knowledge/sources/");
+    let mut knowledge_not_imported = if plan.knowledge_changes.is_empty() {
+        retired
+    } else {
+        Unsettled::default()
+    };
     let planned_files: BTreeMap<&str, &PlannedFile> = plan
         .plan
         .files
@@ -799,7 +852,7 @@ pub fn import_bundle(
         .filter(|f| f.is_knowledge())
         .map(|f| (f.path.as_str(), f))
         .collect();
-    for group in &plan.knowledge_changes {
+    for (at, group) in plan.knowledge_changes.iter().enumerate() {
         let planned: Vec<&PlannedFile> = group
             .iter()
             .filter_map(|path| planned_files.get(path.as_str()).copied())
@@ -831,6 +884,13 @@ pub fn import_bundle(
                 );
             }
             match crate::knowledge::unsettle(&path, bytes) {
+                Ok(done) if done.retired => abandon!(
+                    "reading the knowledge files",
+                    format!(
+                        "`{}` is retired, and the plan did not leave it out",
+                        super::shown(&path)
+                    )
+                ),
                 Ok(done) => {
                     left_out = left_out.plus(done.left_out);
                     if let Some(rewritten) = done.rewritten {
@@ -843,12 +903,26 @@ pub fn import_bundle(
                 ),
             }
         }
+        if claims_say_retired == Some(at) {
+            left_out.retired_claims = retired.retired_claims;
+        }
+        if sources_say_retired == Some(at) {
+            left_out.retired_sources = retired.retired_sources;
+        }
         let summary = left_out.summary(files.len());
         knowledge_files += files.len();
         knowledge_not_imported = knowledge_not_imported.plus(left_out);
         if let Err(why) = run.change(&summary, files, Vec::new(), None) {
             abandon!("the knowledge change", why);
         }
+    }
+    // **The count is the plan's** (Z-6): the step that counted at the plan and the one that counted here are the same, over the same
+    // files, so a difference is a bundle that changed under the import.
+    if knowledge_not_imported != plan.report.knowledge_not_imported {
+        abandon!(
+            "the knowledge files",
+            "what was left out is not what the plan counted"
+        );
     }
     let knowledge_changes = plan.knowledge_changes.len();
     if knowledge_changes > 0 {

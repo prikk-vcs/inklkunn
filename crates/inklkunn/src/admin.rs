@@ -1247,9 +1247,12 @@ fn import_bundle_command(
                     "  knowledge:       {} claim or source file(s) in {} change(s), after the history",
                     done.knowledge_files, done.knowledge_changes
                 );
-                for sentence in done.knowledge_not_imported.sentences() {
-                    let _ = writeln!(out, "                   {sentence}");
-                }
+            } else if !done.knowledge_not_imported.is_none() {
+                // Every file was retired (Z-6): no change was made, and the line still says what was left out.
+                let _ = writeln!(out, "  knowledge:       no claim or source file came in");
+            }
+            for sentence in done.knowledge_not_imported.sentences() {
+                let _ = writeln!(out, "                   {sentence}");
             }
             if done.not_applied > 0 {
                 let _ = writeln!(

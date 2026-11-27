@@ -168,6 +168,10 @@ pub struct BundlePlan {
     /// the change that brings the pages to the bundle's files, so that every page a claim anchors to is there, each file after the files
     /// it names, and as many changes as the caps of one acceptance (files and bytes) need. Empty when the bundle has none.
     pub knowledge_changes: Vec<Vec<String>>,
+    /// **The retired claim and source files the import leaves out** (Z-6): read and counted at the plan, and read again by the replay,
+    /// which counts them by the same step ([`crate::knowledge::unsettle`]) and checks the count against the plan's. They are in none
+    /// of [`BundlePlan::plan`]'s files and in none of [`BundlePlan::knowledge_changes`].
+    pub retired_knowledge: Vec<super::PlannedFile>,
     /// The SHA-256 of each page's file of the bundle, by path: what the replay's last change is compared with, and what it reads the
     /// file again against.
     pub page_digests: BTreeMap<String, Digest>,
@@ -257,8 +261,12 @@ pub(super) struct Gathered {
     verify: bool,
     sums_path: Option<String>,
     knowledge_known: bool,
-    /// What the knowledge files read leave out when written: a status, a review day, an availability (Z-1).
+    /// What the knowledge files read leave out: a status, a review day, an availability of a file that is written (Z-1), and a retired
+    /// file that is not (Z-6).
     unsettled: crate::knowledge::Unsettled,
+    /// **The retired claim and source files** (Z-6): read, digest-checked and counted like every file of the bundle, and **not in the
+    /// plan's files**, so that the order and the cut of the knowledge files are over the files that will be written.
+    retired: Vec<super::PlannedFile>,
     /// The knowledge files read, each with the paths of the files it names: the order they are written in follows it.
     knowledge_refs: BTreeMap<String, Vec<String>>,
     read_history: bool,
@@ -372,6 +380,17 @@ impl Gathered {
     ) {
         self.unsettled = self.unsettled.plus(left_out);
         self.knowledge_refs.insert(rel.to_owned(), names);
+    }
+
+    /// A retired claim or source file the walk read (Z-6): it is not planned to be written, and what is left of it is the count and the
+    /// file the replay reads again to count it by the same step.
+    pub(super) fn retired_file(
+        &mut self,
+        file: super::PlannedFile,
+        left_out: crate::knowledge::Unsettled,
+    ) {
+        self.unsettled = self.unsettled.plus(left_out);
+        self.retired.push(file);
     }
 
     /// A knowledge file, read by the walk: its size and digest.
@@ -709,6 +728,7 @@ pub fn plan_bundle(
                 schedule: Vec::new(),
                 first_pages: Vec::new(),
                 knowledge_changes: Vec::new(),
+                retired_knowledge: Vec::new(),
                 final_pages: Vec::new(),
                 page_digests: BTreeMap::new(),
                 file_digests: BTreeMap::new(),
@@ -1818,7 +1838,11 @@ fn finish(
     let used_history = !options.no_history;
     let mut groups: BTreeMap<String, (usize, &'static str)> = BTreeMap::new();
     for rel in gathered.files.keys() {
-        if plan.files.iter().any(|f| &f.path == rel) || left_out_paths.contains(rel) {
+        if plan.files.iter().any(|f| &f.path == rel)
+            || left_out_paths.contains(rel)
+            // A retired file is left out and counted on its own line (Z-6), not by the group that says why a file is not read.
+            || gathered.retired.iter().any(|f| &f.path == rel)
+        {
             continue;
         }
         if rel == crate::bundle::MANIFEST
@@ -1948,6 +1972,23 @@ fn finish(
             .filter(|(path, _)| sizes.contains_key(path.as_str()))
             .map(|(path, names)| (path.clone(), names.clone()))
             .collect();
+        // **A file that names a file that was left out is refused here, by name** (Z-6), before the order and the cut are computed: it
+        // would be judged as acceptance judges a reference to a file the wiki does not have, and the plan says so first, so that the
+        // dry run and the run both refuse with nothing made.
+        let retired: BTreeSet<&str> = gathered.retired.iter().map(|f| f.path.as_str()).collect();
+        for (path, names) in &known {
+            for name in names.iter().collect::<BTreeSet<_>>() {
+                if retired.contains(name.as_str()) {
+                    refusals.push(refusal(
+                        path,
+                        format!(
+                            "names `{}`, which is retired and was not imported (retiring is a curation here)",
+                            shown(name)
+                        ),
+                    ));
+                }
+            }
+        }
         let groups = knowledge_groups(&dependency_order(&known), &|path| {
             sizes.get(path).copied().unwrap_or(0)
         });
@@ -1988,6 +2029,7 @@ fn finish(
         first_pages: first_change,
         final_pages: final_paths,
         knowledge_changes,
+        retired_knowledge: gathered.retired.clone(),
         users,
         page_digests: kept_pages
             .iter()
@@ -1995,6 +2037,7 @@ fn finish(
             .collect(),
         file_digests: plan_files
             .iter()
+            .chain(gathered.retired.iter().map(|f| &f.path))
             .filter(|p| !p.starts_with("pages/"))
             .filter_map(|p| {
                 gathered

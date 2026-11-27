@@ -109,7 +109,8 @@ fn the_plan_counts_what_only_a_curation_sets_and_says_so_in_the_text_and_the_jso
         Unsettled {
             statuses: 1,
             review_days: 1,
-            availabilities: 1
+            availabilities: 1,
+            ..Unsettled::default()
         }
     );
     let text = p.render();
@@ -125,7 +126,7 @@ fn the_plan_counts_what_only_a_curation_sets_and_says_so_in_the_text_and_the_jso
     assert_eq!(json.pointer("/contents/knowledge_files").unwrap(), 3);
     assert_eq!(
         json.pointer("/contents/knowledge_not_imported").unwrap(),
-        &serde_json::json!({"community_statuses": 1, "review_days": 1, "availabilities": 1})
+        &serde_json::json!({"community_statuses": 1, "review_days": 1, "availabilities": 1, "retired_claims": 0, "retired_sources": 0})
     );
 }
 
@@ -146,7 +147,7 @@ fn a_bundle_of_unsettled_files_says_nothing_of_what_was_left_out() {
             .to_json()
             .pointer("/contents/knowledge_not_imported")
             .unwrap(),
-        &serde_json::json!({"community_statuses": 0, "review_days": 0, "availabilities": 0})
+        &serde_json::json!({"community_statuses": 0, "review_days": 0, "availabilities": 0, "retired_claims": 0, "retired_sources": 0})
     );
 }
 
@@ -163,20 +164,293 @@ fn the_counts_are_many_and_plural_as_the_words_are() {
     assert!(text.contains("1 review day was not imported"), "{text}");
 }
 
+fn retired_claim(n: u32, source: u32) -> Claim {
+    let mut c = settled_claim(n, source);
+    c.lifecycle = crate::knowledge::Lifecycle::Retired;
+    c.retired_reason = Some("Withdrawn.".to_owned());
+    c
+}
+
+fn retired_source(n: u32) -> Source {
+    let mut s = checked_source(n);
+    s.lifecycle = crate::knowledge::SourceLife::Retired;
+    s.retired_reason = Some("Gone.".to_owned());
+    s
+}
+
 #[test]
-fn a_retired_claims_status_is_counted_and_its_retirement_is_left_to_acceptance() {
-    // A retired claim is not un-retired: the plan counts its status, and the replay's acceptance refuses the retirement by name.
-    let mut claim = settled_claim(1, 1);
-    claim.lifecycle = crate::knowledge::Lifecycle::Retired;
-    claim.retired_reason = Some("Withdrawn.".to_owned());
+fn a_retired_claim_and_a_retired_source_are_left_out_counted_and_said_in_the_text_and_the_json() {
+    // Claim 1 and source 1 are active; claim 2 (resting on source 1) and source 2 (which no claim cites) are retired.
     let d = with_claims(
         "kn-retired",
-        &files_of(&[claim], &[Source::new(source_id(1))]),
+        &files_of(
+            &[settled_claim(1, 1), retired_claim(2, 1)],
+            &[checked_source(1), retired_source(2)],
+        ),
     );
     let p = plan(&d.0);
-    // The plan reads and counts (the files are judged against the pages at the replay, as before); it does not rewrite the retirement.
     assert_importable(&p);
-    assert_eq!(p.report.knowledge_not_imported.statuses, 1);
+    // Only the two active files are written; the two retired ones are in no change and in none of the plan's files.
+    assert_eq!(p.report.knowledge_files, 2);
+    assert_eq!(p.plan.knowledge_count(), 2);
+    let order: Vec<String> = p.knowledge_changes.iter().flatten().cloned().collect();
+    assert_eq!(
+        order,
+        [source_path(&source_id(1)), claim_path(&claim_id(1))]
+    );
+    let retired: Vec<&str> = p
+        .retired_knowledge
+        .iter()
+        .map(|f| f.path.as_str())
+        .collect();
+    assert_eq!(
+        retired.iter().copied().collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            claim_path(&claim_id(2)).as_str(),
+            source_path(&source_id(2)).as_str()
+        ])
+    );
+    // A retired file is counted as retired and as nothing else (its status, its review day, its availability are not counted: the file is
+    // not written); the active ones are counted as before.
+    assert_eq!(
+        p.report.knowledge_not_imported,
+        Unsettled {
+            statuses: 1,
+            review_days: 1,
+            availabilities: 1,
+            retired_claims: 1,
+            retired_sources: 1,
+        }
+    );
+    let text = p.render();
+    assert!(
+        text.contains(
+            "1 retired claim and 1 retired source were not imported: retiring is a curation here."
+        ),
+        "{text}"
+    );
+    // They were read like every file of the bundle: the checksums name them and were verified, and they are not listed as a part of the
+    // bundle that is not read.
+    assert!(
+        matches!(p.report.checksums, Checksums::Verified { .. }),
+        "{text}"
+    );
+    assert!(
+        p.report.left_out.iter().all(|l| l.what != "knowledge/"),
+        "{text}"
+    );
+    assert_eq!(
+        p.report
+            .to_json()
+            .pointer("/contents/knowledge_not_imported")
+            .unwrap(),
+        &serde_json::json!({
+            "community_statuses": 1,
+            "review_days": 1,
+            "availabilities": 1,
+            "retired_claims": 1,
+            "retired_sources": 1
+        })
+    );
+    // Both the digest of what was read and the plan's own are kept for the replay to check the retired files by.
+    for f in &p.retired_knowledge {
+        assert!(p.file_digests.contains_key(&f.path), "{}", f.path);
+    }
+}
+
+#[test]
+fn the_retired_sentence_is_singular_and_plural_as_the_words_are_and_absent_when_nothing_is_retired()
+{
+    let says = |tag: &str, claims: &[Claim], sources: &[Source]| {
+        let mut all: Vec<Claim> = vec![settled_claim(1, 1)];
+        all.extend_from_slice(claims);
+        let mut srcs: Vec<Source> = vec![checked_source(1)];
+        srcs.extend_from_slice(sources);
+        let d = with_claims(tag, &files_of(&all, &srcs));
+        let p = plan(&d.0);
+        assert_importable(&p);
+        p.render()
+    };
+    let text = says("kn-ret-1", &[retired_claim(2, 1)], &[]);
+    assert!(
+        text.contains("1 retired claim was not imported: retiring is a curation here."),
+        "{text}"
+    );
+    let text = says("kn-ret-2", &[], &[retired_source(2), retired_source(3)]);
+    assert!(
+        text.contains("2 retired sources were not imported: retiring is a curation here."),
+        "{text}"
+    );
+    let text = says(
+        "kn-ret-3",
+        &[retired_claim(2, 1), retired_claim(3, 1)],
+        &[retired_source(2)],
+    );
+    assert!(
+        text.contains(
+            "2 retired claims and 1 retired source were not imported: retiring is a curation here."
+        ),
+        "{text}"
+    );
+    let text = says("kn-ret-0", &[], &[]);
+    assert!(!text.contains("retired"), "{text}");
+    assert!(!text.contains("retiring"), "{text}");
+}
+
+#[test]
+fn a_bundle_whose_every_knowledge_file_is_retired_has_no_knowledge_change_and_says_so() {
+    let d = with_claims(
+        "kn-all-retired",
+        &files_of(&[retired_claim(1, 1)], &[retired_source(1)]),
+    );
+    let p = plan(&d.0);
+    assert_importable(&p);
+    assert_eq!(p.report.knowledge_files, 0);
+    assert!(p.knowledge_changes.is_empty());
+    assert_eq!(p.retired_knowledge.len(), 2);
+    let text = p.render();
+    assert!(
+        text.contains(
+            "1 retired claim and 1 retired source were not imported: retiring is a curation here."
+        ),
+        "{text}"
+    );
+    // Nothing was written without keys: the sentence for the written files' bytes is not said.
+    assert!(!text.contains("written without them"), "{text}");
+}
+
+#[test]
+fn the_files_are_ordered_and_cut_without_the_files_that_are_left_out() {
+    // 10,000 active sources fill one change exactly; one more source, retired, would have made it two if it had been counted in the cut.
+    let mut files: Vec<(String, String)> = (1..=MAX_CHANGE_FILES as u32)
+        .map(|n| {
+            let s = Source::new(source_id(n));
+            (source_path(&s.id), s.to_yaml())
+        })
+        .collect();
+    let retired = retired_source(MAX_CHANGE_FILES as u32 + 1);
+    files.push((source_path(&retired.id), retired.to_yaml()));
+    let d = with_claims("kn-cut", &files);
+    let p = plan(&d.0);
+    assert_importable(&p);
+    assert_eq!(p.knowledge_changes.len(), 1, "{}", p.render());
+    assert_eq!(
+        p.knowledge_changes.first().map(Vec::len),
+        Some(MAX_CHANGE_FILES)
+    );
+    assert!(
+        p.knowledge_changes
+            .iter()
+            .flatten()
+            .all(|f| *f != source_path(&retired.id))
+    );
+    assert_eq!(p.report.knowledge_not_imported.retired_sources, 1);
+}
+
+#[test]
+fn a_file_that_names_a_retired_file_is_refused_by_name_at_the_plan_and_one_that_is_retired_itself_is_not()
+ {
+    // Claim 1 rests on retired source 5; claim 2 relates to retired claim 6; source 7 is replaced by retired source 8. Each is refused, by
+    // name, for the retired file it names.
+    let mut rests = settled_claim(1, 5);
+    rests.community_status = CommunityStatus::undecided();
+    let mut relates = settled_claim(2, 1);
+    relates.community_status = CommunityStatus::undecided();
+    relates.relations = vec![Relation {
+        kind: RelationType::Refines,
+        claim: claim_id(6),
+    }];
+    relates.normalize();
+    let mut replaced = checked_source(7);
+    replaced.superseded_by = Some(source_id(8));
+    // Retired files may name each other and anything: they are not written.
+    let mut retired_names = retired_claim(6, 5);
+    retired_names.relations = vec![Relation {
+        kind: RelationType::Refines,
+        claim: claim_id(1),
+    }];
+    retired_names.normalize();
+    let d = with_claims(
+        "kn-names-retired",
+        &files_of(
+            &[rests, relates, retired_names],
+            &[
+                checked_source(1),
+                retired_source(5),
+                replaced,
+                retired_source(8),
+            ],
+        ),
+    );
+    let p = plan(&d.0);
+    assert!(!p.is_importable(), "{}", p.render());
+    assert_refused(
+        &p,
+        &claim_path(&claim_id(1)),
+        &format!(
+            "names `{}`, which is retired and was not imported (retiring is a curation here)",
+            source_path(&source_id(5))
+        ),
+    );
+    assert_refused(
+        &p,
+        &claim_path(&claim_id(2)),
+        &format!(
+            "names `{}`, which is retired and was not imported",
+            claim_path(&claim_id(6))
+        ),
+    );
+    assert_refused(
+        &p,
+        &source_path(&source_id(7)),
+        &format!(
+            "names `{}`, which is retired and was not imported",
+            source_path(&source_id(8))
+        ),
+    );
+    // Exactly those three: the retired claim 6 names claim 1 and source 5, and is not refused for it.
+    assert_eq!(p.plan.refused.len(), 3, "{}", p.render());
+}
+
+#[test]
+fn a_retired_file_is_read_and_checked_like_every_file_of_the_bundle() {
+    let files = files_of(
+        &[settled_claim(1, 1), retired_claim(2, 1)],
+        &[checked_source(1)],
+    );
+    // Changed after the checksums were made.
+    let d = with_claims("kn-ret-lie", &files);
+    let other = retired_claim(2, 1);
+    let mut other = other;
+    other.retired_reason = Some("Another reason.".to_owned());
+    put(&d.0, &claim_path(&claim_id(2)), other.to_yaml().as_bytes());
+    assert_refused(
+        &plan(&d.0),
+        &claim_path(&claim_id(2)),
+        "SHA-256 that is not the one the checksums file gives it",
+    );
+    // Not named by the checksums at all.
+    let d = with_claims("kn-ret-unnamed", &files);
+    let sums = std::fs::read_to_string(d.0.join("sha256sums.txt")).unwrap();
+    let kept: Vec<&str> = sums
+        .lines()
+        .filter(|l| !l.ends_with(&claim_path(&claim_id(2))))
+        .collect();
+    std::fs::write(d.0.join("sha256sums.txt"), kept.join("\n") + "\n").unwrap();
+    assert_refused(
+        &plan(&d.0),
+        &claim_path(&claim_id(2)),
+        "the checksums file does not name it",
+    );
+    // A retired file that does not read is refused by the rule, as any file that does not.
+    let d = with_claims(
+        "kn-ret-unreadable",
+        &[(
+            claim_path(&claim_id(3)),
+            "kind: observation\nlifecycle: retired\n".to_owned(),
+        )],
+    );
+    assert!(!plan(&d.0).is_importable());
 }
 
 #[test]
