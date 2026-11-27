@@ -366,14 +366,29 @@ fn capture_as(browser: &mut Browser, paths: &[String]) -> Shown {
 }
 
 /// A page as it is compared: what differs on every page for no reason of the page's (the ports of the two servers, the
-/// stylesheet's name, a form's token, the footer's version, and this tree's `service-desc` head line, which `masked` takes out
-/// exactly) is masked, and nothing else. The footer's version is masked for 0.4.0's own and for this tree's, which are one
-/// string until this tree's version moves.
+/// stylesheet's name, a form's token, the version, and this tree's `service-desc` head line, which `masked` takes out
+/// exactly) is masked, and nothing else. **The version is said in three places, and only there is it masked** (the candidate
+/// commit of 0.5.0 moved this tree's version off 0.4.0's, so the two differ by definition): the footer's `inklkunn version
+/// X.Y.Z`, the feeds' `<generator version="X.Y.Z">`, and the engine's `"version":"X.Y.Z"` in `site.json`; for 0.4.0's own and
+/// for this tree's.
 fn compared(html: &str, ports: [u16; 2]) -> String {
-    masked(
-        &html.replace("inklkunn version 0.4.0", "inklkunn version VERSION"),
-        ports,
-    )
+    let mut text = html.to_owned();
+    for version in ["0.4.0", env!("CARGO_PKG_VERSION")] {
+        text = text
+            .replace(
+                &format!("inklkunn version {version}"),
+                "inklkunn version VERSION",
+            )
+            .replace(
+                &format!("<generator version=\"{version}\">"),
+                "<generator version=\"VERSION\">",
+            )
+            .replace(
+                &format!("\"engine\":{{\"name\":\"inklkunn\",\"version\":\"{version}\"}}"),
+                "\"engine\":{\"name\":\"inklkunn\",\"version\":\"VERSION\"}",
+            );
+    }
+    masked(&text, ports)
 }
 
 /// The policy page's section for the interwiki map when the wiki has none (0.5.0's I-T4: *The policy page shows the map*), as

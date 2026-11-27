@@ -13,7 +13,7 @@ format: wiki-commons-self-assessment
 version: "0.1"
 subject:
   name: inklkunn
-  version: "0.4.0"
+  version: "0.5.0"
   url: https://github.com/prikk-vcs/inklkunn
   kind: engine
 assessed_at: "2026-11-26"
