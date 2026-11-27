@@ -889,6 +889,15 @@ fn the_report_says_the_wiki_it_was_imported_from_and_never_a_source() {
             _ => {}
         }
     }
+    // The one key that has the word is the count of retired **claim sources** (Z-6, the architect's `retired_sources`): there the word
+    // means what it means everywhere in the product, a claim's source, and it is the only place; it is taken out here and its place is
+    // held exactly.
+    let mut json = json;
+    let counted = json
+        .pointer_mut("/contents/knowledge_not_imported")
+        .and_then(|v| v.as_object_mut())
+        .and_then(|m| m.remove("retired_sources"));
+    assert!(counted.is_some(), "the count of retired sources has moved");
     let mut all = Vec::new();
     keys(&json, &mut all);
     assert!(
