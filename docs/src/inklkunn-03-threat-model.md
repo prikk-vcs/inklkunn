@@ -932,7 +932,8 @@ The acceptance criteria's half of the map is kept with the readiness review.
   - `bin/src/admin/tests/import_bundle_tests.rs::a_run_makes_the_wiki_with_its_history_one_block_a_revision_and_audits_it` : [P] one audited act of the operator's CLI
   - `core/tests/import_replay.rs::a_mediawiki_dump_comes_in_with_its_history_every_revision_a_block_and_the_pages_end_as_the_bundle_has_them` : [P] a run with checksums: every block's notice says `Verified`
   - `core/src/import/bundle/tests/corrections.rs::the_bundles_identity_is_the_checksums_files_digest_or_a_digest_of_the_files_read` : V-6
-  - GAP: nothing asserts the absence of an import route on the web (gap 12); the walk is the folder import's (shared), proven here only through the bundle's own refusals.
+  - `web/tests/route_enumeration/main.rs::no_web_or_api_route_imports_discards_or_creates_a_wiki` : no web or API route imports, discards or creates a wiki (closed at R-6's Z round, Z-3)
+  - GAP: the walk is the folder import's (shared), proven here only through the bundle's own refusals.
 - **C-5b** a prikk archive import never adopts carried keys. **Unchanged by 0.5.0** (no archive import is added; a bundle carries no key input: only pages, attachments, sidecars, history, `users.yaml`, the manifest are read).
   - `core/src/import/bundle/tests.rs::what_the_bundle_says_that_this_build_does_not_know_is_kept_in_the_report_and_never_read` : an unknown key or field is reported and never read
   - `core/tests/import_interwiki.rs::a_bundles_own_policy_and_constitution_are_never_written_by_an_import` : [P] a bundle's own `governance/policy.yaml`, `constitution.yaml`, `interwiki.yaml` are never written: only the map from the manifest
@@ -969,7 +970,8 @@ The acceptance criteria's half of the map is kept with the readiness review.
   - `bin/src/admin/tests/import_bundle_tests.rs::discard_unfinished_checks_the_mark_and_the_store_before_it_says_what_it_found` : [P] refused for a stored wiki
   - `core/tests/import_replay_history.rs::a_creation_that_is_alive_is_not_discarded_and_an_import_counts_for_no_participation` : [P] refused while alive
   - `store/tests/acts.rs::the_sqlite_store_stores_a_wiki_with_its_whole_history_or_nothing` : one transaction
-  - GAP: gap 6 (no real `SIGKILL` in the replay; a panic stands in for it at every step).
+  - `bin/src/serve/writes_on/tests/readiness_0_5_0/kill_real.rs` : [P] a real `SIGKILL` of a running `wiki import-bundle` between two blocks; not listed, answered as absent, kept by the sweep, removed exactly by `discard-unfinished`, imported again (closed at R-6's Z round, Z-2)
+  - GAP: the other steps' kills are a panic in the step observer, as the core kill tests'.
 - **C-5g** checksums show integrity, not authorship.
   - `web/tests/imported_history/main.rs::an_imported_revision_says_who_wrote_it_in_the_wiki_it_came_from_and_when_and_the_page_says_where_it_came_from` : the notice words (*the files of the bundle were checked against its checksums*) say what was checked and claim no author
   - GAP: gap 11: no operator document and no test says it in words; the threat model alone.

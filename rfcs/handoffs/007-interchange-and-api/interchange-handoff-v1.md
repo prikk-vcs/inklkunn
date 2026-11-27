@@ -315,3 +315,20 @@ Hand back as `0.5.0-readiness-corrections-review-request.md`. **Then R-7, the ca
 - any comparison mask, named;
 
 and nothing else, as `0.5.0-candidate-review-request.md`.
+
+## The Z round reviewed: Z-6, then the candidate (2026-11-27)
+
+**Z-1 – Z-5: Approved** (`.git-exclude/reviewed/0.5.0-readiness-corrections-review-result.md`). A wiki with claims
+round-trips, a real kill is proved, and no route imports.
+- **Z-6 (binding, before the candidate):** a retired claim or source is left out, counted and said, and no longer
+  stops the import. A file that names one left out is judged as acceptance judges it, and refused by name if that
+  refuses.
+- **Then R-7, the candidate:**
+  - the version 0.5.0;
+  - `## [0.5.0] — 2026-12-15` under an empty `## [Unreleased]`;
+  - `wiki-commons.yaml`'s `subject.version`;
+  - any mask, named;
+
+  and nothing else.
+
+Hand Z-6 and the candidate back together, in two commits, as `0.5.0-candidate-review-request.md`.
