@@ -403,15 +403,12 @@ fn the_retired_sentence_names_each_kind_that_has_any_with_the_verb_that_agrees()
         retired_claims: 1,
         ..Unsettled::default()
     };
-    let sentences = both.sentences();
-    assert_eq!(sentences.len(), 2);
-    assert!(
-        sentences[0].starts_with("1 community status was"),
-        "{sentences:?}"
-    );
-    assert!(
-        sentences[1].starts_with("1 retired claim was"),
-        "{sentences:?}"
+    assert_eq!(
+        both.sentences(),
+        [
+            "1 community status was not imported: a status is set here only by a curation proposal.",
+            "1 retired claim was not imported: retiring is a curation here."
+        ]
     );
 }
 
