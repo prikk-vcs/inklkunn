@@ -2,8 +2,8 @@
 //! real signer and a real prikk: an inklkunn wiki's own export can be imported again while it has claims on pages that have a history. The
 //! files are written in the change(s) after the last revision and the change at the end of the pages, each after the files it names; **what
 //! only a curation sets** (a community status, a review day, an availability) is not written, and the plan, the import and the report agree
-//! on how many; a claim that names a page the bundle lacks, a claim that is retired and a file that changed since the plan stay refused, by
-//! name. Self-skips with a visible line when prikk is not on `PATH`.
+//! on how many; **a retired claim or source is left out whole** (Z-6), counted and said, and a file that names one is refused at the plan, by
+//! name; a claim that names a page the bundle lacks and a file that changed since the plan stay refused, by name. Self-skips with a visible line when prikk is not on `PATH`.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 #[path = "support/replay.rs"]
@@ -12,12 +12,13 @@ mod replay;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 
-use inklkunn_core::import::bundle::{ImportBundleError, ImportStep};
+use inklkunn_core::import::bundle::{BundleOptions, ImportBundleError, ImportStep, plan_bundle};
 use inklkunn_core::knowledge::{
     Availability, Bearing, Claim, ClaimId, CommunityStatus, Expression, File, Lifecycle, Link,
-    Relation, RelationType, Reviewed, Source, SourceId, SourceLink, Standing, Unsettled,
-    block_digest, claim_path, read_file, source_path,
+    Relation, RelationType, Reviewed, Source, SourceId, SourceLife, SourceLink, Standing,
+    Unsettled, block_digest, claim_path, read_file, source_path,
 };
+use inklkunn_core::read::ReadConfig;
 use inklkunn_prikk::Point;
 use inklkunn_store::{AcceptanceOutcome, ActStore, Slug, WikiStore};
 use replay::{Dir, dir_in, leftovers, messages, plan_of, prikk_on_path, run, world};
@@ -221,7 +222,8 @@ fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anc
         Unsettled {
             statuses: 1,
             review_days: 1,
-            availabilities: 1
+            availabilities: 1,
+            ..Unsettled::default()
         }
     );
     // The dry run says it before anything is written.
@@ -458,33 +460,298 @@ fn a_claim_that_names_a_page_the_bundle_lacks_is_still_refused_by_name_and_nothi
     assert!(said.contains("expressions"), "{said}");
 }
 
+fn retired_claim(n: u32, source: u32) -> Claim {
+    let mut c = settled_claim(n, source);
+    c.lifecycle = Lifecycle::Retired;
+    c.retired_reason = Some("Withdrawn.".to_owned());
+    c
+}
+
+fn retired_source(n: u32) -> Source {
+    let mut s = checked_source(n);
+    s.lifecycle = SourceLife::Retired;
+    s.retired_reason = Some("Gone.".to_owned());
+    s
+}
+
+/// The summaries of the knowledge changes of an import, in the order they were made (the changes after the history).
+fn knowledge_summaries(
+    w: &replay::World,
+    id: &inklkunn_store::WikiId,
+    changes: usize,
+) -> Vec<String> {
+    let said: Vec<String> = messages(w, id)
+        .iter()
+        .map(|m| m.summary().as_str().to_owned())
+        .collect();
+    said.get(said.len() - changes..)
+        .unwrap_or_default()
+        .to_vec()
+}
+
 #[test]
-fn a_retired_claim_is_not_un_retired_and_stops_the_import_by_name_and_rule() {
+fn a_wiki_with_a_retired_claim_and_a_retired_source_round_trips_without_them_and_says_so() {
     if !prikk_on_path() {
         println!("skipping: prikk not on PATH");
         return;
     }
-    let mut retired = settled_claim(1, 1);
-    retired.lifecycle = Lifecycle::Retired;
-    retired.retired_reason = Some("Withdrawn.".to_owned());
-    let said = refused_at_the_replay(
-        "kn-retired",
+    let w = world("kn-retire");
+    // Claim 1 and source 1 are active (claim 1 has a status, source 1 a review and an availability); claim 2 (which rests on source 1) and
+    // source 2 (which no claim cites) are retired, and they too have the keys that only a curation sets.
+    let files = [
+        claim_file(&settled_claim(1, 1)),
+        claim_file(&retired_claim(2, 1)),
+        source_file(&checked_source(1)),
+        source_file(&retired_source(2)),
+    ];
+    let d = bundle("kn-retire-bundle", true, &files);
+    let plan = plan_of(&d.0, None);
+    let counted = Unsettled {
+        statuses: 1,
+        review_days: 1,
+        availabilities: 1,
+        retired_claims: 1,
+        retired_sources: 1,
+    };
+    assert_eq!(plan.report.knowledge_not_imported, counted);
+    // The dry run says it before anything is written.
+    let said = plan.render();
+    assert!(
+        said.contains(
+            "1 retired claim and 1 retired source were not imported: retiring is a curation here."
+        ),
+        "{said}"
+    );
+    let seen = std::cell::RefCell::new(Vec::new());
+    let done = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|s| {
+        seen.borrow_mut().push(s);
+    })
+    .expect("a wiki that retired a claim and a source is imported");
+    // **The count the plan gave is the count the replay made**, and only the two active files were written.
+    assert_eq!(done.knowledge_not_imported, counted);
+    assert_eq!(done.knowledge_files, 2);
+    assert_eq!(done.knowledge_changes, 2);
+    assert!(seen.into_inner().contains(&ImportStep::Knowledge));
+    // The retired two are in no block of the wiki, at the tip or before it; the active two arrive.
+    for block in sealed_blocks(&w, &done.record.id) {
+        for path in [claim_path(&claim_id(2)), source_path(&source_id(2))] {
+            assert_eq!(
+                at_block(&w, &done.repo, &block, &path),
+                None,
+                "{path} at {block}"
+            );
+        }
+    }
+    assert!(!done.repo.join(claim_path(&claim_id(2))).exists());
+    assert!(!done.repo.join(source_path(&source_id(2))).exists());
+    assert!(done.repo.join(claim_path(&claim_id(1))).is_file());
+    assert!(done.repo.join(source_path(&source_id(1))).is_file());
+    // Each change says its family's count beside what it left out of the files it wrote.
+    assert_eq!(
+        knowledge_summaries(&w, &done.record.id, 2),
+        [
+            "1 review day, 1 availability and 1 retired source were not imported: only a curation proposal sets them.",
+            "1 community status and 1 retired claim were not imported: only a curation proposal sets them."
+        ]
+    );
+    // The report kept with the act has the sentence, and the wiki verifies.
+    let kept = std::fs::read_to_string(w.layout.import_report(&done.record.id)).unwrap();
+    assert!(
+        kept.contains(
+            "1 retired claim and 1 retired source were not imported: retiring is a curation here."
+        ),
+        "{kept}"
+    );
+    assert!(w.storage.verify(&done.repo).expect("verify").verdict.ok);
+}
+
+#[test]
+fn a_family_with_no_file_left_to_write_has_its_retired_count_said_by_the_change_of_the_other() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    // Every claim is retired: the one change is the sources', and it says the retired claim.
+    let w = world("kn-fam-claims");
+    let d = bundle(
+        "kn-fam-claims-bundle",
+        false,
         &[
-            claim_file(&retired),
-            source_file(&Source::new(source_id(1))),
+            claim_file(&retired_claim(1, 1)),
+            source_file(&checked_source(1)),
         ],
     );
-    eprintln!("RETIRED: {said}");
+    let plan = plan_of(&d.0, None);
+    let done = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|_| {}).expect("imported");
+    assert_eq!((done.knowledge_files, done.knowledge_changes), (1, 1));
+    assert_eq!(
+        done.knowledge_not_imported,
+        plan.report.knowledge_not_imported
+    );
+    assert_eq!(
+        knowledge_summaries(&w, &done.record.id, 1),
+        [
+            "1 review day, 1 availability and 1 retired claim were not imported: only a curation proposal sets them."
+        ]
+    );
+    assert!(!done.repo.join(claim_path(&claim_id(1))).exists());
+
+    // Every source is retired (and no claim cites one): the one change is the claims', and it says the retired source.
+    let w = world("kn-fam-sources");
+    let mut claim = settled_claim(1, 1);
+    claim.sources = Vec::new();
+    let d = bundle(
+        "kn-fam-sources-bundle",
+        false,
+        &[claim_file(&claim), source_file(&retired_source(1))],
+    );
+    let plan = plan_of(&d.0, None);
+    let done = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|_| {}).expect("imported");
+    assert_eq!((done.knowledge_files, done.knowledge_changes), (1, 1));
+    assert_eq!(
+        done.knowledge_not_imported,
+        plan.report.knowledge_not_imported
+    );
+    assert_eq!(
+        knowledge_summaries(&w, &done.record.id, 1),
+        [
+            "1 community status and 1 retired source were not imported: only a curation proposal sets them."
+        ]
+    );
+}
+
+#[test]
+fn a_bundle_whose_every_knowledge_file_is_retired_makes_no_knowledge_change_and_the_report_says_so()
+{
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let w = world("kn-all-retired");
+    let d = bundle(
+        "kn-all-retired-bundle",
+        false,
+        &[
+            claim_file(&retired_claim(1, 1)),
+            source_file(&retired_source(1)),
+        ],
+    );
+    let plan = plan_of(&d.0, None);
+    let seen = std::cell::RefCell::new(Vec::new());
+    let done = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|s| {
+        seen.borrow_mut().push(s);
+    })
+    .expect("imported");
+    // No change of knowledge files: none to write. The wiki is complete, and the count is the plan's.
+    assert_eq!((done.knowledge_files, done.knowledge_changes), (0, 0));
+    assert!(!seen.into_inner().contains(&ImportStep::Knowledge));
+    assert_eq!(
+        done.knowledge_not_imported,
+        Unsettled {
+            retired_claims: 1,
+            retired_sources: 1,
+            ..Unsettled::default()
+        }
+    );
+    assert_eq!(
+        sealed_blocks(&w, &done.record.id).len(),
+        1 + 3,
+        "creation and the three revisions, and nothing after"
+    );
+    assert!(!done.repo.join(claim_path(&claim_id(1))).exists());
+    assert!(!done.repo.join(source_path(&source_id(1))).exists());
+    assert!(w.storage.verify(&done.repo).expect("verify").verdict.ok);
+    // No change carries the sentence: the report does.
+    let kept = std::fs::read_to_string(w.layout.import_report(&done.record.id)).unwrap();
+    assert!(
+        kept.contains(
+            "1 retired claim and 1 retired source were not imported: retiring is a curation here."
+        ),
+        "{kept}"
+    );
+    assert!(!kept.contains("written without them"), "{kept}");
+}
+
+#[test]
+fn a_claim_that_cites_a_retired_source_is_refused_by_name_at_the_plan_and_nothing_is_made() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let w = world("kn-names-retired");
+    let citing = unsettled(settled_claim(1, 1));
+    let d = bundle(
+        "kn-names-retired-bundle",
+        false,
+        &[claim_file(&citing), source_file(&retired_source(1))],
+    );
+    let plan = plan_bundle(&d.0, &ReadConfig::default(), &BundleOptions::default()).expect("plan");
+    assert!(!plan.is_importable(), "{}", plan.render());
+    let refused: Vec<(&str, &str)> = plan
+        .plan
+        .refused
+        .iter()
+        .map(|r| (r.name.as_str(), r.reason.as_str()))
+        .collect();
+    assert_eq!(
+        refused,
+        [(
+            claim_path(&citing.id).as_str(),
+            format!(
+                "names `{}`, which is retired and was not imported (retiring is a curation here)",
+                source_path(&source_id(1))
+            )
+            .as_str()
+        )]
+    );
+    // The run refuses before anything: no record, nothing on disk.
+    let Err(error) = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|_| {}) else {
+        panic!("a refused plan was imported");
+    };
+    assert!(matches!(error, ImportBundleError::Refused(1)), "{error}");
+    assert!(w.store.list().expect("list").is_empty());
+    assert!(w.store.by_slug(&Slug::new("orchard").unwrap()).is_err());
+    assert_eq!(leftovers(&w), Vec::<String>::new());
+}
+
+#[test]
+fn a_retired_file_that_changed_since_the_plan_stops_the_import_whole() {
+    if !prikk_on_path() {
+        println!("skipping: prikk not on PATH");
+        return;
+    }
+    let w = world("kn-ret-changed");
+    let retired = retired_claim(2, 1);
+    let d = bundle(
+        "kn-ret-changed-bundle",
+        false,
+        &[
+            claim_file(&settled_claim(1, 1)),
+            claim_file(&retired),
+            source_file(&checked_source(1)),
+        ],
+    );
+    let plan = plan_of(&d.0, None);
+    // The same size, in place: only the digest can tell. (It is a retired file, which is not written; it is read, and it is the file it
+    // was.)
+    let path = d.0.join(claim_path(&retired.id));
+    let text = std::fs::read_to_string(&path).unwrap();
+    let changed = text.replace("a note", "a nope");
+    assert_eq!(changed.len(), text.len());
+    assert_ne!(changed, text);
+    {
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+        file.write_all(changed.as_bytes()).unwrap();
+    }
+    let Err(error) = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|_| {}) else {
+        panic!("a changed file was imported");
+    };
+    let said = error.to_string();
+    assert!(said.contains("is not the file that was planned"), "{said}");
     assert!(said.contains(&claim_path(&retired.id)), "{said}");
-    assert!(said.contains("`lifecycle`"), "{said}");
-    // A retired source is the same.
-    let mut gone = Source::new(source_id(1));
-    gone.lifecycle = inklkunn_core::knowledge::SourceLife::Retired;
-    gone.retired_reason = Some("Gone.".to_owned());
-    let said = refused_at_the_replay("kn-retired-source", &[source_file(&gone)]);
-    eprintln!("RETIRED SOURCE: {said}");
-    assert!(said.contains(&source_path(&gone.id)), "{said}");
-    assert!(said.contains("`lifecycle`"), "{said}");
+    assert!(w.store.list().expect("list").is_empty());
+    assert_eq!(leftovers(&w), Vec::<String>::new());
 }
 
 #[test]
