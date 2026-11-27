@@ -332,3 +332,6 @@ round-trips, a real kill is proved, and no route imports.
   and nothing else.
 
 Hand Z-6 and the candidate back together, in two commits, as `0.5.0-candidate-review-request.md`.
+- **Z-7 (added the same day, from the rehearsal):** the arm64 image's push failed with ghcr's `unknown blob` again (run
+  45922584015, as at 0.4.0's release), and a rerun passed. Both push steps retry `docker push` up to three times with a
+  short pause. It is handed back with Z-6 and the candidate, so the request has three commits.
