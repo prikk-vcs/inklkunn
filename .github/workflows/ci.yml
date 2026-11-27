@@ -47,7 +47,7 @@ env:
   UPGRADE_FROM_0_4_0_SHA256_X86_64: "277e7962612fe07ec380ba414ea3f8521397f6eb54499aaeed38eba3fd5b01f6"
   # The number of prikk-dependent tests: each prints `skipping: prikk not on PATH` when prikk is shimmed
   # off, and the shimmed run fails unless exactly this many do (a new such test updates this number).
-  EXPECTED_SKIPS: "413"
+  EXPECTED_SKIPS: "423"
 
 jobs:
   build:
