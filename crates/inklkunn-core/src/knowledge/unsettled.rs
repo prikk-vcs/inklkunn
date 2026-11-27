@@ -85,8 +85,10 @@ impl Unsettled {
     pub const DIFFERENCE: &'static str = "A claim or source file that had any of them is written without them; its bytes differ from the bundle's by exactly those keys.";
 
     /// **The summary of the change that writes the files** (the first line of its message: at most 120 characters, one line): the
-    /// sentence itself when one kind was left out, a shorter one naming each kind when several were, and the plain count when none.
-    /// `files` is how many files the change holds.
+    /// sentence itself when one kind was left out, one sentence naming each kind when several were, and the plain count when none.
+    /// `files` is how many files the change holds. **A change holds the files of one family** (the sources first, then the claims: see
+    /// [`crate::import::bundle::BundlePlan::knowledge_changes`]), so the change of the claims says the statuses and nothing else, and the
+    /// sentence the review of the 0.5.0 readiness asked for is the whole summary.
     pub fn summary(&self, files: usize) -> String {
         let sentences = self.sentences();
         match sentences.as_slice() {
@@ -96,16 +98,17 @@ impl Unsettled {
                 let part = |n: usize, one: &str, many: &str| {
                     (n > 0).then(|| format!("{n} {}", if n == 1 { one } else { many }))
                 };
-                let parts: Vec<String> = [
-                    part(self.statuses, "status", "statuses"),
+                let mut parts: Vec<String> = [
+                    part(self.statuses, "community status", "community statuses"),
                     part(self.review_days, "review day", "review days"),
                     part(self.availabilities, "availability", "availabilities"),
                 ]
                 .into_iter()
                 .flatten()
                 .collect();
+                let last = parts.pop().unwrap_or_default();
                 format!(
-                    "Import knowledge files; not imported, as only curation sets them: {}",
+                    "{} and {last} were not imported: only a curation proposal sets them.",
                     parts.join(", ")
                 )
             }

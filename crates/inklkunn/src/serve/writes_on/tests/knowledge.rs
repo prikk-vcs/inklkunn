@@ -242,7 +242,7 @@ pub(super) fn curate(
 }
 
 /// The index of the group of fields of the curation form that is for `source`.
-fn group_of(form: &Form, source: &str) -> usize {
+pub(super) fn group_of(form: &Form, source: &str) -> usize {
     (0..8)
         .find(|i| {
             form.fields

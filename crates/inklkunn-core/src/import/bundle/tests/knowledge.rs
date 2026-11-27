@@ -192,8 +192,14 @@ fn the_knowledge_files_are_a_change_of_their_own_after_the_pages_each_file_after
     let d = with_claims("kn-order", &files);
     let p = plan(&d.0);
     assert_importable(&p);
-    assert_eq!(p.knowledge_changes.len(), 1);
-    let order = p.knowledge_changes.first().unwrap();
+    // One change of the source, then one of the claims (a change holds one family, so that what it says of what was left out is one
+    // family's sentence).
+    assert_eq!(p.knowledge_changes.len(), 2);
+    assert_eq!(
+        p.knowledge_changes.first().unwrap(),
+        &[source_path(&source_id(3))]
+    );
+    let order: Vec<String> = p.knowledge_changes.iter().flatten().cloned().collect();
     assert_eq!(order.len(), 4);
     let at = |path: String| order.iter().position(|p| *p == path).unwrap();
     assert!(at(source_path(&source_id(3))) < at(claim_path(&claim_id(2))));
@@ -302,8 +308,13 @@ fn a_file_that_names_a_file_the_caps_put_in_a_later_change_is_refused_by_name_at
     }
     let d = with_claims("kn-cross", &files);
     let p = plan(&d.0);
-    assert_eq!(p.knowledge_changes.len(), 2, "{}", p.render());
-    assert_eq!(p.knowledge_changes.first().map(Vec::len), Some(MAX_CHANGE_FILES));
+    // The first cut (10,000 files) holds claim 2 and the first 9,999 sources of the chain: the sources are a change, claim 2 the next; the
+    // second cut holds source 0 (a change) and claims 3 and 1 (the next).
+    assert_eq!(p.knowledge_changes.len(), 4, "{}", p.render());
+    assert_eq!(
+        p.knowledge_changes.first().map(Vec::len),
+        Some(MAX_CHANGE_FILES - 1)
+    );
     assert_refused(
         &p,
         &claim_path(&claim_id(2)),

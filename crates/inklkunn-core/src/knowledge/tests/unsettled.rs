@@ -275,7 +275,7 @@ fn the_summary_is_the_sentence_for_one_kind_a_short_line_for_several_and_always_
     };
     assert_eq!(
         all.summary(1),
-        "Import knowledge files; not imported, as only curation sets them: 999 statuses, 999 review days, 999 availabilities"
+        "999 community statuses, 999 review days and 999 availabilities were not imported: only a curation proposal sets them."
     );
     for counts in [all, statuses, Unsettled::default()] {
         let summary =
@@ -289,7 +289,7 @@ fn the_summary_is_the_sentence_for_one_kind_a_short_line_for_several_and_always_
             availabilities: 0
         }
         .summary(2),
-        "Import knowledge files; not imported, as only curation sets them: 1 status, 1 review day"
+        "1 community status and 1 review day were not imported: only a curation proposal sets them."
     );
 }
 

@@ -2040,10 +2040,15 @@ fn dependency_order(refs: &BTreeMap<String, Vec<String>>) -> Vec<String> {
 }
 
 /// Cut the files, in `order`, into the changes one acceptance carries: at most [`MAX_CHANGE_FILES`] files and [`MAX_CHANGE_BYTES`]
-/// bytes (the sizes `size_of` gives) in each. **The plan and the replay both cut with this**, so what the plan judged is what the
-/// replay writes.
-pub(super) fn knowledge_groups(order: &[String], size_of: &dyn Fn(&str) -> u64) -> Vec<Vec<String>> {
-    let mut groups: Vec<Vec<String>> = Vec::new();
+/// bytes (the sizes `size_of` gives) in each, **and each change of one family**: where a cut holds both, the sources are one change and
+/// the claims the next, so that what a change says of what was left out (a review day and an availability are a source's, a status is a
+/// claim's) is one sentence of the family's. A source never names a claim, so a claim's change comes after the sources it names.
+/// **The plan and the replay both cut with this**, so what the plan judged is what the replay writes.
+pub(super) fn knowledge_groups(
+    order: &[String],
+    size_of: &dyn Fn(&str) -> u64,
+) -> Vec<Vec<String>> {
+    let mut cuts: Vec<Vec<String>> = Vec::new();
     let (mut files, mut bytes) = (0_usize, 0_u64);
     let mut current: Vec<String> = Vec::new();
     for path in order {
@@ -2051,7 +2056,7 @@ pub(super) fn knowledge_groups(order: &[String], size_of: &dyn Fn(&str) -> u64) 
         if !current.is_empty()
             && (files + 1 > MAX_CHANGE_FILES || bytes.saturating_add(size) > MAX_CHANGE_BYTES)
         {
-            groups.push(std::mem::take(&mut current));
+            cuts.push(std::mem::take(&mut current));
             (files, bytes) = (0, 0);
         }
         files += 1;
@@ -2059,9 +2064,16 @@ pub(super) fn knowledge_groups(order: &[String], size_of: &dyn Fn(&str) -> u64) 
         current.push(path.clone());
     }
     if !current.is_empty() {
-        groups.push(current);
+        cuts.push(current);
     }
-    groups
+    cuts.into_iter()
+        .flat_map(|cut| {
+            let (sources, claims): (Vec<String>, Vec<String>) = cut
+                .into_iter()
+                .partition(|path| path.starts_with("knowledge/sources/"));
+            [sources, claims].into_iter().filter(|part| !part.is_empty())
+        })
+        .collect()
 }
 
 #[cfg(test)]

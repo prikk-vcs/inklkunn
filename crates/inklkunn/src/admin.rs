@@ -1241,6 +1241,16 @@ fn import_bundle_command(
                     String::new()
                 }
             );
+            if done.knowledge_files > 0 {
+                let _ = writeln!(
+                    out,
+                    "  knowledge:       {} claim or source file(s) in {} change(s), after the history",
+                    done.knowledge_files, done.knowledge_changes
+                );
+                for sentence in done.knowledge_not_imported.sentences() {
+                    let _ = writeln!(out, "                   {sentence}");
+                }
+            }
             if done.not_applied > 0 {
                 let _ = writeln!(
                     out,

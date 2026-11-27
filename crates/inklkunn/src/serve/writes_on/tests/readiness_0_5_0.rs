@@ -28,6 +28,10 @@
 //! - (E) **the new surfaces**: `listProposals` and `listProposalComments` walked by `Link rel="next"`, the proposals feed, none of them
 //!   showing what a moderator hid, and the generic not-found for an anonymous reader of a restricted wiki;
 //! - (F) **a kill**: an import killed after a step leaves what `wiki discard-unfinished` reports and removes exactly that.
+//! - (G) **a wiki with claims round-trips**: a claim on a page with a history, its source, a status and a review day set by curation
+//!   proposals; exported and imported as a new wiki, which used to be refused; the claim comes back unsettled, with its anchor and its
+//!   source, the dry run, the run, the kept report and the wiki's history say what was not imported, and a curation proposal sets the
+//!   status afterwards like any other (Z-1; INV-11).
 //!
 //! **What stands in for nothing:** every account is made by the invitation machinery, every rule by the policy form, every hide by the
 //! moderation form, every import and export by the operator's command; the bundles are COPIES of the committed fixtures (converter
@@ -41,6 +45,7 @@ use super::knowledge::approve_and_accept;
 use super::*;
 
 mod bookstack;
+mod claims;
 mod kill;
 mod mediawiki;
 mod refusals;
@@ -349,6 +354,7 @@ fn the_interchange_works_end_to_end_on_a_real_prikk() {
     p.refusals_are_named_and_write_nothing();
     p.the_new_surfaces();
     p.a_killed_import_is_discarded_by_a_person();
+    p.a_wiki_with_claims_round_trips();
 
     let steps = p.t.steps;
     p.t.say(format!("\n== end of the transcript: {steps} steps"));
