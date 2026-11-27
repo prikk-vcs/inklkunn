@@ -1023,6 +1023,16 @@
   restore and observability (RFC 012); the guide; and R-0's small items. The permanent removal procedure is 0.7.0, by
   itself.
 
+- **2026-11-28 — the 0.6.0 plan revised after the philosophy check the owner asked for** (six refinements):
+  - **every served attachment can be taken down,** by a removal proposal and by a hide at the tip. Without it an imported
+    image could be stopped by no one: proposals refuse paths outside `pages/`, and the tip rule refuses the hide;
+  - **the backup is one archive,** to a file or to standard output for an encryptor, owner-readable only, and says what it
+    holds;
+  - **the backup never migrates the store;**
+  - **the W-9 indexes are made at open with no version change,** so 0.6.0 has no migration and 0.5.0 still opens the store;
+  - **a missing key store is said plainly,** with the way back;
+  - **the deployment guide says first** that a public deployment still waits for 0.7.0 and the reviews.
+
 ## Pending on the owner
 
 - **Authorize the 0.6.0 plan** (`docs/releases/0.6.0-plan.md`, P-1 – P-5; proposed 2026-11-27; target cut 2026-12-18).
