@@ -164,8 +164,7 @@ fn the_counts_are_many_and_plural_as_the_words_are() {
 }
 
 #[test]
-fn what_a_curation_sets_that_is_not_one_of_the_three_keys_is_still_a_departure_acceptance_refuses()
-{
+fn a_retired_claims_status_is_counted_and_its_retirement_is_left_to_acceptance() {
     // A retired claim is not un-retired: the plan counts its status, and the replay's acceptance refuses the retirement by name.
     let mut claim = settled_claim(1, 1);
     claim.lifecycle = crate::knowledge::Lifecycle::Retired;
