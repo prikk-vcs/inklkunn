@@ -452,6 +452,53 @@ fn the_upgrade_test_exemption_is_one_file_and_two_bindings_and_a_planted_second_
 }
 
 #[test]
+fn the_kill_test_exemption_is_one_file_and_one_binding_and_nothing_else_may_borrow_it() {
+    // The exemption (Z-2) is exactly one path and `Command::new(exe)`, judged by the gate's own function on planted files.
+    let scratch = Scratch::new("killspawn");
+    let root = &scratch.0;
+    let exempt = root.join(KILL_TEST_FILE);
+    let judge = |path: &Path, text: &str| spawn_gate_violations(root, path, text);
+
+    // The file itself, spawning the executable it bound: allowed.
+    assert!(judge(&exempt, "let child = Command::new(exe).spawn();\n").is_empty());
+    assert!(judge(&exempt, "use std::process::Command;\n").is_empty());
+    // The file itself, spawning anything else: refused, each by its line.
+    for (bad, line) in [
+        ("let o = Command::new(\"prikk\").output();\n", 1),
+        ("\nlet o = Command::new(\"sh\").output();\n", 2),
+        (
+            "let o = Command::new(std::env::current_exe().unwrap()).output();\n",
+            1,
+        ),
+        ("let o = Command::new(c).output();\n", 1),
+        ("let o = Command::new(bin).output();\n", 1),
+    ] {
+        let hits = judge(&exempt, bad);
+        assert_eq!(hits.len(), 1, "{bad:?}: {hits:?}");
+        assert!(
+            hits.first()
+                .is_some_and(|h| h.starts_with(&format!("line {line}:"))),
+            "{hits:?}"
+        );
+    }
+    // The upgrade test's file does not get the kill test's binding, nor the kill test's file the upgrade's.
+    let upgrade = root.join(UPGRADE_TEST_FILE);
+    assert!(!judge(&upgrade, "let o = Command::new(exe).output();\n").is_empty());
+    // Another file, even beside it and even with the binding, is refused; so is the same name in another directory.
+    for planted in [
+        root.join("crates/inklkunn/src/serve/writes_on/tests/readiness_0_5_0/kill.rs"),
+        root.join("crates/inklkunn/src/serve/writes_on/tests/kill_real.rs"),
+        root.join("crates/inklkunn-web/src/x.rs"),
+    ] {
+        assert!(
+            !judge(&planted, "let o = Command::new(exe).output();\n").is_empty(),
+            "{} was let spawn",
+            planted.display()
+        );
+    }
+}
+
+#[test]
 fn the_fetch_crate_spawns_only_bwrap_or_curl() {
     // Allowed: the sandbox by name, by field or by constant, and curl itself.
     for ok in [

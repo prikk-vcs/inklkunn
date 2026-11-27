@@ -759,11 +759,21 @@ pub const UPGRADE_TEST_FILE: &str = "crates/inklkunn/src/serve/writes_on/tests/u
 /// a shell or a computed name.
 pub const UPGRADE_SPAWN_ALLOWED_ARGS: &[&str] = &["c", "bin"];
 
+/// The second test file outside the spawning crates that may spawn (0.5.0 readiness, Z-2): it starts the running test executable
+/// again, as a process, to run `wiki import-bundle` and kill it with `SIGKILL` (the property an operator relies on is about a process
+/// that dies). Path equality, relative to the workspace root.
+pub const KILL_TEST_FILE: &str =
+    "crates/inklkunn/src/serve/writes_on/tests/readiness_0_5_0/kill_real.rs";
+/// What [`KILL_TEST_FILE`] may give `Command::new`: the one binding `exe`, which that file sets to `std::env::current_exe()`: never prikk,
+/// a shell, a computed name or a program found on `PATH`.
+pub const KILL_SPAWN_ALLOWED_ARGS: &[&str] = &["exe"];
+
 /// What the source file `src` (under `root`) spawns that it may not, as readable lines for the gate's message; empty when it
 /// spawns nothing it may not. The policy of the spawn gate in one place, so the real tree and a planted file are judged by
 /// the same code:
 /// - `inklkunn-fetch`: only [`FETCH_SPAWN_ALLOWED_ARGS`] (see [`fetch_spawn_violations`]);
 /// - [`UPGRADE_TEST_FILE`], exactly that path: only [`UPGRADE_SPAWN_ALLOWED_ARGS`];
+/// - [`KILL_TEST_FILE`], exactly that path: only [`KILL_SPAWN_ALLOWED_ARGS`];
 /// - `inklkunn-prikk` and `inklkunn-signer`: anything;
 /// - every other file: nothing (see [`spawn_lines`]).
 pub fn spawn_gate_violations(root: &Path, src: &Path, text: &str) -> Vec<String> {
@@ -779,6 +789,17 @@ pub fn spawn_gate_violations(root: &Path, src: &Path, text: &str) -> Vec<String>
             .filter(|(_, arg)| !UPGRADE_SPAWN_ALLOWED_ARGS.contains(&arg.as_str()))
             .map(|(line, arg)| {
                 format!("line {line}: Command::new({arg}) (only the 0.2.0 binary it found)")
+            })
+            .collect();
+    }
+    if src == root.join(KILL_TEST_FILE) {
+        return command_new_arguments(text)
+            .into_iter()
+            .filter(|(_, arg)| !KILL_SPAWN_ALLOWED_ARGS.contains(&arg.as_str()))
+            .map(|(line, arg)| {
+                format!(
+                    "line {line}: Command::new({arg}) (only the test executable, bound as `exe`)"
+                )
             })
             .collect();
     }

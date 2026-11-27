@@ -164,7 +164,9 @@ impl Proof {
         let log = |name: &str| {
             std::fs::File::create(self.world.tmp.0.join(format!("child-{tag}.{name}"))).unwrap()
         };
-        let child = Command::new(std::env::current_exe().unwrap())
+        // The test executable itself, run again: the one program this file may start (the boundary gate's `exe`).
+        let exe = std::env::current_exe().unwrap();
+        let child = Command::new(exe)
             .args([
                 "--exact",
                 &format!("serve::writes_on::tests::readiness_0_5_0::kill_real::{TEST}"),
