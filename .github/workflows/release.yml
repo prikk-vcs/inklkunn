@@ -312,8 +312,17 @@ jobs:
         if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          docker tag "inklkunn-built:${ARCH}" "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${ARCH}"
-          docker push "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${ARCH}"
+          IMAGE="ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${ARCH}"
+          docker tag "inklkunn-built:${ARCH}" "$IMAGE"
+          # ghcr drops a blob now and then when both architectures push the same layers at once (`unknown blob`, at 0.4.0's
+          # release and in the 0.5.0 rehearsal; a rerun passed each time): a push that failed is tried again, three times
+          # in all, and only a push that failed.
+          for attempt in 1 2 3; do
+            if docker push "$IMAGE"; then break; fi
+            [ "$attempt" -lt 3 ] || { echo "the push failed three times" >&2; exit 1; }
+            echo "the push failed (try $attempt of 3); trying again in 20 seconds" >&2
+            sleep 20
+          done
           docker buildx imagetools inspect "ghcr.io/prikk-vcs/inklkunn:${GITHUB_REF_NAME}-${ARCH}" --format '{{json .Manifest.Digest}}' | tr -d '"' > image-digest.txt
           echo "digest=$(cat image-digest.txt)" >> "$GITHUB_OUTPUT"
         id: push
@@ -328,8 +337,17 @@ jobs:
         if: inputs.mode == 'rehearsal'
         run: |
           set -euo pipefail
-          docker tag "inklkunn-built:${ARCH}" "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-${ARCH}"
-          docker push "ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-${ARCH}"
+          IMAGE="ghcr.io/prikk-vcs/inklkunn-rehearsal:rehearsal-${ARCH}"
+          docker tag "inklkunn-built:${ARCH}" "$IMAGE"
+          # ghcr drops a blob now and then when both architectures push the same layers at once (`unknown blob`, at 0.4.0's
+          # release and in the 0.5.0 rehearsal; a rerun passed each time): a push that failed is tried again, three times
+          # in all, and only a push that failed.
+          for attempt in 1 2 3; do
+            if docker push "$IMAGE"; then break; fi
+            [ "$attempt" -lt 3 ] || { echo "the push failed three times" >&2; exit 1; }
+            echo "the push failed (try $attempt of 3); trying again in 20 seconds" >&2
+            sleep 20
+          done
 
   manifest:
     # One tag for both architectures, so `docker pull ghcr.io/prikk-vcs/inklkunn:X.Y.Z` works as the
