@@ -34,7 +34,7 @@
 //! **Nothing is written, anywhere**, and **no byte of a refused file is repeated**: a refusal names a path (or a page and a
 //! `rev`) and a rule, and every name in it or in the report is display-safe and bounded (`safe::shown`).
 //!
-//! The result is a [`BundlePlan`]: the files the first change would write (the same [`ImportPlan`] the folder import makes), each
+//! The result is a [`BundlePlan`]: the files the import would write (the same [`ImportPlan`] the folder import makes), each
 //! page's judged history, the order of the replay (revisions of all pages merged by `at`, ties in path order, the same every
 //! time), and the [`BundleReport`], a value that the replay's act can keep.
 
@@ -148,7 +148,7 @@ pub struct PageHistory {
 /// What an import of a bundle would do, or why it cannot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BundlePlan {
-    /// The files the first change would write (pages without a history to replay, attachments with their sidecars, knowledge
+    /// The files the import would write (pages without a history to replay, attachments with their sidecars, knowledge
     /// files) and **everything that is refused**: a non-empty [`ImportPlan::refused`] refuses the whole import.
     pub plan: ImportPlan,
     /// The report.
@@ -159,7 +159,8 @@ pub struct BundlePlan {
     /// path order of the page, then the file's order. The same bundle always gives the same order.
     pub schedule: Vec<(usize, usize)>,
     /// The paths of the pages that come in with the first change: those with no history to replay (a level 2 bundle's, or those
-    /// whose records give no text), at the text of the bundle's files. The attachments and knowledge files come in with it too.
+    /// whose records give no text), at the text of the bundle's files. The attachments come in with it too; the knowledge files do not (they
+    /// come last: [`BundlePlan::knowledge_changes`]).
     pub first_pages: Vec<String>,
     /// The paths of the pages whose file at the end differs from their last replayed revision: the change at the end writes them.
     pub final_pages: Vec<String>,
@@ -281,7 +282,7 @@ enum Role {
 }
 
 impl Gathered {
-    /// Is `rel` content (a page, an attachment, a knowledge file) that the walk judges and the first change writes?
+    /// Is `rel` content (a page, an attachment, a knowledge file) that the walk judges and the import writes?
     pub(super) fn is_content(&self, rel: &str) -> bool {
         if rel.rsplit('/').next() == Some(".keep") {
             return false;
@@ -2071,7 +2072,9 @@ pub(super) fn knowledge_groups(
             let (sources, claims): (Vec<String>, Vec<String>) = cut
                 .into_iter()
                 .partition(|path| path.starts_with("knowledge/sources/"));
-            [sources, claims].into_iter().filter(|part| !part.is_empty())
+            [sources, claims]
+                .into_iter()
+                .filter(|part| !part.is_empty())
         })
         .collect()
 }

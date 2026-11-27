@@ -47,9 +47,12 @@
 //! **Knowledge files are judged as an acceptance judges them** (RFC 005 part 2 D-5, D-3): each is read with the format's own
 //! reader at the plan (a file that does not read is refused by name and rule, never by what it said), and the whole set is
 //! judged against the wiki's tip, as a change that is not a curation proposal ([`crate::knowledge::check`]) at the
-//! service's own path ([`SystemActs`]) before the signer is asked. So a claim that arrives with a community status, a
-//! source with a review day or an availability, or a link that names wording the claim does not have, is refused, and the
-//! import with it: **no path sets what only a curation proposal sets**, and an import is no exception. The claim threads
+//! service's own path ([`SystemActs`]) before the signer is asked: **no path sets what only a curation proposal sets**, and an
+//! import is no exception. The folder import refuses a claim that arrives with a community status, a source with a review day or
+//! an availability, and a link that names wording the claim does not have. **A bundle's import does not refuse the three keys, it
+//! leaves them out** ([`crate::knowledge::unsettle`]; RFC 007, Z-1): its claims and sources arrive *unsettled*, in changes after the
+//! history (so that every page a claim anchors to is there), and the plan, the run and the report say how many were not imported; a
+//! retirement is not taken out and still refuses, by name. The claim threads
 //! and the records of the views that a bundle carries under `extensions/` are the exporting service's own; they are not
 //! imported. The manifest's `directory:` for the extension says where the exporting service kept that data; the import
 //! reads `knowledge/` and nothing under `extensions/`, whatever the manifest names.

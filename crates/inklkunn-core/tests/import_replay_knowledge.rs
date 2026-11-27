@@ -199,7 +199,8 @@ fn at_block(w: &replay::World, repo: &Path, block: &str, path: &str) -> Option<V
 }
 
 #[test]
-fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anchors_and_the_numbers_agree() {
+fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anchors_and_the_numbers_agree()
+ {
     if !prikk_on_path() {
         println!("skipping: prikk not on PATH");
         return;
@@ -226,7 +227,9 @@ fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anc
     // The dry run says it before anything is written.
     let said = plan.render();
     assert!(
-        said.contains("1 community status was not imported: a status is set here only by a curation proposal."),
+        said.contains(
+            "1 community status was not imported: a status is set here only by a curation proposal."
+        ),
         "{said}"
     );
     let seen = std::cell::RefCell::new(Vec::new());
@@ -235,7 +238,10 @@ fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anc
     })
     .expect("a wiki with claims on a page with a history is imported");
     // **The count a report gives is what the replay writes.**
-    assert_eq!(done.knowledge_not_imported, plan.report.knowledge_not_imported);
+    assert_eq!(
+        done.knowledge_not_imported,
+        plan.report.knowledge_not_imported
+    );
     assert_eq!(done.knowledge_files, 3);
     // A change holds one family: the source first, then the claims.
     assert_eq!(done.knowledge_changes, 2);
@@ -258,8 +264,15 @@ fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anc
     let sources_change = blocks.get(blocks.len() - 2).unwrap();
     // **The first change carries no knowledge file**, and the last carries all of them.
     for path in files.iter().map(|(p, _)| p) {
-        assert_eq!(at_block(&w, &done.repo, first, path), None, "{path} in the first change");
-        assert!(at_block(&w, &done.repo, last, path).is_some(), "{path} at the end");
+        assert_eq!(
+            at_block(&w, &done.repo, first, path),
+            None,
+            "{path} in the first change"
+        );
+        assert!(
+            at_block(&w, &done.repo, last, path).is_some(),
+            "{path} at the end"
+        );
     }
     // The source is written before the claims that rest on it, and the claims are the last block.
     assert!(at_block(&w, &done.repo, sources_change, &source_path(&source.id)).is_some());
@@ -272,17 +285,23 @@ fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anc
     let said: Vec<&str> = messages.iter().map(|m| m.summary().as_str()).collect();
     assert_eq!(
         said.last().copied(),
-        Some("1 community status was not imported: a status is set here only by a curation proposal.")
+        Some(
+            "1 community status was not imported: a status is set here only by a curation proposal."
+        )
     );
     assert_eq!(
         said.get(said.len() - 2).copied(),
-        Some("1 review day and 1 availability were not imported: only a curation proposal sets them.")
+        Some(
+            "1 review day and 1 availability were not imported: only a curation proposal sets them."
+        )
     );
     assert!(messages.last().unwrap().source().is_none());
 
     // What the wiki has: the settled claim, unsettled, with its anchor, its source and the rest of the file as it was.
     let tip = |path: &str| std::fs::read(done.repo.join(path)).expect("a file");
-    let File::Claim(got) = read_file(&claim_path(&settled.id), &tip(&claim_path(&settled.id))).unwrap() else {
+    let File::Claim(got) =
+        read_file(&claim_path(&settled.id), &tip(&claim_path(&settled.id))).unwrap()
+    else {
         panic!("a claim");
     };
     assert_eq!(got.community_status, CommunityStatus::undecided());
@@ -290,7 +309,9 @@ fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anc
     assert_eq!(got.expressions, settled.expressions);
     assert_eq!(got.sources, settled.sources);
     // The source has neither key; its identity is the bundle's.
-    let File::Source(got) = read_file(&source_path(&source.id), &tip(&source_path(&source.id))).unwrap() else {
+    let File::Source(got) =
+        read_file(&source_path(&source.id), &tip(&source_path(&source.id))).unwrap()
+    else {
         panic!("a source");
     };
     assert_eq!(got.last_reviewed, None);
@@ -307,7 +328,10 @@ fn a_wikis_claims_come_in_after_its_history_unsettled_with_their_sources_and_anc
     assert!(bundle_bytes.contains("status: accepted") && !wiki_bytes.contains("accepted"));
     assert!(wiki_bytes.contains("status: unknown"));
     // The pages are the bundle's, and the wiki verifies.
-    assert_eq!(std::fs::read_to_string(done.repo.join("pages/Home.md")).unwrap(), page(3));
+    assert_eq!(
+        std::fs::read_to_string(done.repo.join("pages/Home.md")).unwrap(),
+        page(3)
+    );
     assert!(w.storage.verify(&done.repo).expect("verify").verdict.ok);
     // The report kept with the act has the sentences.
     let kept = std::fs::read_to_string(w.layout.import_report(&done.record.id)).unwrap();
@@ -338,7 +362,11 @@ fn one_kind_left_out_gives_the_sentence_itself_as_the_summary_of_the_change() {
     let done = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|_| {}).expect("imported");
     assert!(!done.first_change);
     assert_eq!(
-        messages(&w, &done.record.id).last().unwrap().summary().as_str(),
+        messages(&w, &done.record.id)
+            .last()
+            .unwrap()
+            .summary()
+            .as_str(),
         "2 community statuses were not imported: a status is set here only by a curation proposal."
     );
 }
@@ -353,7 +381,10 @@ fn a_bundle_of_knowledge_files_and_an_interwiki_map_alone_still_comes_in() {
     let d = dir_in(&std::env::temp_dir(), "kn-only-bundle");
     manifest(
         &d.0,
-        &["interwiki:", "  docs: https://docs.example.org/read?page={title}"],
+        &[
+            "interwiki:",
+            "  docs: https://docs.example.org/read?page={title}",
+        ],
     );
     // No page: a claim that anchors to none, and its source.
     let mut claim = unsettled(settled_claim(1, 1));
@@ -398,10 +429,7 @@ fn refused_at_the_replay(tag: &str, files: &[(String, String)]) -> String {
     let Err(error) = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|_| {}) else {
         panic!("the import was not refused");
     };
-    assert!(
-        matches!(error, ImportBundleError::Failed { .. }),
-        "{error}"
-    );
+    assert!(matches!(error, ImportBundleError::Failed { .. }), "{error}");
     // **Nothing was made**: no record, and nothing on disk but what a clean world has.
     assert!(w.store.list().expect("list").is_empty());
     assert!(w.store.by_slug(&Slug::new("orchard").unwrap()).is_err());
@@ -423,7 +451,10 @@ fn a_claim_that_names_a_page_the_bundle_lacks_is_still_refused_by_name_and_nothi
     );
     eprintln!("MISSING PAGE: {said}");
     assert!(said.contains(&claim_path(&lost.id)), "{said}");
-    assert!(said.contains("the knowledge files of the import are refused"), "{said}");
+    assert!(
+        said.contains("the knowledge files of the import are refused"),
+        "{said}"
+    );
     assert!(said.contains("expressions"), "{said}");
 }
 
@@ -438,7 +469,10 @@ fn a_retired_claim_is_not_un_retired_and_stops_the_import_by_name_and_rule() {
     retired.retired_reason = Some("Withdrawn.".to_owned());
     let said = refused_at_the_replay(
         "kn-retired",
-        &[claim_file(&retired), source_file(&Source::new(source_id(1)))],
+        &[
+            claim_file(&retired),
+            source_file(&Source::new(source_id(1))),
+        ],
     );
     eprintln!("RETIRED: {said}");
     assert!(said.contains(&claim_path(&retired.id)), "{said}");
@@ -505,42 +539,69 @@ fn a_claim_with_sources_and_relations_arrives_with_its_links_intact() {
 }
 
 #[test]
-fn more_knowledge_files_than_one_acceptance_carries_come_in_in_several_changes_and_all_arrive() {
+fn knowledge_files_cut_into_several_changes_all_arrive_each_change_after_the_files_it_names() {
     if !prikk_on_path() {
         println!("skipping: prikk not on PATH");
         return;
     }
+    // The real cut (more files than one acceptance carries: 10,000) is the plan's, and `import/bundle/tests/knowledge.rs` holds it to
+    // its cap and to the order of the names, with a bundle of 10,000 files; replaying that many through the real signer takes nine
+    // minutes (it was run once by hand: it passed, in 543 s), so this test **cuts the plan's changes small** (the field is public) and
+    // runs the replay through the same loop: three changes, a claim in the last resting on a source of the second.
     let w = world("kn-caps");
-    let count = inklkunn_signer::MAX_CHANGE_FILES + 1;
-    let files: Vec<(String, String)> = (0..count as u32)
-        .map(|n| source_file(&Source::new(source_id(n))))
-        .collect();
+    let files = [
+        source_file(&Source::new(source_id(1))),
+        source_file(&Source::new(source_id(2))),
+        source_file(&Source::new(source_id(3))),
+        source_file(&Source::new(source_id(4))),
+        claim_file(&unsettled(settled_claim(1, 4))),
+        claim_file(&unsettled(settled_claim(2, 1))),
+    ];
     let d = bundle("kn-caps-bundle", false, &files);
-    let plan = plan_of(&d.0, None);
-    assert_eq!(plan.knowledge_changes.len(), 2);
+    let mut plan = plan_of(&d.0, None);
+    let path = |n: u32, source: bool| {
+        if source {
+            source_path(&source_id(n))
+        } else {
+            claim_path(&claim_id(n))
+        }
+    };
+    assert_eq!(
+        plan.knowledge_changes.len(),
+        2,
+        "the plan's own cut: sources, claims"
+    );
+    plan.knowledge_changes = vec![
+        vec![path(1, true), path(2, true)],
+        vec![path(3, true), path(4, true)],
+        vec![path(1, false), path(2, false)],
+    ];
     let done = run(&w, &plan, "orchard", "CC-BY-SA-4.0", &|_| {}).expect("imported");
-    assert_eq!(done.knowledge_changes, 2);
-    assert_eq!(done.knowledge_files, count);
-    // Creation, the three revisions, the two knowledge changes: and every file is in the tree.
+    assert_eq!(done.knowledge_changes, 3);
+    assert_eq!(done.knowledge_files, 6);
+    // Creation, the three revisions, the three knowledge changes: and every file is in the tree, each in the change the plan named.
     let blocks = sealed_blocks(&w, &done.record.id);
-    assert_eq!(blocks.len(), 1 + 3 + 2);
-    let arrived = std::fs::read_dir(done.repo.join("knowledge/sources"))
-        .unwrap()
-        .filter(|e| {
-            e.as_ref()
-                .unwrap()
-                .file_name()
-                .to_string_lossy()
-                .ends_with(".yaml")
-        })
-        .count();
-    assert_eq!(arrived, count);
-    let at = blocks.get(blocks.len() - 2).unwrap();
-    let in_first = files
-        .iter()
-        .filter(|(p, _)| at_block(&w, &done.repo, at, p).is_some())
-        .count();
-    assert_eq!(in_first, inklkunn_signer::MAX_CHANGE_FILES);
+    assert_eq!(blocks.len(), 1 + 3 + 3);
+    let after_three = blocks.len() - 3;
+    for (change, expected) in plan.knowledge_changes.iter().enumerate() {
+        let block = blocks.get(after_three + change).unwrap();
+        let before = blocks.get(after_three + change - 1).unwrap();
+        for file in expected {
+            assert!(
+                at_block(&w, &done.repo, block, file).is_some(),
+                "{file} in change {change}"
+            );
+            assert_eq!(
+                at_block(&w, &done.repo, before, file),
+                None,
+                "{file} before change {change}"
+            );
+        }
+    }
+    for (file, _) in &files {
+        assert!(done.repo.join(file).is_file(), "{file}");
+    }
+    assert!(w.storage.verify(&done.repo).expect("verify").verdict.ok);
 }
 
 #[test]

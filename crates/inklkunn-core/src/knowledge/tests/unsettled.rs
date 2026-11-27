@@ -169,7 +169,8 @@ fn a_retirement_is_not_taken_out_and_stays_a_departure() {
     claim.retired_reason = Some("Withdrawn.".to_owned());
     let done = unsettle(&claim_path(&claim.id), claim.to_yaml().as_bytes()).expect("unsettled");
     assert_eq!(done.left_out.statuses, 1);
-    let after = read_file(&claim_path(&claim.id), &done.rewritten.expect("rewritten")).expect("read");
+    let after =
+        read_file(&claim_path(&claim.id), &done.rewritten.expect("rewritten")).expect("read");
     let File::Claim(kept) = &after else {
         panic!("a claim");
     };
@@ -184,8 +185,11 @@ fn a_retirement_is_not_taken_out_and_stays_a_departure() {
     source.lifecycle = SourceLife::Retired;
     source.retired_reason = Some("Gone.".to_owned());
     let done = unsettle(&source_path(&source.id), source.to_yaml().as_bytes()).expect("unsettled");
-    let after =
-        read_file(&source_path(&source.id), &done.rewritten.expect("rewritten")).expect("read");
+    let after = read_file(
+        &source_path(&source.id),
+        &done.rewritten.expect("rewritten"),
+    )
+    .expect("read");
     let File::Source(kept) = &after else {
         panic!("a source");
     };
@@ -250,7 +254,9 @@ fn the_sentences_say_each_kind_in_its_own_words_one_and_many() {
             availabilities: 3
         }
         .sentences(),
-        ["3 availabilities were not imported: an availability is set here only by a curation proposal."]
+        [
+            "3 availabilities were not imported: an availability is set here only by a curation proposal."
+        ]
     );
 }
 

@@ -275,6 +275,7 @@ yet (it is planned in the operations RFC and is not part of 0.4.0).
   offers removes them** (only the operator's removal procedure, P-1, not offered yet, would): the dry run (`--dry-run`)
   says how many people the history names before anything is written, and a `users.yaml` entry with an e-mail address
   refuses the import.
+- **An import never sets what only a curation sets.** `wiki import-bundle` writes a claim or a source without its community status, its review day and its availability (the claim arrives unsettled, after the history, and a curation proposal can then set what it sets for any claim), says in the dry run, in the report and in the history how many it left out, and still refuses a claim or a source that is retired.
 - **A tip's content cannot be hidden.** The files a wiki serves now are in every export as they are; its summary and its
   author can be hidden, and its content is first reverted or removed by a proposal.
 

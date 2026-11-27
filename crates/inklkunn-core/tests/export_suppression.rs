@@ -1434,6 +1434,7 @@ fn security_md_says_what_an_import_keeps_for_good_and_what_its_checksums_do_not_
         "**The names a bundle's history carries become part of the repository's signed history**",
         "`wiki import-folder` refuses a bundle that says so (it imports no tombstones), while `wiki import-bundle` reads the history",
         "*hidden in the wiki it was imported from*",
+        "**An import never sets what only a curation sets.** `wiki import-bundle` writes a claim or a source without its community status, its review day and its availability",
     ] {
         assert!(security.contains(sentence), "SECURITY.md: {sentence}");
     }

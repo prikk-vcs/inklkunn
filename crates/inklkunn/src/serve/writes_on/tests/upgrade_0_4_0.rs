@@ -52,12 +52,10 @@
 //! 0.4.0's rules, and a page's `[[wikipedia:Grafting]]` then leads there; **the bundle is imported as a second wiki**, with the
 //! history of its pages.
 //!
-//! **A gap this found, reported and not hidden (RU-1):** the importer refuses the bundle **as the export wrote it**, at the
-//! first change, for the claim's files: a claim names a paragraph of a page whose history has not been replayed at that change
-//! (`an expression names a page the view does not have`), and a claim with a community status or a review is a curation, which an
-//! import is not (`community_status`). So an inklkunn wiki that has a claim on a page with a history cannot be imported from its
-//! own export. The test prints that refusal and imports **the bundle with the claim's files taken out** (the files and their
-//! lines in `sha256sums.txt`), which is a bundle the importer takes; nothing else of it is changed.
+//! **A gap this found (RU-1), since closed (Z-1):** the importer used to refuse the bundle as the export wrote it, for the claim's files
+//! (the claim's page was not there yet at the first change, and a community status is a curation's). The knowledge files now come
+//! last, after the history, **unsettled**: the test imports the export of the migrated wiki **as it is**, claim and curation included, and
+//! checks the claim comes back with its source and no status.
 //!
 //! The run prints each of its stages (`upgrade 0.4.0 -> this tree: ...`), a transcript under `--nocapture`.
 //!
@@ -1339,49 +1337,32 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
         "the export of the migrated wiki: ten history records with rev, at, author, content and sha256, the hidden parts left out and named, the rename and the removal as records of their own, every history file in the checksums",
     );
 
-    // ---- the import of that bundle into a new wiki. The importer refuses the claim's files of an inklkunn wiki's own bundle at
-    //      the first change (a claim names a paragraph of a page whose history has not been replayed yet, and a claim with a
-    //      community status is a curation, which an import is not): reported, and see the head of this file. The copy of the bundle
-    //      without the claim's own files, which is a bundle the importer takes, is imported.
-    let (status, _, err) = world.cli(&[
-        "wiki",
-        "import-bundle",
-        "again",
-        dest.to_str().unwrap(),
-        "--name",
-        "Handbook Again",
-    ]);
-    say(&format!(
-        "the bundle as it was exported is refused by the importer (status {status}), for the claim's files: {}",
-        err.lines()
-            .last()
-            .unwrap_or_default()
-            .chars()
-            .take(160)
-            .collect::<String>()
-    ));
-    let copy = world.tmp.0.join("export-without-claims");
-    copy_dir(&dest, &copy);
-    let mut kept = String::new();
-    for line in checksums.lines() {
-        if line.contains("  knowledge/") {
-            continue;
-        }
-        kept.push_str(line);
-        kept.push('\n');
-    }
-    std::fs::write(copy.join("sha256sums.txt"), kept).unwrap();
-    std::fs::remove_dir_all(copy.join("knowledge")).unwrap();
+    // ---- the import of that bundle into a new wiki, as it was exported: the claim 0.4.0 made, with the status a curation set, comes
+    //      back unsettled (Z-1), and the import says how many statuses were not imported.
     let (status, out, err) = world.cli(&[
         "wiki",
         "import-bundle",
         "copy",
-        copy.to_str().unwrap(),
+        dest.to_str().unwrap(),
         "--name",
         "Handbook Copy",
     ]);
     assert_eq!(status, 0, "{out}\n{err}");
     assert!(out.contains("imported wiki copy"), "{out}");
+    assert!(
+        out.contains("community status was not imported: a status is set here only by a curation proposal.")
+            || out.contains("community statuses were not imported: a status is set here only by a curation proposal."),
+        "{out}"
+    );
+    let claim_in_copy = anonymous.get(&format!("/copy/-/claim/{claim}"));
+    assert_eq!(claim_in_copy.status, 200, "{}", claim_in_copy.body);
+    assert!(
+        claim_in_copy
+            .body
+            .contains("This claim has not been decided in this view."),
+        "the claim came back unsettled: {}",
+        claim_in_copy.body
+    );
     let copied = anonymous.get("/copy/-/history/Help");
     assert_eq!(copied.status, 200, "{}", copied.body);
     let revisions = blocks_after(&copied.body, "/copy/-/change/");
@@ -1607,20 +1588,6 @@ fn a_directory_made_by_the_0_4_0_binary_is_opened_by_this_tree_and_its_wikis_beh
     ] {
         assert!(!printed.contains(&secret), "a secret reached a log");
         assert!(!stderr.contains(&secret), "a secret reached stderr");
-    }
-}
-
-/// `from` and everything under it, copied to `to` (a bundle's directory).
-fn copy_dir(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for entry in std::fs::read_dir(from).unwrap() {
-        let entry = entry.unwrap();
-        let target = to.join(entry.file_name());
-        if entry.path().is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            std::fs::copy(entry.path(), target).unwrap();
-        }
     }
 }
 

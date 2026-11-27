@@ -16,7 +16,7 @@
 //! new: the baseline of a file the wiki does not have holds no link, so a claim arrives with its sources and its anchors as they were.
 
 use super::{
-    Availability, Claim, ClaimId, CommunityStatus, Fault, Family, Source, SourceId, family_of,
+    Availability, Claim, ClaimId, CommunityStatus, Family, Fault, Source, SourceId, family_of,
 };
 
 /// How many of each thing only a curation sets an import left out of the files it wrote.
@@ -57,7 +57,12 @@ impl Unsettled {
                 "community statuses",
                 "a status",
             ),
-            (self.review_days, "review day", "review days", "a review day"),
+            (
+                self.review_days,
+                "review day",
+                "review days",
+                "a review day",
+            ),
             (
                 self.availabilities,
                 "availability",
@@ -69,11 +74,7 @@ impl Unsettled {
             if n == 0 {
                 continue;
             }
-            let (noun, verb) = if n == 1 {
-                (one, "was")
-            } else {
-                (many, "were")
-            };
+            let (noun, verb) = if n == 1 { (one, "was") } else { (many, "were") };
             out.push(format!(
                 "{n} {noun} {verb} not imported: {what} is set here only by a curation proposal."
             ));

@@ -164,12 +164,16 @@ fn the_counts_are_many_and_plural_as_the_words_are() {
 }
 
 #[test]
-fn what_a_curation_sets_that_is_not_one_of_the_three_keys_is_still_a_departure_acceptance_refuses() {
+fn what_a_curation_sets_that_is_not_one_of_the_three_keys_is_still_a_departure_acceptance_refuses()
+{
     // A retired claim is not un-retired: the plan counts its status, and the replay's acceptance refuses the retirement by name.
     let mut claim = settled_claim(1, 1);
     claim.lifecycle = crate::knowledge::Lifecycle::Retired;
     claim.retired_reason = Some("Withdrawn.".to_owned());
-    let d = with_claims("kn-retired", &files_of(&[claim], &[Source::new(source_id(1))]));
+    let d = with_claims(
+        "kn-retired",
+        &files_of(&[claim], &[Source::new(source_id(1))]),
+    );
     let p = plan(&d.0);
     // The plan reads and counts (the files are judged against the pages at the replay, as before); it does not rewrite the retirement.
     assert_importable(&p);
@@ -177,7 +181,8 @@ fn what_a_curation_sets_that_is_not_one_of_the_three_keys_is_still_a_departure_a
 }
 
 #[test]
-fn the_knowledge_files_are_a_change_of_their_own_after_the_pages_each_file_after_the_files_it_names() {
+fn the_knowledge_files_are_a_change_of_their_own_after_the_pages_each_file_after_the_files_it_names()
+ {
     // Claim 1 relates to claim 2, which rests on source 3; claim 4 rests on source 3 too. The order is the files named first, and the same
     // every time.
     let mut one = settled_claim(1, 3);
@@ -208,7 +213,12 @@ fn the_knowledge_files_are_a_change_of_their_own_after_the_pages_each_file_after
     assert_eq!(plan(&d.0).knowledge_changes, p.knowledge_changes);
     // None of them is in the first change's pages or in the change at the end.
     assert!(p.first_pages.is_empty());
-    assert!(p.knowledge_changes.iter().flatten().all(|f| f.starts_with("knowledge/")));
+    assert!(
+        p.knowledge_changes
+            .iter()
+            .flatten()
+            .all(|f| f.starts_with("knowledge/"))
+    );
 }
 
 #[test]
@@ -265,7 +275,6 @@ fn the_order_follows_names_through_a_long_chain_and_survives_a_cycle() {
         [("a".to_owned(), vec!["nowhere".to_owned()])].into();
     assert_eq!(dependency_order(&loose), ["a".to_owned()]);
 }
-
 
 #[test]
 fn a_file_that_names_a_file_the_caps_put_in_a_later_change_is_refused_by_name_at_the_plan() {

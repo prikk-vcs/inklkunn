@@ -156,7 +156,8 @@ impl Proof {
 
         // The import, which used to be refused.
         let (status, out, err) = self.import(COPY, "Handbook claims", &first, &[]);
-        self.t.did("the operator imports it: `wiki import-bundle handbook-claims <the export>`");
+        self.t
+            .did("the operator imports it: `wiki import-bundle handbook-claims <the export>`");
         self.t.saw(
             status == 0
                 && out.contains("  knowledge:       2 claim or source file(s) in 2 change(s), after the history")
@@ -164,7 +165,8 @@ impl Proof {
             "the import succeeds (it was refused: the claim's page was not there yet, and a status is a curation's); it says the knowledge came in two changes (the source, then the claim) after the history, and what was not imported",
             &format!("{out}{err}"),
         );
-        let kept = std::fs::read_to_string(self.layout().import_report(&self.record(COPY).id)).unwrap();
+        let kept =
+            std::fs::read_to_string(self.layout().import_report(&self.record(COPY).id)).unwrap();
         self.t.saw(
             kept.contains("1 availability was not imported: an availability is set here only by a curation proposal.")
                 && kept.contains("its bytes differ from the bundle's by exactly those keys."),
@@ -246,7 +248,8 @@ impl Proof {
         // INV-11: the status is a curation's, here as anywhere.
         let mut carla = self.join_in(COPY, "carla", "Carla Curator", Role::Maintainer);
         let mut dina = self.join_in(COPY, "dina", "Dina Contributor", Role::Contributor);
-        self.t.did("Carla (maintainer) and Dina (contributor) join the new wiki");
+        self.t
+            .did("Carla (maintainer) and Dina (contributor) join the new wiki");
         let again = self.curated_in(
             COPY,
             &mut dina,
