@@ -36,7 +36,8 @@
 //! **What stands in for nothing:** every account is made by the invitation machinery, every rule by the policy form, every hide by the
 //! moderation form, every import and export by the operator's command; the bundles are COPIES of the committed fixtures (converter
 //! output at wiki-commons 19f021c), changed in a temporary directory where a refusal needs a changed one. The kill in (F) stops the
-//! import with a panic that runs no cleanup (as `SIGKILL` runs none), the way the core's kill tests do.
+//! import with a panic that runs no cleanup (as `SIGKILL` runs none), the way the core's kill tests do; `kill_real.rs` is the same story
+//! with a process that dies (its own test: the import runs as a child process and is sent `SIGKILL`).
 //!
 //! Needs prikk and prints `skipping: prikk not on PATH` without it (one line per test, counted by `EXPECTED_SKIPS`).
 

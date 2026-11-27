@@ -74,16 +74,16 @@ fn long_bundle(dest: &Path, revisions: usize) {
     let mut lines = Vec::new();
     for i in 1..=revisions {
         let content = format!("---\ntitle: Composting\n---\n\nRevision {i} of the compost notes.");
-        let mut record = serde_json::json!({
+        let record = serde_json::json!({
             "rev": format!("r{}", 5000 + i),
             "parent": if i == 1 { serde_json::Value::Null } else { format!("r{}", 5000 + i - 1).into() },
             "type": if i == 1 { "create" } else { "edit" },
             "at": format!("2025-06-01T{:02}:{:02}:00Z", i / 60, i % 60),
             "author": {"id": "mira", "name": "Mira"},
             "summary": format!("edit {i}"),
+            "sha256": sha256_hex(content.as_bytes()),
             "content": content,
         });
-        record["sha256"] = sha256_hex(content.as_bytes()).into();
         lines.push(record.to_string());
     }
     std::fs::write(dest.join("history/mw:101.jsonl"), lines.join("\n") + "\n").unwrap();
@@ -341,7 +341,7 @@ impl Proof {
                     }
                     self.t.did("the child is sent SIGKILL (std's `Child::kill`, to that one pid) and waited for");
                     self.t.saw(
-                        status.signal() == Some(9) && !self.listed().iter().any(|s| *s == slug),
+                        status.signal() == Some(9) && !self.listed().contains(&slug),
                         "it died by signal 9, and its wiki was never stored",
                         &format!("{status}"),
                     );
@@ -444,14 +444,40 @@ impl Proof {
             .iter()
             .filter(|p| !data_after.contains(p))
             .collect();
+        // The signer makes a seed directory under a name the sweep ignores (`.new-<32 hex digits>`), locks it, and renames it. A `SIGKILL` that
+        // lands between the two leaves that one EMPTY directory (no seed in it), which the next signer's sweep removes once it is old
+        // (`key_store/live.rs`, `seeds.rs`); `wiki discard-unfinished` does not look in the seed directory. It is allowed here, said, and nothing
+        // else is: no seed directory of a call, no file.
+        let birth_leftovers: Vec<&String> = seed_after
+            .iter()
+            .filter(|p| !seed_before.contains(p))
+            .collect();
+        let only_birth_leftovers = birth_leftovers.iter().all(|p| {
+            p.strip_prefix(".new-")
+                .is_some_and(|h| h.len() == 32 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+        });
+        if !birth_leftovers.is_empty() {
+            self.t.note(&format!("the kill landed while the signer was making a seed directory: {birth_leftovers:?} is left, empty, for a later start's sweep (by design: it is removed once it is old)"));
+        }
         self.t.saw(
             gone.is_empty()
                 && !made_by_the_sweeping_command.is_empty()
                 && made_by_the_sweeping_command.iter().all(|p| p.contains(swept.as_str()))
-                && seed_after == seed_before
+                && only_birth_leftovers
+                && seed_before.iter().all(|p| seed_after.contains(p))
                 && !data_after.iter().any(|p| p.contains(id.as_str())),
-            "the data, key and seed directories hold what they held before the import, and only what `wiki create swept` made since: nothing of the killed wiki is left, and nothing else is gone",
-            &format!("new: {made_by_the_sweeping_command:?}\ngone: {gone:?}\nseed before: {seed_before:?}\nseed after: {seed_after:?}"),
+            "the data, key and seed directories hold what they held before the import, and only what `wiki create swept` made since (and, if the kill landed in that instant, one empty half-made seed directory): nothing of the killed wiki is left, and nothing else is gone",
+            &format!(
+                "new, and not of `swept`: {:?}\ngone: {gone:?}\nleft of the killed wiki: {:?}\nseed before: {seed_before:?}\nseed after: {seed_after:?}",
+                made_by_the_sweeping_command
+                    .iter()
+                    .filter(|p| !p.contains(swept.as_str()))
+                    .collect::<Vec<_>>(),
+                data_after
+                    .iter()
+                    .filter(|p| p.contains(id.as_str()))
+                    .collect::<Vec<_>>()
+            ),
         );
         self.t.saw(
             self.listed().contains(&"swept".to_owned())
