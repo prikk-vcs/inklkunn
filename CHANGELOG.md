@@ -5,7 +5,7 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
 
 ## [Unreleased]
 
-## [0.5.0] — 2026-12-15
+## [0.5.0] — 2026-11-27
 
 **Wikis can now come in with their history, and leave with it.** `inklkunn wiki import-bundle` makes a **new wiki** from a Portable Wiki Bundle (wiki-commons' format; a folder; unpack an archive first): MediaWiki and BookStack exports come in through wiki-commons' own converters, run by the operator, and an inklkunn export comes back in, **claims included**: a wiki's claims and sources arrive after its history, with their anchors and their links, **unsettled** (a community status, a review day and an availability are only a curation proposal's to set, so the import does not set them: the dry run, the report and the new wiki's history say how many were left out, and a curation proposal sets them afterwards like for any claim). The wiki appears **only when the import is complete** (a killed import leaves nothing a reader can see, and `wiki discard-unfinished` removes what it left), and **it is checked before anything is written**: a checksum that lies, a missing or extra file, a link, a path that escapes, a licence the wiki cannot take, an e-mail address among the people, a history that breaks its own order, or a bundle over the revision cap is refused **by name** and writes nothing (`--dry-run` prints the plan, `--leave-out-incompatible` leaves out exactly the files whose licence cannot be taken, `--no-history` imports the pages as one change). **Every revision of the bundle's history becomes a change of its own**, so *Who wrote this?* and the history work as they do for any wiki, and each says **what it is**: *Imported. Originally by {name}, {date}* (the other wiki's name is text, never linked to an account here, and its date is always said to be the *original*), with a notice under the history naming the wiki it was imported from, the day, and whether the checksums were checked. Imported changes do not count as anyone's participation here.
 
@@ -25,7 +25,7 @@ the GitHub release's text, with a link to the whole section (`release.yml`). Kep
 - New settings, all optional: `INKLKUNN_IMPORT_MAX_REVISIONS` (default 1,000: the revisions of an import; a bundle over it is refused, and `--no-history` brings its pages as one change) and `INKLKUNN_IMPORT_MAX_HISTORY_MIB` (default 256: the size of a bundle's history).
 - Everything that held for 0.4.0 holds: behind TLS, `INKLKUNN_TRUSTED_PROXIES` declared, the secret file readable by the service's user only (SECURITY.md); runtime prikk 0.54.0 or later (0.58.0 tested), bubblewrap and prlimit on the host, or the container image.
 
-**Japanese.** 0.5.0 adds 41 Japanese messages and changes 3 (the import's words, the interwiki map and its form, the proposals feed). *The owner's review of them is the cut's condition; this sentence is written again when it is done.*
+**Japanese.** The owner of the inklkunn project has reviewed every Japanese message 0.5.0 adds or changes (41 new and 3 changed: the import's words, the interwiki map and its form, the proposals feed) before this release, and ruled its five new terms: バンドル (bundle), チェックサム (checksums), インポート元 (the wiki a page was imported from, never 出典, a claim's source), Wiki 間リンクの対応表 (interwiki map) and 接頭辞 (prefix).
 
 The entries below are in the order the work landed.
 
