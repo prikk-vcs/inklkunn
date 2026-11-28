@@ -1,6 +1,6 @@
 # RFC 012 — Backup, restore and observability: a server that can be kept, and says how it is
 
-**Status.** **Proposed to the owner 2026-11-28.** This is 0.6.0's R-1, with RFC 011 (`docs/releases/0.6.0-plan.md`,
+**Status.** **Proposed to the owner 2026-11-28; refined the same day by the architect's own check against the owner's philosophy, before the rulings** (four refinements, marked *refined*). This is 0.6.0's R-1, with RFC 011 (`docs/releases/0.6.0-plan.md`,
 authorized 2026-11-28 with P-1 – P-5 and six refinements). **Tracks.** ROADMAP T11; requirements DUR-1, DUR-4, OPS-3,
 OPS-5, OPS-6; threat model RR-8, IS-15 (deferred, P-3); prikk's own backup and restore guide
 (`docs/src/guide/backup-restore.md`). **Touches.**
@@ -59,6 +59,9 @@ This RFC adds:
 
     So no write happens anywhere between the store's snapshot and any repository's copy, and each wiki's writes wait
     only until that wiki is copied. **Reads never stop.**
+  - **A write that meets a backup's lease says so** (*refined*): *this wiki is being backed up; try again in a moment*,
+    never a general *busy*.
+  - **The server's own `status.json` is not in a backup** (*refined*).
 - **D-2 — One archive, to a file or to standard output.**
   - `inklkunn backup --to <file>` writes one archive (tar), owner-readable only (`0600`), and refuses an existing file.
     `inklkunn backup --to -` writes it to standard output, so `inklkunn backup --to - | age -r … > backup.age` puts no
@@ -77,7 +80,8 @@ This RFC adds:
   - **Anything that does not verify refuses the restore and leaves the directory as it found it** (it restores into a
     temporary directory beside the destination, and renames it into place only at the end).
   - **The secret is the operator's to supply,** as at start. A restore never asks for it, and the first `serve` opens the
-    keys with it as always.
+    keys with it as always. **The restore says so in one line** (*refined*): *the wikis' keys open only with the secret
+    file this server had; without it they can be read and never written*.
   - **A newer store than this binary knows is refused,** naming both versions. An older one is opened, and migrated by
     `serve` as an upgrade is.
 - **D-4 — The rehearsal is a test.** A wiki with pages, views, a hide, an import's history, accounts and keys is backed
@@ -107,7 +111,8 @@ This RFC adds:
   - **A wiki whose key store is missing says exactly that** (plan refinement 4): *the key records of wiki X are missing:
     restore the key directory from a backup (KEYS.md); re-keying is not available yet*. The same sentence is the wiki's
     refusal of a write.
-  - The counters (D-8) come from the running server's status file. When no server runs, it says so.
+  - The counters (D-8) come from the running server's status file, **with its age** (*refined*). When the file is older
+    than a minute, `status` says that the server may not be running, and never shows stale counters as current.
 - **D-7 — Structured logs that carry no content.**
   - Every line the server writes becomes one structured line: `level`, `event`, the wiki's id where there is one, the
     request's id. It is logfmt-shaped, hand-written, with no new dependency.

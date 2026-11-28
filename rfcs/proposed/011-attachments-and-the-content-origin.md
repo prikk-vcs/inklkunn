@@ -1,6 +1,6 @@
 # RFC 011 — Attachments and the content origin: imported images that show, and can be taken down
 
-**Status.** **Proposed to the owner 2026-11-28.** This is 0.6.0's R-1, with RFC 012 (`docs/releases/0.6.0-plan.md`,
+**Status.** **Proposed to the owner 2026-11-28; refined the same day by the architect's own check against the owner's philosophy, before the rulings** (two refinements, marked *refined*). This is 0.6.0's R-1, with RFC 012 (`docs/releases/0.6.0-plan.md`,
 authorized 2026-11-28 with P-1 – P-5 and six refinements). **Tracks.** ROADMAP T11 (operations before 1.0); requirements
 SEC-2, CM-6, RD-10; external design WEB-10; threat model C-4c, C-6c, C-15d, C-15e, RR-14 (IS-18), INV-13; wiki-commons
 LIC-4 (attribution), XFER-4 (sidecars). **Touches.**
@@ -42,8 +42,10 @@ licence and attribution.
   - `/{wiki}/-/file/{*path}`, **on the content origin only**, serves the file at `attachments/{path}` **as the default
     view's tip holds it**, read through `file_at` (RFC 006 J-1). So a hidden content is never served, and a text that
     cannot be attributed is *not checked yet* (503, `Retry-After`), as for pages.
-  - **Only the tip is served.** An older page version that embeds an attachment shows the tip's, and the attachment
-    page says so. Serving an attachment as it was at a block is not in this RFC.
+  - **Only the tip is served, and an older page never shows what it did not have** (*refined*). An older version of a
+    page shows an embedded file only when the file is **the same as at that block**: its last writer at the block is its
+    last writer at the tip, by the writes index. Otherwise the embed is a note, *this file has changed since; see the
+    current one*, linking the attachment page. Serving a file as it was at a block is not in this RFC.
   - **Access is the page's:** the same read check, existence-neutral. A wiki that is not there, one the reader may not
     read, and a path with no file all answer the same plain not-found.
   - The application origin refuses the route, as it refuses raw source.
@@ -80,6 +82,8 @@ licence and attribution.
   - **Not bound to the person:** the address is a capability that anyone holding it may use until it expires. The page
     says nothing of it, and a reader who shares a page's HTML shares addresses that die within ten minutes.
   - **Stateless:** nothing is stored, so there is no migration, and nothing to revoke beyond the expiry.
+  - **A page that carries signed addresses is never cached** (*refined*: `Cache-Control: no-store`), so a page brought back
+    from the browser's cache cannot show images whose addresses have expired; every view signs afresh.
 - **D-5 — The attachment page** `/{wiki}/-/attachment/{*path}`, on the application origin.
   - It shows the file's name, size and type.
   - For an image, it shows the image itself from the content origin.
@@ -181,8 +185,8 @@ licence and attribution.
 - **Q-2 — SVG inline under the sandbox,** where it is inert. **Recommended.** The alternative is SVG as a download
   always: safest, but an imported diagram would not show.
 - **Q-3 — A moderator's hide reaches an attachment at the tip,** and a removal proposal is the other way. **Recommended.**
-- **Q-4 — Only the tip's attachment is served.** An older page version shows the current image, and says so.
-  **Recommended.**
+- **Q-4 — Only the tip's attachment is served.** An older page version shows a file only when it is unchanged since
+  that version, and otherwise says that it has changed (D-1). **Recommended.**
 
 ## Sequencing and handoff
 
