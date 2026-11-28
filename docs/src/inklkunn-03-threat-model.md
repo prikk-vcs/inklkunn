@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | inklkunn Threat Model (security): what inklkunn must defend, against whom, and how, so that the design and the tests can be checked against it. A first-class release deliverable (project rules): updated by any release that touches identity, signing, the prikk boundary, rendering or inbound content; re-verified by the others. |
-| Version | **v0.5, 2026-11-26** (0.5.0: RFC 007, interchange: T-5 rewritten with C-5a – C-5h, C-15g, C-15h, C-17k, INV-13's surfaces, RR-17; the tests of §7 are named at 0.5.0's readiness: §7.6, 2026-11-27). Before it: **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15, RR-16; the tests of §7 are named at 0.4.0's readiness: §7.5, 2026-11-25). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
+| Version | **v0.6, 2026-11-28** (0.6.0: RFC 011, attachments: C-4c amended, C-6d, C-6e, C-15i, INV-13's surfaces, RR-14 closed; RFC 012, operations: T-19 with C-19a – C-19e, RR-18). Before it: **v0.5, 2026-11-26** (0.5.0: RFC 007, interchange: T-5 rewritten with C-5a – C-5h, C-15g, C-15h, C-17k, INV-13's surfaces, RR-17; the tests of §7 are named at 0.5.0's readiness: §7.6, 2026-11-27). Before it: **v0.4, 2026-11-19** (0.4.0: RFC 006, governance and moderation: C-3d – C-3g, C-14f – C-14h, C-15d – C-15f, INV-13, INV-14, RR-15, RR-16; the tests of §7 are named at 0.4.0's readiness: §7.5, 2026-11-25). Before it: **v0.3, 2026-11-18**, four sentences of C-17d and C-17g made exact at the readiness review (0.3.0: RFC 005 part 2, the knowledge layer: A-KNOWLEDGE, T-17 and C-17a – C-17j, INV-11; the November 2026 maintenance: T-18 and C-18a – C-18e, INV-12, the sandbox's host layout (IS-19) and the container settings; RR-12 – RR-14; §7 items for both). Earlier: v0.2, 2026-10-31 (RFC 004: the write path, the lease, the intent journal and recovery; C-1g – C-1k, additions to C-3, C-7, C-9 and C-12, RR-9 – RR-11). Earlier: v0.1, amended 2026-10-29 (C-1d and RR-8: key rotation on prikk as it is, the owner's DR-10 ruling after prikk confirmed it). **Section 7's tests re-verified** at the end of handoff 003 (M1; the record is §7.1) and **at the end of handoff 004 (M2; §7.2)** |
 | Date | 2026-10-27 |
 | Basis | Requirements v0.1 (SEC/PRV/ID/GV/INT), the external design v0.1 (BD/WEB/API/AUTH/PK/FL/CT/OP), the rulings DR-2 and DR-4, prikk's trust and threat model, planeter's threat model v0.4 (the house precedent and the neighbour whose guarantees inklkunn must not weaken), wiki-commons chapter 14, the requirements register items 7, 8, 14, 17. |
 | ID scheme | `A-` asset · `TB-` trust boundary · `T-` threat · `C-` control · `INV-` security invariant · `RR-` residual risk · `ASSUME-` assumption |
@@ -181,7 +181,10 @@ about its type, a rename to a path outside `pages/` (TB-3; A-HOST, A-HISTORY).
   validated against the metadata schema; unknown keys preserved as data; secrets and control fields
   (`visibility`, `kind: system`) are set by the service, not by the proposer, unless the role allows.
 - **C-4c** Sizes bounded before parsing (PERF-4); attachments type-checked by content, served as attachments
-  from the content origin; SVG sanitized or served inert.
+  from the content origin; SVG sanitized or served inert. (v0.6, RFC 011 D-2: **a file is served inline only when its
+  bytes and its name agree on a raster type** (PNG, JPEG, GIF, WebP, AVIF), **or as SVG under the content origin's
+  sandbox**; everything else is a download, and its name reaches `Content-Disposition` encoded as RFC 6266's
+  `filename*`, never raw.)
 - **C-4d** Pasted and proposed Markdown is data; no directive executes (NG-8); raw HTML reduced to the
   documented subset.
 
@@ -223,6 +226,15 @@ ids, a converter's output taken for the source's.
   twice).
 - **C-6c** Raw source, attachments and downloads only from the isolated content origin, as inert
   attachments; the host gate enforced, not only configured (planeter's IS-16 lesson).
+- **C-6d** (v0.6) **The application's CSP admits the content origin for images only** (`img-src 'self' <content
+  origin>`, nothing else changed; RFC 011 D-3), and the content origin's CORP stays `same-site` for a content origin
+  under the application's registrable name (`cross-origin` for images only when it is not), so a third party's page
+  cannot embed a wiki's bytes.
+- **C-6e** (v0.6) **A restricted wiki's content-origin address is a capability of ten to fifteen minutes** (RFC 011
+  D-4): an HMAC-SHA256 under a key derived from the server's secret (`inklkunn content address v1`) over the route, the
+  wiki, the decoded path and the expiry, each length-prefixed; an expiry further than the lifetime is refused. Absent or
+  wrong, it is the absent-wiki answer; expired, it says so. It is never logged, a page carrying one is `no-store`, and a
+  removed reader's addresses die within fifteen minutes. Closes IS-18 (RR-14).
 
 ### T-7 — Confidentiality of private wikis and held content
 - **C-7a** `authorize()` on reads, feeds, search, backlinks, sitemaps, link previews and the API; `noindex`;
@@ -332,6 +344,11 @@ forgotten (register item 14; A-CONTENT).
 - **C-15h** (v0.5) **The export reads every revision's text through the one reader** (`text_at`), so a hidden
   revision is a record with `suppressed: [content]` and no text, and an export never has a gap where the index has not
   settled (RFC 007 D-7).
+- **C-15i** (v0.6) **One attachment, with its sidecar, can be hidden at the tip** (RFC 011 D-6): the hide is per file
+  (a per-path record, no migration), RFC 006 D-8's tip rule is unchanged for pages, and the content origin then answers
+  `410`, the embed is a tombstone, and the export leaves the file and its sidecar out (`suppressed`). A proposal may
+  remove a file with its sidecar, **never a sidecar alone**, so a served file never loses its attribution. Every file
+  answer is `Cache-Control: private, no-cache`, so a takedown takes effect at the next view.
 
 ### T-16 — The planeter boundary (TB-9)
 A forged identity assertion from a fake planeter; planeter's guarantees weakened by inklkunn.
@@ -458,6 +475,27 @@ ways that containment can fail or weaken:
     publishes only if `wiki create` succeeds. That command cannot succeed unless prikk is confined. The rehearsal of
     2026-11-17 (run 44103325108) did it on Debian 12, amd64 and arm64.
 
+### T-19 — Backups, restore and the operator's view (v0.6, RFC 012)
+A backup taken in a moment that is not one, or copied out unencrypted; an archive changed by someone who can write it
+and restored; a restore that gives back an access taken away since; a health answer that tells a stranger about the
+wikis, or lets one wiki take the server down; logs that carry what the wikis hold (A-CONTENT, A-PEOPLE, A-KEYS,
+A-AVAILABILITY).
+
+- **C-19a** **A backup never holds the secret file**, is owner-only (`0600`) on disk, says in one line that it is not
+  encrypted, can be written to standard output for an encryptor, and **stages nothing outside the data directory**. It
+  is taken under every wiki's write lease (bounded at 30 seconds, the creation mark held), staged locally, and verified
+  with `prikk verify` before the archive is written; no lease is held while it streams.
+- **C-19b** **A restore treats its archive as untrusted:** the manifest's HMAC-SHA256 under a key derived from the
+  server's secret (`inklkunn backup v1`) first, then every checksum, no escaping path or link, no unnamed file, the store
+  opened with `trusted_schema=OFF`, `prikk verify` on every repository, and all or nothing (staged inside the
+  destination; `serve` refuses an unfinished restore).
+- **C-19c** **Health says only `ok` or `degraded`**, `503` only when the server cannot serve at all, and makes at most
+  one check every ten seconds. `status` and `status.json` are the operator's, owner-only.
+- **C-19d** **Logs carry no content, names, email or IP addresses, request paths or queries, error details or
+  secrets** (an error is logged by its kind), and a capture test with planted markers holds it.
+- **C-19e** **A restore gives back no access taken away after the backup:** every session is removed and every API
+  token revoked, and the restore's summary says what it rolled back.
+
 ## 4. Security invariants (INV-…) — a change that breaks one is a security bug
 
 - **INV-1 — No history without an authorized acceptance.** Every sealed change names a recorded proposal and
@@ -484,7 +522,8 @@ ways that containment can fail or weaken:
   the server refuses to run them, unless an operator passed the development flag and the banner says so.
 - **INV-13 — Hidden is hidden everywhere.** No inklkunn surface, page or API member serves content hidden by
   moderation to a principal without the `moderate` rung (RFC 006 D-8; C-15d). (v0.5: the surfaces include the export's revision `content`,
-  `listProposals`, `listProposalComments` and the proposals feed; RFC 007 D-7, D-9.)
+  `listProposals`, `listProposalComments` and the proposals feed; RFC 007 D-7, D-9. v0.6: the content origin's file
+  route, the attachment page, an embed in a page and in an older version of it, and the export's attachments; RFC 011.)
 - **INV-14 — A wiki cannot lock itself.** An admin of a wiki can always change its `governance/` (RFC 006 D-4; C-3f).
 
 ## 5. Residual risks and assumptions (RR-…, ASSUME-…)
@@ -558,7 +597,8 @@ ways that containment can fail or weaken:
     C-17b), not prevented.
   - A snapshot kept as an attachment *only where its licence allows* is the reviewer's judgement; no code reads a
     licence (T-15 covers its removal).
-- **RR-14 — A restricted wiki's raw source is not served when the content origin has its own host** (IS-18). The
+- **RR-14 — A restricted wiki's raw source is not served when the content origin has its own host** (IS-18).
+  **Closed in v0.6 by RFC 011 D-4's signed addresses (C-6e);** the text below is kept as the record of 0.5.0 and before. The
   session cookie does not cross hosts, so the raw source answers *not found* to its own members. This fails closed: a
   loss of availability, not of confidentiality. The page itself reads, and a way across is designed with RFC 006.
 - **RR-15 — Hiding is not removal** (RFC 006). Content hidden by moderation remains in the repository (prikk keeps
@@ -578,6 +618,11 @@ ways that containment can fail or weaken:
   revision is one block, and prikk's cost per block grows with the log (500 blocks: 154 s; 2,000: 1,438 s). The
   revision cap refuses longer histories with the count, the cap and the way on (`--no-history`, the final state as
   one change). The cap moves only on a measurement, at the re-baseline of prikk 0.60.0's `show` fix or later.
+- **RR-18 — A backup is as safe as the operator's handling of it** (v0.6, RFC 012). inklkunn cannot encrypt it for
+  them (P-2): it holds names, password and token hashes, and what moderation hides (RR-15), and it says so when it is
+  made. A lost secret file makes a backup unrestorable by inklkunn (its manifest is authenticated under the secret);
+  its repositories stay readable with prikk alone. The guide says to keep the secret apart from the backups, as
+  carefully.
 - **ASSUME-1** The operator and the host are trusted; inklkunn defends against network actors and malicious
   users, not a hostile operator.
 - **ASSUME-2** prikk's offline `verify` is correct and is the arbiter of history integrity.

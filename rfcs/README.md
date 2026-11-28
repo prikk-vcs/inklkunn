@@ -42,6 +42,8 @@ subjects not yet written: 005 knowledge layer
 | 005 | [Knowledge layer, part 1: claim identity, attachment to pages, one change, epistemic state (an investigation)](accepted/005-knowledge-layer-part-1-claim-identity.md) | M3 | **parts 1 and 2 accepted** 2026-10-31; spike C approved; K-T1 – K-T4 **approved** 2026-11-01; K-T5 on after 0.2.0 |
 | 006 | [Governance and moderation: rules a wiki can read and change, and moderation that hides without erasing](accepted/006-governance-and-moderation.md) | M4 (0.4.0) | **accepted** 2026-11-19 (Q-1 – Q-5 as recommended); handoff `handoffs/006-governance-and-moderation/governance-handoff-v1.md` |
 | 007 | [Interchange and API: a wiki that comes in with its history, and leaves with it](accepted/007-interchange-and-api.md) | M5 (0.5.0) | **accepted** 2026-11-26 (Q-1 – Q-5 as recommended, with eight refinements from the philosophy check); handoff `handoffs/007-interchange-and-api/interchange-handoff-v1.md` |
+| 011 | [Attachments and the content origin: imported images that show, and can be taken down](accepted/011-attachments-and-the-content-origin.md) | 0.6.0 | **accepted** 2026-11-28 (Q-1 – Q-4 as recommended, after three checks against the owner's philosophy, the last an independent review); handoff `handoffs/011-attachments-and-the-content-origin/attachments-handoff-v1.md` |
+| 012 | [Backup, restore and observability: a server that can be kept, and says how it is](accepted/012-backup-restore-and-observability.md) | 0.6.0 | **accepted** 2026-11-28 (Q-1 – Q-4 as recommended, after the same three checks); handoff `handoffs/012-backup-restore-and-observability/operations-handoff-v1.md` |
 | 010 | [Upstream tracking and supply-chain maintenance](done/010-upstream-and-supply-chain-maintenance.md) | all | **done** 2026-10-28 (approved after review); its procedures run at every release and re-baseline |
 
 ## Current state
@@ -49,6 +51,6 @@ subjects not yet written: 005 knowledge layer
 | State | RFCs |
 |---|---|
 | Proposed | *(none)* |
-| Accepted | [005 part 1](accepted/005-knowledge-layer-part-1-claim-identity.md), [005 part 2](accepted/005-knowledge-layer-part-2-claims-evidence-views.md) — accepted 2026-10-31; [002](accepted/002-identity-keys-and-signing.md), [003](accepted/003-read-path-and-rendering.md) — accepted 2026-10-27; [004](accepted/004-proposals.md) — accepted 2026-10-28 |
+| Accepted | [005 part 1](accepted/005-knowledge-layer-part-1-claim-identity.md), [005 part 2](accepted/005-knowledge-layer-part-2-claims-evidence-views.md) — accepted 2026-10-31; [002](accepted/002-identity-keys-and-signing.md), [003](accepted/003-read-path-and-rendering.md) — accepted 2026-10-27; [004](accepted/004-proposals.md) — accepted 2026-10-28; [011](accepted/011-attachments-and-the-content-origin.md), [012](accepted/012-backup-restore-and-observability.md) — accepted 2026-11-28 |
 | Done | [000 — RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) (adopted 2026-10-24); [001](done/001-foundations.md), [010](done/010-upstream-and-supply-chain-maintenance.md) (M0, approved 2026-10-28) |
 | Archived | *(none yet)* |

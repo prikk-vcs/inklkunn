@@ -1,6 +1,6 @@
 # RFC 011 — Attachments and the content origin: imported images that show, and can be taken down
 
-**Status.** **Proposed to the owner 2026-11-28.** Checked three times against the owner's philosophy before the rulings:
+**Status.** **Accepted by the owner 2026-11-28** (Q-1 – Q-4 as recommended); handoff `../handoffs/011-attachments-and-the-content-origin/attachments-handoff-v1.md`. Proposed the same day. Checked three times against the owner's philosophy before the rulings:
 the architect's own check, a second check against the code, and an independent review at the owner's request. The text
 below is the result, and the review record is at the end. This is 0.6.0's R-1, with RFC 012 (`docs/releases/0.6.0-plan.md`,
 authorized 2026-11-28 with P-1 – P-5 and six refinements). **Tracks.** ROADMAP T11 (operations before 1.0); requirements

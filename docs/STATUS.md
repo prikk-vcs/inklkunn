@@ -1062,6 +1062,14 @@
     - logs carry no content, and counters go in a status file;
     - the guide says first what it is not for.
 
+- **2026-11-28 — RFCs 011 and 012 accepted by the owner** (Q-1 – Q-4 each as recommended), after three checks against
+  the owner's philosophy: the architect's, a second against the code, and an independent review that found the
+  change-wide hide could never reach an import's image (now a per-file hide) and that a checksummed manifest stops
+  accidents, not tampering (now an HMAC under the secret). **Threat model v0.6** folded (C-4c, C-6d, C-6e, C-15i,
+  INV-13, RR-14 closed; T-19 with C-19a – C-19e; RR-18). **Handoffs written:**
+  `rfcs/handoffs/011-attachments-and-the-content-origin/attachments-handoff-v1.md` (A-T1 – A-T5) and
+  `rfcs/handoffs/012-backup-restore-and-observability/operations-handoff-v1.md` (O-T1 – O-T6). **Order for the dev
+  team:** R-0 (M64 – M67), then M69, then handoff 011 first, 012 beside it. 0.6.0's plan is four days ahead.
 - **2026-11-28 — prikk answered our letter the same day** (ledger v1.15, amended): `log --after <block-id>` taken into
   RFC 174 as we asked, so the writes index can replay once per increment; RFC 172 accepted (stage 1 serves our cases;
   stage 2 is planeter's, not needed by us). Nothing promised for a version; no answer due.

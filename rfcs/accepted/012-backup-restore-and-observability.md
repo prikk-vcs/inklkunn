@@ -1,6 +1,6 @@
 # RFC 012 — Backup, restore and observability: a server that can be kept, and says how it is
 
-**Status.** **Proposed to the owner 2026-11-28.** Checked three times against the owner's philosophy before the rulings:
+**Status.** **Accepted by the owner 2026-11-28** (Q-1 – Q-4 as recommended); handoff `../handoffs/012-backup-restore-and-observability/operations-handoff-v1.md`. Proposed the same day. Checked three times against the owner's philosophy before the rulings:
 the architect's own check, a second check against the code, and an independent review at the owner's request. The text
 below is the result, and the review record is at the end. This is 0.6.0's R-1, with RFC 011 (`docs/releases/0.6.0-plan.md`,
 authorized 2026-11-28 with P-1 – P-5 and six refinements). **Tracks.** ROADMAP T11; requirements DUR-1, DUR-4, OPS-3,
