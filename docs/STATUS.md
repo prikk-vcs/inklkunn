@@ -1040,11 +1040,33 @@
     (target 2026-11-30).
   - **The target cut is 2026-12-18.**
 
+- **2026-11-28 — RFCs 011 and 012 proposed** (0.6.0's R-1, two days ahead).
+  - **RFC 011:**
+    - attachments are served on the content origin, at the tip, through the one reader;
+    - a file's type comes from its bytes checked against its name;
+    - SVG is inline only under the sandbox;
+    - embeds resolve, and the application's CSP opens for images only;
+    - a restricted wiki is reached by stateless ten-minute signed addresses (no migration), which closes IS-18;
+    - an attachment page shows the licence;
+    - takedown by a removal proposal, and by a hide at the tip;
+    - the export leaves a hidden attachment out.
+  - **RFC 012:**
+    - a backup copies each repository byte for byte under its lease, because `prikk archive` refuses files over
+      256 MiB and lands views under `remotes/`, and prikk verifies the copy;
+    - the store goes in as a `VACUUM INTO` snapshot and the key store as its sealed records, never the secret;
+    - one tar archive, to a file or to standard output;
+    - a restore into an empty directory refuses anything that does not verify;
+    - the rehearsal is a test;
+    - health says only `ok` or `degraded`;
+    - `status` names a missing key store;
+    - logs carry no content, and counters go in a status file;
+    - the guide says first what it is not for.
+
 ## Pending on the owner
 
 - **After the 0.5.0 release:** publish the nine crates by hand, once, from the tag. Then set up Trusted Publishing on
   crates.io, and tell the architect: the release workflow follows it in 0.6.0's R-0 (M68).
-- Next: RFCs 011 and 012's questions, when the architect brings them (target 2026-11-30).
+- **RFCs 011 and 012's questions** (`rfcs/proposed/011-attachments-and-the-content-origin.md` Q-1 – Q-4, `rfcs/proposed/012-backup-restore-and-observability.md` Q-1 – Q-4; proposed 2026-11-28; the plan's R-2, target 2026-12-02).
 
 ## Pending upstream
 
@@ -1063,7 +1085,7 @@ M0 is done (RFCs 001 and 010 in `done/`, approved 2026-10-28). Handoff 002 and h
 conditionally approved (2026-10-29); **the 002 corrections C1 – C11 are done and approved the same day**.
 **The driver follow-on (IS-7) is done and approved the same day.** **Handoff 003's T4 – T9 are built and conditionally approved
 (2026-10-30).** **R1 – R10 are done and approved (2026-10-31).** **S1 – S4 approved and RFC 004's T1 – T8 conditionally approved (2026-10-31).** **U6, Q1 – Q8, G1 – G10, A1 – A4 and K2 reviewed (2026-11-03).** **W, H, E reviewed (2026-11-03).** **X reviewed (2026-11-03).** **Y reviewed (2026-11-04).** **Z reviewed (2026-11-04).** **Z7 – Z9 Approved (2026-11-04).** **0.2.0 released 2026-11-04.** **K-T5 – K-T8 reviewed (2026-11-08); K3 – K14 reviewed (2026-11-13).** **K15 – K23 and M1 – M3 reviewed (2026-11-14).** **K24 – K31, K-T9, K-T10 and M4 – M11 reviewed (2026-11-14).** **M12 – M19, K32 – K42 and K-T11 reviewed (2026-11-14).** **M20 – M27 and K43 – K54 reviewed (2026-11-14).** **M28 – M33 and K55 – K64 reviewed (2026-11-14).** **M34 – M37 and K65 – K70 reviewed (2026-11-14).** **M38 – M40 and K71 – K75 reviewed (2026-11-17).** **M41 – M43 and K76 – K78 reviewed (2026-11-17).** **M44 – M46 and K79 – K81 Approved (2026-11-17); both packages' correction rounds end.** **M48 Approved (2026-11-17); `main` is green.** **M47 and K82 Approved (2026-11-17).** **M49 Approved, and the release rehearsal is green (2026-11-17).** **The November 2026 maintenance package is complete (2026-11-18).** **0.3.0's plan authorized by the owner (2026-11-18; scope frozen): `docs/releases/0.3.0-plan.md`.** **0.3.0 readiness approved (2026-11-18).** **The 0.3.0 candidate Approved (2026-11-18); the cut held for prikk 0.58.0 (2026-11-18).** **0.3.0 released 2026-11-19.** **The dev team's order now:**
-**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). G-T2 – G-T3 and D-1 conditionally approved (2026-11-23). F-1 – E-1 approved; G-T5 – G-T6 conditionally approved; G-T4 changes requested (2026-11-24). G-T4 – G-T6's corrections approved but for H-1, and G-T7 conditionally approved (2026-11-24). Readiness, the P round, the Q round and R-7, the candidate, approved, and **0.4.0 released (2026-11-25)**. 0.5.0's plan authorized (2026-11-25); RFC 007 accepted, threat model v0.5 and the handoff (2026-11-26). **0.5.0 released (2026-11-27).** 0.6.0's plan authorized (2026-11-28). Now: R-0 (M64 – M68), and RFCs 011 and 012; then G-T2 – G-T7. The test by a person using
+**0.4.0's plan authorized (2026-11-19).** **RFC 006 accepted (2026-11-19).** R-0 and M60 approved with their corrections (2026-11-21). M61 approved with its corrections (2026-11-21). M62 approved with its correction (2026-11-22). G-T1 and its corrections conditionally approved (2026-11-23). G-T2 – G-T3 and D-1 conditionally approved (2026-11-23). F-1 – E-1 approved; G-T5 – G-T6 conditionally approved; G-T4 changes requested (2026-11-24). G-T4 – G-T6's corrections approved but for H-1, and G-T7 conditionally approved (2026-11-24). Readiness, the P round, the Q round and R-7, the candidate, approved, and **0.4.0 released (2026-11-25)**. 0.5.0's plan authorized (2026-11-25); RFC 007 accepted, threat model v0.5 and the handoff (2026-11-26). **0.5.0 released (2026-11-27).** 0.6.0's plan authorized and RFCs 011 and 012 proposed (2026-11-28). Now: R-0 (M64 – M68), and the RFCs with the owner; then G-T2 – G-T7. The test by a person using
 assistive technology is planned before 1.0 or the first public deployment (owner, 2026-11-18).
 
 ## Issue register
