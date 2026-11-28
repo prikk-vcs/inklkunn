@@ -1062,11 +1062,22 @@
     - logs carry no content, and counters go in a status file;
     - the guide says first what it is not for.
 
+- **2026-11-28 — prikk 0.59.0 released, and two design letters received** (ledger v1.15).
+  - **PK-51:** no JSON changes, and texts that inklkunn parses changed. On `main`, 18 of 4,395 tests fail on 0.59.0, all
+    fail-closed: the interrupted seal's recommendation, the format marker, and the kill matrix. **M69, the re-baseline,
+    is assigned, before RFC 011 and 012's build.**
+  - **PK-52:** RFC 174 (JSON design; `log --paths` would replace the writes index's `show`s).
+  - **PK-53:** RFC 172 (trust; stage 1 is what IS-15's re-keying waits for).
+  - **A reply is drafted** for the owner to send. The architect's gates now run a fifth pass, on 0.59.0, and name the
+    newer prikk instead of finding the one in `~/.cargo/bin`.
+
 ## Pending on the owner
 
 - **After the 0.5.0 release:** publish the nine crates by hand, once, from the tag. Then set up Trusted Publishing on
   crates.io, and tell the architect: the release workflow follows it in 0.6.0's R-0 (M68).
 - **RFCs 011 and 012's questions** (`rfcs/proposed/011-attachments-and-the-content-origin.md` Q-1 – Q-4, `rfcs/proposed/012-backup-restore-and-observability.md` Q-1 – Q-4; proposed 2026-11-28; the plan's R-2, target 2026-12-02).
+- **Send the letter to prikk** (`.git-exclude/upstream/prikk/send/draft/2026-11-28-our-answers-on-rfc-174-and-rfc-172.md`):
+  our answers on RFC 174 (the JSON design, `log --paths`) and RFC 172 (the trust design), in one letter.
 
 ## Pending upstream
 

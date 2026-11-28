@@ -720,7 +720,8 @@ version.**
   - Read its notes, and test nothing inklkunn depends on unless the notes call for it.
   - Write the ledger's PL rows as 0.8.0's were, including anything that bears on RFC 008, OQ-4, or the trust and key
     behaviour (PL-16).
-  - The ledger goes to v1.15. No inklkunn code changes unless a row says one must, and then say it in the request.
+  - The ledger goes to **v1.16** (v1.15 is the architect's fold of prikk 0.59.0, 2026-11-28). No inklkunn code changes
+    unless a row says one must, and then say it in the request.
 - **M65 — the five 0.5.0 terms marked as ruled.** In `docs/glossary.md`, the rows for バンドル, チェックサム, インポート元,
   Wiki 間リンクの対応表 and 接頭辞 move from *Drafted* to *ruled by the owner, 2026-11-27*, as earlier rulings are written.
   Whatever test reads the glossary still passes, and no message changes.
@@ -751,3 +752,59 @@ version.**
 
 Hand back M64 – M67 as `010-maintenance-2026-11-m64-m67-review-request.md`, with the gates. (The architect rehearses
 any change to `release.yml`.) One CHANGELOG entry each goes under `## [Unreleased]`.
+
+## M69: prikk 0.59.0's re-baseline (2026-11-28; binding)
+
+**prikk 0.59.0 was released on 2026-11-28** (ledger PK-51; prikk's release letter
+`.git-exclude/upstream/prikk/receive/2026-11-28-prikk-0-59-0-released-what-changed-in-what-you-parse.md`). The release
+asset is at `~/.pgtmp/rel-0.59.0/x/prikk`; the x86_64 tarball's SHA-256 is
+`a5c8a34aaf246c18127e5d383bc8f5717b1ee4cf115b3c59b633721f739be153`.
+
+**What the architect measured:** `main` at `a497acc` with 0.59.0 first on `PATH` gives **4,377 passed, 18 failed**, in
+three families:
+- **the interrupted seal** (about 14 tests: `a_seal_killed_before_its_ref_log_*`, `a_seals_ref_log_is_completed_only_*`,
+  `a_seal_lead_that_status_reads_is_decided_as_where_it_refuses`, `a_rotation_refuses_while_a_seals_ref_log_is_unwritten_and_names_recover`,
+  `completing_a_seals_ref_log_is_bound_to_the_lease_*`, `a_completion_that_left_the_seals_publication_unfinished_is_not_called_done`);
+- **the format marker** (`a_marker_prikk_0_57_0_cannot_read_as_a_number_*`, `a_marker_that_is_not_a_number_flags_the_wiki_*` ×2,
+  `a_status_that_refuses_with_the_integrity_error_is_the_state_on_every_prikk`);
+- **the kill matrix** (`a_sigkill_at_each_step_of_an_acceptance_*`).
+
+The full log is `~/.pgtmp/gates-logs/main-on-059.log`.
+
+**What to do** (each with tests on 0.59.0, and the old texts kept for the floor, 0.54.0 – 0.58.0):
+- **(a) The interrupted seal.** `Diagnostic::lead_ref` reads 0.59.0's recommendation too: *run `prikk seal --allow-no-audit`:
+  … `prikk ref complete heads/main` would finish the publication alone …*, with the finding id unchanged.
+  - **Recovery's plan stays M61's** (`ref complete` checked against `--plan-only` and the history, then the cleanup): it is
+    the order that is verified step by step, and prikk confirmed both orders end at the same block. Read the new
+    wording as naming the same state, and nothing else.
+  - Say in the request whether `status --format json`'s `already_sealed` reading changes on 0.59.0.
+- **(b) The format marker.** The classifier reads the new `integrity error: the format marker is lost …` prefix and the
+  `precondition not met` form for a killed `init`, beside the old `i/o error … absent: FORMAT`.
+  - Re-check every refusal that the marker tests assert, on 0.59.0, and **keep each fail-closed answer as it is**: a
+    flagged wiki, and a stopped recovery.
+  - `init` over a populated repository whose marker is lost now exits 1. Check that nothing of inklkunn relies on it
+    exiting 0.
+- **(c) The lock wait.** Every prikk call the signer makes under inklkunn's write lease sets
+  **`PRIKK_LOCK_WAIT_SECONDS=0`** in its environment (the sandbox's allowlist names it).
+  - The lease already serializes inklkunn's writers, so a held lock there is a dead or foreign holder, which recovery
+    decides. Waiting would only delay that answer.
+  - Older prikk ignore the variable.
+  - The refusal classifier also accepts the two new suffixes, and the one waiting line on stderr, without misreading
+    either.
+- **(d) The texts the release letter lists:**
+  - `verify`'s way-out heading for a removed key (*a publication's signing key is not adopted*): read by the finding id,
+    never by the heading's words, wherever inklkunn reads it;
+  - `key status`'s new detail line over a torn key file: tolerated;
+  - `unlock`'s *gone* reading.
+  - `.prikk/refs/tmp` and `doctor --remove-ref-candidates`: recovery that meets that finding stops (fail closed) and
+    names prikk's command in its STOP words. Do not run it automatically.
+- **(e) CI and the gates:**
+  - `ci.yml` and `release.yml`'s test-only prikk becomes **0.59.0** (`PRIKK_TEST_VERSION`, with the checksum above), and
+    the floor stays 0.54.0;
+  - `pin-check` and `floor-check` follow;
+  - the release notes' *runtime prikk … (0.59.0 tested)*.
+- **(f) The kill matrix** on 0.59.0: a soak of 100 runs of the inside-seal rows, logs kept, as at 0.4.0's readiness.
+
+Hand back as `010-maintenance-2026-11-m69-review-request.md`, with the whole workspace's numbers on 0.55.0 first,
+shimmed off, on 0.57.0, on 0.58.0 **and on 0.59.0** (the architect's gates now run all five). **It comes before RFC 011
+and 012's build.** The architect rehearses the workflows.
