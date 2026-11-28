@@ -1,6 +1,6 @@
 # RFC 011 — Attachments and the content origin: imported images that show, and can be taken down
 
-**Status.** **Proposed to the owner 2026-11-28; refined the same day by the architect's own check against the owner's philosophy, before the rulings** (two refinements, marked *refined*). This is 0.6.0's R-1, with RFC 012 (`docs/releases/0.6.0-plan.md`,
+**Status.** **Proposed to the owner 2026-11-28; refined the same day by the architect's own check against the owner's philosophy, before the rulings** (two refinements, marked *refined*); **checked again at the owner's request the same day, before the rulings** (nine more, marked *refined, second check*). This is 0.6.0's R-1, with RFC 012 (`docs/releases/0.6.0-plan.md`,
 authorized 2026-11-28 with P-1 – P-5 and six refinements). **Tracks.** ROADMAP T11 (operations before 1.0); requirements
 SEC-2, CM-6, RD-10; external design WEB-10; threat model C-4c, C-6c, C-15d, C-15e, RR-14 (IS-18), INV-13; wiki-commons
 LIC-4 (attribution), XFER-4 (sidecars). **Touches.**
@@ -46,6 +46,10 @@ licence and attribution.
     page shows an embedded file only when the file is **the same as at that block**: its last writer at the block is its
     last writer at the tip, by the writes index. Otherwise the embed is a note, *this file has changed since; see the
     current one*, linking the attachment page. Serving a file as it was at a block is not in this RFC.
+  - **A page never shows a broken image for a reason inklkunn knows** (*refined, second check*). Each embed is decided, when the page is
+    rendered, by the same reader that serves the bytes: a file it would serve is an image; a hidden one is a tombstone
+    (D-6); one it cannot attribute yet is a note, *this file is not checked yet*; and on an older version, one whose
+    sameness the writes index cannot decide is the *changed since* note. Every undecided case is a note, never the file.
   - **Access is the page's:** the same read check, existence-neutral. A wiki that is not there, one the reader may not
     read, and a path with no file all answer the same plain not-found.
   - The application origin refuses the route, as it refuses raw source.
@@ -53,12 +57,18 @@ licence and attribution.
   - **The media type comes from the bytes, checked against the name.** The leading bytes are read for a raster image's
     signature: PNG, JPEG, GIF, WebP, AVIF.
     - When the signature and the extension agree, it is served **inline** with that type.
-    - **Anything else** (a mismatch, SVG, PDF, text, HTML, an unknown type) is served as
-      `application/octet-stream` with `Content-Disposition: attachment` and its file name.
-  - **SVG is served inline only under the content origin's sandbox** (Q-2), so it is inert (C-4c).
+    - **Anything else** (a mismatch, PDF, text, HTML, an unknown type) is served as
+      `application/octet-stream` with `Content-Disposition: attachment` and its file name. **The name is never written
+    raw into the header** (*refined, second check*): it is sent as RFC 6266's `filename*=UTF-8''…`, with control and bidirectional
+    characters replaced, beside an ASCII `filename` fallback.
+  - **SVG** (*refined, second check*: the list above and this rule now agree). A file named `.svg` whose first element, after an optional
+    byte-order mark, white space, XML declaration, comments and doctype, is `svg` is served inline as `image/svg+xml`,
+    **only under the content origin's sandbox** (Q-2), so it is inert (C-4c). Any other `.svg` is a download.
   - **Every answer** carries `nosniff`, the content origin's CSP (`default-src 'none'; sandbox`), `Cross-Origin-Resource-Policy:
     cross-origin` for images only (so the application's pages may embed them), `ETag` and `Last-Modified` (`304` on a
-    match), and `Cache-Control: private` within a signed address's life (D-4).
+    match), and **`Cache-Control: private, no-cache`** for every wiki, public or restricted (*refined, second check*). A browser keeps the
+    file and asks again each time, cheaply (`304`), so **a takedown takes effect at the next view**, never after a
+    cache's lifetime, and no shared cache keeps a copy.
   - **Bounds:** the page cap's sibling for files (`INKLKUNN_FILE_MAX_BYTES`, default the signer's attachment limit).
 - **D-3 — Embeds resolve, and the application's CSP opens for images only.**
   - An image embed (`![[name.png]]`) and a Markdown image whose `src` is a relative path under `attachments/` resolve to
@@ -81,7 +91,13 @@ licence and attribution.
   - **Bound to the path:** a signature for one file opens no other.
   - **Not bound to the person:** the address is a capability that anyone holding it may use until it expires. The page
     says nothing of it, and a reader who shares a page's HTML shares addresses that die within ten minutes.
-  - **Stateless:** nothing is stored, so there is no migration, and nothing to revoke beyond the expiry.
+  - **Stateless:** nothing is stored, so there is no migration, and nothing to revoke beyond the expiry. **So taking a
+    reader's access away reaches the files they already hold addresses for within ten minutes**: C-6e and the guide
+    say so (*refined, second check*).
+  - **A signed address is a capability, and never written down** (*refined, second check*): the content origin's logs never record a
+    query string (RFC 012 D-7), and its answers carry `Referrer-Policy: no-referrer`.
+  - **A signed image is never lazy-loaded** (*refined, second check*): a page fetches all its images while their addresses live, so a
+    reader scrolling down an open page after ten minutes never meets a broken image.
   - **A page that carries signed addresses is never cached** (*refined*: `Cache-Control: no-store`), so a page brought back
     from the browser's cache cannot show images whose addresses have expired; every view signs afresh.
 - **D-5 — The attachment page** `/{wiki}/-/attachment/{*path}`, on the application origin.
@@ -97,6 +113,8 @@ licence and attribution.
     - The proposal path rule (`PathOutsidePages`) admits **a removal of `attachments/{path}` and, with it, its
       `{path}.meta.yaml`**, and no other write under `attachments/`. A write there is still refused (P-4).
     - It is an ordinary proposal, reviewed and accepted under the rules in force, and protections apply.
+    - **Its review names the pages at the tip that embed the file** (*refined, second check*; the link graph's backlinks, extended to
+      embeds), so a reviewer sees what the removal leaves without its image.
   - **(b) A moderator's hide reaches an attachment at the tip.**
     - RFC 006 D-8's tip rule exists because a page whose current text is hidden is not a page. An attachment is not a
       page: when the only files of a change that a tip still holds are attachments (or their sidecars), **the content
@@ -106,7 +124,7 @@ licence and attribution.
       tombstone.
     - A change that also wrote a page the tip still holds is refused as today, with RFC 006's sentence.
   - **The export leaves a hidden attachment out** and marks it `suppressed` in the manifest (C-15e). Today it would copy
-    the tip's file byte for byte.
+    the tip's file byte for byte. **Its sidecar goes with it** (*refined, second check*): an attribution can be what was hidden.
 - **D-7 — Words.** The new messages, in both languages:
   - the attachment page;
   - the download sentence;
@@ -172,7 +190,8 @@ licence and attribution.
   under the sandbox. Everything else is a download.
 - **C-6d (new):** the application's CSP admits the content origin for images only.
 - **C-6e (new):** a restricted wiki's content-origin address is a ten-minute capability, bound to its path and wiki,
-  signed under a derived key. Absent, wrong or expired, it is the absent-wiki answer.
+  signed under a derived key. Absent, wrong or expired, it is the absent-wiki answer. It is never logged, and a removed
+  reader's addresses die within ten minutes.
 - **C-15i (new):** an attachment's content can be hidden at the tip. It is then served as `410` and shown as a
   tombstone, and the export leaves it out.
 - **INV-13:** the surfaces gain the file route, the attachment page and the export's attachments.

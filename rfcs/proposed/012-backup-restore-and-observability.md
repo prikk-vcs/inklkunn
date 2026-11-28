@@ -1,6 +1,6 @@
 # RFC 012 — Backup, restore and observability: a server that can be kept, and says how it is
 
-**Status.** **Proposed to the owner 2026-11-28; refined the same day by the architect's own check against the owner's philosophy, before the rulings** (four refinements, marked *refined*). This is 0.6.0's R-1, with RFC 011 (`docs/releases/0.6.0-plan.md`,
+**Status.** **Proposed to the owner 2026-11-28; refined the same day by the architect's own check against the owner's philosophy, before the rulings** (four refinements, marked *refined*); **checked again at the owner's request the same day, before the rulings** (nine more, marked *refined, second check*). This is 0.6.0's R-1, with RFC 011 (`docs/releases/0.6.0-plan.md`,
 authorized 2026-11-28 with P-1 – P-5 and six refinements). **Tracks.** ROADMAP T11; requirements DUR-1, DUR-4, OPS-3,
 OPS-5, OPS-6; threat model RR-8, IS-15 (deferred, P-3); prikk's own backup and restore guide
 (`docs/src/guide/backup-restore.md`). **Touches.**
@@ -48,6 +48,9 @@ This RFC adds:
     - **Why not `prikk archive export`?** It refuses any repository with a file over 256 MiB, and its import lands every
       ref but the exporter's under `remotes/`, so a wiki's views would not come back as views. The copy has neither
       limit. **`prikk verify` is run on the copy before the backup is declared good** (Q-1).
+  - **A damaged or flagged wiki is backed up, not a reason to refuse the backup** (*refined, second check*): that is when a backup matters
+    most. The rule is that **the copy verifies exactly as the original does**, the same findings. The manifest and the
+    summary name each flagged wiki and its findings, so a restore never presents one as sound.
   - **The store** is copied with SQLite's `VACUUM INTO`: one consistent snapshot, with no new dependency and no
     migration. A store of an older schema is copied as it is.
   - **The key store** is copied as its sealed records. **The secret file is never in a backup.** The command refuses a
@@ -57,19 +60,29 @@ This RFC adds:
     2. the store and the key store are copied;
     3. then each repository is copied, and its lease released.
 
+    **Taking the leases is bounded** (*refined, second check*): when one is not free within 30 seconds, the backup releases every lease
+    it took and refuses, naming the wiki and what holds it. It never waits for ever, and never holds the other wikis'
+    writes while it waits for one.
+
     So no write happens anywhere between the store's snapshot and any repository's copy, and each wiki's writes wait
     only until that wiki is copied. **Reads never stop.**
   - **A write that meets a backup's lease says so** (*refined*): *this wiki is being backed up; try again in a moment*,
     never a general *busy*.
   - **The server's own `status.json` is not in a backup** (*refined*).
+  - **Sign-in sessions are not in a backup** (*refined, second check*): they are removed from the store's snapshot before it is archived.
+  - **The store's snapshot is staged inside the data directory** (*refined, second check*), owner-only, beside the store it copies, and
+    removed when the archive is written, on any failure, and at the next start if a backup was killed. So no copy
+    leaves the data directory unencrypted, and the snapshot is never on a disk the store was not already on.
 - **D-2 — One archive, to a file or to standard output.**
   - `inklkunn backup --to <file>` writes one archive (tar), owner-readable only (`0600`), and refuses an existing file.
     `inklkunn backup --to -` writes it to standard output, so `inklkunn backup --to - | age -r … > backup.age` puts no
-    unencrypted copy on any disk (P-2).
+    unencrypted copy outside the data directory (P-2; *refined, second check*: the old claim, *on any disk*, missed the store's staged
+    snapshot). With `-`, it refuses when standard output is a terminal.
   - **A manifest inside it** lists every file with its SHA-256, the store's schema version, each repository's prikk
     format and tip, and inklkunn's and prikk's versions.
-  - **The command says, in one line on standard error:** *this backup is not encrypted: it holds people's names and
-    sign-in data, and what moderation hides; encrypt it before it leaves this machine.*
+  - **The command says, in one line on standard error** (*refined, second check*: words true whether it writes a file or a pipe):
+    *inklkunn does not encrypt backups: this one holds people's names, password hashes and API token hashes, and what
+    moderation hides; encrypt it before it leaves this machine.*
   - One new dependency for the archive format (a pure-Rust tar crate), measured as the dependency policy says.
 - **D-3 — Restore, into an empty data directory only.**
   - `inklkunn restore --from <file or -> --data <empty dir>`.
@@ -84,6 +97,11 @@ This RFC adds:
     file this server had; without it they can be read and never written*.
   - **A newer store than this binary knows is refused,** naming both versions. An older one is opened, and migrated by
     `serve` as an upgrade is.
+  - **A restore never brings back an access that was taken away** (*refined, second check*). The store goes back to the backup's moment,
+    so an API token revoked or an account disabled since would live again. So **the restore revokes every API token**
+    (marked *revoked by restore*), there are no sessions to restore, and it says, in its summary: the backup's time;
+    *everyone signs in again; API tokens must be issued again; an account disabled or a password changed since that
+    time is as it was then: check them.*
 - **D-4 — The rehearsal is a test.** A wiki with pages, views, a hide, an import's history, accounts and keys is backed
   up while the server runs. It is then restored into another directory, served, and shown:
   - the same pages and history;
@@ -101,6 +119,8 @@ This RFC adds:
     - **the key store holds the records of every wiki.**
   - **To anyone it answers `ok` or `degraded`, nothing more:** no wiki, no path, no count. The status code is `200` or
     `503`.
+  - **Its checks are made at most once every ten seconds** (*refined, second check*) and the answer kept between them, so anyone polling
+    `/-/health` can never make the server start a process.
 - **D-6 — `inklkunn status`, the operator's view** (OPS-6).
   - It lists every wiki:
     - its prikk format;
@@ -116,8 +136,12 @@ This RFC adds:
 - **D-7 — Structured logs that carry no content.**
   - Every line the server writes becomes one structured line: `level`, `event`, the wiki's id where there is one, the
     request's id. It is logfmt-shaped, hand-written, with no new dependency.
-  - **No page text, no comment, no name, no address, no secret.** A test runs the end-to-end tests with a log capture,
-    and fails on any planted marker text it finds.
+  - **No page text, no comment, no name, no email or IP address, no request path or query, no secret** (*refined, second check*: *no
+    address* was ambiguous, and a path holds a page's name and a query a signed address). A request is logged by its
+    route's name (`page.view`), its status and its time. The guide says that a reverse proxy's access log, which holds
+    addresses and paths, is the operator's own choice.
+  - A test runs the end-to-end tests with a log capture, and fails on any planted marker text it finds, in a page, a
+    name, an email address, a path, and a signed address.
 - **D-8 — Counters.**
   - Admissions, refusals (by kind), acceptances, the background builder's queue, and prikk calls, kept in the process.
   - The server writes them every ten seconds to `<data>/status.json`, atomically and owner-only, and `status` reads it.
@@ -145,6 +169,9 @@ This RFC adds:
    - refuses an existing file and a secret inside the destination;
    - says its one line.
 3. **A restore refuses each tampering,** and an existing or non-empty destination, and leaves the directory as it was.
+   **A restored server has no session and no live API token,** and the restore's summary says so.
+   **A flagged wiki is backed up and restored as flagged,** with the same findings. **A lease held past the bound**
+   makes the backup refuse, naming the wiki, with every other wiki's writes released.
 4. **A backup taken with the new binary of an older store** restores, and `serve` then migrates it.
 5. **Health:** `ok` on a healthy server; `degraded` with the store gone, with prikk missing or under the floor, and with
    a wiki's key records missing; and nothing more either way.
@@ -175,8 +202,10 @@ This RFC adds:
 
 ## Threat model v0.6 additions (folded on acceptance)
 
-- **C-19a (new):** a backup never holds the secret file, is owner-only on disk, says it is not encrypted, and can be
-  written to standard output for an encryptor.
+- **C-19a (new):** a backup never holds the secret file or a session, is owner-only on disk, says it is not encrypted,
+  and can be written to standard output for an encryptor; its store snapshot never leaves the data directory.
+- **C-19e (new):** a restore revokes every API token and restores no session, so no access taken away after the
+  backup comes back.
 - **C-19b (new):** a restore treats its archive as untrusted: checksums, no escaping path or link, all or nothing, and
   `prikk verify` on every repository.
 - **C-19c (new):** health says only `ok` or `degraded`. `status` and `status.json` are the operator's, owner-only.
