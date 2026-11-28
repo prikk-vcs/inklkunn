@@ -1062,6 +1062,9 @@
     - logs carry no content, and counters go in a status file;
     - the guide says first what it is not for.
 
+- **2026-11-28 — prikk answered our letter the same day** (ledger v1.15, amended): `log --after <block-id>` taken into
+  RFC 174 as we asked, so the writes index can replay once per increment; RFC 172 accepted (stage 1 serves our cases;
+  stage 2 is planeter's, not needed by us). Nothing promised for a version; no answer due.
 - **2026-11-28 — prikk 0.59.0 released, and two design letters received** (ledger v1.15).
   - **PK-51:** no JSON changes, and texts that inklkunn parses changed. On `main`, 18 of 4,395 tests fail on 0.59.0, all
     fail-closed: the interrupted seal's recommendation, the format marker, and the kill matrix. **M69, the re-baseline,
@@ -1076,8 +1079,6 @@
 - **After the 0.5.0 release:** publish the nine crates by hand, once, from the tag. Then set up Trusted Publishing on
   crates.io, and tell the architect: the release workflow follows it in 0.6.0's R-0 (M68).
 - **RFCs 011 and 012's questions** (`rfcs/proposed/011-attachments-and-the-content-origin.md` Q-1 – Q-4, `rfcs/proposed/012-backup-restore-and-observability.md` Q-1 – Q-4; proposed 2026-11-28; the plan's R-2, target 2026-12-02).
-- **Send the letter to prikk** (`.git-exclude/upstream/prikk/send/draft/2026-11-28-our-answers-on-rfc-174-and-rfc-172.md`):
-  our answers on RFC 174 (the JSON design, `log --paths`) and RFC 172 (the trust design), in one letter.
 
 ## Pending upstream
 
